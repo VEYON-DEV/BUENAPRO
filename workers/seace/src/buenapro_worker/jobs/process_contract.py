@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime
 from typing import Any
 
 from buenapro_worker.jobs.poll_search import canonical_hash, parse_lima_datetime
@@ -29,11 +30,31 @@ def _first_item(detail: dict[str, Any]) -> dict[str, Any]:
     return items[0] if items else {}
 
 
+def quotation_window_from_detail(detail: dict[str, Any]) -> tuple[datetime | None, datetime | None]:
+    stages = detail.get("uitContratoEtapaProjectionList") or []
+    quotation = next(
+        (
+            stage
+            for stage in stages
+            if _parse_int(stage.get("idEtapaContrato")) == 2
+            or "COTIZ" in str(stage.get("nomEtapaContrato") or "").upper()
+        ),
+        None,
+    )
+    if not quotation:
+        return None, None
+    return (
+        parse_lima_datetime(quotation.get("fecIni")),
+        parse_lima_datetime(quotation.get("fecFin")),
+    )
+
+
 def update_contract_detail(repo: JobRepository, id_contrato: int, detail: dict[str, Any]) -> bool:
     projection = detail.get("uitContratoCompletoProjection") or {}
     item = _first_item(detail)
     hash_detail = canonical_hash(detail)
     cronograma = _cronograma_from_detail(detail)
+    fec_ini_cotizacion, fec_fin_cotizacion = quotation_window_from_detail(detail)
 
     row = repo.conn.execute(
         """
@@ -48,6 +69,8 @@ def update_contract_detail(repo: JobRepository, id_contrato: int, detail: dict[s
             provincia = COALESCE(%s, provincia),
             distrito = COALESCE(%s, distrito),
             fec_publica = COALESCE(%s, fec_publica),
+            fec_ini_cotizacion = COALESCE(%s, fec_ini_cotizacion),
+            fec_fin_cotizacion = COALESCE(%s, fec_fin_cotizacion),
             cronograma = %s::jsonb,
             resultado = COALESCE(NULLIF(%s::jsonb, '{}'::jsonb), resultado),
             hash_detail = %s,
@@ -70,6 +93,8 @@ def update_contract_detail(repo: JobRepository, id_contrato: int, detail: dict[s
             _location_part(item.get("nomDistritoExt"), 1),
             _location_part(item.get("nomDistritoExt"), 2),
             parse_lima_datetime(projection.get("fecPublica")),
+            fec_ini_cotizacion,
+            fec_fin_cotizacion,
             json.dumps(cronograma, ensure_ascii=False),
             json.dumps(_resultado_from_detail(detail), ensure_ascii=False),
             hash_detail,
@@ -212,15 +237,15 @@ def process_contract(
     batch_id: str | None = None,
     bucket: str | None = None,
     segment: int | str | None = None,
+    force_detail: bool = False,
 ) -> dict[str, bool]:
-    # Detalle: se trae UNA vez en la ingesta (llena ubicacion/CUBSO/cronograma).
-    # Los refrescos posteriores son bajo demanda desde la web (cache con TTL),
-    # no en cada ciclo del lifecycle: SEACE no necesita 200 GETs cada 30 min.
+    # La ingesta normal reutiliza el detalle. Lifecycle puede forzar el GET para
+    # detectar cambios de estado y cronograma con una rotacion controlada.
     existing = repo.conn.execute(
         "SELECT raw_detail_json IS NULL AS missing_detail FROM seace_contracts WHERE id_contrato = %s",
         (id_contrato,),
     ).fetchone()
-    needs_detail = existing is None or bool(existing["missing_detail"])
+    needs_detail = force_detail or existing is None or bool(existing["missing_detail"])
 
     with SeaceClient(settings) as client:
         detail = client.contract_detail(id_contrato) if needs_detail else None

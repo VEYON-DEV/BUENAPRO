@@ -2,6 +2,7 @@ from decimal import Decimal
 import unittest
 
 from buenapro_worker.historical.outcomes import classify_outcome, parse_contract_code
+from buenapro_worker.jobs.process_contract import quotation_window_from_detail
 
 
 class HistoricalOutcomeTest(unittest.TestCase):
@@ -63,6 +64,29 @@ class HistoricalOutcomeTest(unittest.TestCase):
     def test_classify_inconclusive(self) -> None:
         result = classify_outcome({"uitContratoItemProjectionList": [{}]})
         self.assertEqual(result.state, "SIN_RESULTADO")
+
+    def test_extracts_quotation_window_from_detail_stages(self) -> None:
+        start, end = quotation_window_from_detail({
+            "uitContratoEtapaProjectionList": [
+                {
+                    "idEtapaContrato": 1,
+                    "nomEtapaContrato": "ETAPA DE CONSULTAS",
+                    "fecIni": "31/07/2026 18:00:00",
+                    "fecFin": "31/07/2026 19:00:00",
+                },
+                {
+                    "idEtapaContrato": 2,
+                    "nomEtapaContrato": "ETAPA DE COTIZACIÓN",
+                    "fecIni": "31/07/2026 18:16:44",
+                    "fecFin": "01/08/2026 09:30:00",
+                },
+            ]
+        })
+        self.assertEqual(start.isoformat(), "2026-07-31T23:16:44+00:00")
+        self.assertEqual(end.isoformat(), "2026-08-01T14:30:00+00:00")
+
+    def test_missing_quotation_stage_has_no_window(self) -> None:
+        self.assertEqual(quotation_window_from_detail({}), (None, None))
 
 
 if __name__ == "__main__":

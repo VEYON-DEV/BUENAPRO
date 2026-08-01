@@ -8,7 +8,7 @@ from typing import Any
 
 from buenapro_worker.historical.outcomes import classify_outcome, parse_contract_code
 from buenapro_worker.jobs.poll_search import parse_lima_datetime
-from buenapro_worker.jobs.process_contract import update_contract_detail
+from buenapro_worker.jobs.process_contract import quotation_window_from_detail, update_contract_detail
 from buenapro_worker.queue.repository import JobRepository
 from buenapro_worker.seace.client import SeaceClient
 from buenapro_worker.settings import Settings
@@ -136,6 +136,7 @@ def upsert_historical_outcome(
         or item.get("desItem")
     ) or "Sin descripción"
     cubso_item = _text(item.get("codCubso") or item.get("codigoCubso"))
+    detail_start, detail_end = quotation_window_from_detail(detail)
     previous_supplier = repo.conn.execute(
         "SELECT supplier_ruc FROM historical_contract_outcomes WHERE id_contrato = %s",
         (id_contrato,),
@@ -159,8 +160,8 @@ def upsert_historical_outcome(
           area_name=EXCLUDED.area_name, cubso_segmento=EXCLUDED.cubso_segmento,
           cubso_item=EXCLUDED.cubso_item, cubso_name=EXCLUDED.cubso_name,
           descripcion=EXCLUDED.descripcion, fec_publica=EXCLUDED.fec_publica,
-          fec_ini_cotizacion=EXCLUDED.fec_ini_cotizacion,
-          fec_fin_cotizacion=EXCLUDED.fec_fin_cotizacion,
+          fec_ini_cotizacion=COALESCE(EXCLUDED.fec_ini_cotizacion, historical_contract_outcomes.fec_ini_cotizacion),
+          fec_fin_cotizacion=COALESCE(EXCLUDED.fec_fin_cotizacion, historical_contract_outcomes.fec_fin_cotizacion),
           estado_resultado=EXCLUDED.estado_resultado, supplier_ruc=EXCLUDED.supplier_ruc,
           supplier_name=EXCLUDED.supplier_name, precio_total=EXCLUDED.precio_total,
           source_document_url=COALESCE(EXCLUDED.source_document_url, historical_contract_outcomes.source_document_url),
@@ -182,8 +183,8 @@ def upsert_historical_outcome(
             _text(item.get("nomCubso") or item.get("desCubso")),
             description,
             parse_lima_datetime(projection.get("fecPublica") or search_item.get("fecPublica")),
-            parse_lima_datetime(projection.get("fecIniCotizacion") or search_item.get("fecIniCotizacion")),
-            parse_lima_datetime(projection.get("fecFinCotizacion") or search_item.get("fecFinCotizacion")),
+            parse_lima_datetime(projection.get("fecIniCotizacion") or search_item.get("fecIniCotizacion")) or detail_start,
+            parse_lima_datetime(projection.get("fecFinCotizacion") or search_item.get("fecFinCotizacion")) or detail_end,
             outcome.state,
             outcome.supplier_ruc,
             outcome.supplier_name,
@@ -474,7 +475,7 @@ def refresh_recent_closures(
         SELECT id_contrato, cubso_segmento
         FROM seace_contracts
         WHERE fec_fin_cotizacion BETWEEN %s AND now()
-        ORDER BY fec_fin_cotizacion DESC
+        ORDER BY detail_fetched_at ASC NULLS FIRST, fec_fin_cotizacion DESC
         LIMIT %s
         """,
         (since, limit),
