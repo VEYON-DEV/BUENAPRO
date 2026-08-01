@@ -58,6 +58,7 @@ Sirve cuando ya existe perfil y lineas de negocio.
 
 Base:
 
+- guardadas del workspace `saved=true`
 - texto `q`
 - objeto
 - estado
@@ -91,6 +92,8 @@ features/opportunities/components/EmptyOpportunities/
 
 ```text
 GET /api/contracts?page=&page_size=&q=&objeto=&estado=&segmento=&region=&bucket=&has_extraction=&cotizar=
+PUT /api/contracts/:id/saved
+DELETE /api/contracts/:id/saved
 GET /api/feed?page=&page_size=&verdict=&q=&objeto=&estado=&segmento=&region=&role=&facet=&tipo_pago=
 POST /api/contracts/:id/track
 GET /api/catalogs/objects
@@ -102,6 +105,7 @@ GET /api/catalogs/enabled-cubso-segments
 ## Acciones
 
 - Abrir detalle.
+- Guardar o quitar una oportunidad sin incorporarla al seguimiento.
 - Marcar como `interesada`.
 - Pasar directo a `en_preparacion`.
 - Limpiar filtros.

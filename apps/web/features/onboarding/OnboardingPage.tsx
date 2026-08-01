@@ -10,8 +10,9 @@ import { apiFetch } from "@/lib/api/client";
 import styles from "./OnboardingPage.module.css";
 
 type Segment = { codigo: string; nombre: string; enabled: boolean };
-type BusinessLine = { name: string; keywords: string[]; cubso_segmentos: string[] };
-type Analysis = { summary: string; business_lines: BusinessLine[]; segments: Segment[]; source: "website" | "description" | "manual" };
+type BusinessLine = { name: string; keywords: string[]; keyword_phrases?: string[]; keyword_terms?: string[]; cubso_segmentos: string[] };
+type EditableBusinessLine = BusinessLine & { editorId: string };
+type Analysis = { summary: string; company_keywords: string[]; business_lines: BusinessLine[]; segments: Segment[]; source: "website" | "description" | "manual" };
 
 const STEPS = ["Empresa", "Líneas", "Capacidad", "Revisión"];
 const STEP_COPY = [
@@ -25,12 +26,12 @@ function normalizeTag(value: string) {
   return value.trim().replace(/\s+/g, " ");
 }
 
-function TagEditor({ label, hint, values, onChange }: { label: string; hint?: string; values: string[]; onChange: (values: string[]) => void }) {
+function TagEditor({ label, hint, max = 30, values, onChange }: { label: string; hint?: string; max?: number; values: string[]; onChange: (values: string[]) => void }) {
   const [draft, setDraft] = useState("");
 
   function add() {
     const tag = normalizeTag(draft);
-    if (tag && !values.some((item) => item.toLowerCase() === tag.toLowerCase())) onChange([...values, tag]);
+    if (tag && values.length < max && !values.some((item) => item.toLowerCase() === tag.toLowerCase())) onChange([...values, tag]);
     setDraft("");
   }
 
@@ -46,6 +47,8 @@ function TagEditor({ label, hint, values, onChange }: { label: string; hint?: st
         ))}
         <input
           aria-label={`Agregar en ${label}`}
+          autoComplete="off"
+          name="keyword"
           onBlur={add}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
@@ -67,7 +70,8 @@ export function OnboardingPage() {
   const [step, setStep] = useState(0);
   const [company, setCompany] = useState({ ruc: "", name: "", website: "", description: "" });
   const [summary, setSummary] = useState("");
-  const [lines, setLines] = useState<BusinessLine[]>([]);
+  const [companyKeywords, setCompanyKeywords] = useState<string[]>([]);
+  const [lines, setLines] = useState<EditableBusinessLine[]>([]);
   const [segments, setSegments] = useState<Segment[]>([]);
   const [econAmount, setEconAmount] = useState("");
   const [team, setTeam] = useState<string[]>([]);
@@ -75,7 +79,7 @@ export function OnboardingPage() {
   const [status, setStatus] = useState<"idle" | "analyzing" | "saving">("idle");
   const [error, setError] = useState("");
 
-  const keywordCount = useMemo(() => new Set(lines.flatMap((line) => line.keywords.map((item) => item.toLowerCase()))).size, [lines]);
+  const keywordCount = useMemo(() => new Set([...companyKeywords, ...lines.flatMap((line) => line.keywords)].map((item) => item.toLowerCase())).size, [companyKeywords, lines]);
 
   async function analyze() {
     if (!company.name.trim() || !company.ruc.trim()) {
@@ -91,7 +95,8 @@ export function OnboardingPage() {
     try {
       const result = await apiFetch<{ data: Analysis }>("/api/onboarding/analyze", { method: "POST", json: company });
       setSummary(result.data.summary);
-      setLines(result.data.business_lines);
+      setCompanyKeywords(result.data.company_keywords);
+      setLines(result.data.business_lines.map((line) => ({ ...line, editorId: crypto.randomUUID() })));
       setSegments(result.data.segments);
       setStep(1);
     } catch (reason) {
@@ -107,8 +112,8 @@ export function OnboardingPage() {
 
   function validateStep() {
     setError("");
-    if (step === 1 && (!lines.length || lines.some((line) => !line.name.trim() || !line.keywords.length || !line.cubso_segmentos.length))) {
-      setError("Cada línea necesita nombre, al menos 1 segmento CUBSO y una palabra clave.");
+    if (step === 1 && (!companyKeywords.length || !lines.length || lines.some((line) => !line.name.trim() || !line.keywords.length || !line.cubso_segmentos.length))) {
+      setError("Agrega keywords de empresa y completa cada línea con segmento CUBSO y palabras clave.");
       return false;
     }
     if (step === 2 && Number(econAmount) < 0) {
@@ -127,7 +132,8 @@ export function OnboardingPage() {
         json: {
           company,
           summary,
-          business_lines: lines,
+          company_keywords: companyKeywords,
+          business_lines: lines.map(({ editorId: _editorId, ...line }) => line),
           econ_amount: Number(econAmount || 0),
           team,
           equipment,
@@ -179,9 +185,13 @@ export function OnboardingPage() {
             {step === 1 ? (
               <div className={styles.step}>
                 <div className={styles.heading}><h2>Líneas de negocio</h2><p>{summary || "Organiza los servicios que puede brindar tu empresa."}</p></div>
+                <section className={styles.companySignals} aria-labelledby="onboarding-company-keywords">
+                  <div><strong id="onboarding-company-keywords">Identidad de la empresa</strong><p>Se aplica a todas las líneas. Las variaciones de género y número se reconocen automáticamente.</p></div>
+                  <TagEditor hint={`${companyKeywords.length}/12 · señales transversales`} label="Keywords generales" max={12} onChange={setCompanyKeywords} values={companyKeywords} />
+                </section>
                 <div className={styles.lineList}>
                   {lines.map((line, index) => (
-                    <article className={styles.lineEditor} key={`${index}-${line.name}`}>
+                    <article className={styles.lineEditor} key={line.editorId}>
                       <div className={styles.lineTop}>
                         <span className={styles.lineNumber}>{index + 1}</span>
                         <Input aria-label={`Nombre de la línea ${index + 1}`} onChange={(event) => updateLine(index, { name: event.target.value })} value={line.name} />
@@ -220,7 +230,7 @@ export function OnboardingPage() {
                     </article>
                   ))}
                 </div>
-                <Button onClick={() => setLines([...lines, { name: "Nueva línea", keywords: [], cubso_segmentos: [] }])} type="button" variant="secondary">+ Agregar línea</Button>
+                <Button onClick={() => setLines([...lines, { editorId: crypto.randomUUID(), name: "Nueva línea", keywords: [], cubso_segmentos: [] }])} type="button" variant="secondary">+ Agregar línea</Button>
               </div>
             ) : null}
 
@@ -246,6 +256,7 @@ export function OnboardingPage() {
                   <div><dt>Monto acreditable</dt><dd>{new Intl.NumberFormat("es-PE", { style: "currency", currency: "PEN", maximumFractionDigits: 0 }).format(Number(econAmount || 0))}</dd></div>
                   <div><dt>Capacidad</dt><dd>{team.length} perfiles · {equipment.length} recursos</dd></div>
                 </dl>
+                <div className={styles.companyReview}><strong>Identidad de empresa</strong><span>{companyKeywords.join(" · ")}</span></div>
                 <div className={styles.lineSummary}>{lines.map((line) => <div key={line.name}><strong>{line.name}<small>CUBSO {line.cubso_segmentos.join(", ")}</small></strong><span>{line.keywords.slice(0, 4).join(" · ")}{line.keywords.length > 4 ? ` · +${line.keywords.length - 4}` : ""}</span></div>)}</div>
               </div>
             ) : null}

@@ -3,6 +3,7 @@ import { query } from "@/server/db/client";
 import { ProfileForm } from "./components/ProfileForm";
 import { BusinessLinesPanel } from "./components/BusinessLinesPanel";
 import { SeaceConnectionPanel } from "./components/SeaceConnectionPanel";
+import { CompanyKeywordsPanel } from "./components/CompanyKeywordsPanel";
 import styles from "./ProfilePage.module.css";
 
 function profileCompletion(profile: any | null) {
@@ -75,7 +76,7 @@ export async function ProfilePage({ tenantId }: { tenantId: string }) {
       )
     : { rows: [{ matches_total: 0, verdes: 0, ambar: 0, rojos: 0, revision: 0, avg_score: 0 }] };
   const matchStats = stats.rows[0] as any;
-  const keywordCount = new Set(lines.rows.flatMap((line: any) => line.keywords ?? [])).size;
+  const keywordCount = new Set([...(profileRow?.company_keywords ?? []), ...lines.rows.flatMap((line: any) => line.keywords ?? [])]).size;
 
   return (
     <AppShell title="Perfil">
@@ -94,10 +95,11 @@ export async function ProfilePage({ tenantId }: { tenantId: string }) {
       </section>
       <div className={styles.workspace}>
         <main className={styles.primary}>
-        <BusinessLinesPanel
-          lines={lines.rows as any[]}
-          catalogs={catalogs.rows as Array<{ codigo: string; nombre: string; enabled: boolean }>}
-        />
+          {profileRow ? <CompanyKeywordsPanel keywords={(profileRow.company_keywords ?? []) as string[]} /> : null}
+          <BusinessLinesPanel
+            lines={lines.rows as any[]}
+            catalogs={catalogs.rows as Array<{ codigo: string; nombre: string; enabled: boolean }>}
+          />
         </main>
         <aside className={styles.secondary}>
           <ProfileForm profile={profileRow} />

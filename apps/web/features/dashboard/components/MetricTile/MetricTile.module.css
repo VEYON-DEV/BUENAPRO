@@ -1,0 +1,47 @@
+.tile {
+  background: var(--bp-color-panel);
+  border: 1px solid var(--bp-color-border);
+  border-radius: var(--bp-radius-lg);
+  display: grid;
+  gap: 7px;
+  min-height: 128px;
+  padding: 18px 20px;
+}
+.tile > span {
+  color: var(--bp-color-text-2);
+  font-size: 12px;
+  font-weight: 700;
+}
+.tile > strong {
+  color: var(--bp-color-ink);
+  font-size: 30px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.tile > strong.accent {
+  color: var(--bp-color-brand);
+}
+.tile > small {
+  align-self: end;
+  color: var(--bp-color-text-2);
+  font-size: 11px;
+}
+a.tile:hover {
+  border-color: var(--bp-color-border-strong);
+}
+a.tile:hover > strong {
+  color: var(--bp-color-brand);
+}
+.tile:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--bp-color-brand) 28%, transparent);
+  outline-offset: 3px;
+}
+@media (max-width: 680px) {
+  .tile {
+    min-height: 112px;
+    padding: 15px 16px;
+  }
+  .tile > strong {
+    font-size: 26px;
+  }
+}

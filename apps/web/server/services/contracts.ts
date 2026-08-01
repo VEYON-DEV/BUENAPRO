@@ -30,8 +30,10 @@ export async function getContractForTenant(tenantId: string, idContrato: number)
       m.monto_ofertado,
       m.notas,
       m.breakdown_json,
-      m.missing_actions_json
-      ,ad.id AS application_id
+      m.missing_actions_json,
+      ad.id AS application_id,
+      (sc.id_contrato IS NOT NULL) AS is_saved,
+      sc.created_at AS saved_at
     FROM seace_contracts c
     LEFT JOIN cat_seace_objects obj ON obj.codigo = c.objeto_codigo
     LEFT JOIN cat_seace_states st ON st.codigo = c.estado_codigo
@@ -45,6 +47,7 @@ export async function getContractForTenant(tenantId: string, idContrato: number)
       LIMIT 1
     ) m ON true
     LEFT JOIN application_drafts ad ON ad.match_id = m.id
+    LEFT JOIN saved_contracts sc ON sc.tenant_id = $2 AND sc.id_contrato = c.id_contrato
     LEFT JOIN LATERAL (
       SELECT tx.summary_json, tx.raw_extraction_json
       FROM contract_documents d
@@ -141,6 +144,7 @@ export async function listContractsForTenant(tenantId: string, params: URLSearch
   const closingBefore = params.get("closing_before");
   const openOnly = params.get("open_only");
   const hasAmount = params.get("has_amount");
+  const saved = params.get("saved");
 
   if (q) {
     values.push(`%${q}%`);
@@ -215,6 +219,8 @@ export async function listContractsForTenant(tenantId: string, params: URLSearch
   if (openOnly === "false") where.push("c.fec_fin_cotizacion < now()");
   if (hasAmount === "true") where.push("c.valor_estimado IS NOT NULL");
   if (hasAmount === "false") where.push("c.valor_estimado IS NULL");
+  if (saved === "true") where.push("sc.id_contrato IS NOT NULL");
+  if (saved === "false") where.push("sc.id_contrato IS NULL");
   if (closingBefore) {
     values.push(closingBefore);
     where.push(`c.fec_fin_cotizacion <= $${values.length}::timestamptz`);
@@ -264,11 +270,14 @@ export async function listContractsForTenant(tenantId: string, params: URLSearch
       fit.business_line_id AS fit_business_line_id,
       fit.business_line_name AS fit_business_line_name,
       COALESCE(fit.keyword_hits, '[]'::jsonb) AS fit_keyword_hits,
+      (sc.id_contrato IS NOT NULL) AS is_saved,
+      sc.created_at AS saved_at,
       count(*) OVER()::int AS total_count
     FROM seace_contracts c
     LEFT JOIN cat_seace_objects obj ON obj.codigo = c.objeto_codigo
     LEFT JOIN cat_seace_states st ON st.codigo = c.estado_codigo
     LEFT JOIN contract_filter_index fi ON fi.id_contrato = c.id_contrato
+    LEFT JOIN saved_contracts sc ON sc.tenant_id = $1 AND sc.id_contrato = c.id_contrato
     LEFT JOIN LATERAL (
       SELECT tx.summary_json
       FROM contract_documents d
@@ -289,6 +298,7 @@ export async function listContractsForTenant(tenantId: string, params: URLSearch
     ${ECON_LATERAL_SQL}
     ${whereSql}
     ORDER BY
+      ${saved === "true" ? "sc.created_at DESC," : ""}
       COALESCE(fit.keyword_points, 0) DESC,
       fit_points DESC,
       m.score DESC NULLS LAST,

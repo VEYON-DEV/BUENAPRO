@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/server/db/client";
 import { requireTenantId } from "@/server/auth/tenant";
+import { cleanCompanyKeywords } from "@/server/services/companyKeywords";
 
 export async function GET() {
   const tenantId = await requireTenantId();
@@ -11,14 +12,15 @@ export async function GET() {
 export async function PUT(request: NextRequest) {
   const tenantId = await requireTenantId();
   const body = await request.json();
+  const companyKeywords = body.company_keywords == null ? null : cleanCompanyKeywords(body.company_keywords);
   const result = await query(
     `
     INSERT INTO company_profiles (
       tenant_id, ruc, razon_social, identity_json, finance_json, experience_json,
       econ_experience_json, team_json, hireable_roles_json, equipment_json,
-      certifications_json, profile_hash, updated_at
+      certifications_json, company_keywords, profile_hash, updated_at
     )
-    VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb, $10::jsonb, $11::jsonb, md5($12), now())
+    VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb, $10::jsonb, $11::jsonb, COALESCE($12::text[], '{}'), md5($13), now())
     ON CONFLICT (tenant_id, ruc)
     DO UPDATE SET
       razon_social = EXCLUDED.razon_social,
@@ -30,6 +32,7 @@ export async function PUT(request: NextRequest) {
       hireable_roles_json = EXCLUDED.hireable_roles_json,
       equipment_json = EXCLUDED.equipment_json,
       certifications_json = EXCLUDED.certifications_json,
+      company_keywords = COALESCE($12, company_profiles.company_keywords),
       profile_hash = EXCLUDED.profile_hash,
       updated_at = now()
     RETURNING *
@@ -46,6 +49,7 @@ export async function PUT(request: NextRequest) {
       JSON.stringify(body.hireable_roles_json ?? []),
       JSON.stringify(body.equipment_json ?? []),
       JSON.stringify(body.certifications_json ?? []),
+      companyKeywords,
       JSON.stringify(body),
     ],
   );

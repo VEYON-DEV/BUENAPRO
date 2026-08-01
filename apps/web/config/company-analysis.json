@@ -1,7 +1,7 @@
 {
   "prompt": {
-    "version": "company_profile_v2",
-    "filename": "company_profile_v2.txt"
+    "version": "company_profile_v3",
+    "filename": "company_profile_v3.txt"
   },
   "website": {
     "timeout_ms": 8000,
@@ -46,6 +46,8 @@
   "keyword_scoring": {
     "exact_phrase": 15,
     "strong_term": 10,
+    "company_keyword": 10,
+    "company_cap": 10,
     "term_cap": 30,
     "total_cap": 45,
     "forbidden_terms": [

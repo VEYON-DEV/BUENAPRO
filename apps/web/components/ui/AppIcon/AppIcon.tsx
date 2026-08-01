@@ -20,6 +20,7 @@ const paths = {
   pin: <path d="M12 21c-4.3-3.6-6.5-7.1-6.5-10.3a6.5 6.5 0 0 1 13 0C18.5 13.9 16.3 17.4 12 21Zm0-8.2a2.3 2.3 0 1 0 0-4.6 2.3 2.3 0 0 0 0 4.6Z" />,
   alert: <path d="M12 4.5 20.5 19h-17L12 4.5Zm0 5.5v4m0 2.6v.4" />,
   tag: <path d="m4 11.5 7.5-7.5H20v8.5L12.5 20 4 11.5Zm12-3.5h.01" />,
+  bookmark: <path d="M6.5 4h11v16L12 16.6 6.5 20V4Z" />,
 };
 
 export type AppIconName = keyof typeof paths;

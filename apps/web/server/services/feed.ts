@@ -14,6 +14,7 @@ export async function getFeed(tenantId: string, params: URLSearchParams) {
   const closingBefore = params.get("closing_before");
   const openOnly = params.get("open_only");
   const hasAmount = params.get("has_amount");
+  const saved = params.get("saved");
   const page = Math.max(Number(params.get("page") ?? "1"), 1);
   const limit = Math.min(Math.max(Number(params.get("page_size") ?? "20"), 1), 100);
   const offset = (page - 1) * limit;
@@ -84,6 +85,8 @@ export async function getFeed(tenantId: string, params: URLSearchParams) {
   if (openOnly === "false") where.push("c.fec_fin_cotizacion < now()");
   if (hasAmount === "true") where.push("c.valor_estimado IS NOT NULL");
   if (hasAmount === "false") where.push("c.valor_estimado IS NULL");
+  if (saved === "true") where.push("sc.id_contrato IS NOT NULL");
+  if (saved === "false") where.push("sc.id_contrato IS NULL");
   if (closingBefore) {
     values.push(closingBefore);
     where.push(`c.fec_fin_cotizacion <= $${values.length}::timestamptz`);
@@ -116,6 +119,8 @@ export async function getFeed(tenantId: string, params: URLSearchParams) {
       fi.roles_requeridos,
       fi.facets,
       te.summary_json,
+      (sc.id_contrato IS NOT NULL) AS is_saved,
+      sc.created_at AS saved_at,
       count(*) OVER()::int AS total_count
     FROM matches m
     JOIN company_profiles cp ON cp.id = m.profile_id
@@ -123,6 +128,7 @@ export async function getFeed(tenantId: string, params: URLSearchParams) {
     LEFT JOIN cat_seace_objects obj ON obj.codigo = c.objeto_codigo
     LEFT JOIN cat_seace_states st ON st.codigo = c.estado_codigo
     LEFT JOIN contract_filter_index fi ON fi.id_contrato = c.id_contrato
+    LEFT JOIN saved_contracts sc ON sc.tenant_id = $1 AND sc.id_contrato = c.id_contrato
     LEFT JOIN LATERAL (
       SELECT tx.summary_json
       FROM contract_documents d
@@ -132,7 +138,7 @@ export async function getFeed(tenantId: string, params: URLSearchParams) {
       LIMIT 1
     ) te ON true
     WHERE ${where.join(" AND ")}
-    ORDER BY m.score DESC, c.fec_fin_cotizacion ASC NULLS LAST
+    ORDER BY ${saved === "true" ? "sc.created_at DESC," : ""} m.score DESC, c.fec_fin_cotizacion ASC NULLS LAST
     LIMIT $${values.length - 1}
     OFFSET $${values.length}
     `,

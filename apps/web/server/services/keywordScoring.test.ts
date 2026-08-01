@@ -26,3 +26,8 @@ test("respeta límites de palabra, tildes y topes", () => {
   assert.equal(scoreBusinessLine("ARBITRAJE, OSCE, SUNAFIL y cobranza", [], ["arbitraje", "osce", "sunafil", "cobranza"]).points, 30);
   assert.equal(scoreBusinessLine("asesoría legal defensa judicial derecho administrativo arbitraje internacional", ["asesoría legal", "defensa judicial", "derecho administrativo", "arbitraje internacional"], []).points, 45);
 });
+
+test("la identidad de empresa suma una sola vez y no duplica una señal de línea", () => {
+  assert.equal(scoreBusinessLine("software para gestión", [], [], ["software", "gestión"]).points, 10);
+  assert.equal(scoreBusinessLine("software para gestión", [], ["software"], ["software"]).points, 10);
+});

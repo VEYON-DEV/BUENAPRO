@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     seace_timeout_seconds: float = 45.0
     seace_poll_interval_minutes: int = 30
     seace_lifecycle_interval_hours: int = 6
+    seace_recent_closures_interval_hours: int = 2
+    seace_recent_closures_days: int = 15
     seace_contract_test_interval_minutes: int = 60
     seace_concurrency: int = 3
     gemini_concurrency: int = 1

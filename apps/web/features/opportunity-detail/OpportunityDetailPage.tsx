@@ -16,12 +16,14 @@ import {
   verdictShortLabels,
 } from "@/lib/extraction/opportunity";
 import { getContractForTenant } from "@/server/services/contracts";
+import { getHistoricalComparables } from "@/server/services/historicalComparables";
 import { refreshContractDetailIfStale } from "@/server/services/seaceDetail";
 import { MatchEvents } from "@/features/tracking/components/MatchEvents";
 import { AnalyzeButton } from "./components/AnalyzeButton";
 import { PdfPreview } from "./components/PdfPreview/PdfPreview";
 import { SeaceWorkspace } from "./components/SeaceWorkspace";
 import { StartApplicationButton } from "./components/StartApplicationButton";
+import { HistoricalComparables } from "./components/HistoricalComparables";
 import { CopilotPanel } from "@/features/copilot";
 import styles from "./OpportunityDetailPage.module.css";
 
@@ -261,6 +263,8 @@ export async function OpportunityDetailPage({
     );
   }
 
+  const history = await getHistoricalComparables(tenantId, idContrato);
+
   const { contract, facets, documents } = data as any;
   const facts = opportunityFacts(contract);
   const extraction: AnyRecord = contract.raw_extraction_json ?? {};
@@ -484,6 +488,7 @@ export async function OpportunityDetailPage({
       <Tabs
         items={[
           { key: "resumen", label: "Decisión", href: "#resumen", active: true },
+          { key: "comparables", label: "Histórico", href: "#comparables" },
           {
             key: "requisitos",
             label: `Requisitos (${facets.length})`,
@@ -555,6 +560,8 @@ export async function OpportunityDetailPage({
               </div>
             </section>
           ) : null}
+
+          <HistoricalComparables history={history} />
 
           <section className={styles.panel} id="requisitos">
             <div className={styles.sectionTitle}>

@@ -24,6 +24,52 @@ export function isInternalAdminRequest(request: Request) {
   return Boolean(expected && token === expected);
 }
 
+export async function enqueueHistoricalBackfill(input: { segment: number; limit?: number; year?: number }) {
+  const dedupKey = `historical_backfill:${input.segment}`;
+  const result = await query<JsonRecord>(
+    `
+    INSERT INTO worker_jobs (job_type, queue_name, payload, dedup_key, priority)
+    VALUES ('historical_backfill', 'io', $1::jsonb, $2, 5)
+    ON CONFLICT DO NOTHING
+    RETURNING id, status, payload, created_at
+    `,
+    [JSON.stringify(input), dedupKey],
+  );
+  return result.rows[0] ?? null;
+}
+
+export async function getHistoricalStatus(segment?: number) {
+  const values: unknown[] = [];
+  const where = segment ? `WHERE cubso_segmento = $1` : "";
+  if (segment) values.push(String(segment));
+  const [outcomes, progress, jobs] = await Promise.all([
+    query<JsonRecord>(
+      `
+      SELECT cubso_segmento, count(*)::int AS total,
+        count(*) FILTER (WHERE estado_resultado='ADJUDICADO')::int AS adjudicados,
+        count(*) FILTER (WHERE estado_resultado='DESIERTO')::int AS desiertos,
+        max(last_checked_at) AS last_checked_at
+      FROM historical_contract_outcomes ${where}
+      GROUP BY cubso_segmento ORDER BY cubso_segmento
+      `,
+      values,
+    ),
+    query<JsonRecord>(
+      `SELECT cubso_segmento, status, next_page, page_size, total_elements,
+         processed, saved, failed, heartbeat_at, completed_at, last_error
+       FROM historical_backfill_progress ${where}
+       ORDER BY cubso_segmento`,
+      values,
+    ),
+    query<JsonRecord>(
+      `SELECT id, status, payload, attempts, last_error, created_at, finished_at
+       FROM worker_jobs WHERE job_type='historical_backfill'
+       ORDER BY created_at DESC LIMIT 10`,
+    ),
+  ]);
+  return { segments: outcomes.rows, progress: progress.rows, recent_jobs: jobs.rows };
+}
+
 export function parsePositiveInteger(value: string | null, fallback: number) {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < 1) return fallback;

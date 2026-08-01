@@ -91,6 +91,7 @@ export const openApiSpec = {
           { name: "pipeline_state", in: "query", schema: { type: "string" } },
           { name: "has_extraction", in: "query", schema: { type: "boolean" } },
           { name: "cotizar", in: "query", schema: { type: "boolean" } },
+          { name: "saved", in: "query", description: "Filtra por oportunidades guardadas en el workspace", schema: { type: "boolean" } },
           { name: "closing_before", in: "query", schema: { type: "string", format: "date-time" } },
         ],
         responses: {
@@ -123,6 +124,48 @@ export const openApiSpec = {
           "200": { ...singleResponse, description: "Match creado/actualizado" },
           "400": { $ref: "#/components/responses/BadRequest" },
           "409": { description: "Se requiere perfil activo antes de hacer seguimiento" },
+        },
+      },
+    },
+    "/api/contracts/{id}/history": {
+      get: {
+        tags: ["Contracts"],
+        summary: "Devuelve comparables históricos explicables y métricas de mercado",
+        parameters: [idPathParam],
+        responses: {
+          "200": { ...singleResponse, description: "Comparables, precios, desiertos y proveedores frecuentes" },
+          "404": { $ref: "#/components/responses/NotFound" },
+        },
+      },
+    },
+    "/api/dashboard": {
+      get: {
+        tags: ["Feed", "Tracking"],
+        summary: "Radar diario del tenant con cierres, postulaciones y mercado",
+        responses: {
+          "200": { ...singleResponse, description: "Acciones y métricas accionables del perfil activo" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+        },
+      },
+    },
+    "/api/contracts/{id}/saved": {
+      put: {
+        tags: ["Contracts"],
+        summary: "Guarda una oportunidad en el workspace",
+        parameters: [idPathParam],
+        responses: {
+          "200": { ...singleResponse, description: "Oportunidad guardada" },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "404": { $ref: "#/components/responses/NotFound" },
+        },
+      },
+      delete: {
+        tags: ["Contracts"],
+        summary: "Quita una oportunidad de guardadas",
+        parameters: [idPathParam],
+        responses: {
+          "200": { ...singleResponse, description: "Oportunidad retirada de guardadas" },
+          "400": { $ref: "#/components/responses/BadRequest" },
         },
       },
     },
@@ -465,6 +508,18 @@ export const openApiSpec = {
         },
         responses: {
           "200": { ...singleResponse, description: "Perfil guardado" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+        },
+      },
+    },
+    "/api/profile/keywords": {
+      put: {
+        tags: ["Profile"],
+        summary: "Actualiza las keywords generales de identidad y encola rematch",
+        requestBody: { required: true, content: json({ $ref: "#/components/schemas/CompanyKeywordsInput" }) },
+        responses: {
+          "200": { ...singleResponse, description: "Identidad del radar actualizada" },
+          "400": { $ref: "#/components/responses/BadRequest" },
           "401": { $ref: "#/components/responses/Unauthorized" },
         },
       },
@@ -1291,6 +1346,7 @@ export const openApiSpec = {
           hireable_roles_json: { type: "array", items: { type: "object", additionalProperties: true } },
           equipment_json: { type: "array", items: { type: "object", additionalProperties: true } },
           certifications_json: { type: "array", items: { type: "object", additionalProperties: true } },
+          company_keywords: { type: "array", maxItems: 12, items: { type: "string", maxLength: 80 } },
         },
       },
       ProfileCreateInput: {
@@ -1317,7 +1373,15 @@ export const openApiSpec = {
           hireable_roles_json: { type: "array", items: { type: "object", additionalProperties: true } },
           equipment_json: { type: "array", items: { type: "object", additionalProperties: true } },
           certifications_json: { type: "array", items: { type: "object", additionalProperties: true } },
+          company_keywords: { type: "array", minItems: 1, maxItems: 12, items: { type: "string", maxLength: 80 } },
           is_active: { type: "boolean" },
+        },
+      },
+      CompanyKeywordsInput: {
+        type: "object",
+        required: ["company_keywords"],
+        properties: {
+          company_keywords: { type: "array", minItems: 1, maxItems: 12, items: { type: "string", maxLength: 80 } },
         },
       },
       BusinessLineInput: {
@@ -1328,7 +1392,7 @@ export const openApiSpec = {
           cubso_segmentos: { type: "array", items: { type: "string" } },
           keywords: { type: "array", items: { type: "string" } },
           keyword_phrases: { type: "array", maxItems: 8, items: { type: "string" } },
-          keyword_terms: { type: "array", minItems: 4, maxItems: 10, items: { type: "string" } },
+          keyword_terms: { type: "array", maxItems: 8, items: { type: "string" } },
           ubigeos: { type: "array", items: { type: "string" } },
           monto_min: { anyOf: [{ type: "number" }, { type: "null" }] },
           monto_max: { anyOf: [{ type: "number" }, { type: "null" }] },
@@ -1342,7 +1406,7 @@ export const openApiSpec = {
           cubso_segmentos: { type: "array", items: { type: "string" } },
           keywords: { type: "array", items: { type: "string" } },
           keyword_phrases: { type: "array", maxItems: 8, items: { type: "string" } },
-          keyword_terms: { type: "array", minItems: 4, maxItems: 10, items: { type: "string" } },
+          keyword_terms: { type: "array", maxItems: 8, items: { type: "string" } },
           ubigeos: { type: "array", items: { type: "string" } },
           monto_min: { anyOf: [{ type: "number" }, { type: "null" }] },
           monto_max: { anyOf: [{ type: "number" }, { type: "null" }] },

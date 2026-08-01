@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireTenantId } from "@/server/auth/tenant";
 import { query } from "@/server/db/client";
 import { buildPatch, jsonError } from "@/server/services/crud";
+import { cleanCompanyKeywords } from "@/server/services/companyKeywords";
 
 function jsonBody(value: unknown, fallback: unknown) {
   return JSON.stringify(value ?? fallback);
@@ -30,6 +31,9 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   const tenantId = await requireTenantId();
   const { id } = await context.params;
   const body = await request.json();
+  if (body.company_keywords != null && !cleanCompanyKeywords(body.company_keywords).length) {
+    return NextResponse.json({ error: "Agrega al menos una keyword de empresa válida." }, { status: 400 });
+  }
   const patch = buildPatch(
     body,
     [
@@ -43,6 +47,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       { column: "hireable_roles_json", cast: "::jsonb", transform: (value) => jsonBody(value, []) },
       { column: "equipment_json", cast: "::jsonb", transform: (value) => jsonBody(value, []) },
       { column: "certifications_json", cast: "::jsonb", transform: (value) => jsonBody(value, []) },
+      { column: "company_keywords", transform: (value) => cleanCompanyKeywords(value) },
       { column: "is_active" },
     ],
     3,

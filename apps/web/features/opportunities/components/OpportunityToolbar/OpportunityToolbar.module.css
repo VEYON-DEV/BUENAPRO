@@ -19,8 +19,8 @@
   display: inline-flex;
   font-size: 12px;
   font-weight: 750;
-  min-height: 30px;
-  padding: 5px 10px;
+  min-height: 44px;
+  padding: 8px 12px;
 }
 
 .quickFilters a:hover,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireTenantId } from "@/server/auth/tenant";
 import { query } from "@/server/db/client";
+import { cleanCompanyKeywords } from "@/server/services/companyKeywords";
 
 function jsonBody(value: unknown, fallback: unknown) {
   return JSON.stringify(value ?? fallback);
@@ -39,11 +40,11 @@ export async function POST(request: NextRequest) {
     INSERT INTO company_profiles (
       tenant_id, ruc, razon_social, identity_json, finance_json, experience_json,
       econ_experience_json, team_json, hireable_roles_json, equipment_json,
-      certifications_json, profile_hash, is_active, updated_at
+      certifications_json, company_keywords, profile_hash, is_active, updated_at
     )
     VALUES (
       $1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb, $7::jsonb, $8::jsonb,
-      $9::jsonb, $10::jsonb, $11::jsonb, md5($12), COALESCE($13, true), now()
+      $9::jsonb, $10::jsonb, $11::jsonb, $12, md5($13), COALESCE($14, true), now()
     )
     RETURNING *
     `,
@@ -59,6 +60,7 @@ export async function POST(request: NextRequest) {
       jsonBody(body.hireable_roles_json, []),
       jsonBody(body.equipment_json, []),
       jsonBody(body.certifications_json, []),
+      cleanCompanyKeywords(body.company_keywords),
       JSON.stringify(body),
       body.is_active ?? null,
     ],

@@ -76,6 +76,10 @@ Referencia: [Auth](../docs/frontend/01-auth.md)
 
 ## Inicio
 
+- [x] Rework de Inicio como `Hoy en tu radar`: cierres próximos, postulaciones en curso, mercado comparable y proveedores frecuentes; métricas accionables sin dashboard BI decorativo (build y smoke SSR validados el 2026-07-31).
+- [x] Reestructurar Inicio como dashboard profesional: KPIs con conteos completos, tendencia mensual adjudicados/desiertos, composición histórica, ranking de empresas y mesas operativas de cierres/postulaciones; build y SSR con PostgreSQL real validados el 2026-07-31.
+- [ ] Capturar y revisar en desktop/mobile el dashboard profesional de Inicio; bloqueo 2026-07-31: Browser Plugin sin instancias disponibles. Build, SSR real y smoke HTTP de producción validados.
+
 - [x] Implementar `features/dashboard`.
 - [x] Crear vista `/`.
 - [x] Mostrar estado de perfil.
@@ -88,6 +92,10 @@ Referencia: [Auth](../docs/frontend/01-auth.md)
 Referencia: [Inicio](../docs/frontend/02-inicio.md)
 
 ## Oportunidades
+
+- [x] Mantener el histórico fuera del feed de Oportunidades: sin filtros, métricas ni señales históricas en tabla o vista rápida; los comparables viven únicamente en el detalle (ajustado el 2026-07-31).
+
+- [x] Añadir marcador reversible en cada fila y preview, estado visual guardado/no guardado y filtro rápido `Guardadas` que conserva filtros del formulario; integrado con API real y accesibilidad de teclado/lector (2026-07-20).
 
 - [x] Implementar `features/opportunities`.
 - [x] Crear toolbar de busqueda.
@@ -114,6 +122,8 @@ Referencia: [Inicio](../docs/frontend/02-inicio.md)
 Referencia: [Oportunidades](../docs/frontend/03-oportunidades.md)
 
 ## Detalle de oportunidad
+
+- [x] Añadir Histórico comparable al detalle con rango, mediana, adjudicados/desiertos, proveedores, razones de similitud y enlace a TDR antiguo cuando exista.
 
 - [x] Implementar `features/opportunity-detail`.
 - [x] Redisenar `/oportunidad/[id]`.
@@ -165,6 +175,9 @@ Referencia: [Detalle de oportunidad](../docs/frontend/04-detalle-oportunidad.md)
 - [x] Rework profesional de `/perfil` (2026-07-11): jerarquía centrada en líneas de negocio, resumen compacto de empresa/capacidad, editor secundario progresivo y eliminación del mosaico repetitivo de cards. Evidencia: `docs/qa/screenshots/profile-rework-desktop-2026-07-11.png`, `profile-rework-mobile-2026-07-11.png`.
 - [x] Editor inline completo para líneas: crear/editar nombre, 1–3 segmentos CUBSO, hasta 30 keywords por chips, estado de cobertura y feedback de rematch. PATCH real validado sin alterar los datos. Evidencia: `docs/qa/screenshots/profile-line-editor-2026-07-11.png`.
 - [x] Simplificar capacidad económica: retirar facturación anual de perfil/completitud, conservar solo experiencia económica acreditable y mostrar `Guardar cambios` únicamente cuando el formulario esté modificado. Evidencia: `docs/qa/screenshots/profile-clean-state-2026-07-11.png`.
+- [x] Añadir `Identidad del radar` editable en onboarding y perfil: keywords transversales separadas de cada línea, chips, empty/error/saving states y aviso de raíces lingüísticas. QA desktop/mobile: `docs/qa/screenshots/profile-company-keywords-desktop.png`, `profile-company-keywords-mobile.png`.
+- [x] Corregir pérdida de foco al editar el nombre de una línea en onboarding: cada editor usa una clave estable y el identificador visual no se envía al backend. TypeScript validado el 2026-07-17.
+- [ ] Capturar QA visual del nombre de línea con texto de varias palabras; navegador interno no disponible en la sesión del 2026-07-17.
 
 Referencia: [Perfil de empresa](../docs/frontend/05-perfil-empresa.md)
 
@@ -187,6 +200,8 @@ Referencia: [Perfil de empresa](../docs/frontend/05-perfil-empresa.md)
 - [ ] Rework de Seguimiento como cartera compacta: una tabla, urgencia, progreso, responsable y próximo paso; filas con borrador abren `/postulaciones/[matchId]`. Build/SSR validados; captura desktop/mobile pendiente.
 
 ## Postulación
+
+- [x] Añadir `Precio y mercado` a `/postulaciones/[matchId]`, contraste de oferta contra rango histórico, comparables usados y acceso read-only a consultas oficiales; envío SEACE permanece deshabilitado hasta confirmar endpoint.
 
 - [ ] Crear workspace `/postulaciones/[matchId]` con oferta por ítems, RTM dinámicos, vigencia/contacto, archivos y rail de progreso. Persistencia real y build validados; captura desktop/mobile pendiente.
 - [ ] Simplificar el workspace como mesa única: oferta, RTM y carga de propuesta en una sola vista; leer formatos SEACE deja de ser un paso. Implementación pendiente de build y QA visual desktop/mobile.

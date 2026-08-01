@@ -24,6 +24,9 @@
 
 ## API interna
 
+- [x] Implementar `GET /api/contracts/:id/history` con scoring explicable por CUBSO, keywords, entidad y recencia; desiertos excluidos del precio y umbral endurecido contra comparables amplios.
+- [x] Implementar `GET /api/dashboard` con cierres, preparación, mercado del perfil y proveedores frecuentes, más admin interno para iniciar/consultar backfill histórico.
+
 - [x] `GET /api/contracts` para explorar contratos cargados aunque no exista match.
 - [x] `GET /api/feed`.
 - [x] `GET /api/contracts/:id`.
@@ -31,6 +34,7 @@
 - [x] `GET /api/contracts/:id/original/:docId`.
 - [x] `GET /api/profile`.
 - [x] `PUT /api/profile`.
+- [x] `PUT /api/profile/keywords` para editar identidad transversal, sanear/deduplicar señales y encolar rematch.
 - [x] `GET /api/lines`.
 - [x] `POST /api/lines`.
 - [x] `PATCH /api/matches/:id`.
@@ -54,6 +58,7 @@
 - [x] Copiloto tenant-safe por licitación: memoria PostgreSQL, Gemini con citas, lectura acotada de TDR/DOCX/perfil/borrador, compactación y change sets con confirmación manual; nunca envía a SEACE. Agente real y confirm/reject validados con contrato 78753.
 - [x] Ejecutar el análisis manual perfil–licitación directamente en `POST /api/contracts/:id/analyze`, sin `worker-llm`: conserva prompt v2, schema, reglas económicas, score estable, persistencia y costos. Validado con contrato 78764 usando `gemini-3.1-flash-lite`; job pendiente anterior cerrado automáticamente.
 - [x] Robustecer onboarding empresa: prompt externo versionado, modelo Gemini configurable, crawl seguro multipágina, evidencia por URL, frases/términos separados y guardas CUBSO por servicio vendido. Motor de fit por línea y segmento con frase exacta 15, término fuerte explícito 10, sin división automática, topes 30/45 y hits explicables.
+- [x] Prompt universal v3 sin ejemplos sectoriales: separa términos y frases de identidad de empresa, exige al menos un término autónomo y clasifica CUBSO por obligación/entregable. El motor usa stemming español de PostgreSQL, conserva frases ordenadas, suma identidad una sola vez (10) y evita doble conteo con señales de línea.
 
 ## Feed
 
@@ -68,6 +73,7 @@
 
 ## Detalle de oportunidad
 
+- [x] Exponer guardado reversible de oportunidades con `PUT/DELETE /api/contracts/:id/saved`, `is_saved` en lista/detalle y filtro `saved=true`, aislado por tenant.
 - [x] Crear pagina `/oportunidad/[id]`.
 - [x] Mostrar ficha de contratacion.
 - [x] Mostrar PDF preview desde R2.

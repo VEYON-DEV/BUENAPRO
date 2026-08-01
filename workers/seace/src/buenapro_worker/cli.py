@@ -14,6 +14,68 @@ def command_contract_test(args: argparse.Namespace, settings: Settings) -> int:
     return 0
 
 
+def command_historical_backfill(args: argparse.Namespace, settings: Settings) -> int:
+    from buenapro_worker.db.connection import connect
+    from buenapro_worker.jobs.historical_outcomes import backfill_historical_outcomes
+    from buenapro_worker.queue.repository import JobRepository
+
+    with connect(settings) as conn:
+        repo = JobRepository(conn)
+        stats = backfill_historical_outcomes(
+            settings,
+            repo,
+            segment=args.segment,
+            limit=args.limit,
+            year=args.year,
+            page_size=args.page_size,
+            resume=not args.restart,
+            include_files=not args.skip_files,
+        )
+    print(stats)
+    return 0
+
+
+def command_recent_closures(args: argparse.Namespace, settings: Settings) -> int:
+    from buenapro_worker.db.connection import connect
+    from buenapro_worker.jobs.historical_outcomes import refresh_recent_closures
+    from buenapro_worker.queue.repository import JobRepository
+
+    with connect(settings) as conn:
+        repo = JobRepository(conn)
+        with conn.transaction():
+            stats = refresh_recent_closures(settings, repo, days=args.days, limit=args.limit)
+    print(stats)
+    return 0
+
+
+def command_historical_stats(args: argparse.Namespace, settings: Settings) -> int:
+    from buenapro_worker.db.connection import connect
+    from buenapro_worker.jobs.historical_outcomes import historical_stats
+    from buenapro_worker.queue.repository import JobRepository
+
+    with connect(settings) as conn:
+        stats = historical_stats(JobRepository(conn), segment=args.segment)
+    print(stats)
+    return 0
+
+
+def command_historical_retry_failed(args: argparse.Namespace, settings: Settings) -> int:
+    from buenapro_worker.db.connection import connect
+    from buenapro_worker.jobs.historical_outcomes import retry_failed_historical_outcomes
+    from buenapro_worker.queue.repository import JobRepository
+
+    with connect(settings) as conn:
+        stats = retry_failed_historical_outcomes(
+            settings,
+            JobRepository(conn),
+            segment=args.segment,
+            year=args.year,
+            include_files=not args.skip_files,
+        )
+    print(stats)
+    return 0
+
+
 def command_poll_once(args: argparse.Namespace, settings: Settings) -> int:
     from buenapro_worker.db.connection import connect
     from buenapro_worker.jobs.poll_search import poll_search
@@ -88,6 +150,8 @@ def command_run(args: argparse.Namespace, settings: Settings) -> int:
         "contract_test": lambda job: _handle_contract_test(settings, job),
         "process_contract": lambda job: _handle_process_contract(settings, job),
         "poll_lifecycle": lambda job: _handle_poll_lifecycle(settings, poll_lifecycle),
+        "recent_closures": lambda job: _handle_recent_closures(settings, job),
+        "historical_backfill": lambda job: _handle_historical_backfill(settings, job),
         "download_file": lambda job: _handle_download_file(settings, job),
         "extract_tdr": lambda job: _handle_extract_tdr(settings, job),
         "derive_summary": lambda job: _handle_derive_summary(settings, job),
@@ -100,6 +164,38 @@ def command_run(args: argparse.Namespace, settings: Settings) -> int:
     runner = QueueRunner(settings, handlers)
     runner.run_forever(args.queues)
     return 0
+
+
+def _handle_recent_closures(settings: Settings, job) -> None:
+    from buenapro_worker.db.connection import connect
+    from buenapro_worker.jobs.historical_outcomes import refresh_recent_closures
+    from buenapro_worker.queue.repository import JobRepository
+
+    with connect(settings) as conn:
+        repo = JobRepository(conn)
+        with conn.transaction():
+            refresh_recent_closures(
+                settings,
+                repo,
+                days=int(job.payload.get("days") or settings.seace_recent_closures_days),
+                limit=int(job.payload.get("limit") or 300),
+            )
+
+
+def _handle_historical_backfill(settings: Settings, job) -> None:
+    from buenapro_worker.db.connection import connect
+    from buenapro_worker.jobs.historical_outcomes import backfill_historical_outcomes
+    from buenapro_worker.queue.repository import JobRepository
+
+    with connect(settings) as conn:
+        repo = JobRepository(conn)
+        backfill_historical_outcomes(
+            settings,
+            repo,
+            segment=int(job.payload["segment"]),
+            limit=int(job.payload["limit"]) if job.payload.get("limit") else None,
+            year=int(job.payload.get("year") or datetime.now(timezone.utc).year),
+        )
 
 
 def _handle_process_contract(settings: Settings, job) -> None:
@@ -290,6 +386,37 @@ def build_parser() -> argparse.ArgumentParser:
     contract_test = subcommands.add_parser("contract-test", help="Validate SEACE endpoint shapes")
     contract_test.add_argument("--year", type=int, default=datetime.now(timezone.utc).year)
     contract_test.set_defaults(func=command_contract_test)
+
+    historical_backfill = subcommands.add_parser(
+        "historical-backfill", help="Backfill culminated SEACE outcomes"
+    )
+    historical_backfill.add_argument("--segment", type=int, required=True)
+    historical_backfill.add_argument("--limit", type=int, default=None)
+    historical_backfill.add_argument("--year", type=int, default=datetime.now(timezone.utc).year)
+    historical_backfill.add_argument("--page-size", type=int, default=50)
+    historical_backfill.add_argument("--restart", action="store_true")
+    historical_backfill.add_argument("--skip-files", action="store_true")
+    historical_backfill.set_defaults(func=command_historical_backfill)
+
+    retry_failed = subcommands.add_parser(
+        "historical-retry-failed",
+        help="Reconcile SEACE IDs and retry failed or missing historical outcomes",
+    )
+    retry_failed.add_argument("--segment", type=int, required=True)
+    retry_failed.add_argument("--year", type=int, default=datetime.now(timezone.utc).year)
+    retry_failed.add_argument("--skip-files", action="store_true")
+    retry_failed.set_defaults(func=command_historical_retry_failed)
+
+    recent_closures = subcommands.add_parser(
+        "recent-closures", help="Refresh contracts whose quotation window recently closed"
+    )
+    recent_closures.add_argument("--days", type=int, default=15)
+    recent_closures.add_argument("--limit", type=int, default=300)
+    recent_closures.set_defaults(func=command_recent_closures)
+
+    stats = subcommands.add_parser("historical-stats", help="Summarize stored historical outcomes")
+    stats.add_argument("--segment", type=int, required=True)
+    stats.set_defaults(func=command_historical_stats)
 
     return parser
 
