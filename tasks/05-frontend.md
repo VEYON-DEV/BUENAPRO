@@ -60,6 +60,7 @@ Referencia: [Componentes base](../docs/frontend/09-componentes-base.md)
 - [x] Reemplazar shell actual en todas las rutas privadas.
 - [x] Reducir navegación principal a Oportunidades, Mercado y Postulaciones; mover Perfil/Alertas al avatar y ocultar Admin/Docs del producto visible (2026-07-31).
 - [x] Añadir al pie del sidebar un acceso compacto a `VEYON SAC · Mi empresa y radar`, oculto en mobile para conservar la navegación de tres destinos (2026-08-01). Evidencia: `docs/qa/screenshots/sidebar-company-shortcut-desktop.png` y `docs/qa/screenshots/sidebar-company-shortcut-mobile.png`.
+- [x] Documentar el contexto funcional completo de BuenaPro para exploración externa de diseño, incluyendo rutas, recorridos, formularios, tablas, estados y límites sin prescribir estilos (2026-08-01). Documento: `docs/stitch/buenapro-functional-context.md`.
 
 Referencia: [App Shell](../docs/frontend/00-app-shell.md)
 
