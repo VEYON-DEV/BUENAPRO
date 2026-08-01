@@ -1,4 +1,4 @@
-# Vista 06 - Seguimiento
+# Vista 06 - Postulaciones
 
 ## Objetivo
 
@@ -11,7 +11,7 @@ Proveedor o equipo comercial que quiere saber que oportunidades estan pendientes
 ## Ruta
 
 ```text
-/seguimiento
+/postulaciones
 ```
 
 ## Estados del embudo
@@ -91,4 +91,4 @@ GET /api/tenant/members
 - Se puede mover una oportunidad por el embudo.
 - Se ve avance de checklist.
 - Se puede registrar monto ofertado.
-- Se puede abrir detalle desde seguimiento.
+- Se puede abrir detalle desde Postulaciones.

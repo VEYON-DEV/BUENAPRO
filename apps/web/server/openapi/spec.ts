@@ -1688,8 +1688,10 @@ export const openApiSpec = {
         required: ["channel"],
         properties: {
           channel: { type: "string", enum: ["email", "telegram", "in_app"] },
+          enabled: { type: "boolean", default: true },
           mode: { type: "string", enum: ["realtime", "digest"], default: "realtime" },
-          max_alerts_per_day: { type: "integer", minimum: 1, default: 5 },
+          min_verdict: { type: "string", enum: ["verde", "ambar"], default: "verde" },
+          max_alerts_per_day: { type: "integer", minimum: 1, maximum: 10, default: 5 },
           quiet_hours_json: { type: "object", additionalProperties: true },
         },
       },

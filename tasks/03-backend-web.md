@@ -42,6 +42,7 @@
 - [x] `GET /api/tracking`.
 - [x] `GET /api/notifications/prefs`.
 - [x] `PUT /api/notifications/prefs`.
+- [x] Guardar preferencias de alerta para el usuario autenticado, incluyendo activación, afinidad mínima y límite diario, sin duplicar filas por canal (2026-07-31).
 - [x] `GET /api/matches/:id/tasks`.
 - [x] `POST /api/matches/:id/tasks`.
 - [x] `PATCH /api/matches/:id/tasks/:taskId`.

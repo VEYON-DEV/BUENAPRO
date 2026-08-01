@@ -29,7 +29,8 @@ apps/web/
 │   ├── feed/page.tsx
 │   ├── oportunidad/[id]/page.tsx
 │   ├── perfil/page.tsx
-│   ├── seguimiento/page.tsx
+│   ├── postulaciones/page.tsx
+│   ├── alertas/page.tsx
 │   ├── mercado/page.tsx
 │   ├── configuracion/page.tsx
 │   ├── admin/page.tsx
@@ -46,6 +47,7 @@ apps/web/
 │   ├── opportunity-detail/
 │   ├── profile/
 │   ├── tracking/
+│   ├── alerts/
 │   ├── settings/
 │   └── admin/
 ├── lib/
@@ -141,15 +143,12 @@ Cada vista debe contemplar:
 ## Navegacion principal
 
 ```text
-Inicio
 Oportunidades
-Seguimiento
-Perfil
-Configuracion
-Admin tecnico
+Mercado
+Postulaciones
 ```
 
-El usuario normal no debe ver Swagger como parte del flujo principal. Swagger queda en `/docs` para QA/dev.
+Perfil y Alertas viven en el menu de cuenta. Admin y Swagger no forman parte del flujo del usuario.
 
 ## Specs por vista
 
@@ -159,8 +158,8 @@ El usuario normal no debe ver Swagger como parte del flujo principal. Swagger qu
 - [03 Oportunidades](./03-oportunidades.md)
 - [04 Detalle de oportunidad](./04-detalle-oportunidad.md)
 - [05 Perfil de empresa](./05-perfil-empresa.md)
-- [06 Seguimiento](./06-seguimiento.md)
-- [07 Configuracion](./07-configuracion.md)
+- [06 Postulaciones](./06-seguimiento.md)
+- [07 Alertas](./07-configuracion.md)
 - [08 Admin tecnico](./08-admin-tecnico.md)
 - [09 Componentes base](./09-componentes-base.md)
 - [10 Workspace de postulación](./10-postulacion.md)

@@ -60,7 +60,7 @@ export async function DashboardPage({ tenantId }: { tenantId: string }) {
               label="En preparación"
               value={Number(trackingSummary.preparing ?? 0).toLocaleString("es-PE")}
               caption={`${Number(trackingSummary.with_draft ?? 0)} con borrador`}
-              href="/seguimiento?estado=en_preparacion"
+              href="/postulaciones?estado=en_preparacion"
             />
             <MetricTile
               label="Histórico del rubro"
@@ -135,7 +135,7 @@ export async function DashboardPage({ tenantId }: { tenantId: string }) {
                 <h2>Postulaciones en curso</h2>
                 <p>Trabajo preparado por tu equipo</p>
               </div>
-              <Link href="/seguimiento">Ver seguimiento</Link>
+              <Link href="/postulaciones">Ver postulaciones</Link>
             </div>
             {data.tracking.length ? (
               <div className={styles.preparationList}>
