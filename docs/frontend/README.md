@@ -30,6 +30,7 @@ apps/web/
 │   ├── oportunidad/[id]/page.tsx
 │   ├── perfil/page.tsx
 │   ├── seguimiento/page.tsx
+│   ├── mercado/page.tsx
 │   ├── configuracion/page.tsx
 │   ├── admin/page.tsx
 │   └── login/page.tsx
@@ -40,6 +41,7 @@ apps/web/
 │   ├── shell/
 │   ├── auth/
 │   ├── dashboard/
+│   ├── market-intelligence/
 │   ├── opportunities/
 │   ├── opportunity-detail/
 │   ├── profile/
@@ -91,6 +93,8 @@ GET    /api/contracts/:id/facets
 GET    /api/contracts/:id/original/:docId
 
 GET    /api/feed
+GET    /api/dashboard
+GET    /api/market
 GET    /api/profile
 PUT    /api/profile
 GET    /api/profiles
@@ -161,3 +165,4 @@ El usuario normal no debe ver Swagger como parte del flujo principal. Swagger qu
 - [09 Componentes base](./09-componentes-base.md)
 - [10 Workspace de postulación](./10-postulacion.md)
 - [11 Copiloto de licitación](./11-copiloto-licitacion.md)
+- [12 Inteligencia de mercado](./12-mercado.md)

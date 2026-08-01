@@ -21,6 +21,7 @@ const paths = {
   alert: <path d="M12 4.5 20.5 19h-17L12 4.5Zm0 5.5v4m0 2.6v.4" />,
   tag: <path d="m4 11.5 7.5-7.5H20v8.5L12.5 20 4 11.5Zm12-3.5h.01" />,
   bookmark: <path d="M6.5 4h11v16L12 16.6 6.5 20V4Z" />,
+  market: <path d="M4 20V10m5 10V5m6 15v-7m5 7V3M3 20.5h18" />,
 };
 
 export type AppIconName = keyof typeof paths;

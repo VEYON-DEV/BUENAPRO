@@ -91,6 +91,15 @@
     gap: 12px;
   }
   .chart {
+    gap: 3px;
+    grid-template-columns: repeat(12, minmax(16px, 1fr));
     height: 190px;
+    min-width: 100%;
+  }
+  .bars {
+    gap: 2px;
+  }
+  .bars > span {
+    min-width: 3px;
   }
 }

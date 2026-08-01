@@ -12,7 +12,7 @@
 }
 .panel p,
 .total span,
-.price span {
+.coverage span {
   color: var(--bp-color-text-2);
   font-size: 12px;
   margin: 0;
@@ -62,14 +62,17 @@
   font-weight: 800;
   margin: 0;
 }
-.price {
+.coverage {
   border-top: 1px solid var(--bp-color-border);
   display: grid;
-  gap: 5px;
+  gap: 12px;
+  grid-template-columns: 1fr 1fr;
   padding-top: 17px;
 }
-.price strong {
-  color: var(--bp-color-brand);
-  font-size: 20px;
+.coverage div { display: grid; gap: 4px; }
+.coverage strong {
+  font-size: 17px;
   font-variant-numeric: tabular-nums;
 }
+.action { color: var(--bp-color-brand); font-size: 12px; font-weight: 750; }
+.action:focus-visible { outline: 3px solid color-mix(in srgb,var(--bp-color-brand) 22%,transparent); outline-offset: 3px; }

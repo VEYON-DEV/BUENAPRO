@@ -34,6 +34,7 @@
 - [x] Separar histórico analítico del feed operativo con entidades, áreas usuarias, proveedores y resultados culminados; `idContrato` es llave estable y el código SEACE se conserva completo y parseado (`0017_historical_outcomes.sql`, validado localmente el 2026-07-31).
 - [x] Persistir checkpoint y estado del backfill histórico por segmento para reanudar barridos largos sin repetir páginas completadas (`0018_historical_backfill_progress.sql`).
 - [x] Ampliar `codigo_correlativo` a `BIGINT` para códigos SEACE como `CM-9437000002-2026-OACGD` (`0019_historical_code_correlative_bigint.sql`).
+- [x] Normalizar departamento, provincia y distrito del histórico para análisis geográfico; backfill de 4,508 resultados e índices de mercado aplicados en producción (`0021_historical_geography.sql`, 2026-07-31).
 
 - [x] Crear `seace_connections` y auditoría mínima por tenant para credenciales/sesiones cifradas (migración `0009`).
 - [x] Crear borradores de postulación normalizados: cabecera, ítems, RTM y documentos (`0010`), más revisión de anexos (`0011`).

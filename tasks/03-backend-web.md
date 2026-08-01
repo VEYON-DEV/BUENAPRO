@@ -26,6 +26,7 @@
 
 - [x] Implementar `GET /api/contracts/:id/history` con scoring explicable por CUBSO, keywords, entidad y recencia; desiertos excluidos del precio y umbral endurecido contra comparables amplios.
 - [x] Implementar `GET /api/dashboard` con cierres, preparación, mercado del perfil y proveedores frecuentes, más admin interno para iniciar/consultar backfill histórico.
+- [x] Implementar `GET /api/market` tenant-safe con alcance de perfil/todo el mercado, búsqueda textual, filtros de segmento, resultado, ubicación, entidad, año y precio; incluye tendencia, rankings, contratos y proveedores (2026-07-31).
 
 - [x] `GET /api/contracts` para explorar contratos cargados aunque no exista match.
 - [x] `GET /api/feed`.

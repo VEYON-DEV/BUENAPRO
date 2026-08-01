@@ -1,0 +1,23 @@
+.bar { background: var(--bp-color-panel); border: 1px solid var(--bp-color-border); border-radius: var(--bp-radius-lg); margin-bottom: 16px; padding: 16px; }
+.scope { border-bottom: 1px solid var(--bp-color-border); display: flex; gap: 4px; margin: -4px 0 14px; }
+.scope a { border-bottom: 2px solid transparent; color: var(--bp-color-text-2); font-size: 13px; font-weight: 700; padding: 10px 12px 9px; }
+.scope a.active { border-color: var(--bp-color-brand); color: var(--bp-color-brand); }
+.form { align-items: end; display: grid; gap: 12px; grid-template-columns: minmax(260px, 2fr) repeat(5, minmax(130px, .85fr)); }
+.form label { display: grid; gap: 5px; min-width: 0; }
+.form label > span { color: var(--bp-color-text-2); font-size: 11px; font-weight: 700; }
+.form input, .form select { background: var(--bp-color-control); border: 1px solid var(--bp-color-border-strong); border-radius: var(--bp-radius-md); color: var(--bp-color-text); font: inherit; height: 42px; min-width: 0; padding: 9px 11px; width: 100%; }
+.form select { appearance: auto; }
+.form input:focus, .form select:focus, .scope a:focus-visible, .clear:focus-visible { border-color: var(--bp-color-brand); outline: 3px solid color-mix(in srgb, var(--bp-color-brand) 18%, transparent); outline-offset: 1px; }
+.search { position: relative; }
+.search svg { color: var(--bp-color-text-3); height: 18px; left: 12px; position: absolute; top: 12px; width: 18px; }
+.search input { padding-left: 38px; }
+.priceFields { display: grid; gap: 8px; grid-column: 1 / span 2; grid-template-columns: 1fr 1fr; }
+.form button { align-items: center; background: var(--bp-color-brand); border: 0; border-radius: var(--bp-radius-md); color: white; cursor: pointer; display: inline-flex; font-weight: 750; gap: 8px; height: 42px; justify-content: center; min-width: 154px; padding: 0 16px; white-space: nowrap; }
+.form button:hover { background: var(--bp-color-brand-hover); }
+.form button:focus-visible { outline: 3px solid color-mix(in srgb, var(--bp-color-brand) 28%, transparent); outline-offset: 2px; }
+.form button svg { height: 17px; width: 17px; }
+.clear { align-self: center; color: var(--bp-color-text-2); font-size: 12px; font-weight: 700; justify-self: start; }
+.srOnly { clip: rect(0,0,0,0); clip-path: inset(50%); height: 1px; overflow: hidden; position: absolute; white-space: nowrap; width: 1px; }
+@media (max-width: 1280px) { .form { grid-template-columns: repeat(4, minmax(0,1fr)); } .search { grid-column: span 2; } }
+@media (max-width: 760px) { .bar { padding: 12px; } .form { grid-template-columns: 1fr 1fr; } .search { grid-column: 1 / -1; } .priceFields { grid-column: 1 / -1; } .form button { grid-column: 1 / -1; } }
+@media (max-width: 480px) { .form { grid-template-columns: 1fr; } .search, .priceFields, .form button { grid-column: 1; } .priceFields { grid-template-columns: 1fr; } }
