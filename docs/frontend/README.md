@@ -4,6 +4,7 @@ Este directorio define como construir la interfaz de BuenaPro. Complementa:
 
 - [Design Patterns](../design-patterns.md)
 - [Arquitectura](../architecture.md)
+- [Contexto funcional completo para exploración de diseño](../stitch/buenapro-functional-context.md)
 - [Backend/Web tasks](../../tasks/03-backend-web.md)
 - [Frontend tasks](../../tasks/05-frontend.md)
 
