@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { NavIconButton } from "../NavIconButton";
 import styles from "./IconRail.module.css";
 
@@ -19,6 +20,13 @@ export function IconRail() {
           <NavIconButton key={item.href} {...item} />
         ))}
       </nav>
+      <Link className={styles.company} href="/perfil" aria-label="Abrir Mi empresa y radar">
+        <span className={styles.companyMark}>VY</span>
+        <span className={styles.companyCopy}>
+          <strong>VEYON SAC</strong>
+          <small>Mi empresa y radar</small>
+        </span>
+      </Link>
     </aside>
   );
 }
