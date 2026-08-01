@@ -156,6 +156,7 @@ Rediseno 2026-07-09: el motor deterministico fue reemplazado por analisis LLM ba
 - [x] Notificar solo nuevas oportunidades relevantes.
 - [x] Notificar cambios de veredicto.
 - [x] Implementar digest si supera max alertas por dia.
+- [x] Respetar afinidad mínima `verde/ambar` y deduplicar por usuario, contrato, canal y motivo antes de encolar una alerta (2026-07-31).
 
 ## Observabilidad
 

@@ -7,3 +7,13 @@
   justify-content: center;
   width: 34px;
 }
+
+.bell:hover {
+  background: var(--bp-color-brand-soft);
+  color: var(--bp-color-brand);
+}
+
+.bell:focus-visible {
+  outline: 2px solid var(--bp-color-brand);
+  outline-offset: 2px;
+}

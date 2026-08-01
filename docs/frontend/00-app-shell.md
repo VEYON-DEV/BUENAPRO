@@ -22,10 +22,10 @@ Drawer lateral opcional
 - Wordmark BuenaPro.
 - Selector/contexto: `Contratos menores`.
 - Busqueda global opcional.
-- Accesos: Inicio, Oportunidades, Seguimiento, Perfil, Configuracion.
-- Acceso admin solo si el usuario tiene rol tecnico/admin.
-- Usuario actual con iniciales.
-- Indicador simple de alertas/notificaciones.
+- Accesos principales: Oportunidades, Mercado y Postulaciones.
+- Perfil de empresa y Alertas dentro del menu del avatar.
+- Admin y documentacion tecnica sin entrada en la navegacion del producto.
+- Campana enlazada al centro de alertas relevantes.
 
 ## Componentes
 
@@ -49,7 +49,7 @@ index.ts
 ## Comportamiento
 
 - Sidebar activa la ruta actual.
-- En mobile, sidebar se convierte en bottom nav o drawer compacto.
+- En mobile, el rail se convierte en una barra compacta de tres iconos.
 - Header no debe tapar contenido.
 - El main debe tener padding consistente: `24px` desktop, `16px` mobile.
 - No usar cards alrededor de toda la pagina.

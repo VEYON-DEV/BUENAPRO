@@ -92,11 +92,11 @@ export async function TrackingPage({ tenantId }: { tenantId: string }) {
   const urgentCount = rows.filter((row) => isUrgent(row.fec_fin_cotizacion)).length;
 
   return (
-    <AppShell title="Seguimiento">
+    <AppShell title="Postulaciones">
       <header className={styles.header}>
         <div className={styles.heading}>
           <p className={styles.context}>Cartera de procesos</p>
-          <h1>Seguimiento</h1>
+          <h1>Postulaciones</h1>
           <p className={styles.description}>
             Prioriza cierres, identifica bloqueos y continúa cada postulación desde un solo lugar.
           </p>

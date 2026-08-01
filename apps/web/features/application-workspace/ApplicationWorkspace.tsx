@@ -196,7 +196,7 @@ export function ApplicationWorkspace({ matchId }: { matchId: string }) {
           <strong>No pudimos abrir esta postulación</strong>
           <p>{error}</p>
           <button onClick={() => void load()}>Reintentar</button>
-          <Link href="/seguimiento">Volver a seguimiento</Link>
+          <Link href="/postulaciones">Volver a postulaciones</Link>
         </div>
       </AppShell>
     );
@@ -218,7 +218,7 @@ export function ApplicationWorkspace({ matchId }: { matchId: string }) {
         onApplied={() => void load()}
       />
       <div className={styles.page}>
-        <Link className={styles.back} href="/seguimiento">
+        <Link className={styles.back} href="/postulaciones">
           ← Volver a seguimiento
         </Link>
         <header className={styles.header}>

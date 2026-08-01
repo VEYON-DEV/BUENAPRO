@@ -4,6 +4,7 @@ import unittest
 from buenapro_worker.historical.outcomes import classify_outcome, parse_contract_code
 from buenapro_worker.jobs.historical_outcomes import _location_parts
 from buenapro_worker.jobs.process_contract import quotation_window_from_detail
+from buenapro_worker.jobs.send_notification import verdict_meets_threshold
 
 
 class HistoricalOutcomeTest(unittest.TestCase):
@@ -94,6 +95,13 @@ class HistoricalOutcomeTest(unittest.TestCase):
             _location_parts("LIMA / LIMA / SAN ISIDRO"),
             ("LIMA", "LIMA", "SAN ISIDRO"),
         )
+
+    def test_notification_threshold_only_accepts_relevant_verdicts(self) -> None:
+        self.assertTrue(verdict_meets_threshold("verde", "verde"))
+        self.assertTrue(verdict_meets_threshold("verde", "ambar"))
+        self.assertTrue(verdict_meets_threshold("ambar", "ambar"))
+        self.assertFalse(verdict_meets_threshold("ambar", "verde"))
+        self.assertFalse(verdict_meets_threshold("rojo", "ambar"))
 
 
 if __name__ == "__main__":

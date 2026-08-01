@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timezone
 
@@ -9,6 +10,13 @@ from buenapro_worker.settings import Settings
 
 
 logger = logging.getLogger(__name__)
+
+
+def verdict_meets_threshold(verdict: str | None, minimum: str | None) -> bool:
+    rank = {"gris": 0, "rojo": 0, "ambar": 1, "verde": 2}
+    current_rank = rank.get(str(verdict or "").lower(), 0)
+    minimum_rank = rank.get(str(minimum or "verde").lower(), 2)
+    return current_rank >= minimum_rank
 
 
 def send_notification_job(settings: Settings, repo: JobRepository, *, notification_id: int) -> str:
@@ -63,22 +71,43 @@ def send_notification_job(settings: Settings, repo: JobRepository, *, notificati
 def enqueue_match_notifications(repo: JobRepository, *, match_id: int, reason: str) -> int:
     rows = repo.conn.execute(
         """
-        SELECT u.id AS user_id, p.channel, p.max_alerts_per_day
+        SELECT DISTINCT ON (u.id,p.channel)
+          u.id AS user_id,p.channel,p.min_verdict,m.verdict,m.score,
+          c.id_contrato,c.codigo,c.descripcion,c.fec_fin_cotizacion
         FROM matches m
         JOIN company_profiles cp ON cp.id = m.profile_id
+        JOIN seace_contracts c ON c.id_contrato=m.id_contrato
         JOIN tenant_members tm ON tm.tenant_id = cp.tenant_id
         JOIN users u ON u.id = tm.user_id
-        JOIN notification_preferences p ON p.user_id = u.id AND p.enabled = true
+        JOIN notification_preferences p ON p.user_id = u.id
+          AND p.enabled = true
+          AND p.business_line_id IS NULL
         WHERE m.id = %s
+        ORDER BY u.id,p.channel,p.updated_at DESC
         """,
         (match_id,),
     ).fetchall()
     count = 0
     for row in rows:
+        if not verdict_meets_threshold(row["verdict"], row["min_verdict"]):
+            continue
+        score = int(round(float(row["score"] or 0)))
+        payload = {
+            "subject": f"BuenaPro: {score}% de afinidad",
+            "body": f"{row['codigo']}: {row['descripcion']}",
+            "id_contrato": row["id_contrato"],
+            "codigo": row["codigo"],
+            "score": score,
+            "verdict": row["verdict"],
+        }
         inserted = repo.conn.execute(
             """
-            INSERT INTO notifications (user_id, match_id, channel, reason, payload)
-            VALUES (%s, %s, %s, %s, %s::jsonb)
+            INSERT INTO notifications (user_id,match_id,channel,reason,payload)
+            SELECT %s,%s,%s,%s,%s::jsonb
+            WHERE NOT EXISTS (
+              SELECT 1 FROM notifications
+              WHERE user_id=%s AND match_id=%s AND channel=%s AND reason=%s
+            )
             RETURNING id
             """,
             (
@@ -86,7 +115,11 @@ def enqueue_match_notifications(repo: JobRepository, *, match_id: int, reason: s
                 match_id,
                 row["channel"],
                 reason,
-                '{"subject":"BuenaPro: oportunidad relevante","body":"Tienes una oportunidad relevante o cambio de veredicto."}',
+                json.dumps(payload),
+                row["user_id"],
+                match_id,
+                row["channel"],
+                reason,
             ),
         ).fetchone()
         if inserted:

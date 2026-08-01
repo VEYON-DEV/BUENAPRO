@@ -58,6 +58,7 @@ Referencia: [Componentes base](../docs/frontend/09-componentes-base.md)
 - [x] Crear `NotificationBell`.
 - [x] Adaptar shell a mobile.
 - [x] Reemplazar shell actual en todas las rutas privadas.
+- [x] Reducir navegación principal a Oportunidades, Mercado y Postulaciones; mover Perfil/Alertas al avatar y ocultar Admin/Docs del producto visible (2026-07-31).
 
 Referencia: [App Shell](../docs/frontend/00-app-shell.md)
 
@@ -75,6 +76,8 @@ Referencia: [App Shell](../docs/frontend/00-app-shell.md)
 Referencia: [Auth](../docs/frontend/01-auth.md)
 
 ## Inicio
+
+- [x] Retirar el dashboard duplicado del flujo principal y redirigir `/` a `/feed`; conservar `/api/dashboard` y componentes históricos sin exponer una cuarta área (2026-07-31).
 
 - [x] Rework de Inicio como `Hoy en tu radar`: cierres próximos, postulaciones en curso, mercado comparable y proveedores frecuentes; métricas accionables sin dashboard BI decorativo (build y smoke SSR validados el 2026-07-31).
 - [x] Reestructurar Inicio como dashboard profesional: KPIs con conteos completos, tendencia mensual adjudicados/desiertos, composición histórica, ranking de empresas y mesas operativas de cierres/postulaciones; build y SSR con PostgreSQL real validados el 2026-07-31.
@@ -186,6 +189,8 @@ Referencia: [Perfil de empresa](../docs/frontend/05-perfil-empresa.md)
 
 ## Seguimiento
 
+- [x] Renombrar la cartera visible a Postulaciones en `/postulaciones`; `/seguimiento` redirige para conservar enlaces existentes (2026-07-31).
+
 - [x] Implementar `features/tracking`.
 - [x] Redisenar `/seguimiento`.
 - [x] Crear vista tabla.
@@ -214,6 +219,9 @@ Referencia: [Perfil de empresa](../docs/frontend/05-perfil-empresa.md)
 Referencia: [Seguimiento](../docs/frontend/06-seguimiento.md)
 
 ## Configuracion
+
+- [x] Reemplazar Configuración visible por `/alertas`: activación, afinidad mínima, límite diario e historial; `/configuracion` redirige y workspace/miembros quedan fuera de navegación (2026-07-31).
+- [x] Validar navegación simplificada, menú de cuenta y Alertas desktop/mobile. Evidencia: `docs/qa/screenshots/account-menu-desktop.png`, `alerts-center-desktop.png`, `alerts-center-mobile.png`, `applications-navigation-desktop.png`, `navigation-simplified-mobile.png`.
 
 - [x] Implementar `features/settings`.
 - [x] Redisenar `/configuracion`.
