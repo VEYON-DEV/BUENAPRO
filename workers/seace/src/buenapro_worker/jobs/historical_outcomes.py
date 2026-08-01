@@ -43,6 +43,11 @@ def _segment_from_cubso(value: object, fallback: int | str | None) -> str | None
     return _text(fallback)
 
 
+def _location_parts(value: object) -> tuple[str | None, str | None, str | None]:
+    parts = [part.strip() for part in str(value or "").split("/") if part.strip()]
+    return tuple((parts + [None, None, None])[:3])  # type: ignore[return-value]
+
+
 def _refresh_supplier_totals(repo: JobRepository, ruc: str | None) -> None:
     if not ruc:
         return
@@ -136,6 +141,7 @@ def upsert_historical_outcome(
         or item.get("desItem")
     ) or "Sin descripción"
     cubso_item = _text(item.get("codCubso") or item.get("codigoCubso"))
+    department, province, district = _location_parts(item.get("nomDistritoExt"))
     detail_start, detail_end = quotation_window_from_detail(detail)
     previous_supplier = repo.conn.execute(
         "SELECT supplier_ruc FROM historical_contract_outcomes WHERE id_contrato = %s",
@@ -146,18 +152,20 @@ def upsert_historical_outcome(
         INSERT INTO historical_contract_outcomes (
           id_contrato, codigo_completo, codigo_tipo, codigo_correlativo, codigo_anio,
           codigo_sigla, seace_entity_id, seace_area_id, entity_name, area_name,
-          cubso_segmento, cubso_item, cubso_name, descripcion, fec_publica,
+          department, province, district, cubso_segmento, cubso_item, cubso_name, descripcion, fec_publica,
           fec_ini_cotizacion, fec_fin_cotizacion, estado_resultado, supplier_ruc,
           supplier_name, precio_total, source_document_url, raw_detail_json
         ) VALUES (
-          %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb
+          %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb
         )
         ON CONFLICT (id_contrato) DO UPDATE SET
           codigo_completo=EXCLUDED.codigo_completo, codigo_tipo=EXCLUDED.codigo_tipo,
           codigo_correlativo=EXCLUDED.codigo_correlativo, codigo_anio=EXCLUDED.codigo_anio,
           codigo_sigla=EXCLUDED.codigo_sigla, seace_entity_id=EXCLUDED.seace_entity_id,
           seace_area_id=EXCLUDED.seace_area_id, entity_name=EXCLUDED.entity_name,
-          area_name=EXCLUDED.area_name, cubso_segmento=EXCLUDED.cubso_segmento,
+          area_name=EXCLUDED.area_name, department=EXCLUDED.department,
+          province=EXCLUDED.province, district=EXCLUDED.district,
+          cubso_segmento=EXCLUDED.cubso_segmento,
           cubso_item=EXCLUDED.cubso_item, cubso_name=EXCLUDED.cubso_name,
           descripcion=EXCLUDED.descripcion, fec_publica=EXCLUDED.fec_publica,
           fec_ini_cotizacion=COALESCE(EXCLUDED.fec_ini_cotizacion, historical_contract_outcomes.fec_ini_cotizacion),
@@ -178,6 +186,9 @@ def upsert_historical_outcome(
             area_id,
             entity_name,
             area_name,
+            department,
+            province,
+            district,
             _segment_from_cubso(cubso_item, segment),
             cubso_item,
             _text(item.get("nomCubso") or item.get("desCubso")),

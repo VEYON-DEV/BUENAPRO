@@ -1,4 +1,4 @@
-import { formatMoney } from "@/lib/format/money";
+import Link from "next/link";
 import styles from "./MarketOutcomePanel.module.css";
 
 type Market = {
@@ -6,7 +6,8 @@ type Market = {
   adjudicados?: number | string;
   desiertos?: number | string;
   desiertos_pct?: number;
-  precio_median?: number | string | null;
+  suppliers?: number | string;
+  entities?: number | string;
 };
 
 export function MarketOutcomePanel({ market }: { market: Market }) {
@@ -34,10 +35,11 @@ export function MarketOutcomePanel({ market }: { market: Market }) {
         <div><dt>Adjudicados</dt><dd>{awarded.toLocaleString("es-PE")}</dd></div>
         <div><dt>Desiertos</dt><dd>{market.desiertos_pct ?? 0}%</dd></div>
       </dl>
-      <div className={styles.price}>
-        <span>Precio mediano adjudicado</span>
-        <strong>{formatMoney(market.precio_median, "Sin precios")}</strong>
+      <div className={styles.coverage}>
+        <div><span>Proveedores</span><strong>{Number(market.suppliers ?? 0).toLocaleString("es-PE")}</strong></div>
+        <div><span>Entidades</span><strong>{Number(market.entities ?? 0).toLocaleString("es-PE")}</strong></div>
       </div>
+      <Link className={styles.action} href="/mercado">Analizar mercado</Link>
     </section>
   );
 }

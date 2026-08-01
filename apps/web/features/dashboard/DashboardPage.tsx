@@ -65,7 +65,8 @@ export async function DashboardPage({ tenantId }: { tenantId: string }) {
             <MetricTile
               label="Histórico del rubro"
               value={Number(data.market.total ?? 0).toLocaleString("es-PE")}
-              caption="Resultados para comparar"
+              caption={`${Number(data.market.suppliers ?? 0).toLocaleString("es-PE")} proveedores identificados`}
+              href="/mercado"
             />
           </section>
 
@@ -118,6 +119,7 @@ export async function DashboardPage({ tenantId }: { tenantId: string }) {
                   <h2>Empresas adjudicadas</h2>
                   <p>Proveedores con más resultados ganados</p>
                 </div>
+                <Link href="/mercado?view=suppliers">Ver mercado</Link>
               </div>
               {data.frequent_suppliers.length ? (
                 <SupplierAwardChart suppliers={data.frequent_suppliers as any[]} />

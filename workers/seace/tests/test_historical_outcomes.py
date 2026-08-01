@@ -2,6 +2,7 @@ from decimal import Decimal
 import unittest
 
 from buenapro_worker.historical.outcomes import classify_outcome, parse_contract_code
+from buenapro_worker.jobs.historical_outcomes import _location_parts
 from buenapro_worker.jobs.process_contract import quotation_window_from_detail
 
 
@@ -87,6 +88,12 @@ class HistoricalOutcomeTest(unittest.TestCase):
 
     def test_missing_quotation_stage_has_no_window(self) -> None:
         self.assertEqual(quotation_window_from_detail({}), (None, None))
+
+    def test_normalizes_seace_location_for_market_filters(self) -> None:
+        self.assertEqual(
+            _location_parts("LIMA / LIMA / SAN ISIDRO"),
+            ("LIMA", "LIMA", "SAN ISIDRO"),
+        )
 
 
 if __name__ == "__main__":

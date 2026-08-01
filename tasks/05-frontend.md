@@ -78,7 +78,10 @@ Referencia: [Auth](../docs/frontend/01-auth.md)
 
 - [x] Rework de Inicio como `Hoy en tu radar`: cierres próximos, postulaciones en curso, mercado comparable y proveedores frecuentes; métricas accionables sin dashboard BI decorativo (build y smoke SSR validados el 2026-07-31).
 - [x] Reestructurar Inicio como dashboard profesional: KPIs con conteos completos, tendencia mensual adjudicados/desiertos, composición histórica, ranking de empresas y mesas operativas de cierres/postulaciones; build y SSR con PostgreSQL real validados el 2026-07-31.
-- [ ] Capturar y revisar en desktop/mobile el dashboard profesional de Inicio; bloqueo 2026-07-31: Browser Plugin sin instancias disponibles. Build, SSR real y smoke HTTP de producción validados.
+- [x] Capturar y revisar en desktop/mobile el dashboard profesional de Inicio. Evidencia Playwright: `docs/qa/screenshots/dashboard-market-desktop.png`, `dashboard-market-mobile.png` (2026-07-31).
+- [x] Crear `/mercado` como explorador histórico: búsqueda por keywords, alcance perfil/todo SEACE, filtros por segmento, resultado, región, entidad, año y precio, más vistas de contratos y empresas adjudicadas.
+- [x] Crear detalle de empresa `/mercado/empresas/[ruc]` con montos, entidades, regiones, servicios y licitaciones ganadas.
+- [x] Validar `/mercado` desktop/mobile y detalle de proveedor con datos reales de producción. Evidencia: `docs/qa/screenshots/market-intelligence-desktop.png`, `market-intelligence-mobile.png`, `market-supplier-desktop.png`.
 
 - [x] Implementar `features/dashboard`.
 - [x] Crear vista `/`.

@@ -148,6 +148,29 @@ export const openApiSpec = {
         },
       },
     },
+    "/api/market": {
+      get: {
+        tags: ["Contracts"],
+        summary: "Explora inteligencia historica por mercado, region, entidad, resultado y precio",
+        parameters: [
+          { name: "scope", in: "query", schema: { type: "string", enum: ["profile", "all"] } },
+          { name: "view", in: "query", schema: { type: "string", enum: ["overview", "contracts", "suppliers"] } },
+          { name: "q", in: "query", schema: { type: "string", maxLength: 120 } },
+          { name: "segment", in: "query", schema: { type: "string" } },
+          { name: "result", in: "query", schema: { type: "string", enum: ["ADJUDICADO", "DESIERTO", "SIN_RESULTADO"] } },
+          { name: "department", in: "query", schema: { type: "string" } },
+          { name: "entity", in: "query", schema: { type: "integer" } },
+          { name: "year", in: "query", schema: { type: "integer" } },
+          { name: "min_price", in: "query", schema: { type: "number" } },
+          { name: "max_price", in: "query", schema: { type: "number" } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+        ],
+        responses: {
+          "200": { ...singleResponse, description: "Resumen, tendencia, rankings y contratos historicos filtrados" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+        },
+      },
+    },
     "/api/contracts/{id}/saved": {
       put: {
         tags: ["Contracts"],

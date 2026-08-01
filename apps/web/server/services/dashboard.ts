@@ -86,6 +86,8 @@ export async function getDashboard(tenantId: string) {
       SELECT count(*)::int AS total,
         count(*) FILTER (WHERE estado_resultado='ADJUDICADO')::int AS adjudicados,
         count(*) FILTER (WHERE estado_resultado='DESIERTO')::int AS desiertos,
+        count(DISTINCT supplier_ruc)::int AS suppliers,
+        count(DISTINCT seace_entity_id)::int AS entities,
         percentile_cont(0.5) WITHIN GROUP (ORDER BY precio_total) FILTER (WHERE precio_total IS NOT NULL) AS precio_median
       FROM historical_contract_outcomes h JOIN segments s ON s.code=h.cubso_segmento
       `,
