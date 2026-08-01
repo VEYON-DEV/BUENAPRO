@@ -2,6 +2,7 @@
 
 ## Base del proyecto
 
+- [ ] Reconciliar `schema_migrations` de producción con las tablas existentes para `0009` y `0011`-`0014`; verificar estructura antes de registrar versiones y evitar reejecutar DDL ya aplicado.
 - [x] Elegir herramienta de migraciones: Prisma, Drizzle, node-pg-migrate o SQL plano.
 - [x] Crear configuracion de conexion a PostgreSQL.
 - [x] Crear script de migracion inicial.
