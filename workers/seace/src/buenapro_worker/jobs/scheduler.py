@@ -24,6 +24,13 @@ def enqueue_scheduled_jobs(settings: Settings, repo: JobRepository, *, anio: int
             dedup_key=f"poll_lifecycle:{year}",
             priority=4,
         ),
+        "recent_closures": repo.enqueue(
+            "recent_closures",
+            {"days": settings.seace_recent_closures_days},
+            queue_name="io",
+            dedup_key="recent_closures",
+            priority=4,
+        ),
         "contract_test": repo.enqueue(
             "contract_test",
             {"anio": year},
@@ -37,6 +44,7 @@ def enqueue_scheduled_jobs(settings: Settings, repo: JobRepository, *, anio: int
 def run_scheduler_forever(settings: Settings, repo_factory, *, anio: int | None = None) -> None:
     last_poll = 0.0
     last_lifecycle = 0.0
+    last_recent_closures = 0.0
     last_contract_test = 0.0
 
     while True:
@@ -63,6 +71,16 @@ def run_scheduler_forever(settings: Settings, repo_factory, *, anio: int | None 
                     priority=4,
                 )
                 last_lifecycle = now
+
+            if now - last_recent_closures >= settings.seace_recent_closures_interval_hours * 3600:
+                repo.enqueue(
+                    "recent_closures",
+                    {"days": settings.seace_recent_closures_days},
+                    queue_name="io",
+                    dedup_key="recent_closures",
+                    priority=4,
+                )
+                last_recent_closures = now
 
             if now - last_contract_test >= settings.seace_contract_test_interval_minutes * 60:
                 repo.enqueue(

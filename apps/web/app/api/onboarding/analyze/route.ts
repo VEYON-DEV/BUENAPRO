@@ -52,9 +52,11 @@ async function suggestWithGemini(input: {
           responseMimeType: "application/json",
           responseSchema: {
             type: "OBJECT",
-            required: ["summary", "business_lines"],
+            required: ["summary", "company_keyword_terms", "company_keyword_phrases", "business_lines"],
             properties: {
               summary: { type: "STRING" },
+              company_keyword_terms: { type: "ARRAY", minItems: 1, maxItems: 3, items: { type: "STRING" } },
+              company_keyword_phrases: { type: "ARRAY", minItems: 0, maxItems: 5, items: { type: "STRING" } },
               business_lines: {
                 type: "ARRAY", minItems: 1, maxItems: 5,
                 items: {
@@ -62,8 +64,8 @@ async function suggestWithGemini(input: {
                   required: ["name", "keyword_phrases", "keyword_terms", "cubso_segmentos", "evidence"],
                   properties: {
                     name: { type: "STRING" },
-                    keyword_phrases: { type: "ARRAY", minItems: 5, maxItems: 8, items: { type: "STRING" } },
-                    keyword_terms: { type: "ARRAY", minItems: 4, maxItems: 10, items: { type: "STRING" } },
+                    keyword_phrases: { type: "ARRAY", minItems: 2, maxItems: 8, items: { type: "STRING" } },
+                    keyword_terms: { type: "ARRAY", minItems: 0, maxItems: 8, items: { type: "STRING" } },
                     cubso_segmentos: { type: "ARRAY", minItems: 1, maxItems: 3, items: { type: "STRING", enum: input.segments.map((s) => s.codigo) } },
                     evidence: {
                       type: "ARRAY", minItems: 1, maxItems: 3,
@@ -86,37 +88,44 @@ async function suggestWithGemini(input: {
   const parsed = JSON.parse(String(payload?.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}"));
   const allowedCodes = new Set(input.segments.map((s) => s.codigo));
   const forbidden = new Set(companyAnalysisConfig.keyword_scoring.forbidden_terms);
-  const providerText = normalizeSearchText(`${input.name} ${input.description} ${input.pages.map((page) => page.text).join(" ")}`);
-  const isLegalProvider = /\b(abogad[oa]s?|estudio juridico|firma legal|servicios legales|asesoria legal|derecho corporativo)\b/.test(providerText);
   const seen = new Set<string>();
+  const cleanCompanySignals = (values: unknown, kind: "term" | "phrase") => [...new Set((Array.isArray(values) ? values : [])
+    .map((value: unknown) => String(value).trim().toLowerCase())
+    .filter((value: string) => {
+      const normalized = normalizeSearchText(value);
+      const words = normalized.split(" ").filter(Boolean);
+      if (!normalized || seen.has(normalized)) return false;
+      if (kind === "term" ? words.length !== 1 || forbidden.has(normalized) : words.length < 2 || words.length > 3) return false;
+      seen.add(normalized);
+      return true;
+    }))];
+  const companyTerms = cleanCompanySignals(parsed.company_keyword_terms, "term").slice(0, 3);
+  const companyPhrases = cleanCompanySignals(parsed.company_keyword_phrases, "phrase").slice(0, 5);
+  const companyKeywords = [...companyTerms, ...companyPhrases];
   const lines: BusinessLine[] = (Array.isArray(parsed.business_lines) ? parsed.business_lines : []).slice(0, 5).map((line: any) => {
     const clean = (values: unknown, kind: "phrase" | "term") => [...new Set((Array.isArray(values) ? values : [])
       .map((value) => String(value).trim().toLowerCase()).filter((value) => {
         const normalized = normalizeSearchText(value);
         if (!normalized || seen.has(normalized)) return false;
         const words = normalized.split(" ");
-        if (kind === "phrase" ? words.length < 2 || words.length > 4 : words.length !== 1 || forbidden.has(normalized)) return false;
+        if (kind === "phrase" ? words.length < 2 || words.length > 6 : words.length !== 1 || forbidden.has(normalized)) return false;
         seen.add(normalized); return true;
       }))];
     const keyword_phrases = clean(line?.keyword_phrases, "phrase").slice(0, 8);
-    const keyword_terms = clean(line?.keyword_terms, "term").slice(0, 10);
+    const keyword_terms = clean(line?.keyword_terms, "term").slice(0, 8);
     const requestedCodes = [...new Set<string>((Array.isArray(line?.cubso_segmentos) ? line.cubso_segmentos : []).map(String).filter((code: string) => allowedCodes.has(code)))].slice(0, 3);
-    const lineText = normalizeSearchText(`${line?.name ?? ""} ${keyword_phrases.join(" ")} ${keyword_terms.join(" ")}`);
-    const cubso_segmentos = isLegalProvider && !/\b(capacitacion|formacion|curso|software|desarrollo tecnologico)\b/.test(lineText)
-      ? allowedCodes.has("80") ? ["80"] : requestedCodes
-      : requestedCodes;
     return {
       name: String(line?.name ?? "").trim().slice(0, 90),
       keyword_phrases,
       keyword_terms,
       keywords: [...keyword_phrases, ...keyword_terms],
-      cubso_segmentos,
+      cubso_segmentos: requestedCodes,
       evidence: (Array.isArray(line?.evidence) ? line.evidence : []).slice(0, 3).map((item: any) => ({ source_url: String(item?.source_url ?? "").slice(0, 500), excerpt: String(item?.excerpt ?? "").trim().slice(0, 280) })).filter((item: Evidence) => item.source_url && item.excerpt),
     };
-  }).filter((line: BusinessLine) => line.name && line.keyword_phrases.length >= 3 && line.keyword_terms.length >= 1 && line.cubso_segmentos.length);
-  if (!lines.length) throw new Error("El análisis no produjo líneas de negocio verificables.");
-  console.info("company_analysis", JSON.stringify({ model, prompt_version: companyAnalysisConfig.prompt.version, pages: input.pages.map((p) => ({ url: p.url, chars: p.text.length })), latency_ms: Date.now() - startedAt, business_lines: lines.length }));
-  return { summary: String(parsed.summary ?? "").trim().slice(0, 280), business_lines: lines };
+  }).filter((line: BusinessLine) => line.name && line.keyword_phrases.length >= 2 && line.cubso_segmentos.length);
+  if (!companyTerms.length || !lines.length) throw new Error("El análisis no produjo un perfil comercial verificable.");
+  console.info("company_analysis", JSON.stringify({ model, prompt_version: companyAnalysisConfig.prompt.version, pages: input.pages.map((p) => ({ url: p.url, chars: p.text.length })), latency_ms: Date.now() - startedAt, company_keywords: companyKeywords.length, business_lines: lines.length }));
+  return { summary: String(parsed.summary ?? "").trim().slice(0, 280), company_keywords: companyKeywords, business_lines: lines };
 }
 
 async function segments2026() {

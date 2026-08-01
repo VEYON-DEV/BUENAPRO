@@ -41,7 +41,8 @@ function pageHref(params: URLSearchParams, page: number) {
   return `/feed?${next.toString()}`;
 }
 
-function resultLabel(deadline: string) {
+function resultLabel(deadline: string, savedOnly: boolean) {
+  if (savedOnly) return "oportunidades guardadas";
   if (deadline === "all") return "contratos en tus rubros";
   if (deadline === "closed") return "contratos cerrados en tus rubros";
   if (deadline === "24h") return "contratos que cierran en 24 h";
@@ -61,6 +62,7 @@ export async function OpportunitiesPage({ tenantId, params }: { tenantId: string
   const activeLines = context.lines.slice(0, 3);
   const totalPages = Math.max(Math.ceil((meta.total ?? meta.count) / meta.page_size), 1);
   const deadline = params.get("deadline") ?? "open";
+  const savedOnly = params.get("saved") === "true";
   const hasPrioritizedRows = rows.some((row) => row.match_id);
 
   return (
@@ -70,7 +72,7 @@ export async function OpportunitiesPage({ tenantId, params }: { tenantId: string
           <div className={styles.titleRow}>
             <h1>Oportunidades</h1>
             <span className={styles.count}>
-              {meta.total ?? meta.count} {resultLabel(deadline)}
+              {meta.total ?? meta.count} {resultLabel(deadline, savedOnly)}
             </span>
           </div>
           <p>

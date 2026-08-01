@@ -21,6 +21,9 @@
 .rowMain {
   display: grid;
   gap: var(--bp-space-3);
+}
+
+.rowMain {
   grid-template-columns: minmax(110px, 0.66fr) minmax(190px, 1.3fr) minmax(140px, 0.82fr) minmax(78px, 0.42fr) minmax(74px, 0.4fr) minmax(96px, 0.52fr) minmax(104px, 0.55fr);
 }
 
@@ -29,6 +32,7 @@
   color: var(--bp-color-text-3);
   font-size: 12px;
   font-weight: 700;
+  grid-template-columns: minmax(110px, 0.66fr) minmax(190px, 1.3fr) minmax(140px, 0.82fr) minmax(78px, 0.42fr) minmax(74px, 0.4fr) minmax(96px, 0.52fr) minmax(104px, 0.55fr) 52px;
   letter-spacing: 0.01em;
   padding: 10px 16px;
 }
@@ -38,7 +42,10 @@
 }
 
 .row {
+  align-items: center;
   border-bottom: 1px solid var(--bp-color-border);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 52px;
 }
 
 .row:last-child {
@@ -143,6 +150,10 @@
 .matchCell {
   display: flex;
   justify-content: flex-start;
+}
+
+.saveHeading {
+  text-align: center;
 }
 
 /* Con el panel abierto la tabla pierde ancho: solo anillo/puntos, la etiqueta
@@ -371,7 +382,7 @@
 .previewActions {
   display: grid;
   gap: var(--bp-space-2);
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 1fr auto auto;
 }
 
 .openLink {
@@ -447,7 +458,7 @@
   font-size: 12px;
 }
 
-@media (max-width: 1180px) {
+@media (max-width: 1320px) {
   .board {
     grid-template-columns: 1fr;
   }
@@ -475,6 +486,7 @@
     background: var(--bp-color-panel);
     border: 1px solid var(--bp-color-border);
     border-radius: var(--bp-radius-lg);
+    grid-template-columns: minmax(0, 1fr) 52px;
   }
 
   .active {
@@ -490,5 +502,10 @@
   .rowMain > div:first-child,
   .rowMain > div:nth-child(2) {
     grid-column: 1 / -1;
+  }
+
+  .row > div:last-child {
+    align-self: start;
+    margin-top: 8px;
   }
 }

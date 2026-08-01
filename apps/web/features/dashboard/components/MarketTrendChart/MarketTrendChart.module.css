@@ -1,0 +1,96 @@
+.panel {
+  background: var(--bp-color-panel);
+  border: 1px solid var(--bp-color-border);
+  border-radius: var(--bp-radius-lg);
+  min-width: 0;
+  padding: 20px;
+}
+.header {
+  align-items: flex-start;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 22px;
+}
+.header h2 {
+  font-size: 16px;
+  margin: 0 0 3px;
+}
+.header p {
+  color: var(--bp-color-text-2);
+  font-size: 12px;
+  margin: 0;
+}
+.legend {
+  display: flex;
+  gap: 14px;
+}
+.legend span {
+  align-items: center;
+  color: var(--bp-color-text-2);
+  display: flex;
+  font-size: 11px;
+  gap: 6px;
+}
+.legend i {
+  border-radius: 2px;
+  display: block;
+  height: 8px;
+  width: 8px;
+}
+.awarded,
+.awardedBar {
+  background: var(--bp-color-sage);
+}
+.deserted,
+.desertedBar {
+  background: var(--bp-color-brand);
+}
+.scroll {
+  overflow-x: auto;
+}
+.chart {
+  border-bottom: 1px solid var(--bp-color-border);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(12, minmax(32px, 1fr));
+  height: 210px;
+  min-width: 620px;
+}
+.month {
+  display: grid;
+  grid-template-rows: 1fr 25px;
+  min-width: 0;
+}
+.bars {
+  align-items: end;
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  min-height: 0;
+}
+.bars > span {
+  border-radius: 2px 2px 0 0;
+  display: block;
+  max-width: 13px;
+  min-height: 2px;
+  width: 38%;
+}
+.month > span {
+  align-self: end;
+  color: var(--bp-color-text-2);
+  font-size: 10px;
+  text-align: center;
+  text-transform: capitalize;
+}
+@media (max-width: 680px) {
+  .panel {
+    padding: 16px;
+  }
+  .header {
+    display: grid;
+    gap: 12px;
+  }
+  .chart {
+    height: 190px;
+  }
+}

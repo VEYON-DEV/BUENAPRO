@@ -20,6 +20,7 @@ import type {
 import { ProgressRail } from "./components/ProgressRail";
 import { QuoteEditor } from "./components/QuoteEditor";
 import { AttachmentUploader } from "./components/AttachmentUploader";
+import { MarketPanel } from "./components/MarketPanel";
 import styles from "./ApplicationWorkspace.module.css";
 
 export function ApplicationWorkspace({ matchId }: { matchId: string }) {
@@ -27,11 +28,19 @@ export function ApplicationWorkspace({ matchId }: { matchId: string }) {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [history, setHistory] = useState<any>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const load = useCallback(async () => {
     setError("");
     try {
-      setData(await getApplication(matchId));
+      const application = await getApplication(matchId);
+      setData(application);
+      if (application.contractId) {
+        fetch(`/api/contracts/${application.contractId}/history`)
+          .then((response) => response.ok ? response.json() : null)
+          .then(setHistory)
+          .catch(() => setHistory(null));
+      }
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -248,6 +257,7 @@ export function ApplicationWorkspace({ matchId }: { matchId: string }) {
           aria-label="Ir a un bloque de la postulación"
         >
           <a href="#oferta">Oferta</a>
+          <a href="#mercado">Precio y mercado</a>
           <a href="#requisitos">
             RTM <span>{data.requirements.length}</span>
           </a>
@@ -278,6 +288,7 @@ export function ApplicationWorkspace({ matchId }: { matchId: string }) {
                 {data.attachments.length} archivos
               </span>
             </div>
+            <MarketPanel history={history} total={selectedTotal} contractId={data.contractId} />
             <div id="oferta" className={styles.anchorSection}>
               <QuoteEditor
                 data={data}

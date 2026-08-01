@@ -1,0 +1,1 @@
+export { MarketTrendChart } from "./MarketTrendChart";

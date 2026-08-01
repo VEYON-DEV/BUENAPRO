@@ -31,7 +31,8 @@ function active(defaults: URLSearchParams, filter: QuickFilter) {
 export function OpportunityToolbar({ defaults }: { defaults: URLSearchParams }) {
   const deadline = defaults.get("deadline") ?? "open";
   const quickFilters: QuickFilter[] = [
-    { label: "No cerradas", params: { deadline: "open" }, empty: ["verdict", "has_amount", "cotizar"] },
+    { label: "Guardadas", params: { deadline: "all", saved: "true" }, empty: ["verdict", "has_amount", "cotizar"] },
+    { label: "No cerradas", params: { deadline: "open" }, empty: ["verdict", "has_amount", "cotizar", "saved"] },
     { label: "Cierran en 24 h", params: { deadline: "24h" } },
     { label: "Esta semana", params: { deadline: "week" } },
     { label: "Ya cerradas", params: { deadline: "closed" } },
@@ -47,6 +48,7 @@ export function OpportunityToolbar({ defaults }: { defaults: URLSearchParams }) 
         {quickFilters.map((filter) => (
           <a
             className={active(defaults, filter) ? styles.activeFilter : ""}
+            aria-current={active(defaults, filter) ? "page" : undefined}
             href={hrefFor(filter.params)}
             key={filter.label}
           >
@@ -54,6 +56,7 @@ export function OpportunityToolbar({ defaults }: { defaults: URLSearchParams }) 
           </a>
         ))}
       </nav>
+      {defaults.get("saved") ? <input name="saved" type="hidden" value={defaults.get("saved") ?? ""} /> : null}
       <div className={styles.primary}>
         <label className={styles.search}>
           <span>Buscar</span>
@@ -120,7 +123,7 @@ export function OpportunityToolbar({ defaults }: { defaults: URLSearchParams }) 
           </label>
           <label>
             <span>Requisito</span>
-            <Input defaultValue={defaults.get("facet") ?? ""} name="facet" placeholder="licencia, equipo..." />
+            <Input defaultValue={defaults.get("facet") ?? ""} name="facet" placeholder="Ej.: licencia, equipo…" />
           </label>
           <label>
             <span>Rol</span>

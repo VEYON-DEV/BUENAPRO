@@ -54,6 +54,10 @@
 
 ## Lifecycle
 
+- [x] Añadir `recent-closures` cada 2 h con ventana configurable de 15 días y persistencia histórica al detectar culminado/adjudicado/desierto; corrida controlada de 2 contratos validada el 2026-07-31.
+- [x] Añadir backfill histórico sin LLM ni descarga de TDR, comandos `historical-backfill`, `historical-stats` y reglas determinísticas de resultado. Segmento 81 validado con 20 contratos (8 adjudicados, 12 desiertos) y segunda corrida idempotente.
+- [x] Validar el barrido histórico completo de tecnología (`81` y `43`) en producción; checkpoint por página y reconciliación final guardaron 4,451 resultados únicos, recuperaron 20 IDs desplazados/fallidos y cerraron con 0 pendientes (2026-07-31).
+
 - [x] Implementar job `poll_lifecycle`.
 - [x] Reconsultar contratos no cerrados.
 - [x] Detectar cambios de estado.
@@ -71,6 +75,7 @@
 - [x] Comparar 5 licitaciones cotizables (2026-07-12): formatos no uniformes entre MIDAGRI, INICTEL, SEDAPAR y DIRESA; priorizar `idTipoArchivo=5` y fallback por oferta/cotización/estructura de costos. Dos INICTEL reutilizan exactamente el mismo DOCX.
 - [x] Wipe y re-poblado 2026-07-10: solo bucket tecnologia (segmentos 43 y 81), 158 contratos vigentes disponibles, pipeline v2 completo. Validacion previa con lote de 5.
 - [x] Operacion 24/7 (2026-07-14): scheduler fuera del profile opcional (corre siempre con `docker compose up -d`), `restart: unless-stopped` en todos los servicios, `DATABASE_URL` parametrizable en el compose (`${DATABASE_URL:-postgres local}`) para apuntar a una BD en la nube sin editar YAML, y alcance fijado a tecnologia con `SEACE_ALLOWED_SEGMENTS=43,81` en `.env.local`. Primer ciclo automatico: 182 contratos vistos, upsert sin duplicados.
+- [x] Carga controlada transporte/legal en VM (2026-07-16): segmentos 78 y 80, solo Servicio (`objeto=2`) Vigente (`estado=2`), batches `transporte-20260716` y `legal-20260716`. Se procesaron 458 contratos (122 transporte + 336 servicios profesionales), 457 descargas, 452 TDR PDF extraidos y normalizados, 21 extracciones reutilizadas, 1 marcada para revision humana y 0 jobs `dead` nuevos. Duracion 24m56s; costo Gemini USD 1.643652. Excepciones documentales: 3 DOCX y 2 RAR no se extraen por el guard PDF-only; 2 PDFs de transporte no generaron facets.
 
 ## Documentos y R2
 

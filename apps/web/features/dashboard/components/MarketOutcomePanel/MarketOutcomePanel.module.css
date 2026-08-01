@@ -1,0 +1,75 @@
+.panel {
+  background: var(--bp-color-panel);
+  border: 1px solid var(--bp-color-border);
+  border-radius: var(--bp-radius-lg);
+  display: grid;
+  gap: 20px;
+  padding: 20px;
+}
+.panel h2 {
+  font-size: 16px;
+  margin: 0 0 3px;
+}
+.panel p,
+.total span,
+.price span {
+  color: var(--bp-color-text-2);
+  font-size: 12px;
+  margin: 0;
+}
+.total {
+  display: grid;
+  gap: 4px;
+}
+.total strong {
+  font-size: 30px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.composition {
+  background: var(--bp-color-subtle);
+  display: flex;
+  height: 10px;
+  overflow: hidden;
+}
+.composition span {
+  display: block;
+  min-width: 2px;
+}
+.awarded {
+  background: var(--bp-color-sage);
+}
+.deserted {
+  background: var(--bp-color-brand);
+}
+.breakdown {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr 1fr;
+  margin: 0;
+}
+.breakdown div {
+  display: grid;
+  gap: 4px;
+}
+.breakdown dt {
+  color: var(--bp-color-text-2);
+  font-size: 11px;
+}
+.breakdown dd {
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  margin: 0;
+}
+.price {
+  border-top: 1px solid var(--bp-color-border);
+  display: grid;
+  gap: 5px;
+  padding-top: 17px;
+}
+.price strong {
+  color: var(--bp-color-brand);
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}

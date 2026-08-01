@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireTenantId } from "@/server/auth/tenant";
 import { pool } from "@/server/db/client";
 import { keywordSignals } from "@/server/services/keywordSignals";
+import { cleanCompanyKeywords } from "@/server/services/companyKeywords";
 
 function strings(value: unknown, max = 20): string[] {
   return Array.isArray(value)
@@ -17,6 +18,7 @@ export async function POST(request: NextRequest) {
   const razonSocial = String(company.name ?? "").trim().slice(0, 160);
   const website = String(company.website ?? "").trim().slice(0, 500);
   const summary = String(body.summary ?? "").trim().slice(0, 500);
+  const companyKeywords = cleanCompanyKeywords(body.company_keywords);
   const amount = Math.max(0, Number(body.econ_amount ?? 0) || 0);
   const team = strings(body.team).map((role) => ({ role }));
   const equipment = strings(body.equipment);
@@ -29,6 +31,7 @@ export async function POST(request: NextRequest) {
 
   if (ruc.length !== 11) return NextResponse.json({ error: "El RUC debe tener 11 dígitos." }, { status: 400 });
   if (!razonSocial) return NextResponse.json({ error: "Ingresa la razón social." }, { status: 400 });
+  if (!companyKeywords.length) return NextResponse.json({ error: "Agrega al menos una keyword general de empresa." }, { status: 400 });
   if (!lines.length) return NextResponse.json({ error: "Agrega al menos una línea de negocio con keywords." }, { status: 400 });
 
   const client = await pool.connect();
@@ -48,9 +51,9 @@ export async function POST(request: NextRequest) {
       INSERT INTO company_profiles (
         tenant_id, ruc, razon_social, identity_json, finance_json, experience_json,
         econ_experience_json, team_json, hireable_roles_json, equipment_json,
-        certifications_json, profile_hash, updated_at
+        certifications_json, company_keywords, profile_hash, updated_at
       )
-      VALUES ($1, $2, $3, $4::jsonb, '{}'::jsonb, '[]'::jsonb, $5::jsonb, $6::jsonb, '[]'::jsonb, $7::jsonb, '[]'::jsonb, md5($8), now())
+      VALUES ($1, $2, $3, $4::jsonb, '{}'::jsonb, '[]'::jsonb, $5::jsonb, $6::jsonb, '[]'::jsonb, $7::jsonb, '[]'::jsonb, $8, md5($9), now())
       ON CONFLICT (tenant_id, ruc)
       DO UPDATE SET
         razon_social = EXCLUDED.razon_social,
@@ -58,6 +61,7 @@ export async function POST(request: NextRequest) {
         econ_experience_json = EXCLUDED.econ_experience_json,
         team_json = EXCLUDED.team_json,
         equipment_json = EXCLUDED.equipment_json,
+        company_keywords = EXCLUDED.company_keywords,
         profile_hash = EXCLUDED.profile_hash,
         updated_at = now()
       RETURNING id
@@ -70,7 +74,8 @@ export async function POST(request: NextRequest) {
         JSON.stringify({ general: amount }),
         JSON.stringify(team),
         JSON.stringify(equipment),
-        JSON.stringify({ ruc, razonSocial, website, summary, amount, team, equipment, lines }),
+        companyKeywords,
+        JSON.stringify({ ruc, razonSocial, website, summary, companyKeywords, amount, team, equipment, lines }),
       ],
     );
     const profileId = profileResult.rows[0].id;

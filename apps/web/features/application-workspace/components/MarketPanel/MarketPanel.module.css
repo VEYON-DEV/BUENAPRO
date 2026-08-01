@@ -1,0 +1,137 @@
+.panel {
+  background: #fff;
+  border: 1px solid #e7e5e4;
+  border-radius: 8px;
+  padding: 24px;
+  scroll-margin-top: 24px;
+}
+.head {
+  align-items: flex-start;
+  display: flex;
+  justify-content: space-between;
+}
+.head h2 {
+  font-size: 18px;
+  margin: 0 0 4px;
+}
+.head p,
+.consultations p {
+  color: #6b7280;
+  font-size: 12px;
+  margin: 0;
+}
+.head > strong {
+  background: #f8e9e6;
+  border-radius: 4px;
+  color: #9e3e32;
+  font-size: 11px;
+  padding: 6px 8px;
+}
+.metrics {
+  border-bottom: 1px solid #e7e5e4;
+  border-top: 1px solid #e7e5e4;
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 0.7fr;
+  margin: 18px 0 0;
+  padding: 16px 0;
+}
+.metrics > div {
+  border-right: 1px solid #e7e5e4;
+  display: grid;
+  gap: 4px;
+  padding: 0 14px;
+}
+.metrics > div:first-child {
+  padding-left: 0;
+}
+.metrics > div:last-child {
+  border: 0;
+}
+.metrics dt {
+  color: #6b7280;
+  font-size: 11px;
+}
+.metrics dd {
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  margin: 0;
+}
+.signal {
+  background: #f7f7f6;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 650;
+  margin: 14px 0;
+  padding: 10px 12px;
+}
+.sources summary {
+  color: #9e3e32;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 750;
+}
+.sources > div {
+  border-bottom: 1px solid #efeeec;
+  display: flex;
+  font-size: 11px;
+  justify-content: space-between;
+  padding: 9px 0;
+}
+.consultations {
+  align-items: center;
+  border-top: 1px solid #e7e5e4;
+  display: flex;
+  justify-content: space-between;
+  margin-top: 18px;
+  padding-top: 18px;
+}
+.consultations h3 {
+  font-size: 14px;
+  margin: 0 0 4px;
+}
+.consultations > div {
+  max-width: 55ch;
+}
+.consultations a {
+  color: #9e3e32;
+  font-size: 12px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.empty {
+  color: #6b7280;
+  font-size: 13px;
+  margin: 18px 0;
+}
+.panel a:focus-visible,
+.sources summary:focus-visible {
+  outline: 3px solid rgba(201, 74, 58, 0.22);
+  outline-offset: 3px;
+}
+@media (max-width: 700px) {
+  .panel {
+    padding: 18px;
+  }
+  .head,
+  .consultations {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+  .metrics > div {
+    padding: 0 10px;
+  }
+  .metrics > div:nth-child(2) {
+    border: 0;
+  }
+  .metrics > div:last-child {
+    border-top: 1px solid #e7e5e4;
+    grid-column: 1/-1;
+    margin-top: 12px;
+    padding: 12px 0 0;
+  }
+}

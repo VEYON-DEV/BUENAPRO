@@ -9,6 +9,7 @@ import { formatDeadline, formatDateTime, formatShortDateTime } from "@/lib/forma
 import { formatMoney } from "@/lib/format/money";
 import { FIT_EXACTO, FIT_RELACIONADO, compactMoney, cotizacionStatus, fitLabel, fitScore, fitShortLabel, opportunityFacts, plazoLabel, verdictShortLabels } from "@/lib/extraction/opportunity";
 import { TrackButton } from "../TrackButton";
+import { SaveButton } from "../SaveButton";
 import styles from "./OpportunityList.module.css";
 
 function verdictTone(verdict?: string | null) {
@@ -142,6 +143,7 @@ export function OpportunityList({ rows }: { rows: any[] }) {
           <span>Plazo</span>
           <span>Cierre</span>
           <span>Match</span>
+          <span className={styles.saveHeading}>Guardar</span>
         </div>
         <div className={styles.rows}>
           {rows.map((row) => {
@@ -203,6 +205,11 @@ export function OpportunityList({ rows }: { rows: any[] }) {
                     )}
                   </div>
                 </button>
+                <SaveButton
+                  code={row.codigo}
+                  idContrato={row.id_contrato}
+                  initialSaved={Boolean(row.is_saved)}
+                />
               </article>
             );
           })}
@@ -254,6 +261,11 @@ export function OpportunityList({ rows }: { rows: any[] }) {
               <AppIcon name="arrow" />
             </Link>
             <TrackButton idContrato={primary.id_contrato}>Seguir</TrackButton>
+            <SaveButton
+              code={primary.codigo}
+              idContrato={primary.id_contrato}
+              initialSaved={Boolean(primary.is_saved)}
+            />
           </div>
 
           <dl className={styles.facts}>

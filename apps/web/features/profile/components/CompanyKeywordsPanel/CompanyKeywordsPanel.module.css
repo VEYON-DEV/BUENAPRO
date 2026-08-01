@@ -1,0 +1,28 @@
+.panel { border-bottom: 1px solid var(--bp-color-border-strong); border-top: 1px solid var(--bp-color-border-strong); display: grid; gap: 14px; margin-bottom: 28px; padding: 18px 0; }
+.intro { align-items: start; display: grid; gap: 12px; grid-template-columns: auto minmax(0, 1fr); }
+.scope { background: var(--bp-color-ink); color: white; font-size: 10px; font-weight: 750; line-height: 24px; padding: 0 8px; }
+.intro h2 { font-size: 17px; line-height: 23px; }
+.intro p { color: var(--bp-color-text-2); font-size: 12px; line-height: 18px; margin-top: 2px; max-width: 66ch; text-wrap: pretty; }
+.summary { align-items: start; display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr) auto; padding-left: 72px; }
+.keywords { align-items: flex-start; display: flex; flex-wrap: wrap; gap: 6px; min-height: 36px; }
+.keywords > span, .keyword { background: var(--bp-color-sage-soft); border: 1px solid color-mix(in srgb, var(--bp-color-sage), transparent 72%); border-radius: 999px; color: #315d4d; font-size: 11px; font-weight: 650; padding: 5px 8px; }
+.keywords > p { color: var(--bp-color-text-3); font-size: 12px; padding-top: 7px; }
+.editor { background: var(--bp-color-panel-2); display: grid; gap: 10px; margin-left: 72px; padding: 14px; }
+.editorMeta { align-items: baseline; display: flex; justify-content: space-between; }
+.editorMeta strong { font-size: 12px; }
+.editorMeta span { color: var(--bp-color-text-3); font-size: 10px; }
+.inputBox { align-items: center; background: var(--bp-color-panel); border: 1px solid var(--bp-color-border-strong); border-radius: var(--bp-radius-md); display: flex; flex-wrap: wrap; gap: 6px; min-height: 48px; padding: 7px; }
+.inputBox:focus-within { border-color: var(--bp-color-brand); box-shadow: 0 0 0 2px color-mix(in srgb, var(--bp-color-brand), transparent 86%); }
+.keyword { align-items: center; display: inline-flex; gap: 4px; }
+.keyword button { background: none; border: 0; color: inherit; cursor: pointer; font-size: 17px; line-height: 24px; min-height: 24px; min-width: 24px; padding: 0; }
+.inputBox input { border: 0; flex: 1; min-height: 34px; min-width: 190px; outline: 0; padding: 0 6px; }
+.actions { display: flex; gap: 8px; justify-content: flex-end; }
+.error { color: var(--bp-color-danger); font-size: 11px; font-weight: 650; }
+.notice { color: var(--bp-color-sage); font-size: 11px; font-weight: 650; padding-left: 72px; }
+@media (max-width: 620px) {
+  .summary { grid-template-columns: 1fr; }
+  .summary, .editor { margin-left: 0; }
+  .summary, .notice { padding-left: 0; }
+  .summary button { justify-self: start; }
+  .actions button { flex: 1; }
+}

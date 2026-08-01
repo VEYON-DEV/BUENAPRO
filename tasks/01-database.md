@@ -30,6 +30,10 @@
 
 ## Contrataciones SEACE
 
+- [x] Separar histórico analítico del feed operativo con entidades, áreas usuarias, proveedores y resultados culminados; `idContrato` es llave estable y el código SEACE se conserva completo y parseado (`0017_historical_outcomes.sql`, validado localmente el 2026-07-31).
+- [x] Persistir checkpoint y estado del backfill histórico por segmento para reanudar barridos largos sin repetir páginas completadas (`0018_historical_backfill_progress.sql`).
+- [x] Ampliar `codigo_correlativo` a `BIGINT` para códigos SEACE como `CM-9437000002-2026-OACGD` (`0019_historical_code_correlative_bigint.sql`).
+
 - [x] Crear `seace_connections` y auditoría mínima por tenant para credenciales/sesiones cifradas (migración `0009`).
 - [x] Crear borradores de postulación normalizados: cabecera, ítems, RTM y documentos (`0010`), más revisión de anexos (`0011`).
 - [x] Persistir adjuntos del proveedor en el borrador MVP con aislamiento por aplicación, validación de tipo/tamaño y borrado en cascada (`0012`).
@@ -78,11 +82,14 @@
 - [x] Crear tabla `company_profiles`.
 - [x] Crear tabla `business_lines`.
 - [x] Separar frases exactas y términos fuertes de cada línea de negocio (migración `0014`) sin perder compatibilidad con `keywords`.
+- [x] Persistir keywords transversales de identidad en `company_profiles.company_keywords` (migración `0015`), sin listas de rubro hardcodeadas.
 - [x] Agregar `profile_hash`.
 - [x] Agregar campos JSON para identidad, experiencia, equipo, roles contratables y certificaciones.
+- [x] Poblar en la VM el workspace de `admin@route.com` con el perfil completo de VEYON SAC y sus 3 líneas tecnológicas desde la copia local; validar integridad y recalcular matches (2026-07-20).
 
 ## Matching y seguimiento
 
+- [x] Crear `saved_contracts` por workspace para guardar licitaciones sin crear matches ni alterar el embudo (migración `0016`, aplicada en la VM el 2026-07-20).
 - [x] Crear borradores normalizados de postulación (`application_drafts`, ítems, RTM y documentos) sin representar un envío oficial (migración `0010`).
 - [x] Crear tabla `matches`.
 - [x] Agregar `score`, `verdict`, `breakdown_json`, `missing_actions_json`.
