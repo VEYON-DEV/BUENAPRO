@@ -70,7 +70,15 @@ export function AuthPage({ error, mode = "login" }: { error?: string | null; mod
                   <label>Empresa<Input autoComplete="organization" name="tenant_name" required /></label>
                 </>
               ) : null}
-              <label>Correo electronico<Input autoComplete="email" name="email" required type="email" /></label>
+              <label>
+                {mode === "register" ? "Correo electronico" : "Usuario"}
+                <Input
+                  autoComplete={mode === "register" ? "email" : "username"}
+                  name="email"
+                  required
+                  type={mode === "register" ? "email" : "text"}
+                />
+              </label>
               <label>Contraseña<span className={styles.passwordField}><Input autoComplete={mode === "register" ? "new-password" : "current-password"} minLength={8} name="password" required type={showPassword ? "text" : "password"} /><button aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"} onClick={() => setShowPassword((value) => !value)} type="button">{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></span></label>
               <Button disabled={loading} type="submit">
                 {loading ? "Procesando..." : mode === "register" ? <>Crear cuenta <ArrowRight size={17} /></> : <>Entrar <ArrowRight size={17} /></>}
