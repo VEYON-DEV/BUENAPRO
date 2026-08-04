@@ -2,18 +2,16 @@
 .section > header { padding: 18px 20px 14px; }
 .section h2 { font-size: 16px; margin: 0 0 3px; }
 .section header p { color: var(--bp-color-text-2); font-size: 12px; margin: 0; }
-.scroll { overflow-x: auto; }
-.scroll table { border-collapse: collapse; min-width: 1180px; table-layout: fixed; width: 100%; }
-.scroll th { background: var(--bp-color-subtle); border-bottom: 1px solid var(--bp-color-border); border-top: 1px solid var(--bp-color-border); color: var(--bp-color-text-2); font-size: 11px; padding: 10px 12px; text-align: left; }
-.scroll th:nth-child(1) { width: 160px; } .scroll th:nth-child(2) { width: 300px; } .scroll th:nth-child(3) { width: 220px; } .scroll th:nth-child(4) { width: 105px; } .scroll th:nth-child(5) { width: 200px; } .scroll th:nth-child(6) { width: 105px; } .scroll th:nth-child(7) { width: 130px; }
-.scroll td { border-bottom: 1px solid var(--bp-color-border); font-size: 12px; padding: 12px; vertical-align: top; }
-.scroll td > span:not(.awarded):not(.deserted), .scroll td > strong, .scroll td > a { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.scroll small { color: var(--bp-color-text-2); display: block; font-size: 10px; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.table { min-width: 1180px; table-layout: fixed; }
+.table th { border-top: 1px solid var(--bp-color-border); }
+.table th:nth-child(1) { width: 160px; } .table th:nth-child(2) { width: 300px; } .table th:nth-child(3) { width: 220px; } .table th:nth-child(4) { width: 105px; } .table th:nth-child(5) { width: 200px; } .table th:nth-child(6) { width: 105px; } .table th:nth-child(7) { width: 130px; }
+.table td > span:not(.awarded):not(.deserted), .table td > strong, .table td > a { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.table small { color: var(--bp-color-text-2); display: block; font-size: 10px; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .description { font-weight: 650; }
-.scroll td > a { color: var(--bp-color-brand); font-weight: 650; }
+.table td > a { color: var(--bp-color-brand); font-weight: 650; }
 .awarded, .deserted { border-radius: var(--bp-radius-sm); display: inline-block; font-size: 10px; font-weight: 750; padding: 5px 7px; }
 .awarded { background: var(--bp-color-sage-soft); color: var(--bp-color-sage); }
-.deserted { background: var(--bp-color-brand-soft); color: var(--bp-color-brand); }
+.deserted { background: var(--bp-color-danger-soft); color: var(--bp-color-danger); }
 .muted { color: var(--bp-color-text-3); }
 .document { font-size: 10px; margin-top: 5px; }
 .empty { color: var(--bp-color-text-2); margin: 0; padding: 48px 20px; text-align: center; }

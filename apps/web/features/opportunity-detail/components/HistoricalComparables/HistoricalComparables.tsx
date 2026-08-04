@@ -6,6 +6,24 @@ import styles from "./HistoricalComparables.module.css";
 export function HistoricalComparables({ history }: { history: any }) {
   const metrics = history?.metrics;
   const rows = history?.comparables ?? [];
+  const comparableRow = (row: any) => (
+    <article key={row.id_contrato}>
+      <div className={styles.code}>
+        <strong translate="no">{row.codigo_completo}</strong>
+        <span className={styles[row.estado_resultado.toLowerCase()]}>
+          {row.estado_resultado === "SIN_RESULTADO" ? "Sin resultado" : row.estado_resultado.toLowerCase()}
+        </span>
+      </div>
+      <p>{row.descripcion}</p>
+      <div className={styles.meta}>
+        <span>{row.entity_name}</span>
+        <span>{formatShortDateTime(row.fec_publica)}</span>
+        {row.precio_total != null ? <strong>{formatMoney(row.precio_total)}</strong> : <span>Sin precio</span>}
+      </div>
+      <div className={styles.reasons}>{row.reasons.slice(0, 3).map((reason: string) => <span key={reason}>{reason}</span>)}</div>
+      {row.source_document_url ? <a href={row.source_document_url} target="_blank" rel="noreferrer">Ver TDR antiguo <AppIcon name="arrow" /></a> : null}
+    </article>
+  );
   return (
     <section className={styles.section} id="comparables">
       <div className={styles.heading}>
@@ -72,42 +90,13 @@ export function HistoricalComparables({ history }: { history: any }) {
           ) : null}
 
           <div className={styles.list}>
-            {rows.slice(0, 8).map((row: any) => (
-              <article key={row.id_contrato}>
-                <div className={styles.code}>
-                  <strong translate="no">{row.codigo_completo}</strong>
-                  <span className={styles[row.estado_resultado.toLowerCase()]}>
-                    {row.estado_resultado === "SIN_RESULTADO"
-                      ? "Sin resultado"
-                      : row.estado_resultado.toLowerCase()}
-                  </span>
-                </div>
-                <p>{row.descripcion}</p>
-                <div className={styles.meta}>
-                  <span>{row.entity_name}</span>
-                  <span>{formatShortDateTime(row.fec_publica)}</span>
-                  {row.precio_total != null ? (
-                    <strong>{formatMoney(row.precio_total)}</strong>
-                  ) : (
-                    <span>Sin precio</span>
-                  )}
-                </div>
-                <div className={styles.reasons}>
-                  {row.reasons.slice(0, 3).map((reason: string) => (
-                    <span key={reason}>{reason}</span>
-                  ))}
-                </div>
-                {row.source_document_url ? (
-                  <a
-                    href={row.source_document_url}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Ver TDR antiguo <AppIcon name="arrow" />
-                  </a>
-                ) : null}
-              </article>
-            ))}
+            {rows.slice(0, 3).map(comparableRow)}
+            {rows.length > 3 ? (
+              <details className={styles.moreComparables}>
+                <summary>Ver {Math.min(rows.length, 8) - 3} comparables más</summary>
+                <div>{rows.slice(3, 8).map(comparableRow)}</div>
+              </details>
+            ) : null}
           </div>
         </>
       )}

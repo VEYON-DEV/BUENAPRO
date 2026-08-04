@@ -1,14 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { ChevronDown } from "lucide-react";
 import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { AppIcon } from "@/components/ui/AppIcon";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatDeadline, formatDateTime, formatShortDateTime } from "@/lib/format/date";
 import { formatMoney } from "@/lib/format/money";
-import { FIT_EXACTO, FIT_RELACIONADO, compactMoney, cotizacionStatus, fitLabel, fitScore, fitShortLabel, opportunityFacts, plazoLabel, verdictShortLabels } from "@/lib/extraction/opportunity";
-import { TrackButton } from "../TrackButton";
+import { FIT_EXACTO, FIT_RELACIONADO, cotizacionStatus, fitLabel, fitScore, fitShortLabel, opportunityFacts, plazoLabel, verdictShortLabels } from "@/lib/extraction/opportunity";
 import { SaveButton } from "../SaveButton";
 import styles from "./OpportunityList.module.css";
 
@@ -34,7 +34,7 @@ function FitMark({ hits, compact = false }: { hits?: number | null; compact?: bo
   const points = Number(hits ?? 0);
   const level = score >= FIT_EXACTO ? 3 : score >= FIT_RELACIONADO ? 2 : 1;
   const tone = level === 3 ? styles.fitHigh : level === 2 ? styles.fitMid : styles.fitBase;
-  const explanation = `Afinidad ${score}/100 · ${points} puntos por rubro, keywords y capacidad económica.`;
+  const explanation = `Afinidad preliminar: ${points} puntos por rubro, keywords y capacidad económica. El número final aparece después del análisis IA.`;
   return (
     <span
       aria-label={explanation}
@@ -81,7 +81,7 @@ function FactRow({ icon, label, children }: { icon: Parameters<typeof AppIcon>[0
 }
 
 export function OpportunityList({ rows }: { rows: any[] }) {
-  const [selectedId, setSelectedId] = useState<string | number | null>(null);
+  const [selectedId, setSelectedId] = useState<string | number | null>(rows[0]?.id_contrato ?? null);
   const [detail, setDetail] = useState<any | null>(null);
   const [detailStatus, setDetailStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const primary = useMemo(
@@ -96,6 +96,7 @@ export function OpportunityList({ rows }: { rows: any[] }) {
       return;
     }
     let cancelled = false;
+    setDetail(null);
     setDetailStatus("loading");
     fetch(`/api/contracts/${selectedId}`)
       .then((response) => {
@@ -139,11 +140,10 @@ export function OpportunityList({ rows }: { rows: any[] }) {
           <span>Código</span>
           <span>Objeto</span>
           <span>Entidad</span>
-          <span>Exp. econ.</span>
           <span>Plazo</span>
           <span>Cierre</span>
-          <span>Match</span>
-          <span className={styles.saveHeading}>Guardar</span>
+          <span>Afinidad</span>
+          <span className={styles.saveHeading} aria-label="Guardar" />
         </div>
         <div className={styles.rows}>
           {rows.map((row) => {
@@ -181,10 +181,6 @@ export function OpportunityList({ rows }: { rows: any[] }) {
                       {[row.departamento, row.provincia].filter(Boolean).join(", ") || "Perú"}
                     </span>
                   </div>
-                  <div className={styles.econCell}>
-                    <strong>{row.econ_exigido != null ? compactMoney(Number(row.econ_exigido)) : "—"}</strong>
-                    {row.econ_exigido != null ? <span className={styles.meta}>exigida</span> : null}
-                  </div>
                   <div className={styles.plazoCell}>
                     <strong>{plazoLabel(rowFacts.plazoDias) ?? "—"}</strong>
                     {rowFacts.entregables ? (
@@ -219,15 +215,7 @@ export function OpportunityList({ rows }: { rows: any[] }) {
       {primary ? (
         <aside className={styles.preview} aria-label="Vista rápida de la oportunidad">
           <div className={styles.previewTop}>
-            {(() => {
-              const cotizacion = cotizacionStatus(primary);
-              return (
-                <span className={[styles.stateChip, styles[`cotdot_${cotizacion.key}`]].join(" ")}>
-                  <i />
-                  {cotizacion.label}
-                </span>
-              );
-            })()}
+            <strong>Vista rápida</strong>
             <button
               className={styles.closeButton}
               type="button"
@@ -238,8 +226,10 @@ export function OpportunityList({ rows }: { rows: any[] }) {
             </button>
           </div>
 
-          <span className={styles.previewCode}>{primary.codigo}</span>
+          <div className={styles.previewIdentity}><span className={styles.previewCode}>{primary.codigo}</span><SaveButton code={primary.codigo} idContrato={primary.id_contrato} initialSaved={Boolean(primary.is_saved)} /></div>
           <h2 className={styles.previewTitle}>{facts.descripcionCorta || primary.descripcion}</h2>
+
+          {(() => { const cotizacion = cotizacionStatus(primary); return <span className={[styles.stateChip, styles[`cotdot_${cotizacion.key}`]].join(" ")}><i />{cotizacion.label}</span>; })()}
 
           <div className={styles.previewScore}>
             {primary.verdict && primary.score != null ? (
@@ -257,47 +247,55 @@ export function OpportunityList({ rows }: { rows: any[] }) {
 
           <div className={styles.previewActions}>
             <Link className={styles.openLink} href={`/oportunidad/${primary.id_contrato}`}>
-              Abrir detalle
+              Ver detalle completo
               <AppIcon name="arrow" />
             </Link>
-            <TrackButton idContrato={primary.id_contrato}>Seguir</TrackButton>
             <SaveButton
               code={primary.codigo}
               idContrato={primary.id_contrato}
               initialSaved={Boolean(primary.is_saved)}
+              showLabel
             />
           </div>
 
           <dl className={styles.facts}>
             <FactRow icon="building" label="Entidad">{primary.entidad_nombre ?? "No informada"}</FactRow>
-            <FactRow icon="pin" label="Ubicación">{ubicacion}</FactRow>
             <FactRow icon="clock" label="Cierre">{formatDateTime(primary.fec_fin_cotizacion)}</FactRow>
             <FactRow icon="tag" label="Exp. económica">
               {primary.econ_exigido != null
                 ? `${formatMoney(Number(primary.econ_exigido))} exigidos`
                 : "No exigida en el TDR"}
             </FactRow>
-            <FactRow icon="doc" label="Pago">
-              {[facts.tipoPago ?? "Por definir", plazoLabel(facts.plazoDias)].filter(Boolean).join(" · ")}
-            </FactRow>
-            {facts.roles.length ? (
-              <FactRow icon="profile" label="Personal clave">
-                {facts.roles.slice(0, 2).join(", ")}
-                {facts.roles.length > 2 ? ` +${facts.roles.length - 2}` : ""}
-              </FactRow>
-            ) : null}
-            {facts.penalidadTopePct != null ? (
-              <FactRow icon="alert" label="Penalidad tope">{facts.penalidadTopePct}% del contrato</FactRow>
-            ) : null}
           </dl>
 
-          <p className={styles.previewFoot}>
-            {detailStatus === "loading"
-              ? "Cargando análisis del TDR…"
-              : detailStatus === "error"
-                ? "No se pudo cargar el análisis completo."
-                : `${facets.length} requisitos extraídos · ${documents.length} ${documents.length === 1 ? "documento" : "documentos"}`}
-          </p>
+          <details className={styles.moreInfo}>
+            <summary>
+              <span>Más información</span>
+              <ChevronDown aria-hidden="true" size={17} />
+            </summary>
+            <dl className={styles.secondaryFacts}>
+              <FactRow icon="pin" label="Ubicación">{ubicacion}</FactRow>
+              <FactRow icon="doc" label="Pago">
+                {[facts.tipoPago ?? "Por definir", plazoLabel(facts.plazoDias)].filter(Boolean).join(" · ")}
+              </FactRow>
+              {facts.roles.length ? (
+                <FactRow icon="profile" label="Personal clave">
+                  {facts.roles.slice(0, 2).join(", ")}
+                  {facts.roles.length > 2 ? ` +${facts.roles.length - 2}` : ""}
+                </FactRow>
+              ) : null}
+              {facts.penalidadTopePct != null ? (
+                <FactRow icon="alert" label="Penalidad tope">{facts.penalidadTopePct}% del contrato</FactRow>
+              ) : null}
+            </dl>
+            <p className={styles.previewFoot}>
+              {detailStatus === "loading"
+                ? "Cargando análisis del TDR…"
+                : detailStatus === "error"
+                  ? "No se pudo cargar el análisis completo."
+                  : `${facets.length} requisitos extraídos · ${documents.length} ${documents.length === 1 ? "documento" : "documentos"}`}
+            </p>
+          </details>
         </aside>
       ) : null}
     </section>

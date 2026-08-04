@@ -1,15 +1,15 @@
 .select {
   appearance: none;
   background:
-    linear-gradient(45deg, transparent 50%, var(--bp-color-text-2) 50%) calc(100% - 17px) 18px / 6px 6px no-repeat,
-    linear-gradient(135deg, var(--bp-color-text-2) 50%, transparent 50%) calc(100% - 12px) 18px / 6px 6px no-repeat,
+    linear-gradient(45deg, transparent 50%, var(--bp-color-text-2) 50%) calc(100% - 18px) 20px / 6px 6px no-repeat,
+    linear-gradient(135deg, var(--bp-color-text-2) 50%, transparent 50%) calc(100% - 13px) 20px / 6px 6px no-repeat,
     var(--bp-color-control);
   border: 1px solid var(--bp-color-border-strong);
   border-radius: var(--bp-radius-md);
   color: var(--bp-color-text);
-  min-height: 42px;
-  padding: 9px 32px 9px 12px;
-  transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+  min-height: 44px;
+  padding: 9px 34px 9px 14px;
+  transition: background var(--bp-duration-normal) var(--bp-ease-standard), border-color var(--bp-duration-normal) var(--bp-ease-standard), box-shadow var(--bp-duration-normal) var(--bp-ease-standard);
   width: 100%;
 }
 
@@ -19,10 +19,10 @@
 
 .select:focus {
   background:
-    linear-gradient(45deg, transparent 50%, var(--bp-color-brand) 50%) calc(100% - 17px) 18px / 6px 6px no-repeat,
-    linear-gradient(135deg, var(--bp-color-brand) 50%, transparent 50%) calc(100% - 12px) 18px / 6px 6px no-repeat,
+    linear-gradient(45deg, transparent 50%, var(--bp-color-brand) 50%) calc(100% - 18px) 20px / 6px 6px no-repeat,
+    linear-gradient(135deg, var(--bp-color-brand) 50%, transparent 50%) calc(100% - 13px) 20px / 6px 6px no-repeat,
     var(--bp-color-panel);
-  border-color: var(--bp-color-brand);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bp-color-brand), transparent 86%);
+  border-color: var(--bp-color-intelligence);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bp-color-brand), transparent 82%);
   outline: 0;
 }

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { formatMoney } from "@/lib/format/money";
-import { MarketTrendChart } from "@/features/dashboard/components/MarketTrendChart";
+import { MarketTrendChart } from "../MarketTrendChart";
 import styles from "./MarketOverview.module.css";
 
 function Ranking({ title, subtitle, rows, kind }: { title: string; subtitle: string; rows: any[]; kind?: "supplier" }) {
@@ -9,9 +9,9 @@ function Ranking({ title, subtitle, rows, kind }: { title: string; subtitle: str
     <section className={styles.ranking}>
       <header><h2>{title}</h2><p>{subtitle}</p></header>
       <ol>
-        {rows.map((row) => {
+        {rows.map((row, index) => {
           const value = Number(row.total ?? row.awards ?? 0);
-          const content = <><span className={styles.rankName}>{row.name}</span><strong>{value}</strong><i style={{ width: `${Math.max(4, value / maximum * 100)}%` }} /></>;
+          const content = <><span className={styles.rankPosition}>{index + 1}</span><span className={styles.rankName}>{row.name}</span><span className={styles.rankTrack}><i style={{ width: `${Math.max(4, value / maximum * 100)}%` }} /></span><strong>{value.toLocaleString("es-PE")}</strong></>;
           return <li key={row.ruc ?? row.id ?? row.name}>{kind === "supplier" ? <Link href={`/mercado/empresas/${row.ruc}`}>{content}</Link> : <div>{content}</div>}</li>;
         })}
       </ol>

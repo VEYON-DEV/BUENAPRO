@@ -1,4 +1,4 @@
-import type { ApplicationData } from "../../types";
+import type { ApplicationData } from "../../model/types";
 import { AssigneeControl } from "../AssigneeControl";
 import styles from "./ProgressRail.module.css";
 

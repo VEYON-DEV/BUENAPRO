@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { toUrlSearchParams } from "@/lib/api/searchParams";
-import { MarketPage } from "@/features/market-intelligence/MarketPage";
+import { MarketPage } from "@/features/market-intelligence";
 import { currentTenantId } from "@/server/auth/tenant";
 
 export default async function MarketRoute({

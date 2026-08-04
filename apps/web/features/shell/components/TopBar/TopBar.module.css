@@ -1,31 +1,15 @@
 .topbar {
   align-items: center;
-  background: rgb(255 255 255 / 0.94);
-  border-bottom: 1px solid var(--bp-color-border);
+  background: rgb(241 243 255 / 0.72);
+  border-bottom: 1px solid rgb(255 255 255 / 0.7);
+  backdrop-filter: var(--bp-blur-glass);
   display: flex;
-  height: 64px;
-  justify-content: space-between;
+  height: 56px;
+  justify-content: flex-end;
   padding: 0 var(--bp-space-6);
   position: sticky;
   top: 0;
-  z-index: 10;
-}
-
-.contextText {
-  display: grid;
-  gap: 1px;
-}
-
-.contextText span {
-  color: var(--bp-color-text-2);
-  font-size: 12px;
-  font-weight: 650;
-  line-height: 16px;
-}
-
-.contextText strong {
-  color: var(--bp-color-text);
-  font-size: 16px;
+  z-index: var(--bp-z-sticky);
 }
 
 .actions {
@@ -35,12 +19,13 @@
 }
 
 .context {
-  background: var(--bp-color-brand-soft);
-  border-radius: var(--bp-radius-md);
+  background: rgb(255 255 255 / 0.66);
+  border: 1px solid var(--bp-color-glass-border);
+  border-radius: var(--bp-radius-pill);
   color: var(--bp-color-brand);
   font-size: 12px;
   font-weight: 750;
-  padding: 6px 9px;
+  padding: 7px 12px;
 }
 
 @media (max-width: 700px) {

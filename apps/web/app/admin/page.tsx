@@ -1,4 +1,4 @@
-import { AdminPage } from "@/features/admin/AdminPage";
+import { AdminPage } from "@/features/admin";
 
 export default function AdminRoute() {
   return <AdminPage />;

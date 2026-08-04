@@ -112,6 +112,12 @@ def analyze_match_job(
     id_contrato: int,
     profile_id: str,
     force: bool = False,
+    business_line_id: str | None = None,
+    source: str = "worker",
+    fit_points: int | None = None,
+    fit_score: int | None = None,
+    fit_level: int | None = None,
+    keyword_hits: list[dict] | None = None,
 ) -> dict[str, object]:
     profile = repo.conn.execute(
         "SELECT * FROM company_profiles WHERE id = %s AND is_active = true",
@@ -159,6 +165,12 @@ def analyze_match_job(
     if existing is not None and not force:
         meta = (existing["breakdown_json"] or {}).get("meta") if isinstance(existing["breakdown_json"], dict) else None
         if meta and meta.get("facets_hash") == facets_hash and meta.get("profile_hash") == profile_hash:
+            if source == "automatic":
+                enqueue_match_notifications(
+                    repo,
+                    match_id=int(existing["id"]),
+                    reason="automatic_evaluation",
+                )
             logger.info("analyze_match_skipped_unchanged", extra={"id_contrato": id_contrato, "profile_id": profile_id})
             return {"skipped": "unchanged", "match_id": int(existing["id"])}
 
@@ -278,16 +290,48 @@ def analyze_match_job(
         for item in requisitos_final
         if item.get("estado") != "cumple"
     ]
+    strengths = [
+        _clip(item.get("requisito"), 100)
+        for item in requisitos_final
+        if item.get("estado") == "cumple"
+    ][:2]
+    main_risk = next(
+        (
+            _clip(item.get("gap") or item.get("requisito"), 140)
+            for item in requisitos_final
+            if item.get("estado") != "cumple" and item.get("critico")
+        ),
+        None,
+    ) or next(
+        (
+            _clip(item.get("gap") or item.get("requisito"), 140)
+            for item in requisitos_final
+            if item.get("estado") != "cumple"
+        ),
+        None,
+    )
+    breakdown["fortalezas"] = [item for item in strengths if item]
+    breakdown["riesgo_principal"] = main_risk
+    breakdown["meta"].update(
+        {
+            "execution": "worker_auto" if source == "automatic" else source,
+            "fit_points": fit_points,
+            "fit_score": fit_score,
+            "fit_level": fit_level,
+            "keyword_hits": keyword_hits or [],
+        }
+    )
 
     row = repo.conn.execute(
         """
         INSERT INTO matches (
-          profile_id, id_contrato, score, verdict,
+          profile_id, id_contrato, business_line_id, score, verdict,
           breakdown_json, missing_actions_json, updated_at
         )
-        VALUES (%s, %s, %s, %s, %s::jsonb, %s::jsonb, now())
+        VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, now())
         ON CONFLICT (profile_id, id_contrato)
         DO UPDATE SET
+          business_line_id = COALESCE(EXCLUDED.business_line_id, matches.business_line_id),
           score = EXCLUDED.score,
           verdict = EXCLUDED.verdict,
           breakdown_json = EXCLUDED.breakdown_json,
@@ -299,6 +343,7 @@ def analyze_match_job(
         (
             profile_id,
             id_contrato,
+            business_line_id,
             final_score,
             final_verdict,
             json.dumps(breakdown, ensure_ascii=False),
@@ -307,7 +352,21 @@ def analyze_match_job(
     ).fetchone()
     match_id = int(row["id"])
 
-    if existing is None:
+    repo.conn.execute(
+        """
+        INSERT INTO match_events (match_id,event_type,payload)
+        VALUES (%s,%s,%s::jsonb)
+        """,
+        (
+            match_id,
+            "automatic_analysis" if source == "automatic" else "analysis",
+            json.dumps({"score": final_score, "verdict": final_verdict, "source": source}),
+        ),
+    )
+
+    if source == "automatic":
+        enqueue_match_notifications(repo, match_id=match_id, reason="automatic_evaluation")
+    elif existing is None:
         enqueue_match_notifications(repo, match_id=match_id, reason="new_match")
     elif existing["verdict"] != final_verdict:
         enqueue_match_notifications(repo, match_id=match_id, reason="verdict_change")

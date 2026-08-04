@@ -38,6 +38,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       { column: "payload", cast: "::jsonb", transform: (value) => JSON.stringify(value ?? {}) },
       { column: "status" },
       { column: "sent_at" },
+      { column: "read_at" },
     ],
     2,
   );

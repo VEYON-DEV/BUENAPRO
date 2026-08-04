@@ -4,12 +4,12 @@
 
 - [x] Organizar `apps/web` por features: `feed`, `opportunity`, `profile`, `tracking`, `settings`.
 - [x] Crear `components/ui`.
-- [x] Crear `components/layout`.
+- [x] Crear la capa de layout inicial, posteriormente absorbida por el dominio `features/shell`.
 - [x] Crear `server/db`.
 - [x] Crear `server/auth`.
 - [x] Crear `server/services`.
 - [x] Definir estilo visual base de BuenaPro.
-- [x] Documentar sistema profesional de design patterns.
+- [x] Documentar el sistema visual profesional, actualmente centralizado en `DESIGN.md`.
 
 ## Auth y tenancy
 
@@ -24,6 +24,7 @@
 
 ## API interna
 
+- [x] Exponer reglas de automatizacion y configuracion/test de Telegram tenant-safe, sin devolver el token almacenado; GET local, cifrado PostgreSQL y mensaje real validados (2026-08-03).
 - [x] Implementar `GET /api/contracts/:id/history` con scoring explicable por CUBSO, keywords, entidad y recencia; desiertos excluidos del precio y umbral endurecido contra comparables amplios.
 - [x] Implementar `GET /api/dashboard` con cierres, preparación, mercado del perfil y proveedores frecuentes, más admin interno para iniciar/consultar backfill histórico.
 - [x] Implementar `GET /api/market` tenant-safe con alcance de perfil/todo el mercado, búsqueda textual, filtros de segmento, resultado, ubicación, entidad, año y precio; incluye tendencia, rankings, contratos y proveedores (2026-07-31).

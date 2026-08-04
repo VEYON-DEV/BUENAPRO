@@ -1,40 +1,29 @@
 .rail {
-  background: var(--bp-color-panel);
-  border-right: 1px solid var(--bp-color-border);
+  background: rgb(255 255 255 / 0.7);
+  border-right: 1px solid var(--bp-color-glass-border);
+  backdrop-filter: var(--bp-blur-glass);
   display: flex;
   flex-direction: column;
   gap: var(--bp-space-6);
+  height: 100vh;
   min-height: 100vh;
-  padding: 18px 12px;
-  width: 216px;
+  overflow: hidden;
+  padding: 20px 14px;
+  position: sticky;
+  top: 0;
+  width: 248px;
+  z-index: var(--bp-z-sticky);
 }
 
 .brand {
   align-items: center;
   display: flex;
-  gap: var(--bp-space-3);
-  min-height: 40px;
+  min-height: 44px;
+  padding-inline: 2px;
 }
 
-.mark {
-  align-items: center;
-  background: var(--bp-color-brand);
-  border-radius: var(--bp-radius-lg);
-  color: white;
-  display: flex;
-  font-size: 12px;
-  font-weight: 800;
-  height: 36px;
-  justify-content: center;
-  letter-spacing: 0;
-  width: 36px;
-}
-
-.wordmark {
-  color: var(--bp-color-ink);
-  font-size: 15px;
-  font-weight: 800;
-}
+.fullLogo { width: 176px; }
+.compactLogo { display: none; width: 42px; }
 
 .nav {
   display: grid;
@@ -49,7 +38,7 @@
   gap: 10px;
   margin-top: auto;
   min-width: 0;
-  padding: 16px 6px 2px;
+  padding: 18px 4px 4px;
 }
 
 .company:hover .companyCopy small {
@@ -58,7 +47,7 @@
 
 .company:focus-visible {
   border-radius: var(--bp-radius-md);
-  outline: 2px solid var(--bp-color-brand);
+  outline: 2px solid var(--bp-color-intelligence);
   outline-offset: 2px;
 }
 
@@ -68,10 +57,10 @@
   border: 1px solid var(--bp-color-border);
   border-radius: 50%;
   display: flex;
-  flex: 0 0 32px;
-  font-size: 10px;
-  font-weight: 800;
-  height: 32px;
+  flex: 0 0 38px;
+  font-size: 11px;
+  font-weight: 750;
+  height: 38px;
   justify-content: center;
 }
 
@@ -89,7 +78,7 @@
 }
 
 .companyCopy strong {
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .companyCopy small {
@@ -97,34 +86,61 @@
   font-size: 10px;
 }
 
-@media (max-width: 899px) {
+.companyArrow {
+  color: var(--bp-color-text-3);
+  flex: none;
+  margin-left: auto;
+}
+
+@media (max-width: 1199px) and (min-width: 768px) {
   .rail {
     align-items: center;
-    border-bottom: 1px solid var(--bp-color-border);
-    border-right: 0;
-    flex-direction: row;
-    gap: var(--bp-space-3);
-    min-height: auto;
-    padding: 10px 12px;
-    width: 100%;
+    padding-inline: 10px;
+    width: 72px;
   }
 
-  .brand {
-    min-width: 40px;
-  }
-
-  .wordmark {
+  .fullLogo,
+  .companyCopy {
     display: none;
   }
 
+  .compactLogo { display: block; }
+
+  .company {
+    border-top: 0;
+    padding-inline: 0;
+  }
+
+  .companyArrow { display: none; }
+
+  .nav {
+    width: 100%;
+  }
+}
+
+@media (max-width: 767px) {
+  .rail {
+    bottom: 0;
+    border-right: 0;
+    border-top: 1px solid var(--bp-color-border);
+    height: auto;
+    min-height: auto;
+    overflow: visible;
+    padding: 7px 12px calc(7px + env(safe-area-inset-bottom));
+    position: fixed;
+    top: auto;
+    width: 100%;
+  }
+
+  .brand,
   .company {
     display: none;
   }
 
   .nav {
-    display: flex;
-    flex: 1;
-    min-width: 0;
-    overflow-x: auto;
+    display: grid;
+    gap: 6px;
+    grid-template-columns: repeat(4, 1fr);
+    width: 100%;
   }
 }

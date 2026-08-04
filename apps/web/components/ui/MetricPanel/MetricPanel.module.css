@@ -1,0 +1,33 @@
+.panel {
+  align-items: start;
+  background: var(--bp-color-glass);
+  backdrop-filter: var(--bp-blur-glass);
+  border: 1px solid var(--bp-color-glass-border);
+  border-radius: var(--bp-radius-lg);
+  box-shadow: var(--bp-shadow-glass);
+  display: grid;
+  gap: var(--bp-space-4);
+  grid-template-columns: 48px minmax(0, 1fr);
+  min-height: 150px;
+  padding: var(--bp-space-5);
+}
+
+.icon {
+  align-items: center;
+  border-radius: var(--bp-radius-md);
+  display: flex;
+  height: 48px;
+  justify-content: center;
+  width: 48px;
+}
+
+.icon svg { height: 22px; width: 22px; }
+.violet { background: var(--bp-color-brand-soft); color: var(--bp-color-brand); }
+.green { background: var(--bp-color-success-soft); color: var(--bp-color-success); }
+.amber { background: var(--bp-color-warning-soft); color: var(--bp-color-warning); }
+
+.panel span,
+.panel small { color: var(--bp-color-text-2); display: block; }
+.panel span { font-size: 12px; font-weight: 650; }
+.panel strong { color: var(--bp-color-ink); display: block; font-size: 32px; line-height: 40px; margin-top: 8px; }
+.panel small { font-size: 12px; margin-top: 5px; }

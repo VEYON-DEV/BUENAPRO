@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     smtp_user: str = ""
     smtp_password: str = ""
     telegram_bot_token: str = ""
+    settings_encryption_key: str = ""
+    app_base_url: str = "http://localhost:3001"
 
     @staticmethod
     def _parse_csv_ints(value: str) -> list[int]:

@@ -1,7 +1,10 @@
 :root[data-theme="dark"] {
-  --bp-color-brand: #d26454;
-  --bp-color-brand-hover: #ef7b68;
-  --bp-color-brand-soft: #321d1a;
+  --bp-color-brand: #8292ff;
+  --bp-color-brand-hover: #9aa7ff;
+  --bp-color-brand-pressed: #6879ed;
+  --bp-color-brand-soft: #202746;
+  --bp-color-intelligence: #9ba8ff;
+  --bp-color-intelligence-soft: #232947;
   --bp-color-sage: #7ba291;
   --bp-color-sage-soft: #1d2b27;
   --bp-color-text: #f3f4f6;
@@ -9,7 +12,9 @@
   --bp-color-text-3: #6b7280;
   --bp-color-app: #111315;
   --bp-color-panel: #181b1f;
+  --bp-color-panel-2: #1d2025;
   --bp-color-subtle: #20242a;
+  --bp-color-control: #181b1f;
   --bp-color-border: #2a2f35;
   --bp-color-border-strong: #3a414a;
 }

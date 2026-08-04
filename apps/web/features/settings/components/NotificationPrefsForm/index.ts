@@ -1,1 +1,0 @@
-export { NotificationPrefsForm } from "./NotificationPrefsForm";

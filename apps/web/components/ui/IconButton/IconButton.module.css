@@ -2,12 +2,13 @@
   align-items: center;
   background: var(--bp-color-panel);
   border: 1px solid var(--bp-color-border);
-  border-radius: var(--bp-radius-md);
+  border-radius: 50%;
   cursor: pointer;
   display: inline-flex;
-  height: 38px;
+  box-shadow: var(--bp-shadow-subtle);
+  height: 44px;
   justify-content: center;
-  width: 38px;
+  width: 44px;
 }
 
 .button:hover {

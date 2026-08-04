@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { OpportunityDetailPage } from "@/features/opportunity-detail/OpportunityDetailPage";
+import { OpportunityDetailPage } from "@/features/opportunity-detail";
 import { currentTenantId } from "@/server/auth/tenant";
 
 export default async function OpportunityRoute({ params }: { params: Promise<{ id: string }> }) {

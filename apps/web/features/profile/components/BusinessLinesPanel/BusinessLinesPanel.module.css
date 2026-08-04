@@ -1,10 +1,10 @@
-.panel { display: grid; gap: 18px; }
+.panel { background: #fff; border: 1px solid var(--bp-color-border); border-radius: 20px; box-shadow: 0 8px 28px rgb(46 55 105 / .07); display: grid; gap: 18px; overflow: hidden; padding: 20px; }
 .header { align-items: flex-end; display: flex; gap: 20px; justify-content: space-between; }
 .header h2 { font-size: 20px; line-height: 28px; }
 .header p { color: var(--bp-color-text-2); margin-top: 3px; }
 .headerActions { align-items: center; display: flex; gap: 14px; }
 .headerActions > span { color: var(--bp-color-text-2); font-size: 12px; font-variant-numeric: tabular-nums; font-weight: 650; }
-.notice { background: var(--bp-color-sage-soft); border: 1px solid color-mix(in srgb, var(--bp-color-sage), transparent 68%); color: #315d4d; padding: 10px 12px; }
+.notice { background: var(--bp-color-success-soft); border: 1px solid color-mix(in srgb, var(--bp-color-success), transparent 68%); border-radius: 12px; color: var(--bp-color-success); padding: 10px 12px; }
 .lines { border-top: 1px solid var(--bp-color-border-strong); }
 .line { border-bottom: 1px solid var(--bp-color-border-strong); }
 .lineHeader { align-items: center; display: grid; gap: 14px; grid-template-columns: 34px minmax(0, 1fr) auto; padding: 18px 0 12px; }
@@ -17,8 +17,8 @@
 .summarySegments b { color: var(--bp-color-brand); font-variant-numeric: tabular-nums; }
 .summarySegments em { color: var(--bp-color-warning); font-size: 10px; font-style: normal; font-weight: 700; grid-column: 2; }
 .keywords { align-content: start; display: flex; flex-wrap: wrap; gap: 6px; }
-.keywords > span, .keyword { background: var(--bp-color-sage-soft); border: 1px solid color-mix(in srgb, var(--bp-color-sage), transparent 72%); border-radius: 999px; color: #315d4d; font-size: 11px; font-weight: 650; padding: 4px 8px; }
-.editor { background: var(--bp-color-panel-2); border-top: 2px solid var(--bp-color-ink); display: grid; gap: 18px; padding: 18px; }
+.keywords > span, .keyword { background: var(--bp-color-brand-soft); border: 1px solid rgb(76 60 255 / .14); border-radius: 999px; color: var(--bp-color-brand); font-size: 11px; font-weight: 650; padding: 4px 8px; }
+.editor { background: var(--bp-color-work-soft); border: 1px solid var(--bp-color-border); border-radius: 16px; display: grid; gap: 18px; padding: 18px; }
 .editorHeading { align-items: start; display: flex; justify-content: space-between; }
 .editorHeading > div { display: grid; gap: 2px; }
 .editorHeading > div > span { color: var(--bp-color-text-2); font-size: 12px; }
@@ -27,7 +27,7 @@
 .fieldLabel { align-items: baseline; display: flex; justify-content: space-between; }
 .fieldLabel > span { color: var(--bp-color-text-3); font-size: 10px; font-weight: 600; }
 .segmentList { display: grid; gap: 6px; }
-.segment { align-items: center; background: var(--bp-color-panel); border: 1px solid var(--bp-color-border); display: grid; font-size: 11px; gap: 8px; grid-template-columns: 28px minmax(0, 1fr) auto auto; padding: 8px 10px; }
+.segment { align-items: center; background: #fff; border: 1px solid var(--bp-color-border); border-radius: 12px; display: grid; font-size: 11px; gap: 8px; grid-template-columns: 28px minmax(0, 1fr) auto auto; padding: 8px 10px; }
 .segment b { color: var(--bp-color-brand); }
 .segment em { color: var(--bp-color-warning); font-size: 10px; font-style: normal; }
 .segment button, .keyword button { background: none; border: 0; color: inherit; cursor: pointer; font-size: 16px; padding: 1px 4px; }

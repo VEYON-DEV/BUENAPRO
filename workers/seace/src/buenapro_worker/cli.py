@@ -97,6 +97,22 @@ def command_poll_once(args: argparse.Namespace, settings: Settings) -> int:
     return 0
 
 
+def command_auto_evaluate_current(args: argparse.Namespace, settings: Settings) -> int:
+    from buenapro_worker.db.connection import connect
+    from buenapro_worker.jobs.match import enqueue_current_contract_sweep
+    from buenapro_worker.queue.repository import JobRepository
+
+    with connect(settings) as conn:
+        with conn.transaction():
+            enqueued = enqueue_current_contract_sweep(
+                JobRepository(conn),
+                limit=args.limit,
+                profile_id=args.profile_id,
+            )
+    print({"enqueued": enqueued})
+    return 0
+
+
 def command_schedule(args: argparse.Namespace, settings: Settings) -> int:
     from buenapro_worker.db.connection import connect
     from buenapro_worker.jobs.scheduler import enqueue_scheduled_jobs, run_scheduler_forever
@@ -158,6 +174,7 @@ def command_run(args: argparse.Namespace, settings: Settings) -> int:
         "diff_facets": lambda job: _handle_diff_facets(settings, job),
         "match_contract": lambda job: _handle_match_contract(settings, job),
         "match_profile": lambda job: _handle_match_profile(settings, job),
+        "route_contract_profiles": lambda job: _handle_route_contract_profiles(settings, job),
         "analyze_match": lambda job: _handle_analyze_match(settings, job),
         "send_notification": lambda job: _handle_send_notification(settings, job),
     }
@@ -333,6 +350,21 @@ def _handle_match_profile(settings: Settings, job) -> None:
             match_profile_job(repo, profile_id=str(job.payload["profile_id"]))
 
 
+def _handle_route_contract_profiles(settings: Settings, job) -> None:
+    from buenapro_worker.db.connection import connect
+    from buenapro_worker.jobs.match import route_contract_profiles_job
+    from buenapro_worker.queue.repository import JobRepository
+
+    with connect(settings) as conn:
+        repo = JobRepository(conn)
+        with conn.transaction():
+            route_contract_profiles_job(
+                repo,
+                id_contrato=int(job.payload["id_contrato"]),
+                profile_id=str(job.payload["profile_id"]) if job.payload.get("profile_id") else None,
+            )
+
+
 def _handle_analyze_match(settings: Settings, job) -> None:
     from buenapro_worker.db.connection import connect
     from buenapro_worker.jobs.analyze_match import analyze_match_job
@@ -347,6 +379,12 @@ def _handle_analyze_match(settings: Settings, job) -> None:
                 id_contrato=int(job.payload["id_contrato"]),
                 profile_id=str(job.payload["profile_id"]),
                 force=bool(job.payload.get("force")),
+                business_line_id=job.payload.get("business_line_id"),
+                source=str(job.payload.get("source") or "worker"),
+                fit_points=job.payload.get("fit_points"),
+                fit_score=job.payload.get("fit_score"),
+                fit_level=job.payload.get("fit_level"),
+                keyword_hits=job.payload.get("keyword_hits"),
             )
 
 
@@ -382,6 +420,14 @@ def build_parser() -> argparse.ArgumentParser:
     poll_once.add_argument("--batch-id", default=None)
     poll_once.add_argument("--bucket", default=None)
     poll_once.set_defaults(func=command_poll_once)
+
+    auto_evaluate = subcommands.add_parser(
+        "auto-evaluate-current",
+        help="Route currently open validated contracts through profile automation",
+    )
+    auto_evaluate.add_argument("--limit", type=int, default=None)
+    auto_evaluate.add_argument("--profile-id", default=None)
+    auto_evaluate.set_defaults(func=command_auto_evaluate_current)
 
     contract_test = subcommands.add_parser("contract-test", help="Validate SEACE endpoint shapes")
     contract_test.add_argument("--year", type=int, default=datetime.now(timezone.utc).year)

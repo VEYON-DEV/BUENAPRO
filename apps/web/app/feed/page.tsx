@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { OpportunitiesPage } from "@/features/opportunities/OpportunitiesPage";
+import { OpportunitiesPage } from "@/features/opportunities";
 import { currentTenantId } from "@/server/auth/tenant";
 import { toUrlSearchParams } from "@/lib/api/searchParams";
 

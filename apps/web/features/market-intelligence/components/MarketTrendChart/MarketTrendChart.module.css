@@ -1,0 +1,124 @@
+.panel {
+  background: rgb(255 255 255 / .9);
+  border: 1px solid rgb(255 255 255 / .88);
+  border-radius: 20px;
+  box-shadow: 0 12px 36px rgb(61 72 140 / .08);
+  min-width: 0;
+  padding: 20px;
+}
+.header {
+  align-items: flex-start;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 22px;
+}
+.header h2 {
+  font-size: 16px;
+  margin: 0 0 3px;
+}
+.header p {
+  color: var(--bp-color-text-2);
+  font-size: 12px;
+  margin: 0;
+}
+.legend {
+  display: flex;
+  gap: 14px;
+}
+.legend span {
+  align-items: center;
+  color: var(--bp-color-text-2);
+  display: flex;
+  font-size: 11px;
+  gap: 6px;
+}
+.legend i {
+  border-radius: 999px;
+  display: block;
+  height: 8px;
+  width: 8px;
+}
+.awarded,
+.awardedBar {
+  background: var(--bp-color-brand);
+}
+.deserted,
+.desertedBar {
+  background: #55ad82;
+}
+.scroll {
+  overflow-x: auto;
+}
+.chart {
+  border-bottom: 1px solid #dfe3f0;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(12, minmax(32px, 1fr));
+  height: 210px;
+  min-width: 620px;
+  position: relative;
+}
+.guides {
+  bottom: 25px;
+  display: grid;
+  height: calc(100% - 25px);
+  left: 0;
+  pointer-events: none;
+  position: absolute;
+  right: 0;
+}
+.guides i {
+  border-top: 1px solid #e8eaf4;
+  display: block;
+}
+.month {
+  display: grid;
+  grid-template-rows: 1fr 25px;
+  min-width: 0;
+  position: relative;
+  z-index: 1;
+}
+.bars {
+  align-items: end;
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  min-height: 0;
+}
+.bars > span {
+  border-radius: 999px 999px 4px 4px;
+  display: block;
+  max-width: 12px;
+  min-height: 2px;
+  width: 32%;
+}
+.awardedBar { box-shadow: 0 7px 16px rgb(76 60 255 / .18); }
+.desertedBar { box-shadow: 0 7px 15px rgb(85 173 130 / .14); }
+.monthLabel {
+  align-self: end;
+  color: var(--bp-color-text-2);
+  font-size: 10px;
+  text-align: center;
+  text-transform: capitalize;
+}
+@media (max-width: 680px) {
+  .panel {
+    padding: 16px;
+  }
+  .header {
+    display: grid;
+    gap: 12px;
+  }
+  .chart {
+    gap: 3px;
+    grid-template-columns: repeat(12, minmax(16px, 1fr));
+    height: 190px;
+    min-width: 100%;
+  }
+  .bars {
+    gap: 2px;
+  }
+  .bars > span {
+    min-width: 3px;
+  }
+}

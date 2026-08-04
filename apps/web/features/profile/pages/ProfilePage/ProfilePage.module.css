@@ -1,0 +1,30 @@
+.identity { align-items: center; backdrop-filter: blur(24px) saturate(125%); background: rgb(255 255 255 / .64); border: 1px solid rgb(255 255 255 / .84); border-radius: 20px 20px 0 0; box-shadow: 0 18px 55px rgb(61 72 140 / .1); color: var(--bp-color-ink); display: grid; gap: 16px; grid-template-columns: auto minmax(0, 1fr) minmax(180px, 280px); padding: 22px; }
+.companyMark { align-items: center; background: var(--bp-color-brand); border-radius: 14px; box-shadow: 0 10px 24px rgb(76 60 255 / .18); color: white; display: flex; font-size: 16px; font-weight: 800; height: 50px; justify-content: center; width: 50px; }
+.company h2 { font-size: 19px; line-height: 25px; margin: 0; }
+.company p { color: var(--bp-color-text-2); font-size: 11px; margin: 2px 0 0; }
+.completion { display: grid; gap: 7px; }
+.completion > div { align-items: baseline; display: flex; justify-content: space-between; }
+.completion span { color: var(--bp-color-text-2); font-size: 10px; font-weight: 650; }
+.completion strong { font-variant-numeric: tabular-nums; }
+.completion i { background: #e2e5f2; border-radius: 999px; display: block; height: 5px; overflow: hidden; }
+.completion b { background: var(--bp-color-brand); border-radius: inherit; display: block; height: 100%; }
+.signalStrip { background: rgb(255 255 255 / .88); border: 1px solid var(--bp-color-border); border-radius: 0 0 20px 20px; border-top: 0; box-shadow: 0 12px 36px rgb(61 72 140 / .06); display: grid; grid-template-columns: repeat(5, 1fr); margin-bottom: 22px; overflow: hidden; }
+.signalStrip > div { display: grid; gap: 3px; padding: 14px 18px; }
+.signalStrip > div + div { border-left: 1px solid var(--bp-color-border); }
+.signalStrip span { color: var(--bp-color-text-3); font-size: 10px; font-weight: 650; }
+.signalStrip strong { font-size: 13px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.workspace { align-items: start; display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr) 360px; }
+.primary, .secondary { min-width: 0; }
+.secondary { display: grid; gap: 20px; }
+@media (prefers-reduced-transparency: reduce) { .identity { backdrop-filter: none; background: #fff; } }
+@media (max-width: 1080px) {
+  .workspace { grid-template-columns: 1fr; }
+}
+@media (max-width: 720px) {
+  .identity { grid-template-columns: auto minmax(0, 1fr); }
+  .completion { grid-column: 1 / -1; }
+  .signalStrip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .signalStrip > div + div { border-left: 0; }
+  .signalStrip > div:nth-child(even) { border-left: 1px solid var(--bp-color-border); }
+  .signalStrip > div { border-bottom: 1px solid var(--bp-color-border); }
+}

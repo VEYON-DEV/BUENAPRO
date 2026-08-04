@@ -71,4 +71,4 @@ index.ts
 - Todas las vistas privadas usan el mismo shell.
 - Navegacion activa funciona.
 - Mobile no rompe contenido.
-- Cumple [Design Patterns](../design-patterns.md): sin sidebar textual pesado ni decoracion innecesaria.
+- Cumple [DESIGN.md](../../DESIGN.md) y el contrato de migracion del App Shell: navegacion estable, cuenta al pie y sin decoracion innecesaria.

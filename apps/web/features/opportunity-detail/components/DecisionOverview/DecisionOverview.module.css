@@ -1,0 +1,163 @@
+.overview {
+  align-items: stretch;
+  backdrop-filter: blur(28px) saturate(130%);
+  background: rgb(255 255 255 / .64);
+  border: 1px solid rgb(255 255 255 / .9);
+  border-radius: 24px;
+  box-shadow: 0 22px 58px rgb(61 72 140 / .14), inset 0 1px 0 rgb(255 255 255 / .94);
+  display: grid;
+  grid-template-columns: 1.15fr .8fr 1fr 1fr auto;
+  margin: 24px 0;
+  min-height: 132px;
+  overflow: hidden;
+}
+
+.scoreBlock,
+.metric {
+  align-items: center;
+  border-right: 1px solid rgb(207 213 234 / .7);
+  display: flex;
+  gap: 14px;
+  min-width: 0;
+  padding: 20px;
+}
+
+.scoreGauge {
+  --score-angle: 0deg;
+  align-items: center;
+  background: radial-gradient(circle, rgb(249 249 255) 58%, transparent 60%), conic-gradient(currentColor var(--score-angle), rgb(211 214 235 / .62) 0);
+  border-radius: 50%;
+  color: var(--bp-color-brand);
+  display: flex;
+  flex: none;
+  height: 72px;
+  justify-content: center;
+  width: 72px;
+}
+
+.scoreGauge strong {
+  color: var(--bp-color-ink);
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+}
+
+.scoreGauge i {
+  display: flex;
+  gap: 3px;
+}
+
+.scoreGauge i span {
+  background: currentColor;
+  border-radius: 50%;
+  height: 6px;
+  width: 6px;
+}
+
+.tone_green { color: var(--bp-color-success); }
+.tone_amber { color: var(--bp-color-warning); }
+.tone_red { color: var(--bp-color-danger); }
+.tone_neutral { color: var(--bp-color-brand); }
+
+.scoreBlock > div,
+.metric > div {
+  display: grid;
+  min-width: 0;
+}
+
+.label {
+  color: var(--bp-color-text-3);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 16px;
+  text-transform: uppercase;
+}
+
+.scoreBlock strong,
+.metric strong {
+  color: var(--bp-color-ink);
+  display: block;
+  font-size: 17px;
+  line-height: 23px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scoreBlock small,
+.metric small {
+  color: var(--bp-color-text-2);
+  display: block;
+  font-size: 11.5px;
+  line-height: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.icon {
+  align-items: center;
+  background: rgb(238 236 255 / .82);
+  border-radius: 14px;
+  color: var(--bp-color-brand);
+  display: flex;
+  flex: none;
+  height: 42px;
+  justify-content: center;
+  width: 42px;
+}
+
+.icon svg { height: 20px; width: 20px; }
+
+.progressTrack {
+  background: rgb(211 214 235 / .62);
+  border-radius: 999px;
+  display: block;
+  height: 5px;
+  margin: 7px 0 4px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.progressTrack i {
+  background: var(--bp-color-brand);
+  border-radius: inherit;
+  display: block;
+  height: 100%;
+}
+
+.actions {
+  align-content: center;
+  display: grid;
+  gap: 8px;
+  min-width: 220px;
+  padding: 18px;
+}
+
+.actions > svg { display: none; }
+.actions > * { width: 100%; }
+.actions a { display: block; }
+.actions button { width: 100%; }
+
+@media (max-width: 1400px) {
+  .overview { grid-template-columns: 1fr 1fr 1fr; }
+  .scoreBlock, .metric { border-bottom: 1px solid rgb(207 213 234 / .7); }
+  .actions { grid-column: span 2; grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 760px) {
+  .overview { border-radius: 20px; grid-template-columns: 1fr 1fr; }
+  .scoreBlock { border-bottom: 1px solid rgb(207 213 234 / .7); border-right: 0; grid-column: 1 / -1; padding: 15px; }
+  .scoreGauge { height: 62px; width: 62px; }
+  .metric { align-items: flex-start; border-bottom: 1px solid rgb(207 213 234 / .7); border-right: 1px solid rgb(207 213 234 / .7); gap: 9px; padding: 13px; }
+  .metric:nth-child(3) { border-right: 0; }
+  .metric:nth-child(4) { border-right: 0; grid-column: 1 / -1; }
+  .icon { border-radius: 11px; height: 34px; width: 34px; }
+  .icon svg { height: 17px; width: 17px; }
+  .scoreBlock strong, .metric strong { font-size: 15px; line-height: 20px; }
+  .metric small { white-space: normal; }
+  .actions { grid-column: 1 / -1; grid-template-columns: 1fr; min-width: 0; padding: 13px; }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .overview { backdrop-filter: none; background: #fff; }
+}

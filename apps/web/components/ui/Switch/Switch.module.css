@@ -38,7 +38,7 @@
 }
 
 .label input:focus-visible {
-  outline: 2px solid var(--bp-color-brand);
+  outline: 2px solid var(--bp-color-intelligence);
   outline-offset: 2px;
 }
 

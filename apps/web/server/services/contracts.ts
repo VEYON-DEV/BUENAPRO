@@ -3,7 +3,6 @@ import { pagination } from "@/server/services/crud";
 import { keywordFitLateralSql } from "@/server/services/keywordScoring";
 
 export async function getContractForTenant(tenantId: string, idContrato: number) {
-  const econCapacity = await tenantEconCapacity(tenantId);
   const result = await query(
     `
     SELECT
@@ -11,7 +10,7 @@ export async function getContractForTenant(tenantId: string, idContrato: number)
       obj.nombre AS objeto_nombre,
       st.nombre AS estado_nombre,
       econ.exigido AS econ_exigido,
-      (COALESCE(fit.keyword_points, 0) + ${ECON_FACTOR_SQL(3)})::int AS fit_points,
+      COALESCE(fit.fit_points, 0)::int AS fit_points,
       fit.business_line_id AS fit_business_line_id,
       fit.business_line_name AS fit_business_line_name,
       COALESCE(fit.keyword_hits, '[]'::jsonb) AS fit_keyword_hits,
@@ -61,7 +60,7 @@ export async function getContractForTenant(tenantId: string, idContrato: number)
     WHERE c.id_contrato = $1
     LIMIT 1
     `,
-    [idContrato, tenantId, econCapacity],
+    [idContrato, tenantId],
   );
   const contract = result.rows[0] ?? null;
   if (!contract) return null;
@@ -87,33 +86,6 @@ export async function getContractForTenant(tenantId: string, idContrato: number)
   return { contract, facets: facets.rows, documents: documents.rows };
 }
 
-/** Mayor monto de experiencia económica acreditable declarado por la empresa. */
-async function tenantEconCapacity(tenantId: string): Promise<number> {
-  const result = await query(
-    `
-    SELECT COALESCE(max((entry.value)::numeric), 0) AS capacidad
-    FROM company_profiles cp
-    CROSS JOIN LATERAL jsonb_each_text(COALESCE(cp.econ_experience_json, '{}'::jsonb)) entry
-    WHERE cp.tenant_id = $1 AND cp.is_active = true
-      AND entry.value ~ '^[0-9]+\\.?[0-9]*$'
-    `,
-    [tenantId],
-  );
-  return Number(result.rows[0]?.capacidad ?? 0);
-}
-
-// Factor económico del fit: pesa moderado (±8 sobre ~45 de keywords) porque
-// un gap de facturación puede cubrirse con consorcio.
-const ECON_FACTOR_SQL = (econParam: number) => `
-  CASE
-    WHEN econ.exigido IS NULL THEN 0
-    WHEN $${econParam}::numeric >= econ.exigido THEN 8
-    WHEN $${econParam}::numeric >= econ.exigido * 0.5 THEN 3
-    WHEN $${econParam}::numeric >= econ.exigido * 0.25 THEN -4
-    ELSE -8
-  END
-`;
-
 const ECON_LATERAL_SQL = `
   LEFT JOIN LATERAL (
     SELECT max((rf.details_json->>'monto')::numeric) AS exigido
@@ -127,7 +99,6 @@ const ECON_LATERAL_SQL = `
 
 export async function listContractsForTenant(tenantId: string, params: URLSearchParams) {
   const { limit, offset, page, pageSize } = pagination(params);
-  const econCapacity = await tenantEconCapacity(tenantId);
   const values: unknown[] = [tenantId];
   const where: string[] = [];
 
@@ -226,8 +197,6 @@ export async function listContractsForTenant(tenantId: string, params: URLSearch
     where.push(`c.fec_fin_cotizacion <= $${values.length}::timestamptz`);
   }
 
-  values.push(econCapacity);
-  const econParam = values.length;
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
   values.push(limit, offset);
 
@@ -266,7 +235,7 @@ export async function listContractsForTenant(tenantId: string, params: URLSearch
       m.verdict,
       m.user_state,
       econ.exigido AS econ_exigido,
-      (COALESCE(fit.keyword_points, 0) + ${ECON_FACTOR_SQL(econParam)})::int AS fit_points,
+      COALESCE(fit.fit_points, 0)::int AS fit_points,
       fit.business_line_id AS fit_business_line_id,
       fit.business_line_name AS fit_business_line_name,
       COALESCE(fit.keyword_hits, '[]'::jsonb) AS fit_keyword_hits,

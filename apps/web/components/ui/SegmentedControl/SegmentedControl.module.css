@@ -1,19 +1,20 @@
 .control {
-  background: var(--bp-color-subtle);
-  border-radius: var(--bp-radius-md);
+  background: var(--bp-color-glass-strong);
+  border: 1px solid var(--bp-color-glass-border);
+  border-radius: var(--bp-radius-pill);
   display: inline-flex;
   padding: 3px;
 }
 
 .control a {
-  border-radius: var(--bp-radius-sm);
+  border-radius: var(--bp-radius-pill);
   color: var(--bp-color-text-2);
   font-weight: 650;
   padding: 6px 10px;
 }
 
 .control .active {
-  background: var(--bp-color-panel);
-  color: var(--bp-color-text);
+  background: var(--bp-color-brand-soft);
+  color: var(--bp-color-brand);
   box-shadow: var(--bp-shadow-subtle);
 }

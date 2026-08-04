@@ -1,0 +1,88 @@
+.scene {
+  aspect-ratio: 4 / 3;
+  margin: auto;
+  max-width: 530px;
+  position: relative;
+  width: 100%;
+}
+
+.radar {
+  display: block;
+  filter: drop-shadow(0 28px 38px rgb(3 8 31 / .26));
+  height: 100%;
+  overflow: visible;
+  width: 100%;
+}
+
+.grid {
+  stroke: rgb(255 255 255 / .13);
+  stroke-width: 1;
+}
+
+.orbit {
+  stroke: rgb(255 255 255 / .92);
+}
+
+.orbitOuter { stroke-width: 7; }
+.orbitMiddle { opacity: .68; stroke-width: 4.5; }
+.orbitInner { opacity: .38; stroke-width: 2.5; }
+
+.sweep {
+  animation: scan 8s linear infinite;
+  transform-box: view-box;
+  transform-origin: 240px 180px;
+}
+
+.signal {
+  animation: signal 2.8s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.signalRing {
+  stroke: rgb(109 219 174 / .4);
+  stroke-width: 1.5;
+}
+
+.signalLabel {
+  align-items: center;
+  backdrop-filter: blur(14px);
+  background: rgb(255 255 255 / .1);
+  border: 1px solid rgb(255 255 255 / .18);
+  border-radius: var(--bp-radius-pill);
+  box-shadow: 0 12px 34px rgb(4 8 28 / .18);
+  color: rgb(255 255 255 / .86);
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 700;
+  gap: 7px;
+  padding: 8px 12px;
+  position: absolute;
+  white-space: nowrap;
+}
+
+.signalLabel i {
+  background: #6ddbae;
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px rgb(109 219 174 / .13);
+  height: 6px;
+  width: 6px;
+}
+
+.signalOne { right: 4%; top: 18%; }
+.signalTwo { left: 0; top: 61%; }
+.signalThree { bottom: 10%; right: 9%; }
+
+@keyframes scan {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes signal {
+  0%, 100% { opacity: .68; transform: scale(.94); }
+  50% { opacity: 1; transform: scale(1.06); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sweep,
+  .signal { animation: none; }
+}

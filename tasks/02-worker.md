@@ -148,6 +148,8 @@ Rediseno 2026-07-09: el motor deterministico fue reemplazado por analisis LLM ba
 
 ## Notificaciones
 
+- [x] Enrutar TDRs validados por el fit real de cada perfil, autoevaluar nivel 2+ y notificar scores estrictamente mayores a 50 sin una llamada LLM adicional; smoke real Gemini guardo 84/100 y encolo la alerta (2026-08-03).
+- [ ] Ejecutar barrido inicial controlado de oportunidades vigentes para VEYON en produccion y verificar colas `match`, `llm` y `notify`.
 - [x] Implementar preferencias de notificacion.
 - [x] Implementar canal email/Gmail.
 - [x] Implementar canal Telegram.

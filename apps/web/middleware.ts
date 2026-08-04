@@ -9,6 +9,9 @@ export function middleware(request: NextRequest) {
     path.startsWith("/api/openapi.json") ||
     path.startsWith("/admin") ||
     path.startsWith("/docs") ||
+    path.startsWith("/brand/") ||
+    path === "/icon.svg" ||
+    path.startsWith("/onboarding/") ||
     path.startsWith("/login") ||
     path.startsWith("/registro") ||
     (process.env.NODE_ENV !== "production" && path.startsWith("/onboarding"));

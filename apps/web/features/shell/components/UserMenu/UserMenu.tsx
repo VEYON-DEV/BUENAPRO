@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { signOut } from "next-auth/react";
 import { useEffect, useRef } from "react";
+import { Bell, Building2, LogOut, Settings2 } from "lucide-react";
 import styles from "./UserMenu.module.css";
 
 export function UserMenu() {
@@ -37,13 +38,16 @@ export function UserMenu() {
           <span>Cuenta de empresa</span>
         </div>
         <Link href="/perfil" onClick={() => { if (menuRef.current) menuRef.current.open = false; }}>
-          Mi empresa y radar
+          <Building2 size={16} /> Mi empresa y radar
         </Link>
         <Link href="/alertas" onClick={() => { if (menuRef.current) menuRef.current.open = false; }}>
-          Alertas
+          <Bell size={16} /> Alertas
+        </Link>
+        <Link href="/configuracion" onClick={() => { if (menuRef.current) menuRef.current.open = false; }}>
+          <Settings2 size={16} /> Configuración
         </Link>
         <button type="button" onClick={() => signOut({ callbackUrl: "/login" })}>
-          Cerrar sesión
+          <LogOut size={16} /> Cerrar sesión
         </button>
       </div>
     </details>

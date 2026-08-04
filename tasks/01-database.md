@@ -111,6 +111,7 @@
 
 ## Notificaciones
 
+- [x] Persistir reglas de automatizacion por perfil, integracion Telegram cifrada, multiples destinatarios y estado de lectura in-app (`0022_automation_telegram.sql`, validada localmente el 2026-08-03).
 - [x] Crear tabla `notification_preferences`.
 - [x] Crear tabla `notifications`.
 - [x] Definir canales iniciales: `email`, `telegram`, `in_app`.

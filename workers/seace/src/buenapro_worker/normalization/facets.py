@@ -92,6 +92,7 @@ def derive_summary(raw: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "descripcion_corta": _descripcion_corta(summary, summary_text, contract),
+        "modalidad": _modalidad(contract, execution),
         "valor_estimado": _valor_estimado(summary, contract),
         "plazo_ejecucion_dias": _plazo_dias(summary, execution, contract),
         "tipo_pago": _tipo_pago(summary, payment, contract, summary_text),
@@ -102,6 +103,21 @@ def derive_summary(raw: dict[str, Any]) -> dict[str, Any]:
         "documentos_clave": _documents(raw),
         "observaciones_clave": as_list(summary.get("observaciones_clave") or summary.get("key_observations")),
     }
+
+
+def _modalidad(contract: dict[str, Any], execution: dict[str, Any]) -> str:
+    text = _text(contract.get("modalidad") or execution.get("modalidad")).lower()
+    if not text:
+        return "no_indicada"
+    has_virtual = any(value in text for value in ("virtual", "remot", "distancia"))
+    has_presential = any(value in text for value in ("presencial", "in situ", "campo"))
+    if "mixt" in text or (has_virtual and has_presential):
+        return "mixta"
+    if has_virtual:
+        return "virtual"
+    if has_presential:
+        return "presencial"
+    return "no_indicada"
 
 
 def _descripcion_corta(summary: dict[str, Any], summary_text: str, contract: dict[str, Any]) -> str | None:

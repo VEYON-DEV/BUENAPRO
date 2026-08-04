@@ -1,12 +1,18 @@
 .wrap {
+  background: var(--bp-color-panel);
+  border: 1px solid var(--bp-color-border);
+  border-radius: var(--bp-radius-lg);
   overflow-x: auto;
+}
+
+.embedded {
+  border: 0;
+  border-radius: 0;
 }
 
 .table {
   background: var(--bp-color-panel);
-  border: 1px solid var(--bp-color-border);
   border-collapse: separate;
-  border-radius: var(--bp-radius-lg);
   border-spacing: 0;
   min-width: 860px;
   width: 100%;
@@ -36,4 +42,18 @@
 .table td {
   color: var(--bp-color-text);
   font-size: 13px;
+}
+
+.table tbody tr {
+  transition: background var(--bp-duration-fast) var(--bp-ease-standard);
+}
+
+.table tbody tr:hover {
+  background: var(--bp-color-panel-2);
+}
+
+.table td[data-numeric],
+.table th[data-numeric] {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }

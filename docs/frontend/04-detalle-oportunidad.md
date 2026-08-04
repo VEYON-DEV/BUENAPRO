@@ -14,7 +14,7 @@ Proveedor que abrio una oportunidad desde el feed. Necesita decidir en pocos min
 /oportunidad/[id]
 ```
 
-## Jerarquia
+## Jerarquia vigente
 
 1. Encabezado:
    - codigo
@@ -23,28 +23,30 @@ Proveedor que abrio una oportunidad desde el feed. Necesita decidir en pocos min
    - estado SEACE
    - cierre
    - verdict/score si hay match
-2. Resumen:
-   - monto disponible
-   - forma de pago
-   - plazo
-   - penalidad
-   - entregables
-   - si permite cotizar
-3. Semaforo de requisitos.
-4. Acciones sugeridas.
-5. Documentos y preview PDF.
-6. Evidencia textual/facets.
-7. Acción principal para comenzar o continuar la postulación.
+2. Franja de decisión:
+   - gauge del score únicamente cuando existe evaluación IA
+   - veredicto y afinidad
+   - cierre
+   - progreso de requisitos cubiertos
+   - mediana y rango histórico
+   - comenzar/continuar postulación y descargar TDR
+3. Lectura ejecutiva según el perfil y lo solicitado por la entidad.
+4. Brechas prioritarias en rail; las adicionales viven en expansión.
+5. Requisitos agrupados por categoría y con evidencia desplegable.
+6. Documentos visibles y secciones operativas plegables: ficha, entregables, penalidades, cronograma y actividad.
+7. Histórico comparable compacto: tres casos visibles y los demás bajo expansión.
+8. Copilot contextual en drawer con preguntas sugeridas, conversación, fuentes y confirmación explícita antes de aplicar cambios.
 
-## Tabs sugeridos
+## Navegacion interna
 
 ```text
-Resumen
-Requisitos
+Decisión y requisitos
 Documentos
-Seguimiento
-Historial
+Histórico
+Ejecución
 ```
+
+La navegación interna usa tabs horizontales reales y conserva la selección en el hash de la URL. La lectura ejecutiva y los requisitos pertenecen a una sola sección para que la decisión conserve inmediatamente su evidencia. Solo se renderiza visualmente una sección central a la vez; los grupos de requisitos, SEACE y datos operativos permanecen plegados hasta que el usuario los solicita.
 
 ## Componentes
 

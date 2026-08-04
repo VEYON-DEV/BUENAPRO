@@ -2,9 +2,12 @@
 
 Este documento controla el desarrollo de la interfaz de BuenaPro.
 
-Regla: antes de implementar una vista, leer su spec en `docs/frontend/` y el sistema visual en [docs/design-patterns.md](../docs/design-patterns.md).
+Regla: antes de implementar una vista, leer su spec en `docs/frontend/`, el sistema visual en [DESIGN.md](../DESIGN.md) y la guia de adopcion en [docs/new-style/](../docs/new-style/README.md).
 
 ## Arquitectura frontend
+
+- [x] Eliminar la especificacion visual anterior y todas sus referencias activas; `DESIGN.md` queda como unica fuente normativa (2026-08-03).
+- [x] Formalizar y aplicar arquitectura frontend por dominios: paginas en `pages/`, componentes privados en `components/`, API/model por dominio, barrels publicos y chequeo automatizado de limites (2026-08-03). Documento: `docs/frontend/architecture.md`.
 
 - [x] Crear estructura `apps/web/features`.
 - [x] Crear estructura `apps/web/lib/api`.
@@ -22,8 +25,16 @@ Referencia: [Frontend README](../docs/frontend/README.md)
 
 ## Design system base
 
-- [x] Implementar tokens CSS desde [Design Patterns](../docs/design-patterns.md).
-- [x] Implementar light mode terracota + carbon.
+- [x] Adoptar la identidad orbital de BuenaPro como SVG compartido en auth, onboarding, shell, Inicio y favicon; sustituir la fotografia y tarjeta promocional del acceso por una escena radar SVG propia y validar desktop/mobile (2026-08-03). Evidencia: `docs/new-style/qa/auth-radar-desktop.png`, `auth-radar-mobile.png`, `register-radar-desktop.png`, `register-radar-mobile.png`.
+- [x] Refinar la marca orbital y la escena de acceso con arcos geometricamente concentricos; usar aro blanco en el favicon para fondos oscuros, liberar `/icon.svg` del middleware y renovar evidencia visual (2026-08-03). Evidencia: `docs/new-style/qa/auth-radar-concentric-desktop.png`, `auth-radar-concentric-mobile.png`, `favicon-radar-white-ring.png`.
+
+- [x] Generar una coleccion de 10 referencias visuales BuenaPro Glass para Login, Registro, Inicio, Oportunidades, Detalle, Mercado, Postulaciones, Workspace, Perfil y Alertas; archivos e indice en `docs/new-style/generated-glass/` (2026-08-03).
+- [x] Sustituir la norma visual anterior por BuenaPro Glass en `AGENTS.md` y `DESIGN.md`: lienzo lavanda, vidrio ambiental, superficies de trabajo blancas, CTA negro, seleccion violeta, radios amplios e iconografia Lucide (2026-08-03).
+- [x] Crear el catalogo interno modular `/design-system` con materiales, color, botones, controles, estados, metricas, decision y tabla compartida. Arquitectura, TypeScript y QA desktop/mobile validados (2026-08-03). Evidencia: `docs/new-style/qa/design-system-desktop.png`, `design-system-mobile.png`.
+- [x] Migrar el shell productivo a BuenaPro Glass y Lucide, manteniendo solo Oportunidades, Mercado y Postulaciones como navegacion primaria y Perfil/Alertas en cuenta (2026-08-03).
+
+- [x] Preparar y aplicar el reemplazo integral del sistema visual con `PRODUCT.md`, `DESIGN.md`, registro de referencias y mapa de adopcion en `docs/new-style/` (2026-08-03).
+- [x] Implementar los tokens CSS BuenaPro Glass y mantener aliases tecnicos solo para consumidores existentes.
 - [x] Preparar variables para dark mode sin activarlo por defecto.
 - [x] Crear `Button`.
 - [x] Crear `IconButton`.
@@ -66,29 +77,32 @@ Referencia: [App Shell](../docs/frontend/00-app-shell.md)
 
 ## Auth
 
+- [x] Aplicar BuenaPro Glass a Login y Registro; la primera iteracion con fotografia fue sustituida por la identidad orbital SVG y el radar propio documentados en Design system base (2026-08-03).
 - [x] Redisenar `/login`.
 - [x] Redisenar `/registro`.
 - [x] Mejorar errores de login.
 - [x] Redirigir a perfil si no existe `GET /api/profile`.
 - [x] Evitar textos largos o look de landing.
 - [x] Separar `/registro` de `/login` y crear onboarding asistido de 4 pasos: empresa/web, líneas con keywords propias, capacidad (monto/equipo/recursos) y revisión. El análisis web es opcional, las sugerencias IA requieren confirmación y el guardado respeta `company_profiles` + `business_lines`. Evidencia: `docs/qa/screenshots/onboarding-company-desktop-2026-07-10.png`, `onboarding-company-mobile-2026-07-10.png`.
-- [x] Crear recurso visual propio para las 4 etapas del onboarding e integrarlo sin alterar el sistema terracota/carbón; versión web optimizada a 180 KB: `apps/web/public/onboarding/onboarding-suite.jpg`.
+- [x] Crear recurso visual propio para las 4 etapas del onboarding; version web optimizada a 180 KB: `apps/web/public/onboarding/onboarding-suite.jpg`.
 - [x] Asociar cada línea generada por IA con 1–3 segmentos CUBSO válidos, mostrar nombre/cobertura, permitir corrección y exigir segmento antes de guardar. Persistencia validada contra catálogo 2026. Evidencia: `docs/qa/screenshots/onboarding-cubso-lines-2026-07-11.png`, `onboarding-cubso-lines-mobile-2026-07-11.png`.
 
 Referencia: [Auth](../docs/frontend/01-auth.md)
 
 ## Inicio
 
-- [x] Retirar el dashboard duplicado del flujo principal y redirigir `/` a `/feed`; conservar `/api/dashboard` y componentes históricos sin exponer una cuarta área (2026-07-31).
-
+- [x] Crear Inicio diario contra `03-inicio.png`: alerta de cierres sobre guardadas, KPIs actualizados al cargar, mesa exclusiva de `saved_contracts`, contexto de mercado y competidores; añadir Inicio a la navegación y fijar empresa/perfil al pie del sidebar. QA desktop/mobile sin overflow (2026-08-03). Evidencia: `docs/new-style/qa/home-daily-desktop.png`, `home-daily-mobile.png`.
+- [x] Restaurar `/` como dashboard ejecutivo BuenaPro Glass conectado a `getDashboard`: KPIs, actividad mensual, composicion historica, cierres y ranking de proveedores; arquitectura, TypeScript y QA desktop/mobile validados (2026-08-03). Evidencia: `docs/new-style/qa/dashboard-glass-desktop.png`, `dashboard-glass-mobile.png`.
 - [x] Rework de Inicio como `Hoy en tu radar`: cierres próximos, postulaciones en curso, mercado comparable y proveedores frecuentes; métricas accionables sin dashboard BI decorativo (build y smoke SSR validados el 2026-07-31).
 - [x] Reestructurar Inicio como dashboard profesional: KPIs con conteos completos, tendencia mensual adjudicados/desiertos, composición histórica, ranking de empresas y mesas operativas de cierres/postulaciones; build y SSR con PostgreSQL real validados el 2026-07-31.
 - [x] Capturar y revisar en desktop/mobile el dashboard profesional de Inicio. Evidencia Playwright: `docs/qa/screenshots/dashboard-market-desktop.png`, `dashboard-market-mobile.png` (2026-07-31).
 - [x] Crear `/mercado` como explorador histórico: búsqueda por keywords, alcance perfil/todo SEACE, filtros por segmento, resultado, región, entidad, año y precio, más vistas de contratos y empresas adjudicadas.
+- [x] Refinar las visualizaciones de Mercado contra `06-mercado.png`: actividad mensual con columnas cápsula violeta/verde, guías discretas y rankings comparables con posición, escala y valor; aplicar la misma paleta al resumen gráfico de Inicio. QA desktop/mobile sin overflow (2026-08-03). Evidencia: `docs/new-style/qa/market-charts-desktop.png`, `market-charts-mobile.png`.
+- [x] Simplificar filtros de Mercado: búsqueda, resultado y departamento visibles; segmento, entidad, año y precios bajo `Filtros avanzados`, con reapertura automática cuando existen valores activos. Interacción y responsive validados (2026-08-03). Evidencia: `docs/new-style/qa/market-filter-desktop.png`, `market-filter-advanced-desktop.png`, `market-filter-mobile.png`.
 - [x] Crear detalle de empresa `/mercado/empresas/[ruc]` con montos, entidades, regiones, servicios y licitaciones ganadas.
 - [x] Validar `/mercado` desktop/mobile y detalle de proveedor con datos reales de producción. Evidencia: `docs/qa/screenshots/market-intelligence-desktop.png`, `market-intelligence-mobile.png`, `market-supplier-desktop.png`.
 
-- [x] Implementar `features/dashboard`.
+- [x] Implementar `features/dashboard` como resumen ejecutivo separado del explorador detallado `market-intelligence`.
 - [x] Crear vista `/`.
 - [x] Mostrar estado de perfil.
 - [x] Mostrar oportunidades recientes.
@@ -100,6 +114,10 @@ Referencia: [Auth](../docs/frontend/01-auth.md)
 Referencia: [Inicio](../docs/frontend/02-inicio.md)
 
 ## Oportunidades
+
+- [x] Replantear `/feed` contra la composicion de `docs/new-style/generated-glass/04-oportunidades.png`: busqueda dominante, solo 3 vistas rapidas, filtros secundarios progresivos sin presets hardcodeados de transporte/legal, tabla de 6 columnas utiles y vista rapida glass. QA desktop/mobile sin overflow y prueba funcional del disclosure de filtros (2026-08-03). Evidencia: `docs/new-style/qa/opportunities-reference-match-desktop.png`, `opportunities-reference-match-mobile.png`.
+- [x] Simplificar la vista rapida de Oportunidades: mantener visibles entidad, cierre y experiencia economica; mover ubicacion, pago, personal y penalidad a `Mas informacion`, y alinear la paginacion bajo la tabla (2026-08-03).
+- [x] Restaurar la semantica de afinidad en Oportunidades: tres puntos por niveles antes de evaluar y anillo numerico solo cuando existe un score real generado por el analisis IA (2026-08-03).
 
 - [x] Mantener el histórico fuera del feed de Oportunidades: sin filtros, métricas ni señales históricas en tabla o vista rápida; los comparables viven únicamente en el detalle (ajustado el 2026-07-31).
 
@@ -122,14 +140,17 @@ Referencia: [Inicio](../docs/frontend/02-inicio.md)
 - [x] Permitir pasar a `en_preparacion`.
 - [x] Implementar paginacion con conteo total y etiqueta `Pagina X de Y`.
 - [x] Sin perfil: mostrar CTA a Perfil sin bloquear exploracion.
-- [x] Refactor visual 2026-07-09: vista rapida lateral en panel claro (paleta terracota/carbon), acciones Abrir detalle/Seguir arriba del panel, columnas Plazo y Match con datos derivados reales. Evidencia: `docs/qa/screenshots/feed-redesign-preview-2026-07-09.png`, `feed-redesign-mobile-2026-07-09.png`.
+- [x] Refactor visual 2026-07-09: vista rapida lateral, acciones Abrir detalle/Seguir arriba del panel y columnas Plazo y Match con datos derivados reales. Evidencia: `docs/qa/screenshots/feed-redesign-preview-2026-07-09.png`, `feed-redesign-mobile-2026-07-09.png`.
 - [x] Mapeo robusto de summary/facets via `lib/extraction/opportunity.ts` (summary derivado -> filter index -> extraccion cruda); validado contra JSON real de 5 contratos.
 - [x] Priorizar todas las oportunidades por afinidad absoluta: conservar rubro exacto, relacionado y general, ordenar de mayor a menor `fit_points` y exponer el puntaje numérico al pasar sobre los puntos. SQL y render SSR validados el 2026-07-16.
-- [ ] Capturar y revisar el feed priorizado en desktop y mobile; bloqueo 2026-07-16: navegador interno sin instancias disponibles (`iab` no disponible).
+- [x] Capturar y revisar el feed priorizado en desktop y mobile, sin señales historicas y sin overflow (2026-08-03). Evidencia: `docs/new-style/qa/opportunities-desktop.png`, `opportunities-mobile.png`.
 
 Referencia: [Oportunidades](../docs/frontend/03-oportunidades.md)
 
 ## Detalle de oportunidad
+
+- [x] Rework integral de `/oportunidad/[id]` como mesa de decision BuenaPro Glass: gauge de score IA, progreso de requisitos, cierre y referencia de mercado; navegacion reducida; superficies independientes; secciones operativas plegables; brechas prioritarias con expansion; historico compacto; y Copilot contextual reconstruido como drawer accesible (2026-08-03). Evidencia: `docs/new-style/qa/detail-rework-desktop.png`, `detail-rework-mobile.png`, `detail-rework-requirements.png`, `detail-rework-documents.png`, `detail-rework-history.png`, `detail-rework-copilot.png`.
+- [x] Sustituir el scroll acumulativo del detalle por navegación horizontal real entre Decisión, Requisitos, Documentos, Histórico y Ejecución; mantener la pestaña en el hash, plegar categorías y SEACE por defecto, y conservar el rail común. Altura desktop de la vista inicial reducida de 4,583 px a 1,538 px sin eliminar información (2026-08-03).
 
 - [x] Añadir Histórico comparable al detalle con rango, mediana, adjudicados/desiertos, proveedores, razones de similitud y enlace a TDR antiguo cuando exista.
 
@@ -154,8 +175,8 @@ Referencia: [Oportunidades](../docs/frontend/03-oportunidades.md)
 - [x] Permitir registrar monto ofertado.
 - [x] Permitir completar tareas.
 - [x] Consumir `GET /api/contracts/:id`, `POST /api/contracts/:id/track`, `GET /api/matches/:id/tasks`.
-- [ ] Reestructurar el detalle como mesa de decisión: lectura ejecutiva unificada, requisitos prioritarios, ficha técnica progresiva, preparación lateral y actividad/comentarios. Implementación y `npm run build` validados el 2026-07-12; captura desktop/mobile pendiente porque el navegador interno no estuvo disponible en la sesión.
-- [ ] Corregir preview del TDR: miniatura PNG real en el rail, PDF inline en modal, fallback y estados accesibles. Build, PNG real `1059×1497` y PDF inline de 9 páginas validados el 2026-07-12; captura del componente pendiente por navegador interno no disponible.
+- [x] Reestructurar el detalle como mesa de decisión: lectura ejecutiva unificada, requisitos prioritarios, ficha técnica progresiva, preparación lateral y actividad/comentarios. QA renovado desktop/mobile sin overflow (2026-08-03). Evidencia: `docs/new-style/qa/detail-desktop.png`, `detail-mobile.png`.
+- [x] Corregir preview del TDR: miniatura PNG real en el rail, PDF inline en modal, fallback y estados accesibles. Build, PNG real `1059×1497` y PDF inline de 9 páginas validados; captura renovada del rail (2026-08-03): `docs/new-style/qa/detail-desktop.png`.
 - [ ] Añadir conexión SEACE separada en Perfil y workspace lazy `Consultas oficiales / Preparar cotización` en detalle. Login real corregido (el formulario retenía `event.currentTarget` después del await), SSR/build/API validados; captura desktop/mobile pendiente.
 - [x] Retirar del detalle la tarjeta repetitiva `Preparación` (monto, notas y checklist) y mover únicamente la asignación de responsable al rail de postulación con autosave y opción de desasignar. TypeScript y PATCH real asignar/limpiar validados el 2026-07-12; QA visual permanece cubierto por la captura pendiente del workspace.
 - [x] Simplificar `Evaluar con mi perfil`: esperar una única respuesta del análisis directo, refrescar el detalle y retirar polling de hasta 2 minutos. Flujo real validado con contrato 78764; no cambia el layout del botón.
@@ -164,6 +185,7 @@ Referencia: [Detalle de oportunidad](../docs/frontend/04-detalle-oportunidad.md)
 
 ## Perfil de empresa
 
+- [x] Uniformizar `/perfil` con BuenaPro Glass: resumen claro, completitud violeta, superficies de trabajo blancas, chips violetas y rail de capacidad/SEACE consistente. QA desktop/mobile sin overflow (2026-08-03). Evidencia: `docs/new-style/qa/profile-unified-desktop.png`, `profile-unified-mobile.png`.
 - [x] Implementar `features/profile`.
 - [x] Crear wizard real para `/perfil`.
 - [x] Crear seccion Identidad.
@@ -207,14 +229,14 @@ Referencia: [Perfil de empresa](../docs/frontend/05-perfil-empresa.md)
 - [x] Completar tarea.
 - [x] Mostrar historial de eventos.
 - [x] Abrir detalle desde seguimiento.
-- [ ] Rework de Seguimiento como cartera compacta: una tabla, urgencia, progreso, responsable y próximo paso; filas con borrador abren `/postulaciones/[matchId]`. Build/SSR validados; captura desktop/mobile pendiente.
+- [x] Rework de Seguimiento como cartera compacta: una tabla, urgencia, progreso, responsable y próximo paso; filas con borrador abren `/postulaciones/[matchId]`. Build/SSR y captura desktop/mobile validados (2026-08-03). Evidencia: `docs/new-style/qa/applications-glass-desktop.png`, `applications-glass-mobile.png`.
 
 ## Postulación
 
 - [x] Añadir `Precio y mercado` a `/postulaciones/[matchId]`, contraste de oferta contra rango histórico, comparables usados y acceso read-only a consultas oficiales; envío SEACE permanece deshabilitado hasta confirmar endpoint.
 
-- [ ] Crear workspace `/postulaciones/[matchId]` con oferta por ítems, RTM dinámicos, vigencia/contacto, archivos y rail de progreso. Persistencia real y build validados; captura desktop/mobile pendiente.
-- [ ] Simplificar el workspace como mesa única: oferta, RTM y carga de propuesta en una sola vista; leer formatos SEACE deja de ser un paso. Implementación pendiente de build y QA visual desktop/mobile.
+- [x] Crear workspace `/postulaciones/[matchId]` con oferta por ítems, RTM dinámicos, vigencia/contacto, archivos y rail de progreso. Persistencia real, build y QA desktop/mobile con borrador real validados (2026-08-03). Evidencia: `docs/new-style/qa/workspace-desktop.png`, `workspace-mobile.png`.
+- [x] Simplificar el workspace como mesa única: oferta, RTM, mercado y carga de propuesta en una sola vista; contenido operativo primero en mobile y rail después, sin solaparse con navegación/copiloto (2026-08-03).
 - [x] Mantener `Enviar a SEACE` fuera de alcance hasta validar el POST oficial, múltiples ítems y un tipo de cotización distinto de 2.
 - [ ] Integrar panel `Preguntar a BuenaPro` en detalle y postulación: historial, fuentes, sugerencias, comparación y confirmación manual. Build/TypeScript y flujo funcional validados; captura desktop/mobile pendiente porque el navegador interno no estuvo disponible.
 
@@ -222,10 +244,12 @@ Referencia: [Seguimiento](../docs/frontend/06-seguimiento.md)
 
 ## Configuracion
 
+- [x] Añadir `/configuracion` con radar automatico y multiples chats de Telegram, y enriquecer `/alertas` con score, modalidad, fortalezas, riesgo y CTA. QA desktop/mobile: `docs/new-style/qa/automation-*.png` (2026-08-03).
 - [x] Reemplazar Configuración visible por `/alertas`: activación, afinidad mínima, límite diario e historial; `/configuracion` redirige y workspace/miembros quedan fuera de navegación (2026-07-31).
 - [x] Validar navegación simplificada, menú de cuenta y Alertas desktop/mobile. Evidencia: `docs/qa/screenshots/account-menu-desktop.png`, `alerts-center-desktop.png`, `alerts-center-mobile.png`, `applications-navigation-desktop.png`, `navigation-simplified-mobile.png`.
+- [x] Retirar el dominio frontend `settings` sin ruta activa; la configuracion vigente pertenece a `alerts` y al perfil de empresa (2026-08-03).
 
-- [x] Implementar `features/settings`.
+- [x] Implementar `features/settings` en v1, posteriormente retirado al simplificar la navegacion.
 - [x] Redisenar `/configuracion`.
 - [x] Mostrar workspace.
 - [x] Editar nombre del tenant.
@@ -255,6 +279,10 @@ Referencia: [Configuracion](../docs/frontend/07-configuracion.md)
 Referencia: [Admin tecnico](../docs/frontend/08-admin-tecnico.md)
 
 ## QA frontend
+
+- [x] Unificar Decisión y Requisitos en una sola sección navegable del detalle; lectura ejecutiva primero y categorías documentales plegables debajo (2026-08-03).
+
+- [x] Comparar las diez vistas productivas contra `docs/new-style/generated-glass/` en desktop 1440 y mobile 390, sin overflow horizontal: Login, Registro, Inicio, Oportunidades, Detalle, Mercado, Postulaciones, Workspace, Perfil y Alertas (2026-08-03). Evidencia consolidada: `docs/new-style/qa/*-glass-*.png`.
 
 - [x] Probar desktop 1440px. Evidencia: `docs/qa/screenshots/frontend-refactor-feed.png`, `frontend-refactor-detail.png`.
 - [x] Probar feed con tabla completa, filtros rapidos y preview lateral bajo demanda. Evidencia: `docs/qa/screenshots/feed-no-preview-filters.png`, `feed-click-preview-metadata.png`.

@@ -1,4 +1,4 @@
-import type { ApplicationData, ApplicationItem } from "../../types";
+import type { ApplicationData, ApplicationItem } from "../../model/types";
 import styles from "./QuoteEditor.module.css";
 
 export function QuoteEditor({

@@ -1,9 +1,10 @@
 import styles from "./Button.module.css";
 
 type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "primary" | "secondary" | "ghost" | "danger";
+  variant?: "primary" | "accent" | "secondary" | "ghost" | "danger";
+  size?: "compact" | "normal";
 };
 
-export function Button({ className, variant = "primary", ...props }: ButtonProps) {
-  return <button className={[styles.button, styles[variant], className].filter(Boolean).join(" ")} {...props} />;
+export function Button({ className, variant = "primary", size = "normal", ...props }: ButtonProps) {
+  return <button className={[styles.button, styles[variant], styles[size], className].filter(Boolean).join(" ")} {...props} />;
 }

@@ -2,8 +2,9 @@
 
 Este directorio define como construir la interfaz de BuenaPro. Complementa:
 
-- [Design Patterns](../design-patterns.md)
-- [Arquitectura](../architecture.md)
+- [Sistema visual BuenaPro Glass](../../DESIGN.md)
+- [Guia de adopcion del nuevo estilo](../new-style/README.md)
+- [Arquitectura frontend por dominios](./architecture.md)
 - [Contexto funcional completo para exploración de diseño](../stitch/buenapro-functional-context.md)
 - [Backend/Web tasks](../../tasks/03-backend-web.md)
 - [Frontend tasks](../../tasks/05-frontend.md)
@@ -19,7 +20,7 @@ BuenaPro debe ayudar al usuario a decidir rapido:
 
 La UI no debe parecer una landing ni un dashboard lleno de metricas decorativas. Es una herramienta diaria de trabajo.
 
-## Estructura recomendada
+## Estructura obligatoria
 
 Las rutas de `apps/web/app` deben ser delgadas. La logica visual y de datos vive por dominio en `features`.
 
@@ -36,21 +37,15 @@ apps/web/
 │   ├── configuracion/page.tsx
 │   ├── admin/page.tsx
 │   └── login/page.tsx
-├── components/
-│   ├── layout/
-│   └── ui/
-├── features/
-│   ├── shell/
-│   ├── auth/
-│   ├── dashboard/
-│   ├── market-intelligence/
-│   ├── opportunities/
-│   ├── opportunity-detail/
-│   ├── profile/
-│   ├── tracking/
-│   ├── alerts/
-│   ├── settings/
-│   └── admin/
+├── components/ui/
+├── features/<domain>/
+│   ├── pages/<PageName>/
+│   ├── components/<ComponentName>/
+│   ├── api/
+│   ├── hooks/
+│   ├── model/
+│   ├── utils/
+│   └── index.ts
 ├── lib/
 │   ├── api/
 │   ├── format/
@@ -59,6 +54,8 @@ apps/web/
     ├── tokens.css
     └── themes.css
 ```
+
+Las carpetas opcionales se crean cuando el dominio las necesita. El contrato completo y los límites de imports viven en [architecture.md](./architecture.md).
 
 ## Regla de componentes
 
@@ -73,12 +70,14 @@ features/opportunities/components/OpportunityTable/
 
 Usar CSS Modules por componente. `globals.css` queda para reset, variables globales y estilos base. No usar clases globales para componentes nuevos salvo tokens o utilidades muy pequenas.
 
+Las vistas completas siguen el mismo patrón dentro de `pages/`. `app/` las importa exclusivamente desde `features/<domain>/index.ts`.
+
 ## Convenciones
 
 - Componentes visuales: `PascalCase`.
 - Hooks: `useNombre`.
-- Servicios cliente: `features/<dominio>/api.ts`.
-- Tipos: `features/<dominio>/types.ts`.
+- Servicios cliente: `features/<dominio>/api/`.
+- Tipos y normalizadores: `features/<dominio>/model/`.
 - Estados y constantes compartidas: `lib/constants`.
 - Formateo de dinero, fechas y countdown: `lib/format`.
 - No llamar `fetch` directamente desde componentes profundos; centralizarlo por dominio.

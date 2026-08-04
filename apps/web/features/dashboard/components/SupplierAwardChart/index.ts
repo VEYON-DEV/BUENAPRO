@@ -1,1 +1,0 @@
-export { SupplierAwardChart } from "./SupplierAwardChart";

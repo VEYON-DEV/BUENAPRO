@@ -9,7 +9,8 @@
 - `Mis mercados` usa los segmentos CUBSO activos del perfil.
 - `Todo el mercado` permite explorar sectores fuera del perfil sin modificar su configuración.
 - La búsqueda cubre servicio, código, entidad y proveedor.
-- Los filtros admiten segmento, resultado, departamento, entidad, año y rango de precio.
+- La primera línea conserva búsqueda, resultado y departamento; segmento, entidad, año y rango de precio viven en `Filtros avanzados`.
+- `Filtros avanzados` se abre automáticamente cuando contiene algún valor activo y sus campos forman parte del mismo formulario.
 - `Resumen` muestra tendencia, demanda regional, entidades compradoras y empresas adjudicadas.
 - `Contratos` lista resultados históricos y documentos originales disponibles.
 - `Empresas` permite abrir `/mercado/empresas/[ruc]` para revisar dónde, cuánto y qué ganó cada proveedor.

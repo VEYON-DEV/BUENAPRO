@@ -1,0 +1,116 @@
+.viewNav {
+  align-items: center;
+  backdrop-filter: var(--bp-blur-glass);
+  background: var(--bp-color-glass-strong);
+  border: 1px solid var(--bp-color-glass-border);
+  border-radius: var(--bp-radius-md);
+  box-shadow: var(--bp-shadow-subtle);
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+}
+
+.viewNav a {
+  align-items: center;
+  border-radius: var(--bp-radius-sm);
+  color: var(--bp-color-text-2);
+  display: flex;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 7px;
+  min-height: 36px;
+  padding: 8px 12px;
+}
+
+.viewNav a:hover,
+.viewNav a:focus-visible,
+.viewNav .active {
+  background: var(--bp-color-brand-soft);
+  color: var(--bp-color-brand);
+}
+
+.viewNav a:focus-visible {
+  outline: 2px solid var(--bp-color-intelligence);
+  outline-offset: 2px;
+}
+
+.summary {
+  align-items: stretch;
+  backdrop-filter: var(--bp-blur-glass);
+  background: var(--bp-color-glass);
+  border: 1px solid var(--bp-color-glass-border);
+  border-radius: var(--bp-radius-lg);
+  box-shadow: var(--bp-shadow-glass);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(130px, 0.55fr)) minmax(260px, 1.4fr);
+  margin-bottom: 18px;
+  overflow: hidden;
+}
+
+.summary > div {
+  display: grid;
+  gap: 2px;
+  padding: 16px 18px;
+}
+
+.summary > div + div,
+.summary p {
+  border-left: 1px solid rgb(203 209 226 / 0.72);
+}
+
+.summary strong {
+  color: var(--bp-color-ink);
+  font-size: 21px;
+  font-variant-numeric: tabular-nums;
+}
+
+.summary span,
+.summary p {
+  color: var(--bp-color-text-2);
+  font-size: 11px;
+}
+
+.summary p {
+  align-items: center;
+  display: flex;
+  line-height: 1.55;
+  margin: 0;
+  padding: 16px 18px;
+}
+
+.loading,
+.error {
+  align-items: center;
+  background: var(--bp-color-panel);
+  border: 1px solid var(--bp-color-border);
+  border-radius: var(--bp-radius-lg);
+  box-shadow: var(--bp-shadow-work);
+  color: var(--bp-color-text-2);
+  display: flex;
+  gap: 12px;
+  min-height: 130px;
+  padding: 24px;
+}
+
+.loading svg { color: var(--bp-color-brand); }
+.error { justify-content: space-between; }
+.error > div { display: grid; gap: 3px; }
+.error strong { color: var(--bp-color-ink); font-size: 14px; }
+.error span { font-size: 12px; }
+
+@media (max-width: 900px) {
+  .summary { grid-template-columns: repeat(3, 1fr); }
+  .summary p { border-left: 0; border-top: 1px solid rgb(203 209 226 / 0.72); grid-column: 1 / -1; }
+}
+
+@media (max-width: 720px) {
+  .viewNav { width: 100%; }
+  .viewNav a { flex: 1; justify-content: center; }
+}
+
+@media (max-width: 540px) {
+  .summary { grid-template-columns: 1fr; }
+  .summary > div + div { border-left: 0; border-top: 1px solid rgb(203 209 226 / 0.72); }
+  .summary p { grid-column: auto; }
+  .error { align-items: stretch; flex-direction: column; }
+}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import type { ApplicationAttachment } from "../../types";
+import type { ApplicationAttachment } from "../../model/types";
 import styles from "./AttachmentUploader.module.css";
 
 const ACCEPTED = ".pdf,.doc,.docx,.xls,.xlsx";

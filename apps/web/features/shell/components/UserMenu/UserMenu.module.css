@@ -14,7 +14,7 @@
 }
 
 .menu summary:focus-visible {
-  outline: 2px solid var(--bp-color-brand);
+  outline: 2px solid var(--bp-color-intelligence);
   outline-offset: 3px;
 }
 
@@ -32,10 +32,11 @@
 }
 
 .popover {
-  background: var(--bp-color-panel);
-  border: 1px solid var(--bp-color-border);
-  border-radius: var(--bp-radius-md);
-  box-shadow: 0 12px 30px rgb(23 24 27 / 0.12);
+  backdrop-filter: var(--bp-blur-glass);
+  background: var(--bp-color-glass-strong);
+  border: 1px solid var(--bp-color-glass-border);
+  border-radius: var(--bp-radius-lg);
+  box-shadow: var(--bp-shadow-popover);
   display: grid;
   min-width: 220px;
   padding: 6px;
@@ -64,14 +65,17 @@
 
 .popover a,
 .popover button {
+  align-items: center;
   background: transparent;
   border: 0;
   border-radius: var(--bp-radius-sm);
   color: var(--bp-color-text);
   cursor: pointer;
+  display: flex;
   font: inherit;
   font-size: 12px;
   font-weight: 700;
+  gap: 9px;
   padding: 10px;
   text-align: left;
   width: 100%;
@@ -85,6 +89,6 @@
 
 .popover a:focus-visible,
 .popover button:focus-visible {
-  outline: 2px solid var(--bp-color-brand);
+  outline: 2px solid var(--bp-color-intelligence);
   outline-offset: -2px;
 }

@@ -123,6 +123,16 @@ def derive_summary_job(
         (id_contrato,),
     )
 
+    # Una extracción validada entra al gate barato por perfil. La cola y su
+    # dedup evitan que dos documentos del mismo contrato disparen trabajo doble.
+    repo.enqueue(
+        "route_contract_profiles",
+        {"id_contrato": id_contrato, "extraction_id": extraction_id},
+        queue_name="match",
+        dedup_key=f"route_contract_profiles:{id_contrato}",
+        priority=4,
+    )
+
     diff = sorted(old_hashes.symmetric_difference(new_hashes))
     if diff and old_hashes:
         # Los requisitos cambiaron: re-analizar solo los matches ya evaluados

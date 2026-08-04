@@ -1,0 +1,16 @@
+.pagination {
+  margin-top: 18px;
+  width: calc(100% - 328px);
+}
+
+@media (max-width: 1320px) {
+  .pagination {
+    width: 100%;
+  }
+}
+
+@media (max-width: 700px) {
+  .pagination {
+    margin-top: 14px;
+  }
+}

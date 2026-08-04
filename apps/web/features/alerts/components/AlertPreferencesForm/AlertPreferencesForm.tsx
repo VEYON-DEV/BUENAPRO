@@ -42,7 +42,7 @@ export function AlertPreferencesForm({ preference }: { preference: Preference })
       </div>
       <Switch checked={enabled} label="Alertas activas" onChange={(event) => setEnabled(event.target.checked)} />
       <label><span>Nivel mínimo</span><Select defaultValue={preference.min_verdict} name="min_verdict"><option value="verde">Solo afinidad alta</option><option value="ambar">Alta y posible</option></Select></label>
-      <label><span>Máximo diario</span><Select defaultValue={String(preference.max_alerts_per_day ?? 5)} name="max_alerts_per_day"><option value="3">3 alertas</option><option value="5">5 alertas</option><option value="10">10 alertas</option></Select></label>
+      <label><span>Máximo diario</span><Select defaultValue={String(preference.max_alerts_per_day ?? 0)} name="max_alerts_per_day"><option value="0">Sin límite</option><option value="5">5 alertas</option><option value="10">10 alertas</option><option value="25">25 alertas</option></Select></label>
       <Button type="submit">Guardar alertas</Button>
       <span className={styles.status} aria-live="polite">{status}</span>
     </form>

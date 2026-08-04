@@ -1,1 +1,1 @@
-export { ApplicationWorkspace } from "./ApplicationWorkspace";
+export { ApplicationWorkspace } from "./pages/ApplicationWorkspace";

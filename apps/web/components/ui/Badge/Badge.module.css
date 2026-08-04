@@ -1,6 +1,6 @@
 .badge {
   align-items: center;
-  border-radius: 999px;
+  border-radius: var(--bp-radius-pill);
   display: inline-flex;
   font-size: 12px;
   font-weight: 700;

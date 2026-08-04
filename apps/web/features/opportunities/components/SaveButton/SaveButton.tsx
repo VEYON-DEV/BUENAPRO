@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { AppIcon } from "@/components/ui/AppIcon";
+import { Bookmark } from "lucide-react";
 import { apiFetch } from "@/lib/api/client";
 import styles from "./SaveButton.module.css";
 
@@ -10,10 +10,12 @@ export function SaveButton({
   idContrato,
   code,
   initialSaved = false,
+  showLabel = false,
 }: {
   idContrato: string | number;
   code?: string | null;
   initialSaved?: boolean;
+  showLabel?: boolean;
 }) {
   const router = useRouter();
   const [saved, setSaved] = useState(initialSaved);
@@ -57,7 +59,8 @@ export function SaveButton({
         title={status === "error" ? "No se pudo actualizar. Intenta nuevamente." : actionLabel}
         type="button"
       >
-        <AppIcon name="bookmark" />
+        <Bookmark aria-hidden="true" size={18} strokeWidth={1.8} />
+        {showLabel ? <span>{saved ? "Guardada" : "Guardar oportunidad"}</span> : null}
       </button>
       <span aria-live="polite" className={styles.status}>
         {notice}

@@ -1,4 +1,4 @@
-.panel { background: var(--bp-color-panel); border: 1px solid var(--bp-color-border); display: grid; }
+.panel { background: #fff; border: 1px solid var(--bp-color-border); border-radius: 20px; box-shadow: 0 8px 28px rgb(46 55 105 / .07); display: grid; overflow: hidden; }
 .panel > header { align-items: flex-start; border-bottom: 1px solid var(--bp-color-border); display: flex; gap: 12px; justify-content: space-between; padding: 16px; }
 .panel h2 { font-size: 16px; line-height: 22px; }
 .panel header p, .form > p, .connected p { color: var(--bp-color-text-2); font-size: 11px; line-height: 17px; margin-top: 2px; }

@@ -4,8 +4,8 @@
   gap: 32px;
 }
 .editor section {
-  background: #fff;
-  border: 1px solid #e7e5e4;
+  background: var(--bp-color-panel);
+  border: 1px solid var(--bp-color-border);
   border-radius: 8px;
   padding: 24px;
 }
@@ -19,17 +19,17 @@
 .sectionHeading h2 {
   font-size: 18px;
   margin: 0;
-  color: #1f2328;
+  color: var(--bp-color-ink);
 }
 .sectionHeading p {
   margin: 4px 0 0;
-  color: #6b7280;
+  color: var(--bp-color-text-2);
   font-size: 14px;
 }
 .sectionHeading > strong {
   font-size: 12px;
-  color: #5b8c7a;
-  background: #eef6f2;
+  color: var(--bp-color-sage);
+  background: var(--bp-color-sage-soft);
   padding: 6px 9px;
   border-radius: 4px;
 }
@@ -44,13 +44,13 @@
 .tableWrap th {
   text-align: left;
   font-size: 12px;
-  color: #6b7280;
+  color: var(--bp-color-text-2);
   padding: 10px 12px;
-  border-bottom: 1px solid #d6d3d1;
+  border-bottom: 1px solid var(--bp-color-border-strong);
 }
 .tableWrap td {
   padding: 14px 12px;
-  border-bottom: 1px solid #efeeec;
+  border-bottom: 1px solid var(--bp-color-border);
   vertical-align: middle;
 }
 .tableWrap td:nth-child(2) {
@@ -59,24 +59,24 @@
 .tableWrap td span {
   display: block;
   font-size: 12px;
-  color: #6b7280;
+  color: var(--bp-color-text-2);
   margin-top: 3px;
 }
 .editor input[type="checkbox"] {
   width: 20px;
   height: 20px;
-  accent-color: #c94a3a;
+  accent-color: var(--bp-color-brand);
 }
 .tableWrap td input[type="number"],
 .fields input {
   width: 100%;
   min-height: 44px;
-  border: 1px solid #d6d3d1;
+  border: 1px solid var(--bp-color-border-strong);
   border-radius: 6px;
   padding: 9px 11px;
   font: inherit;
-  color: #1f2328;
-  background: #fff;
+  color: var(--bp-color-ink);
+  background: var(--bp-color-panel);
 }
 .tableWrap td input[type="number"] {
   max-width: 150px;
@@ -89,7 +89,7 @@
 .fields label {
   font-size: 13px;
   font-weight: 650;
-  color: #374151;
+  color: var(--bp-color-text);
 }
 .fields input {
   display: block;
@@ -98,14 +98,14 @@
 }
 .editor input:focus-visible {
   outline: 3px solid rgba(201, 74, 58, 0.2);
-  border-color: #c94a3a;
+  border-color: var(--bp-color-brand);
 }
 .editor input:disabled {
-  background: #f5f5f4;
-  color: #9ca3af;
+  background: var(--bp-color-subtle);
+  color: var(--bp-color-text-3);
 }
 .empty {
-  color: #6b7280;
+  color: var(--bp-color-text-2);
 }
 .srOnly {
   position: absolute;
@@ -140,7 +140,7 @@
   }
   .tableWrap tr {
     padding: 14px 0;
-    border-bottom: 1px solid #d6d3d1;
+    border-bottom: 1px solid var(--bp-color-border-strong);
   }
   .tableWrap td {
     display: grid;
@@ -152,7 +152,7 @@
   .tableWrap td:before {
     content: attr(data-label);
     font-size: 12px;
-    color: #6b7280;
+    color: var(--bp-color-text-2);
   }
   .tableWrap td:nth-child(2) {
     min-width: 0;

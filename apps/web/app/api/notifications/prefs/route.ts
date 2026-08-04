@@ -30,7 +30,10 @@ export async function PUT(request: NextRequest) {
   const channel = ["in_app", "email", "telegram"].includes(body.channel) ? body.channel : "in_app";
   const mode = body.mode === "digest" ? "digest" : "realtime";
   const minVerdict = body.min_verdict === "ambar" ? "ambar" : "verde";
-  const maxAlerts = Math.min(10, Math.max(1, Number(body.max_alerts_per_day) || 5));
+  const requestedMax = Number(body.max_alerts_per_day);
+  const maxAlerts = Number.isFinite(requestedMax)
+    ? Math.min(50, Math.max(0, requestedMax))
+    : 0;
   const enabled = body.enabled !== false;
   const result = await query(
     `

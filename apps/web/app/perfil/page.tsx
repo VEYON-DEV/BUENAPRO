@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { ProfilePage } from "@/features/profile/ProfilePage";
+import { ProfilePage } from "@/features/profile";
 import { currentTenantId } from "@/server/auth/tenant";
 
 export default async function PerfilRoute() {

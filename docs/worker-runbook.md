@@ -66,6 +66,33 @@ Eventos esperados:
 
 Si aparece `job_failed`, revisar `last_error` en `worker_jobs`.
 
+## Evaluacion automatica y Telegram
+
+El flujo automatico se ejecuta despues de validar el TDR:
+
+```text
+TDR validado -> fit deterministico por perfil -> analyze_match -> alerta in-app/Telegram
+```
+
+- El fit usa las lineas, segmentos y keywords del perfil activo; no contiene rubros hardcodeados.
+- El nivel preliminar por defecto es `2` (Relacionado).
+- La alerta se crea solo si el score final es estrictamente mayor a `50`.
+- `50` no notifica; `51` si notifica.
+- El resumen, modalidad, fortalezas y riesgo salen de la extraccion y evaluacion existentes. No se hace una llamada LLM adicional para redactar la alerta.
+- `SETTINGS_ENCRYPTION_KEY` cifra el token de Telegram almacenado en PostgreSQL.
+- `APP_BASE_URL` construye el enlace a la oportunidad incluido en cada mensaje.
+
+Barrido inicial de todas las oportunidades vigentes y validadas para un perfil:
+
+```bash
+docker compose -f infra/docker/docker-compose.yml run --rm worker-match \
+  buenapro-worker auto-evaluate-current --profile-id PROFILE_UUID
+```
+
+El comando solo encola trabajo. Supervisar las colas `match`, `llm` y `notify` hasta que no queden jobs pendientes. Se puede limitar una prueba con `--limit 5`.
+
+Antes de probar un destinatario personal, ese usuario debe abrir el bot y pulsar **Start**. Un mismo bot admite varios `chat_id` activos desde `/configuracion`.
+
 ## Verificar BD
 
 ```sql

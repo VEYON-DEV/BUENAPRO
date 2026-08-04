@@ -6,7 +6,7 @@ Crear un sistema reusable para que todas las vistas se vean consistentes y no se
 
 ## Referencia
 
-Usar [Design Patterns](../design-patterns.md) como fuente visual.
+Usar [DESIGN.md](../../DESIGN.md) como unica fuente visual y [migration-map.md](../new-style/migration-map.md) para la adopcion progresiva.
 
 ## Componentes UI
 

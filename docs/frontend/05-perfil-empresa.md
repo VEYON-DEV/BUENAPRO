@@ -99,6 +99,8 @@ Guardar perfil o lineas encola `match_profile` en backend.
 - Mantener identidad y capacidad en un rail secundario compacto, con equipo/recursos y contratos bajo divulgación progresiva.
 - No pedir facturación anual: el matching económico usa exclusivamente experiencia acreditable (`econ_experience_json`).
 - Ocultar la acción de guardado mientras el formulario no tenga cambios.
+- Usar la misma jerarquía BuenaPro Glass de Inicio y Mercado: resumen ambiental claro, líneas sobre superficie de trabajo blanca y capacidad/conexión en rail secundario.
+- Mantener chips, inputs, disclosures, botones, radios y profundidad coherentes con el resto del producto; evitar cabeceras oscuras o paneles planos heredados.
 
 ## Estados
 

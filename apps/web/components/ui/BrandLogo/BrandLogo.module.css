@@ -1,0 +1,16 @@
+.logo {
+  display: block;
+  flex: none;
+  height: auto;
+  max-width: 100%;
+}
+
+.horizontal {
+  aspect-ratio: 292 / 72;
+  width: 186px;
+}
+
+.compact {
+  aspect-ratio: 1;
+  width: 44px;
+}

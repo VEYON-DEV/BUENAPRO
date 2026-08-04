@@ -24,11 +24,12 @@ def send_email(settings: Settings, to_email: str, subject: str, body: str) -> No
         smtp.send_message(message)
 
 
-def send_telegram(settings: Settings, chat_id: str, text: str) -> None:
-    if not settings.telegram_bot_token:
+def send_telegram(settings: Settings, chat_id: str, text: str, *, bot_token: str | None = None) -> None:
+    token = bot_token or settings.telegram_bot_token
+    if not token:
         raise ValueError("TELEGRAM_BOT_TOKEN is required")
     response = httpx.post(
-        f"https://api.telegram.org/bot{settings.telegram_bot_token}/sendMessage",
+        f"https://api.telegram.org/bot{token}/sendMessage",
         json={"chat_id": chat_id, "text": text, "disable_web_page_preview": True},
         timeout=30,
     )

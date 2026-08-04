@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "npm run dev -w apps/web",
     "build": "npm run build -w apps/web",
-    "lint": "npm run lint -w apps/web"
+    "lint": "npm run lint -w apps/web",
+    "check:frontend-architecture": "node scripts/check-frontend-architecture.mjs"
   }
 }
-

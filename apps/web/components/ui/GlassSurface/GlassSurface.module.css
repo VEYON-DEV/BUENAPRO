@@ -1,0 +1,40 @@
+.surface {
+  border-radius: var(--bp-radius-lg);
+  min-width: 0;
+}
+
+.ambient,
+.strong {
+  backdrop-filter: var(--bp-blur-glass);
+  border: 1px solid var(--bp-color-glass-border);
+  box-shadow: var(--bp-shadow-glass);
+}
+
+.ambient {
+  background: var(--bp-color-glass);
+}
+
+.strong {
+  background: var(--bp-color-glass-strong);
+}
+
+.work {
+  background: var(--bp-color-panel);
+  border: 1px solid var(--bp-color-border);
+  box-shadow: var(--bp-shadow-work);
+}
+
+.none { padding: 0; }
+.small { padding: var(--bp-space-4); }
+.medium { padding: var(--bp-space-6); }
+.large { padding: var(--bp-space-8); }
+
+@media (max-width: 767px) {
+  .large { padding: var(--bp-space-5); }
+  .medium { padding: var(--bp-space-4); }
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .ambient,
+  .strong { background: rgb(255 255 255 / 0.94); }
+}

@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { SupplierDetailPage } from "@/features/market-intelligence/SupplierDetailPage";
+import { SupplierDetailPage } from "@/features/market-intelligence";
 import { currentTenantId } from "@/server/auth/tenant";
 import { getHistoricalSupplier } from "@/server/services/market";
 

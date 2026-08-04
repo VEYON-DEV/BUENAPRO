@@ -1,1 +1,0 @@
-export { MetricTile } from "./MetricTile";

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { AlertsPage } from "@/features/alerts/AlertsPage";
+import { AlertsPage } from "@/features/alerts";
 import { currentTenantId } from "@/server/auth/tenant";
 
 export default async function AlertsRoute() {

@@ -21,13 +21,21 @@
   transition: background 160ms ease-out, color 160ms ease-out;
 }
 
+.button:has(span) {
+  border: 1px solid var(--bp-color-border-strong);
+  border-radius: 14px;
+  color: var(--bp-color-text);
+  font-weight: 700;
+  width: 100%;
+}
+
 .button:hover {
   background: var(--bp-color-brand-soft);
   color: var(--bp-color-brand);
 }
 
 .button:focus-visible {
-  outline: 2px solid var(--bp-color-brand);
+  outline: 2px solid var(--bp-color-intelligence);
   outline-offset: 2px;
 }
 

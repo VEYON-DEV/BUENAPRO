@@ -1,6 +1,6 @@
 .section {
-  background: #fff;
-  border: 1px solid #e7e5e4;
+  background: var(--bp-color-panel);
+  border: 1px solid var(--bp-color-border);
   border-radius: 8px;
   padding: 24px;
 }
@@ -12,19 +12,19 @@
   margin-bottom: 18px;
 }
 .heading h2 {
-  color: #1f2328;
+  color: var(--bp-color-ink);
   font-size: 18px;
   margin: 0;
 }
 .heading p {
-  color: #6b7280;
+  color: var(--bp-color-text-2);
   font-size: 14px;
   margin: 4px 0 0;
 }
 .heading > span {
-  background: #eef6f2;
+  background: var(--bp-color-sage-soft);
   border-radius: 4px;
-  color: #416b5c;
+  color: var(--bp-color-sage);
   font-size: 12px;
   font-weight: 700;
   padding: 6px 9px;
@@ -32,10 +32,10 @@
 }
 .dropzone {
   align-items: center;
-  background: #fafaf9;
-  border: 1px dashed #b9b5b1;
+  background: var(--bp-color-panel-2);
+  border: 1px dashed var(--bp-color-border-strong);
   border-radius: 6px;
-  color: #1f2328;
+  color: var(--bp-color-ink);
   cursor: pointer;
   display: flex;
   flex-direction: column;
@@ -49,8 +49,8 @@
 }
 .dropzone:hover,
 .dropzone[data-dragging="true"] {
-  background: #fff1ee;
-  border-color: #c94a3a;
+  background: var(--bp-color-brand-soft);
+  border-color: var(--bp-color-brand);
 }
 .dropzone:focus-visible {
   outline: 3px solid rgb(201 74 58 / 20%);
@@ -61,7 +61,7 @@
   opacity: 0.7;
 }
 .uploadIcon {
-  background: #1f2328;
+  background: var(--bp-color-ink);
   border-radius: 50%;
   color: #fff;
   display: grid;
@@ -75,7 +75,7 @@
   font-size: 14px;
 }
 .dropzone small {
-  color: #6b7280;
+  color: var(--bp-color-text-2);
   margin-top: 4px;
 }
 .hiddenInput {
@@ -88,16 +88,16 @@
 }
 .files li {
   align-items: center;
-  border-top: 1px solid #efeeec;
+  border-top: 1px solid var(--bp-color-border);
   display: grid;
   gap: 12px;
   grid-template-columns: 40px minmax(0, 1fr) auto auto;
   padding: 13px 0;
 }
 .fileType {
-  background: #f5f5f4;
+  background: var(--bp-color-subtle);
   border-radius: 4px;
-  color: #6b7280;
+  color: var(--bp-color-text-2);
   display: grid;
   font-size: 10px;
   font-weight: 800;
@@ -114,14 +114,14 @@
   font-size: 13px;
 }
 .files small {
-  color: #6b7280;
+  color: var(--bp-color-text-2);
   margin-top: 2px;
 }
 .files a,
 .files button {
   background: transparent;
   border: 0;
-  color: #c94a3a;
+  color: var(--bp-color-brand);
   cursor: pointer;
   font: inherit;
   font-size: 12px;
@@ -135,11 +135,11 @@
   text-decoration: none;
 }
 .files button {
-  color: #6b7280;
+  color: var(--bp-color-text-2);
 }
 .files a:focus-visible,
 .files button:focus-visible {
-  outline: 2px solid #c94a3a;
+  outline: 2px solid var(--bp-color-brand);
   outline-offset: 2px;
 }
 @media (max-width: 640px) {

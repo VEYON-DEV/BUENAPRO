@@ -5,27 +5,23 @@ export async function getDashboard(tenantId: string) {
     query(`SELECT id, razon_social FROM company_profiles WHERE tenant_id=$1 AND is_active=true LIMIT 1`, [tenantId]),
     query(
       `
-      SELECT c.id_contrato, c.codigo, c.descripcion, c.entidad_nombre, c.fec_fin_cotizacion,
-        COALESCE(fit.keyword_points, 0)::int AS fit_points
-      FROM seace_contracts c
+      SELECT c.id_contrato, c.codigo, c.descripcion, c.entidad_nombre, c.departamento,
+        c.provincia, c.fec_fin_cotizacion, sc.created_at AS saved_at,
+        match.score, match.verdict
+      FROM saved_contracts sc
+      JOIN seace_contracts c ON c.id_contrato=sc.id_contrato
       LEFT JOIN LATERAL (
-        SELECT greatest(
-          COALESCE((SELECT count(*) * 15 FROM unnest(bl.keyword_phrases) phrase
-            WHERE to_tsvector('spanish', c.descripcion) @@ phraseto_tsquery('spanish', phrase)), 0),
-          COALESCE((SELECT count(*) * 8 FROM unnest(bl.keyword_terms) term
-            WHERE to_tsvector('spanish', c.descripcion) @@ plainto_tsquery('spanish', term)), 0)
-        )::int AS keyword_points
-        FROM company_profiles cp JOIN business_lines bl ON bl.profile_id=cp.id AND bl.is_active=true
-        WHERE cp.tenant_id=$1 AND cp.is_active=true AND c.cubso_segmento=ANY(bl.cubso_segmentos)
-        ORDER BY keyword_points DESC LIMIT 1
-      ) fit ON true
-      WHERE c.estado_codigo=2 AND (c.fec_fin_cotizacion IS NULL OR c.fec_fin_cotizacion >= now())
-        AND EXISTS (
-          SELECT 1 FROM company_profiles cp JOIN business_lines bl ON bl.profile_id=cp.id AND bl.is_active=true
-          WHERE cp.tenant_id=$1 AND cp.is_active=true AND c.cubso_segmento=ANY(bl.cubso_segmentos)
-        )
-      ORDER BY CASE WHEN c.fec_fin_cotizacion < now() + interval '24 hours' THEN 0 ELSE 1 END,
-        COALESCE(fit.keyword_points,0) DESC, c.fec_fin_cotizacion ASC NULLS LAST
+        SELECT m.score, m.verdict
+        FROM matches m
+        JOIN company_profiles cp ON cp.id=m.profile_id
+        WHERE cp.tenant_id=$1 AND cp.is_active=true AND m.id_contrato=c.id_contrato
+        ORDER BY m.updated_at DESC
+        LIMIT 1
+      ) match ON true
+      WHERE sc.tenant_id=$1
+        AND c.estado_codigo=2
+        AND (c.fec_fin_cotizacion IS NULL OR c.fec_fin_cotizacion >= now())
+      ORDER BY c.fec_fin_cotizacion ASC NULLS LAST, sc.created_at DESC
       LIMIT 8
       `,
       [tenantId],
@@ -37,17 +33,16 @@ export async function getDashboard(tenantId: string) {
           WHERE c.fec_fin_cotizacion BETWEEN now() AND now() + interval '24 hours'
         )::int AS closing_24h,
         count(*) FILTER (
+          WHERE c.fec_fin_cotizacion BETWEEN now() AND now() + interval '48 hours'
+        )::int AS closing_48h,
+        count(*) FILTER (
           WHERE c.fec_fin_cotizacion BETWEEN now() AND now() + interval '7 days'
         )::int AS closing_week
-      FROM seace_contracts c
-      WHERE c.estado_codigo=2
+      FROM saved_contracts sc
+      JOIN seace_contracts c ON c.id_contrato=sc.id_contrato
+      WHERE sc.tenant_id=$1
+        AND c.estado_codigo=2
         AND (c.fec_fin_cotizacion IS NULL OR c.fec_fin_cotizacion >= now())
-        AND EXISTS (
-          SELECT 1 FROM company_profiles cp
-          JOIN business_lines bl ON bl.profile_id=cp.id AND bl.is_active=true
-          WHERE cp.tenant_id=$1 AND cp.is_active=true
-            AND c.cubso_segmento=ANY(bl.cubso_segmentos)
-        )
       `,
       [tenantId],
     ),
@@ -140,7 +135,7 @@ export async function getDashboard(tenantId: string) {
   return {
     profile: profile.rows[0] ?? null,
     actions: actions.rows,
-    action_summary: actionSummary.rows[0] ?? { active: 0, closing_24h: 0, closing_week: 0 },
+    action_summary: actionSummary.rows[0] ?? { active: 0, closing_24h: 0, closing_48h: 0, closing_week: 0 },
     tracking: tracking.rows,
     tracking_summary: trackingSummary.rows[0] ?? { preparing: 0, submitted: 0, with_draft: 0 },
     market: {
