@@ -8,7 +8,7 @@ RUN npm install
 
 COPY . .
 WORKDIR /app/apps/web
-RUN npm run build
+RUN touch .env.local && npm run build
 
 EXPOSE 3000
 CMD ["npm", "run", "start"]
