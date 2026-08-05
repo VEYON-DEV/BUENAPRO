@@ -156,7 +156,11 @@ def upsert_historical_outcome(
           fec_ini_cotizacion, fec_fin_cotizacion, estado_resultado, supplier_ruc,
           supplier_name, precio_total, source_document_url, raw_detail_json
         ) VALUES (
-          %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb
+          %s, %s, %s, %s, %s,
+          %s, %s, %s, %s, %s,
+          %s, %s, %s, %s, %s,
+          %s, %s, %s, %s, %s,
+          %s, %s, %s, %s, %s, %s::jsonb
         )
         ON CONFLICT (id_contrato) DO UPDATE SET
           codigo_completo=EXCLUDED.codigo_completo, codigo_tipo=EXCLUDED.codigo_tipo,

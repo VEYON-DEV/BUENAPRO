@@ -55,7 +55,7 @@
 ## Lifecycle
 
 - [x] Corregir seguimiento post-cierre: refresco real de detalle, fechas desde etapa de cotización, rotación por `detail_fetched_at`, cobertura completa de ventana reciente y promoción automática al histórico (2026-07-31).
-- [x] Añadir `recent-closures` cada 2 h con ventana configurable de 15 días y persistencia histórica al detectar culminado/adjudicado/desierto; corrida controlada de 2 contratos validada el 2026-07-31.
+- [x] Añadir `recent-closures` cada 2 h con ventana configurable de 15 días y persistencia histórica al detectar culminado/adjudicado/desierto; corregido el binding de 26 columnas y revalidado en producción el 2026-08-05.
 - [x] Añadir backfill histórico sin LLM ni descarga de TDR, comandos `historical-backfill`, `historical-stats` y reglas determinísticas de resultado. Segmento 81 validado con 20 contratos (8 adjudicados, 12 desiertos) y segunda corrida idempotente.
 - [x] Validar el barrido histórico completo de tecnología (`81` y `43`) en producción; checkpoint por página y reconciliación final guardaron 4,451 resultados únicos, recuperaron 20 IDs desplazados/fallidos y cerraron con 0 pendientes (2026-07-31).
 

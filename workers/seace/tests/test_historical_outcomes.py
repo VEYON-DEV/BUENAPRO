@@ -1,8 +1,9 @@
 from decimal import Decimal
 import unittest
+from unittest.mock import MagicMock
 
 from buenapro_worker.historical.outcomes import classify_outcome, parse_contract_code
-from buenapro_worker.jobs.historical_outcomes import _location_parts
+from buenapro_worker.jobs.historical_outcomes import _location_parts, upsert_historical_outcome
 from buenapro_worker.jobs.process_contract import quotation_window_from_detail
 from buenapro_worker.jobs.send_notification import verdict_meets_threshold
 
@@ -95,6 +96,33 @@ class HistoricalOutcomeTest(unittest.TestCase):
             _location_parts("LIMA / LIMA / SAN ISIDRO"),
             ("LIMA", "LIMA", "SAN ISIDRO"),
         )
+
+    def test_historical_upsert_binds_one_parameter_per_column(self) -> None:
+        repo = MagicMock()
+        repo.conn.execute.return_value.fetchone.return_value = None
+
+        result = upsert_historical_outcome(
+            repo,
+            detail={
+                "uitContratoCompletoProjection": {
+                    "idContrato": 83675,
+                    "desContratacion": "CM-110-2026-UNAAT",
+                    "desObjetoContrato": "Servicio de soporte informatico",
+                },
+                "uitContratoItemProjectionList": [{"nomEstadoCotiza": "DESIERTO"}],
+            },
+            segment=81,
+        )
+
+        insert_call = next(
+            call
+            for call in repo.conn.execute.call_args_list
+            if "INSERT INTO historical_contract_outcomes" in call.args[0]
+        )
+        sql, params = insert_call.args
+        self.assertEqual(sql.count("%s"), 26)
+        self.assertEqual(len(params), 26)
+        self.assertEqual(result, "DESIERTO")
 
     def test_notification_threshold_only_accepts_relevant_verdicts(self) -> None:
         self.assertTrue(verdict_meets_threshold("verde", "verde"))
