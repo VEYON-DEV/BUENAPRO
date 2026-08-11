@@ -5,9 +5,11 @@ import { ProfileForm } from "../../components/ProfileForm";
 import { BusinessLinesPanel } from "../../components/BusinessLinesPanel";
 import { SeaceConnectionPanel } from "../../components/SeaceConnectionPanel";
 import { CompanyKeywordsPanel } from "../../components/CompanyKeywordsPanel";
+import { CompanyLibraryPanel } from "../../components/CompanyLibraryPanel";
+import { listCompanyLibrary } from "@/server/services/companyLibrary";
 import styles from "./ProfilePage.module.css";
 
-function profileCompletion(profile: any | null) {
+function profileCompletion(profile: any | null, libraryCount = 0) {
   if (!profile) return 0;
   const hasPositiveValue = (value: unknown) => {
     if (typeof value === "number") return value > 0;
@@ -26,6 +28,7 @@ function profileCompletion(profile: any | null) {
     Array.isArray(profile.experience_json) && profile.experience_json.length,
     Array.isArray(profile.equipment_json) && profile.equipment_json.length,
     Array.isArray(profile.certifications_json) && profile.certifications_json.length,
+    libraryCount,
   ];
   return Math.round((checks.filter(Boolean).length / checks.length) * 100);
 }
@@ -59,24 +62,9 @@ export async function ProfilePage({ tenantId }: { tenantId: string }) {
     `,
   );
   const profileRow = profile.rows[0] ?? null;
-  const completion = profileCompletion(profileRow);
-  const stats = profileRow
-    ? await query(
-        `
-        SELECT
-          count(m.id)::int AS matches_total,
-          count(m.id) FILTER (WHERE m.verdict = 'verde')::int AS verdes,
-          count(m.id) FILTER (WHERE m.verdict = 'ambar')::int AS ambar,
-          count(m.id) FILTER (WHERE m.verdict = 'rojo')::int AS rojos,
-          count(m.id) FILTER (WHERE m.verdict = 'gris')::int AS revision,
-          COALESCE(round(avg(m.score)), 0)::int AS avg_score
-        FROM matches m
-        WHERE m.profile_id = $1
-        `,
-        [profileRow.id],
-      )
-    : { rows: [{ matches_total: 0, verdes: 0, ambar: 0, rojos: 0, revision: 0, avg_score: 0 }] };
-  const matchStats = stats.rows[0] as any;
+  const library = await listCompanyLibrary(tenantId);
+  const libraryCount = library.knowledge.length + library.documents.length;
+  const completion = profileCompletion(profileRow, libraryCount);
   const keywordCount = new Set([...(profileRow?.company_keywords ?? []), ...lines.rows.flatMap((line: any) => line.keywords ?? [])]).size;
 
   return (
@@ -92,7 +80,7 @@ export async function ProfilePage({ tenantId }: { tenantId: string }) {
         <div><span>Keywords</span><strong>{keywordCount}</strong></div>
         <div><span>Experiencia acreditable</span><strong>{money(Object.values(profileRow?.econ_experience_json ?? {}).map(Number).filter(Number.isFinite).sort((a, b) => b - a)[0])}</strong></div>
         <div><span>Equipo</span><strong>{profileRow?.team_json?.length ?? 0} perfiles</strong></div>
-        <div><span>Evaluadas</span><strong>{matchStats.matches_total ?? 0}</strong></div>
+        <div><span>Biblioteca</span><strong>{libraryCount} piezas</strong></div>
       </section>
       <div className={styles.workspace}>
         <div className={styles.primary}>
@@ -101,6 +89,7 @@ export async function ProfilePage({ tenantId }: { tenantId: string }) {
             lines={lines.rows as any[]}
             catalogs={catalogs.rows as Array<{ codigo: string; nombre: string; enabled: boolean }>}
           />
+          <CompanyLibraryPanel initialLibrary={library} />
         </div>
         <aside className={styles.secondary}>
           <ProfileForm profile={profileRow} />

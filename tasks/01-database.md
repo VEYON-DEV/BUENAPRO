@@ -83,6 +83,7 @@
 
 - [x] Crear tabla `company_profiles`.
 - [x] Crear tabla `business_lines`.
+- [x] Crear biblioteca empresarial tenant-safe para datos reutilizables y documentos de postulación (`company_knowledge_items`, `company_documents`) con tags libres, metadata JSON e índices GIN (`0023_company_library.sql`, validada localmente el 2026-08-08).
 - [x] Separar frases exactas y términos fuertes de cada línea de negocio (migración `0014`) sin perder compatibilidad con `keywords`.
 - [x] Persistir keywords transversales de identidad en `company_profiles.company_keywords` (migración `0015`), sin listas de rubro hardcodeadas.
 - [x] Agregar `profile_hash`.
@@ -116,3 +117,4 @@
 - [x] Crear tabla `notifications`.
 - [x] Definir canales iniciales: `email`, `telegram`, `in_app`.
 - [x] Agregar preferencias de digest y max alertas por dia.
+- [x] Añadir `chat_artifacts` tenant-scoped para persistir entregables generados por Codex junto al mensaje y run, con contenido durable en PostgreSQL y limite de 15 MB (2026-08-09).

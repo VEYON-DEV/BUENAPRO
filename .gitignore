@@ -14,6 +14,7 @@ __pycache__/
 *.egg-info/
 data/
 tmp/
+.codex-runtime/
 .claude/settings.local.json
 
 credentials/

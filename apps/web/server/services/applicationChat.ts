@@ -1,4 +1,8 @@
 import { pool, query } from "@/server/db/client";
+import {
+  insertChatArtifacts,
+  type GeneratedArtifactInput,
+} from "@/server/services/chatArtifacts";
 
 type JsonObject = Record<string, unknown>;
 
@@ -59,6 +63,12 @@ export async function getChatSession(tenantId: string, sessionId: string) {
         'id',cm.id,'role',cm.role,'content',cm.content,
         'citations',cm.citations_json,'metadata',cm.metadata_json,
         'createdBy',cm.created_by,'createdAt',cm.created_at,
+        'artifacts',COALESCE((SELECT jsonb_agg(jsonb_build_object(
+          'id',ca.id,'name',ca.filename,'mime',ca.mime_type,
+          'sizeBytes',ca.size_bytes,'createdAt',ca.created_at,
+          'downloadUrl','/api/chat/artifacts/' || ca.id
+        ) ORDER BY ca.created_at,ca.id) FROM chat_artifacts ca
+        WHERE ca.message_id=cm.id),'[]'::jsonb),
         'changeSet',(SELECT jsonb_build_object(
           'id',acs.id,'runId',acs.run_id,'changes',acs.changes_json,
           'status',acs.status,'confirmedBy',acs.confirmed_by,
@@ -178,6 +188,7 @@ export async function completeAgentRun(
     metadata?: unknown;
     usage?: unknown;
     changes?: unknown;
+    artifacts?: GeneratedArtifactInput[];
   },
 ) {
   const content = text(input.content, 40_000);
@@ -230,6 +241,14 @@ export async function completeAgentRun(
       [message.rows[0].id, JSON.stringify(linkedMetadata)],
     );
     message.rows[0].metadata_json = linkedMetadata;
+    const artifacts = await insertChatArtifacts(client, {
+      tenantId,
+      sessionId: current.session_id,
+      messageId: message.rows[0].id,
+      runId,
+      artifacts: input.artifacts ?? [],
+    });
+    message.rows[0].artifacts = artifacts;
     await client.query(
       `UPDATE agent_runs SET status='completed',usage_json=$2::jsonb,
        completed_at=now() WHERE id=$1`,

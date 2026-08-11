@@ -16,6 +16,18 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - redis_data:/data
+
   web:
     build:
       context: ../..
@@ -26,10 +38,18 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://buenapro:buenapro@postgres:5432/buenapro}
       DEV_TENANT_ID: ${DEV_TENANT_ID:-}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      CODEX_HOME: /root/.codex
+      CODEX_AGENT_WORKSPACE_ROOT: /app/apps/web/.codex-runtime
     ports:
       - "${WEB_PORT:-3000}:3000"
+    volumes:
+      - codex_auth:/root/.codex
+      - codex_runtime:/app/apps/web/.codex-runtime
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
   scheduler:
@@ -109,3 +129,6 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
+  codex_auth:
+  codex_runtime:

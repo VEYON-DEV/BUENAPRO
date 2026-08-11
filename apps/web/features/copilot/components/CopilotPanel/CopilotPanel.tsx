@@ -13,7 +13,10 @@ import {
   Check,
   ChevronDown,
   CircleAlert,
+  Download,
+  FileText,
   FileCheck2,
+  LoaderCircle,
   MessageCircleQuestion,
   Sparkles,
   X,
@@ -23,7 +26,7 @@ import {
   decideChangeSet,
   getCopilotSession,
   openCopilotSession,
-  sendCopilotMessage,
+  streamCopilotMessage,
 } from "../../api/copilot";
 import type {
   CopilotChangeSet,
@@ -50,6 +53,11 @@ const STARTERS = [
   },
 ];
 
+type AgentActivity = {
+  id: string;
+  label: string;
+};
+
 function changeLabels(changes: Record<string, unknown>) {
   const labels: string[] = [];
   if (Array.isArray(changes.items) && changes.items.length)
@@ -66,6 +74,32 @@ function changeLabels(changes: Record<string, unknown>) {
   return labels.length
     ? labels
     : Object.keys(changes).map((key) => key.replaceAll("_", " "));
+}
+
+function AgentActivityList({ items }: { items: AgentActivity[] }) {
+  if (!items.length) return null;
+  return (
+    <section className={styles.agentActivity} aria-label="Actividad del agente">
+      <div className={styles.agentActivityHeader}>
+        <LoaderCircle size={14} aria-hidden="true" />
+        <span>Actividad del agente</span>
+      </div>
+      <ol>
+        {items.map((item, index) => (
+          <li key={item.id} data-current={index === items.length - 1}>
+            <span aria-hidden="true" />
+            <p>{item.label}</p>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+function formatFileSize(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "Documento";
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function Message({
@@ -119,6 +153,34 @@ function Message({
             </details>
           ) : null}
         </div>
+        {message.artifacts.length ? (
+          <section
+            className={styles.artifacts}
+            aria-label="Documentos generados"
+          >
+            {message.artifacts.map((artifact) => (
+              <div className={styles.artifact} key={artifact.id}>
+                <span className={styles.artifactIcon} aria-hidden="true">
+                  <FileText size={19} />
+                </span>
+                <div className={styles.artifactCopy}>
+                  <strong>{artifact.name}</strong>
+                  <span>{formatFileSize(artifact.sizeBytes)}</span>
+                </div>
+                <a
+                  className={styles.artifactDownload}
+                  href={artifact.downloadUrl}
+                  download={artifact.name}
+                  aria-label={`Descargar ${artifact.name}`}
+                  title="Descargar documento"
+                >
+                  <Download size={17} aria-hidden="true" />
+                  <span>Descargar</span>
+                </a>
+              </div>
+            ))}
+          </section>
+        ) : null}
         {message.changeSet ? (
           <section className={styles.changeSet} aria-label="Cambios sugeridos">
             <div className={styles.changeHeading}>
@@ -182,6 +244,8 @@ export function CopilotPanel({
   const [draft, setDraft] = useState("");
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
+  const [streamStatus, setStreamStatus] = useState("");
+  const [activity, setActivity] = useState<AgentActivity[]>([]);
   const end = useRef<HTMLDivElement>(null);
   const launcher = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLElement>(null);
@@ -204,7 +268,7 @@ export function CopilotPanel({
 
   useEffect(() => {
     end.current?.scrollIntoView({ behavior: "auto", block: "nearest" });
-  }, [session?.messages.length, working]);
+  }, [activity.length, session?.messages.length, working]);
 
   useEffect(() => {
     if (!open) return;
@@ -232,26 +296,49 @@ export function CopilotPanel({
     if (!content || !session || working) return;
     setDraft("");
     setError("");
+    setStreamStatus("");
+    setActivity([]);
     setWorking(true);
+    const pushActivity = (label: string) => {
+      const normalized = label.trim();
+      if (!normalized) return;
+      setActivity((current) => {
+        if (current.at(-1)?.label === normalized) return current;
+        return [
+          ...current,
+          { id: `${Date.now()}-${current.length}`, label: normalized },
+        ].slice(-5);
+      });
+    };
     try {
-      const result = await sendCopilotMessage(session.id, content);
-      setSession((current) =>
-        current
-          ? {
-              ...current,
-              messages: [
-                ...current.messages,
-                result.userMessage,
-                result.assistantMessage,
-              ],
-            }
-          : current,
-      );
+      await streamCopilotMessage(session.id, content, {
+        onStatus: (message) => {
+          setStreamStatus(message);
+          pushActivity(message);
+        },
+        onActivity: pushActivity,
+        onUserMessage: (message) => {
+          setSession((current) =>
+            current
+              ? { ...current, messages: [...current.messages, message] }
+              : current,
+          );
+        },
+        onAssistantMessage: (message) => {
+          setSession((current) =>
+            current
+              ? { ...current, messages: [...current.messages, message] }
+              : current,
+          );
+        },
+      });
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "No se pudo responder.",
       );
     } finally {
+      setStreamStatus("");
+      setActivity([]);
       setWorking(false);
     }
   }
@@ -415,12 +502,17 @@ export function CopilotPanel({
             />
           ))}
           {working ? (
-            <div className={styles.thinking} role="status">
-              <span />
-              <span />
-              <span />
-              <span className={styles.thinkingLabel}>Analizando expediente</span>
-            </div>
+            <>
+              <AgentActivityList items={activity} />
+              <div className={styles.thinking} role="status">
+                <span />
+                <span />
+                <span />
+                <span className={styles.thinkingLabel}>
+                  {streamStatus || "Analizando expediente"}
+                </span>
+              </div>
+            </>
           ) : null}
           {error ? (
             <div className={styles.error} role="alert">

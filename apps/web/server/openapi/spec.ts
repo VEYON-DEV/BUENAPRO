@@ -547,6 +547,105 @@ export const openApiSpec = {
         },
       },
     },
+    "/api/profile/library": {
+      get: {
+        tags: ["Profile", "Documents"],
+        summary: "Lista la biblioteca reutilizable del tenant para postulaciones",
+        responses: {
+          "200": { ...singleResponse, description: "Datos y documentos reutilizables" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+        },
+      },
+    },
+    "/api/profile/library/knowledge": {
+      post: {
+        tags: ["Profile"],
+        summary: "Crea un dato reutilizable de empresa para propuestas",
+        requestBody: { required: true, content: json({ $ref: "#/components/schemas/CompanyKnowledgeInput" }) },
+        responses: {
+          "201": { ...singleResponse, description: "Dato reutilizable creado" },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+        },
+      },
+    },
+    "/api/profile/library/knowledge/{itemId}": {
+      patch: {
+        tags: ["Profile"],
+        summary: "Actualiza un dato reutilizable de empresa",
+        parameters: [{ name: "itemId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        requestBody: { required: true, content: json({ $ref: "#/components/schemas/CompanyKnowledgePatch" }) },
+        responses: {
+          "200": { ...singleResponse, description: "Dato reutilizable actualizado" },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" },
+        },
+      },
+      delete: {
+        tags: ["Profile"],
+        summary: "Elimina un dato reutilizable de empresa",
+        parameters: [{ name: "itemId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: {
+          "200": { ...singleResponse, description: "Dato reutilizable eliminado" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" },
+        },
+      },
+    },
+    "/api/profile/library/documents": {
+      post: {
+        tags: ["Profile", "Documents"],
+        summary: "Sube un documento privado reutilizable para postulaciones",
+        requestBody: {
+          required: true,
+          content: {
+            "multipart/form-data": {
+              schema: { $ref: "#/components/schemas/CompanyDocumentUpload" },
+            },
+          },
+        },
+        responses: {
+          "201": { ...singleResponse, description: "Documento de empresa creado" },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+        },
+      },
+    },
+    "/api/profile/library/documents/{documentId}": {
+      get: {
+        tags: ["Profile", "Documents"],
+        summary: "Descarga un documento privado de la biblioteca del tenant",
+        parameters: [{ name: "documentId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: {
+          "200": { description: "Archivo binario" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" },
+        },
+      },
+      patch: {
+        tags: ["Profile", "Documents"],
+        summary: "Actualiza metadata de un documento privado de empresa",
+        parameters: [{ name: "documentId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        requestBody: { required: true, content: json({ $ref: "#/components/schemas/CompanyDocumentPatch" }) },
+        responses: {
+          "200": { ...singleResponse, description: "Documento de empresa actualizado" },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" },
+        },
+      },
+      delete: {
+        tags: ["Profile", "Documents"],
+        summary: "Elimina un documento privado de empresa",
+        parameters: [{ name: "documentId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: {
+          "200": { ...singleResponse, description: "Documento de empresa eliminado" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" },
+        },
+      },
+    },
     "/api/profiles": {
       get: {
         tags: ["Profile"],
@@ -1405,6 +1504,60 @@ export const openApiSpec = {
         required: ["company_keywords"],
         properties: {
           company_keywords: { type: "array", minItems: 1, maxItems: 12, items: { type: "string", maxLength: 80 } },
+        },
+      },
+      CompanyKnowledgeInput: {
+        type: "object",
+        required: ["title"],
+        properties: {
+          title: { type: "string", maxLength: 160 },
+          kind: { type: "string", maxLength: 80, default: "nota" },
+          description: { anyOf: [{ type: "string", maxLength: 2000 }, { type: "null" }] },
+          valueText: { anyOf: [{ type: "string", maxLength: 12000 }, { type: "null" }] },
+          tags: { type: "array", maxItems: 20, items: { type: "string", maxLength: 40 } },
+          metadata: { type: "object", additionalProperties: true },
+          usableForApplications: { type: "boolean", default: true },
+        },
+      },
+      CompanyKnowledgePatch: {
+        type: "object",
+        properties: {
+          title: { type: "string", maxLength: 160 },
+          kind: { type: "string", maxLength: 80 },
+          description: { anyOf: [{ type: "string", maxLength: 2000 }, { type: "null" }] },
+          valueText: { anyOf: [{ type: "string", maxLength: 12000 }, { type: "null" }] },
+          tags: { type: "array", maxItems: 20, items: { type: "string", maxLength: 40 } },
+          metadata: { type: "object", additionalProperties: true },
+          usableForApplications: { type: "boolean" },
+        },
+      },
+      CompanyDocumentUpload: {
+        type: "object",
+        required: ["file", "title"],
+        properties: {
+          file: { type: "string", format: "binary" },
+          title: { type: "string", maxLength: 160 },
+          documentType: { type: "string", maxLength: 80, default: "documento" },
+          description: { type: "string", maxLength: 2000 },
+          tags: { type: "string", description: "Tags separados por coma" },
+          validUntil: { type: "string", format: "date" },
+          amount: { type: "number", minimum: 0 },
+          entityName: { type: "string", maxLength: 180 },
+          usableForApplications: { type: "boolean", default: true },
+        },
+      },
+      CompanyDocumentPatch: {
+        type: "object",
+        properties: {
+          title: { type: "string", maxLength: 160 },
+          documentType: { type: "string", maxLength: 80 },
+          description: { anyOf: [{ type: "string", maxLength: 2000 }, { type: "null" }] },
+          tags: { type: "array", maxItems: 20, items: { type: "string", maxLength: 40 } },
+          validUntil: { anyOf: [{ type: "string", format: "date" }, { type: "null" }] },
+          amount: { anyOf: [{ type: "number", minimum: 0 }, { type: "null" }] },
+          entityName: { anyOf: [{ type: "string", maxLength: 180 }, { type: "null" }] },
+          metadata: { type: "object", additionalProperties: true },
+          usableForApplications: { type: "boolean" },
         },
       },
       BusinessLineInput: {

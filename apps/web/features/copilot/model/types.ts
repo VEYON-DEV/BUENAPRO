@@ -11,6 +11,15 @@ export type CopilotMessage = {
   citations: CopilotCitation[];
   createdAt?: string;
   changeSet?: CopilotChangeSet | null;
+  artifacts: CopilotArtifact[];
+};
+
+export type CopilotArtifact = {
+  id: string;
+  name: string;
+  mime: string;
+  sizeBytes: number;
+  downloadUrl: string;
 };
 
 export type CopilotChangeSet = {

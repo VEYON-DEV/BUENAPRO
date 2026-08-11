@@ -45,6 +45,13 @@ Proveedor que quiere recibir oportunidades relevantes. Puede no saber CUBSO ni t
 6. Roles contratables:
    - perfiles que el usuario puede conseguir.
 7. Equipamiento/certificaciones/seguros.
+8. Biblioteca de postulación:
+   - datos reutilizables con nombre libre
+   - tags escritos por el usuario, sin dropdowns ni categorias cerradas
+   - documentos de respaldo con archivo, nombre, tags y descripcion
+   - constancias RNP, CCI, certificados, facturas, contratos, consorcios y plantillas
+   - vigencia, monto, entidad, consorcio u observaciones dentro de descripcion si aplica
+   - todo lo guardado desde la UI alimenta el contexto del agente por defecto
 
 ## Componentes
 
@@ -60,6 +67,7 @@ features/profile/components/TeamEditor/
 features/profile/components/HireableRolesEditor/
 features/profile/components/EquipmentEditor/
 features/profile/components/CertificationsEditor/
+features/profile/components/CompanyLibraryPanel/
 features/profile/components/ProfileCompleteness/
 ```
 
@@ -81,6 +89,14 @@ GET /api/catalogs/ubigeo
 GET /api/integrations/seace
 PUT /api/integrations/seace
 DELETE /api/integrations/seace
+GET /api/profile/library
+POST /api/profile/library/knowledge
+PATCH /api/profile/library/knowledge/:itemId
+DELETE /api/profile/library/knowledge/:itemId
+POST /api/profile/library/documents
+PATCH /api/profile/library/documents/:documentId
+GET /api/profile/library/documents/:documentId
+DELETE /api/profile/library/documents/:documentId
 ```
 
 Guardar perfil o lineas encola `match_profile` en backend.
@@ -101,6 +117,10 @@ Guardar perfil o lineas encola `match_profile` en backend.
 - Ocultar la acción de guardado mientras el formulario no tenga cambios.
 - Usar la misma jerarquía BuenaPro Glass de Inicio y Mercado: resumen ambiental claro, líneas sobre superficie de trabajo blanca y capacidad/conexión en rail secundario.
 - Mantener chips, inputs, disclosures, botones, radios y profundidad coherentes con el resto del producto; evitar cabeceras oscuras o paneles planos heredados.
+- La biblioteca debe aceptar solo el flujo simple visible: nombre, tags libres y descripcion; para documentos se suma archivo.
+- No agregar dropdowns, vencimientos, montos, entidad o toggles visibles en la biblioteca salvo que exista una necesidad real validada.
+- Los archivos de biblioteca alimentan al agente como metadata/contexto seleccionado; no enviar archivos completos por defecto si no son necesarios.
+- Mostrar documentos y datos en una superficie de trabajo escaneable con busqueda, acciones claras y formulario progresivo.
 
 ## Estados
 
@@ -117,3 +137,4 @@ Guardar perfil o lineas encola `match_profile` en backend.
 - Crear/editar/desactivar lineas.
 - Al guardar, el feed empieza a generar matches.
 - La UI no requiere entender JSON.
+- El usuario puede guardar datos libres y documentos de respaldo con tags, descargarlos y eliminarlos de forma tenant-safe.

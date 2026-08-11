@@ -580,6 +580,151 @@
   margin-top: 10px;
 }
 
+.artifacts {
+  display: grid;
+  gap: 7px;
+  margin-top: 9px;
+  width: min(390px, 100%);
+}
+
+.artifact {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #dfe3f0;
+  border-radius: 14px;
+  display: flex;
+  gap: 10px;
+  min-height: 62px;
+  padding: 9px 9px 9px 10px;
+}
+
+.artifactIcon {
+  align-items: center;
+  background: #eeecff;
+  border-radius: 10px;
+  color: #4c3cff;
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 40px;
+  justify-content: center;
+  width: 40px;
+}
+
+.artifactCopy {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+}
+
+.artifactCopy strong {
+  color: #0c1533;
+  font-size: 12px;
+  line-height: 17px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artifactCopy span {
+  color: #69718a;
+  font-size: 10px;
+  line-height: 15px;
+}
+
+.artifactDownload {
+  align-items: center;
+  background: #050609;
+  border-radius: 11px;
+  color: #fff;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 11px;
+  text-decoration: none;
+}
+
+.artifactDownload:hover {
+  background: #20222a;
+}
+
+.artifactDownload:focus-visible {
+  outline: 3px solid rgb(76 60 255 / 28%);
+  outline-offset: 3px;
+}
+
+.agentActivity {
+  background: rgb(255 255 255 / 78%);
+  border: 1px solid #dfe3f0;
+  border-radius: 16px;
+  box-shadow: 0 8px 28px rgb(46 55 105 / 7%);
+  margin: 0 0 14px 39px;
+  max-width: calc(100% - 39px);
+  overflow: hidden;
+}
+
+.agentActivityHeader {
+  align-items: center;
+  border-bottom: 1px solid rgb(223 227 240 / 76%);
+  color: #4c3cff;
+  display: flex;
+  font-size: 11px;
+  font-weight: 700;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 12px;
+}
+
+.agentActivityHeader svg {
+  animation: spin 950ms linear infinite;
+}
+
+.agentActivity ol {
+  list-style: none;
+  margin: 0;
+  padding: 9px 12px 10px;
+}
+
+.agentActivity li {
+  align-items: flex-start;
+  color: #69718a;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.agentActivity li + li {
+  margin-top: 7px;
+}
+
+.agentActivity li > span {
+  background: #dfe3f0;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  height: 7px;
+  margin-top: 7px;
+  width: 7px;
+}
+
+.agentActivity li[data-current="true"] {
+  color: #26304d;
+}
+
+.agentActivity li[data-current="true"] > span {
+  background: #4c3cff;
+  box-shadow: 0 0 0 4px rgb(76 60 255 / 10%);
+}
+
+.agentActivity p {
+  font-size: 12px;
+  line-height: 18px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .thinking {
   align-items: center;
   color: #69718a;
@@ -608,6 +753,18 @@
 
 .thinkingLabel {
   margin-left: 2px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agentActivityHeader svg {
+    animation: none;
+  }
 }
 
 .error {
@@ -732,6 +889,22 @@
 }
 
 @media (max-width: 640px) {
+  .artifactDownload span {
+    clip: rect(0, 0, 0, 0);
+    clip-path: inset(50%);
+    height: 1px;
+    overflow: hidden;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+  }
+
+  .artifactDownload {
+    justify-content: center;
+    padding: 0;
+    width: 40px;
+  }
+
   .launcher {
     bottom: calc(76px + env(safe-area-inset-bottom));
     border-radius: 16px;
