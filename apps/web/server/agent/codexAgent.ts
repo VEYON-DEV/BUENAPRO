@@ -508,6 +508,7 @@ function codexArgs(options: {
       "exec",
       "resume",
       "--json",
+      "--skip-git-repo-check",
       "--output-schema",
       options.schemaPath,
       ...(model ? ["-m", model] : []),
@@ -518,6 +519,7 @@ function codexArgs(options: {
   return [
     "exec",
     "--json",
+    "--skip-git-repo-check",
     "--output-schema",
     options.schemaPath,
     "--sandbox",
