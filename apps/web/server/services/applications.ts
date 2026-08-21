@@ -360,6 +360,116 @@ export async function updateApplication(
   return result.rows[0];
 }
 
+export async function markApplicationSubmitted(
+  tenantId: string,
+  matchId: number,
+  actorId?: string | null,
+) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const locked = await client.query<{ application_id: string }>(
+      `SELECT ad.id AS application_id
+       FROM application_drafts ad
+       JOIN matches m ON m.id=ad.match_id
+       JOIN company_profiles cp ON cp.id=m.profile_id
+       WHERE cp.tenant_id=$1 AND m.id=$2
+       FOR UPDATE OF ad`,
+      [tenantId, matchId],
+    );
+    if (!locked.rows[0]) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+    const readiness = await client.query<{
+      application_id: string;
+      status: string;
+      validity_date: Date | null;
+      contact_email: string | null;
+      contact_phone: string | null;
+      selected_items: number;
+      priced_items: number;
+      requirements: number;
+      answered_requirements: number;
+      attachments: number;
+      total_amount: string | number | null;
+    }>(
+      `SELECT ad.id AS application_id,ad.status,ad.validity_date,ad.contact_email,ad.contact_phone,
+              count(DISTINCT ai.id) FILTER (WHERE ai.selected)::int AS selected_items,
+              count(DISTINCT ai.id) FILTER (WHERE ai.selected AND ai.unit_price IS NOT NULL)::int AS priced_items,
+              count(DISTINCT ar.id)::int AS requirements,
+              count(DISTINCT ar.id) FILTER (WHERE NULLIF(BTRIM(ar.offered_value),'') IS NOT NULL)::int AS answered_requirements,
+              count(DISTINCT aa.id)::int AS attachments,
+              COALESCE((SELECT SUM(total_price) FROM application_items WHERE application_id=ad.id AND selected),0) AS total_amount
+       FROM application_drafts ad
+       LEFT JOIN application_items ai ON ai.application_id=ad.id
+       LEFT JOIN application_requirements ar ON ar.application_id=ad.id
+       LEFT JOIN application_attachments aa ON aa.application_id=ad.id
+       WHERE ad.id=$1
+       GROUP BY ad.id`,
+      [locked.rows[0].application_id],
+    );
+    const application = readiness.rows[0];
+    if (!application) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+    const missing: string[] = [];
+    if (
+      application.selected_items === 0 ||
+      application.priced_items !== application.selected_items
+    )
+      missing.push("oferta y precios");
+    if (
+      !application.validity_date ||
+      !application.contact_email ||
+      !application.contact_phone
+    )
+      missing.push("vigencia y contacto");
+    if (application.answered_requirements !== application.requirements)
+      missing.push("RTM");
+    if (application.attachments === 0) missing.push("propuesta adjunta");
+    if (missing.length) {
+      await client.query("ROLLBACK");
+      return {
+        error: `Completa ${missing.join(", ")} antes de registrar la presentación.`,
+      };
+    }
+    const updated = await client.query(
+      `UPDATE application_drafts
+       SET status='submitted',total_amount=$2,updated_at=now()
+       WHERE id=$1
+       RETURNING *`,
+      [application.application_id, application.total_amount],
+    );
+    await client.query(
+      `UPDATE matches
+       SET user_state='postulada',monto_ofertado=$2,updated_at=now()
+       WHERE id=$1`,
+      [matchId, application.total_amount],
+    );
+    await client.query(
+      `INSERT INTO match_events (match_id,event_type,payload,actor_id)
+       VALUES ($1,'application_marked_submitted',$2::jsonb,$3)`,
+      [
+        matchId,
+        JSON.stringify({
+          application_id: application.application_id,
+          channel: "seace_manual",
+        }),
+        actorId ?? null,
+      ],
+    );
+    await client.query("COMMIT");
+    return { data: updated.rows[0] };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function updateApplicationItem(
   tenantId: string,
   matchId: number,

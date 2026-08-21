@@ -4,7 +4,7 @@
   align-self: start;
   background: var(--bp-color-panel);
   border: 1px solid var(--bp-color-border);
-  border-radius: 8px;
+  border-radius: 20px;
   padding: 20px;
 }
 .heading {
@@ -74,19 +74,86 @@
   border-color: var(--bp-color-sage);
   color: var(--bp-color-sage);
 }
-.notice {
+.submitArea,
+.success {
   margin-top: 20px;
   padding-top: 18px;
   border-top: 1px solid var(--bp-color-border-strong);
 }
-.notice strong {
+.submitButton {
+  align-items: center;
+  background: var(--glass-black, #050609);
+  border: 0;
+  border-radius: 14px;
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  font: inherit;
   font-size: 13px;
+  font-weight: 700;
+  gap: 9px;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 14px;
+  transition: background 180ms ease, opacity 180ms ease;
+  width: 100%;
 }
-.notice p {
+.submitButton svg {
+  height: 17px;
+  width: 17px;
+}
+.submitButton:hover:not(:disabled) {
+  background: #202229;
+}
+.submitButton:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--bp-color-brand) 24%, transparent);
+  outline-offset: 3px;
+}
+.submitButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+.submitArea p,
+.success p {
   font-size: 12px;
   line-height: 1.55;
   color: var(--bp-color-text-2);
-  margin: 6px 0 0;
+  margin: 8px 0 0;
+}
+.success {
+  align-items: flex-start;
+  background: var(--bp-color-sage-soft);
+  border: 1px solid color-mix(in srgb, var(--bp-color-sage) 22%, transparent);
+  border-radius: 16px;
+  display: flex;
+  gap: 11px;
+  margin-top: 20px;
+  padding: 15px;
+}
+.success > svg {
+  color: var(--bp-color-sage);
+  flex: 0 0 auto;
+  height: 22px;
+  margin-top: 1px;
+  width: 22px;
+}
+.success strong {
+  color: var(--bp-color-ink);
+  display: block;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.success p {
+  color: var(--bp-color-text-2);
+  margin-top: 5px;
+}
+.spinner {
+  animation: spin 800ms linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 @media (max-width: 960px) {
   .rail {
@@ -96,5 +163,11 @@
 @media (prefers-reduced-motion: reduce) {
   .bar span {
     transition: none;
+  }
+  .submitButton {
+    transition: none;
+  }
+  .spinner {
+    animation: none;
   }
 }

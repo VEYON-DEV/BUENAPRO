@@ -1,3 +1,4 @@
+import { CheckCircle2, Loader2, Send } from "lucide-react";
 import type { ApplicationData } from "../../model/types";
 import { AssigneeControl } from "../AssigneeControl";
 import styles from "./ProgressRail.module.css";
@@ -5,9 +6,13 @@ import styles from "./ProgressRail.module.css";
 export function ProgressRail({
   data,
   saving,
+  submitting,
+  onSubmit,
 }: {
   data: ApplicationData;
   saving: boolean;
+  submitting: boolean;
+  onSubmit: () => void;
 }) {
   const selected = data.items.filter((item) => item.selected);
   const itemDone =
@@ -24,6 +29,8 @@ export function ProgressRail({
     { label: "Propuesta adjunta", done: data.attachments.length > 0 },
   ];
   const done = steps.filter((step) => step.done).length;
+  const complete = done === steps.length;
+  const submitted = data.status === "submitted";
   return (
     <aside className={styles.rail} aria-label="Estado de la postulación">
       <AssigneeControl
@@ -55,13 +62,39 @@ export function ProgressRail({
           </li>
         ))}
       </ol>
-      <div className={styles.notice}>
-        <strong>Envío oficial no habilitado</strong>
-        <p>
-          Tu borrador queda listo aquí. La presentación en SEACE seguirá bajo
-          control del usuario hasta validar el bridge de envío.
-        </p>
-      </div>
+      {submitted ? (
+        <div className={styles.success} role="status" aria-live="polite">
+          <CheckCircle2 aria-hidden="true" />
+          <div>
+            <strong>¡Felicidades! Tu licitación quedó registrada</strong>
+            <p>
+              BuenaPro guardó la postulación como presentada. Conserva el cargo
+              de SEACE como respaldo.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className={styles.submitArea}>
+          <button
+            className={styles.submitButton}
+            type="button"
+            disabled={!complete || saving || submitting}
+            onClick={onSubmit}
+          >
+            {submitting ? (
+              <Loader2 className={styles.spinner} aria-hidden="true" />
+            ) : (
+              <Send aria-hidden="true" />
+            )}
+            {submitting ? "Registrando…" : "Registrar como presentada"}
+          </button>
+          <p>
+            {complete
+              ? "Úsalo después de presentar la propuesta en SEACE."
+              : "Completa los tres bloques para habilitar esta acción."}
+          </p>
+        </div>
+      )}
     </aside>
   );
 }
