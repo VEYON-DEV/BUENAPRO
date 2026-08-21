@@ -48,10 +48,10 @@ Estado guardado:
 
 ## Workspace Codex
 
-Se usa un workspace por tenant:
+Se usa un workspace aislado por conversación dentro de cada tenant:
 
 ```text
-.codex-runtime/tenants/<tenantId>/
+.codex-runtime/tenants/<tenantId>/chats/<chatSessionId>/
   AGENTS.md
   memory.md
   context/current.json
@@ -60,9 +60,9 @@ Se usa un workspace por tenant:
   outputs/generated-documents/
 ```
 
-No se crea una carpeta por conversación. Redis vincula cada `chatSessionId` al thread caliente de Codex.
+Cada conversación tiene su propio contexto, memoria caliente, temporales y entregables. Redis vincula el mismo `chatSessionId` al thread caliente de Codex, por lo que una conversación nueva no reanuda ni recibe el workspace de otra conversación.
 
-Los documentos fuente se materializan en un cache unico por tenant bajo `context/source-documents/`. El bridge acepta solo HTTPS bajo `*.seace.gob.pe` y valida también cada redireccion; deduplica registros equivalentes, valida firma/tamano, limita cada archivo a 10 MB, cada expediente a 12 archivos/30 MB y elimina entradas inactivas despues de 30 minutos. `context/current.json` indica `localPath`, `localStatus`, `editableTemplate`, `documentRole` y `duplicateOf`; por eso Codex puede preservar una plantilla aunque su propio proceso tenga una falla DNS.
+Los documentos fuente se materializan en un cache acotado de la conversación bajo `context/source-documents/`. El bridge acepta solo HTTPS bajo `*.seace.gob.pe` y valida también cada redireccion; deduplica registros equivalentes, valida firma/tamano, limita cada archivo a 10 MB, cada expediente a 12 archivos/30 MB y elimina entradas inactivas despues de 30 minutos. `context/current.json` indica `localPath`, `localStatus`, `editableTemplate`, `documentRole` y `duplicateOf`; por eso Codex puede preservar una plantilla aunque su propio proceso tenga una falla DNS sin mezclar documentos de otro chat.
 
 El `AGENTS.md` obliga a procesar OOXML/PDF con salida acotada: no se vuelca XML completo al thread, se agrupan inspecciones y se muestran solo campos/resumenes necesarios. Esto reduce contexto sin quitar al agente la capacidad de editar los originales.
 

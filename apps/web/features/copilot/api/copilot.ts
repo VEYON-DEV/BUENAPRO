@@ -47,6 +47,10 @@ export async function openCopilotSession(contractId: number, matchId?: string) {
   );
   const existing = list(existingPayload?.data ?? existingPayload);
   if (existing[0]?.id) return getCopilotSession(String(existing[0].id));
+  return createCopilotSession(contractId, matchId);
+}
+
+export async function createCopilotSession(contractId: number, matchId?: string) {
   const payload: any = await apiFetch(
     `/api/contracts/${contractId}/chat/sessions`,
     {
@@ -55,9 +59,7 @@ export async function openCopilotSession(contractId: number, matchId?: string) {
     },
   );
   const created = payload?.data ?? payload;
-  const root = created?.id
-    ? await getCopilotSession(String(created.id))
-    : created;
+  const root = created?.id ? await getCopilotSession(String(created.id)) : created;
   return {
     id: String(root.id),
     title: root.title,

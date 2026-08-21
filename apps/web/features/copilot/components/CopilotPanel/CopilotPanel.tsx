@@ -18,11 +18,13 @@ import {
   FileCheck2,
   LoaderCircle,
   MessageCircleQuestion,
+  MessageSquarePlus,
   Sparkles,
   X,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import {
+  createCopilotSession,
   decideChangeSet,
   getCopilotSession,
   openCopilotSession,
@@ -366,6 +368,28 @@ export function CopilotPanel({
     }
   }
 
+  async function startNewConversation() {
+    if (working) return;
+    setWorking(true);
+    setError("");
+    setDraft("");
+    setStreamStatus("");
+    setActivity([]);
+    try {
+      const created = await createCopilotSession(contractId, matchId);
+      setSession(created);
+      window.setTimeout(() => textarea.current?.focus(), 0);
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "No se pudo iniciar una conversación nueva.",
+      );
+    } finally {
+      setWorking(false);
+    }
+  }
+
   function closePanel() {
     setOpen(false);
     window.setTimeout(() => launcher.current?.focus(), 0);
@@ -441,15 +465,28 @@ export function CopilotPanel({
               </strong>
             </div>
           </div>
-          <button
-            className={styles.closeButton}
-            type="button"
-            onClick={closePanel}
-            aria-label="Cerrar asistente"
-            title="Cerrar"
-          >
-            <X size={20} aria-hidden="true" />
-          </button>
+          <div className={styles.headerActions}>
+            <button
+              className={styles.newConversationButton}
+              type="button"
+              onClick={() => void startNewConversation()}
+              disabled={working}
+              aria-label="Iniciar una conversación nueva"
+              title="Nueva conversación"
+            >
+              <MessageSquarePlus size={17} aria-hidden="true" />
+              <span>Nueva</span>
+            </button>
+            <button
+              className={styles.closeButton}
+              type="button"
+              onClick={closePanel}
+              aria-label="Cerrar asistente"
+              title="Cerrar"
+            >
+              <X size={20} aria-hidden="true" />
+            </button>
+          </div>
         </header>
 
         <div className={styles.contextBar}>
