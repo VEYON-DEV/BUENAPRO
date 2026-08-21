@@ -11,7 +11,7 @@ Permitir que el proveedor converse sobre una licitación y prepare campos del bo
 
 ## Memoria
 
-PostgreSQL conserva sesiones, mensajes, ejecuciones, resumen compacto y conjuntos de cambios. Se envía al modelo el resumen histórico más los mensajes recientes. Redis no es necesario para el MVP.
+PostgreSQL conserva sesiones, mensajes, ejecuciones, resumen compacto y conjuntos de cambios. Se envía al modelo el resumen histórico más los mensajes recientes de la sesión activa. `Nueva conversación` crea otra sesión sin mensajes ni resumen anteriores, inicia un thread Codex nuevo y usa un workspace aislado por `tenantId/chatSessionId`; conserva únicamente el contexto vigente de empresa, licitación y borrador.
 
 ## Contexto
 

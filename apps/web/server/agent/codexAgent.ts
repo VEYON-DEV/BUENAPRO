@@ -385,11 +385,21 @@ function codexOutputJsonSchema() {
   };
 }
 
-async function ensureWorkspace(tenantId: string, context: JsonObject) {
+async function ensureWorkspace(
+  tenantId: string,
+  chatSessionId: string,
+  context: JsonObject,
+) {
   const root =
     process.env.CODEX_AGENT_WORKSPACE_ROOT ??
     path.join(process.cwd(), ".codex-runtime");
-  const workspacePath = path.join(root, "tenants", safePathPart(tenantId));
+  const workspacePath = path.join(
+    root,
+    "tenants",
+    safePathPart(tenantId),
+    "chats",
+    safePathPart(chatSessionId),
+  );
   await mkdir(path.join(workspacePath, "context"), { recursive: true });
   await mkdir(path.join(workspacePath, "outputs", "generated-documents"), {
     recursive: true,
@@ -642,6 +652,7 @@ export async function* streamCodexLicitationAgent(
   const outputSchema = codexOutputJsonSchema();
   const { workspacePath, schemaPath, materializedContext } = await ensureWorkspace(
     input.tenantId,
+    chatSessionId,
     prepared.context.payload,
   );
   const contextHash = hashJson({
