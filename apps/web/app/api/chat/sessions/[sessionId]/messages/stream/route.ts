@@ -18,8 +18,10 @@ import {
 } from "@/server/services/chatArtifacts";
 import {
   directDocumentAnswer,
+  finalDocumentFilename,
   isDocumentDeliveryRequest,
 } from "@/server/agent/documentDelivery";
+import { createSseWriter } from "@/server/http/sseWriter";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -37,10 +39,6 @@ function agentMessages(messages: any[]): AgentMessage[] {
       role: message.role,
       content: String(message.content ?? "").slice(0, 8_000),
     }));
-}
-
-function sse(event: string, data: unknown) {
-  return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
 export async function POST(
@@ -94,12 +92,12 @@ export async function POST(
     );
   }
 
-  const encoder = new TextEncoder();
+  let writer: ReturnType<typeof createSseWriter> | null = null;
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const send = (event: string, data: unknown) => {
-        controller.enqueue(encoder.encode(sse(event, data)));
-      };
+      writer = createSseWriter(controller);
+      const heartbeat = setInterval(() => writer?.heartbeat(), 15_000);
+      const send = (event: string, data: unknown) => writer?.send(event, data);
       send("user_message", started.message);
       try {
         const agentInput = {
@@ -134,6 +132,11 @@ export async function POST(
                 event.outputDirectory,
                 event.generatedFiles,
               );
+              if (documentDeliveryMode) {
+                for (const artifact of artifacts) {
+                  artifact.filename = finalDocumentFilename(artifact.filename);
+                }
+              }
               const assistantContent =
                 documentDeliveryMode && artifacts.length
                   ? directDocumentAnswer(
@@ -207,8 +210,12 @@ export async function POST(
               : "El copiloto no pudo responder en este momento.",
         });
       } finally {
-        controller.close();
+        clearInterval(heartbeat);
+        writer.close();
       }
+    },
+    cancel() {
+      writer?.disconnect();
     },
   });
 
@@ -217,6 +224,7 @@ export async function POST(
       "content-type": "text/event-stream; charset=utf-8",
       "cache-control": "no-cache, no-transform",
       connection: "keep-alive",
+      "x-accel-buffering": "no",
     },
   });
 }
