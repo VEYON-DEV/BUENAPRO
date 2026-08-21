@@ -1,5 +1,5 @@
 import { apiFetch } from "@/lib/api/client";
-import type { ApplicationData } from "../model/types";
+import type { ApplicationAttachment, ApplicationData } from "../model/types";
 
 const array = (value: unknown) => (Array.isArray(value) ? value : []);
 const text = (...values: unknown[]) =>
@@ -176,7 +176,10 @@ export async function getApplication(matchId: string) {
     matchId,
   );
 }
-export async function patchApplication(matchId: string, json: any) {
+export async function patchApplication(
+  matchId: string,
+  json: Partial<Pick<ApplicationData, "status" | "validity" | "contactEmail" | "contactPhone">>,
+) {
   return apiFetch(`/api/applications/${matchId}`, {
     method: "PATCH",
     json: {
@@ -186,6 +189,10 @@ export async function patchApplication(matchId: string, json: any) {
       contact_phone: json.contactPhone,
     },
   });
+}
+
+export async function markApplicationSubmitted(matchId: string) {
+  return patchApplication(matchId, { status: "submitted" });
 }
 export async function patchItem(matchId: string, itemId: string, json: any) {
   return apiFetch(`/api/applications/${matchId}/items`, {
@@ -223,7 +230,7 @@ export async function uploadAttachment(matchId: string, file: File) {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok)
     throw new Error(payload?.error ?? "No se pudo subir el archivo.");
-  return payload;
+  return payload as { data: ApplicationAttachment };
 }
 export async function deleteAttachment(matchId: string, attachmentId: string) {
   const response = await fetch(

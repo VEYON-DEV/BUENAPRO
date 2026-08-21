@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { currentUserId, requireTenantId } from "@/server/auth/tenant";
 import {
   getApplication,
+  markApplicationSubmitted,
   updateApplication,
 } from "@/server/services/applications";
 
@@ -28,10 +29,19 @@ export async function PATCH(
   const matchId = Number((await context.params).matchId);
   if (!Number.isSafeInteger(matchId))
     return NextResponse.json({ error: "Invalid application" }, { status: 400 });
+  const body = await request.json();
+  if (body.status === "submitted") {
+    const result = await markApplicationSubmitted(tenantId, matchId, actorId);
+    if (!result)
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if ("error" in result)
+      return NextResponse.json({ error: result.error }, { status: 409 });
+    return NextResponse.json(result);
+  }
   const data = await updateApplication(
     tenantId,
     matchId,
-    await request.json(),
+    body,
     actorId,
   );
   return data

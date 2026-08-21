@@ -7,6 +7,7 @@ import { CopilotPanel } from "@/features/copilot";
 import {
   getApplication,
   deleteAttachment,
+  markApplicationSubmitted,
   patchApplication,
   patchItem,
   patchRequirement,
@@ -28,8 +29,10 @@ export function ApplicationWorkspace({ matchId }: { matchId: string }) {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [history, setHistory] = useState<any>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingDraft = useRef<Partial<ApplicationData>>({});
   const load = useCallback(async () => {
     setError("");
     try {
@@ -61,14 +64,17 @@ export function ApplicationWorkspace({ matchId }: { matchId: string }) {
 
   function queueDraft(patch: Partial<ApplicationData>) {
     setData((current) => (current ? { ...current, ...patch } : current));
+    pendingDraft.current = { ...pendingDraft.current, ...patch };
     setSaving(true);
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
+      const draftPatch = pendingDraft.current;
+      pendingDraft.current = {};
       try {
         await patchApplication(matchId, {
-          validity_date: patch.validity,
-          contact_email: patch.contactEmail,
-          contact_phone: patch.contactPhone,
+          validity: draftPatch.validity,
+          contactEmail: draftPatch.contactEmail,
+          contactPhone: draftPatch.contactPhone,
         });
       } catch (cause) {
         setError(
@@ -144,8 +150,15 @@ export function ApplicationWorkspace({ matchId }: { matchId: string }) {
   async function addAttachment(file: File) {
     setUploading(true);
     try {
-      await uploadAttachment(matchId, file);
-      await load();
+      const uploaded = await uploadAttachment(matchId, file);
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              attachments: [uploaded.data, ...current.attachments],
+            }
+          : current,
+      );
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "No se pudo subir el archivo.",
@@ -176,6 +189,24 @@ export function ApplicationWorkspace({ matchId }: { matchId: string }) {
       );
     } finally {
       setSaving(false);
+    }
+  }
+  async function submitApplication() {
+    setError("");
+    setSubmitting(true);
+    try {
+      await markApplicationSubmitted(matchId);
+      setData((current) =>
+        current ? { ...current, status: "submitted" } : current,
+      );
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "No se pudo registrar la presentación.",
+      );
+    } finally {
+      setSubmitting(false);
     }
   }
   const selectedTotal = useMemo(
@@ -225,7 +256,13 @@ export function ApplicationWorkspace({ matchId }: { matchId: string }) {
           <div>
             <div className={styles.code}>
               {data.code}
-              <span>{data.status === "draft" ? "Borrador" : data.status}</span>
+              <span>
+                {data.status === "submitted"
+                  ? "Presentada"
+                  : data.status === "ready_for_review"
+                    ? "Lista para revisar"
+                    : "En preparación"}
+              </span>
             </div>
             <h1>{data.title}</h1>
             <p>{data.entity}</p>
@@ -312,7 +349,12 @@ export function ApplicationWorkspace({ matchId }: { matchId: string }) {
               <OfficialDocuments data={data} />
             </div>
           </div>
-          <ProgressRail data={data} saving={saving} />
+          <ProgressRail
+            data={data}
+            saving={saving || uploading}
+            submitting={submitting}
+            onSubmit={() => void submitApplication()}
+          />
         </div>
       </div>
     </AppShell>
