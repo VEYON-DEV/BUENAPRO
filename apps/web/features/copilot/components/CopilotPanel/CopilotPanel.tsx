@@ -35,6 +35,7 @@ import type {
   CopilotMessage,
   CopilotSession,
 } from "../../model/types";
+import { isDocumentDeliveryMessage } from "../../model/documentDelivery";
 import styles from "./CopilotPanel.module.css";
 
 const STARTERS = [
@@ -117,6 +118,7 @@ function Message({
   ) => void;
 }) {
   const assistant = message.role !== "user";
+  const documentDelivery = isDocumentDeliveryMessage(message);
 
   return (
     <article className={styles.message} data-role={message.role}>
@@ -183,7 +185,7 @@ function Message({
             ))}
           </section>
         ) : null}
-        {message.changeSet ? (
+        {message.changeSet && !documentDelivery ? (
           <section className={styles.changeSet} aria-label="Cambios sugeridos">
             <div className={styles.changeHeading}>
               <span className={styles.changeIcon} aria-hidden="true">

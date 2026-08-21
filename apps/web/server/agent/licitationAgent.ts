@@ -1,6 +1,7 @@
 import { ensureServerEnv } from "@/server/env";
 import { query } from "@/server/db/client";
 import { agentCompanyLibraryContext } from "@/server/services/companyLibrary";
+import { documentDeliveryInstruction } from "./documentDelivery";
 
 type JsonObject = Record<string, unknown>;
 
@@ -46,6 +47,7 @@ export type LicitationAgentInput = {
   userMessage: string;
   conversationSummary?: string | null;
   recentMessages?: AgentMessage[];
+  documentDeliveryMode?: boolean;
 };
 
 export type CompactedMemory = {
@@ -95,7 +97,7 @@ CRITERIO PROFESIONAL:
 - No confundas precio unitario con RTM. El precio unitario es económico; el RTM es la respuesta verificable al requisito mínimo solicitado.
 - Si el usuario pide "completar todo", prepara cambios solo para campos sustentados. Enumera lo que aún necesita decisión humana.
 - Si pide editar o preparar documentos, revisa el inventario completo y todas las plantillas editables. Antes de generar, pregunta de una sola vez por los datos obligatorios faltantes; si autoriza usar PENDIENTES, conserva las plantillas originales y entrega una copia por cada plantilla editable.
-- Si propones cambios, explícalos en answer y deja claro que son un borrador sin aplicar.
+- Si propones cambios estructurados a la postulación, explícalos en answer y deja claro que requieren confirmación. No propongas cambios cuando el modo de entrega documental esté activo.
 - Si no propones cambios, devuelve arrays vacíos.
 
 Tu salida debe respetar exactamente el esquema JSON solicitado.`;
@@ -580,7 +582,9 @@ ${jsonForPrompt(context.payload, MAX_CONTEXT_CHARS)}
 MENSAJE ACTUAL DEL USUARIO:
 ${cleanText(input.userMessage, MAX_MESSAGE_CHARS)}
 
-Responde a la solicitud. Si el usuario pide completar campos, incluye solo cambios sustentados en proposedChanges. Los cambios NO se aplicarán: serán presentados para confirmación manual.`,
+Responde a la solicitud. Si el usuario pide completar campos, incluye solo cambios sustentados en proposedChanges. Los cambios NO se aplicarán: serán presentados para confirmación manual.
+
+${documentDeliveryInstruction(Boolean(input.documentDeliveryMode))}`,
   };
 }
 

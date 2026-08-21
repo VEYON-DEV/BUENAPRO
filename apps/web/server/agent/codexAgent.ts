@@ -24,6 +24,7 @@ import {
   touchCodexHotSession,
 } from "./codexSessionStore";
 import { buildCodexArgs, codexSandboxMode } from "./codexCommand";
+import { documentDeliveryInstruction } from "./documentDelivery";
 
 type JsonObject = Record<string, unknown>;
 
@@ -459,12 +460,14 @@ La memoria principal vive en PostgreSQL y en la biblioteca de empresa de BuenaPr
   return { workspacePath, schemaPath, materializedContext };
 }
 
-function initialPrompt(agentPrompt: string) {
+function initialPrompt(agentPrompt: string, input: LicitationAgentInput) {
   return `${LICITATION_EXPERT_SYSTEM_PROMPT}
 
 El archivo context/current.json contiene el mismo contexto tenant-scoped del turno.
 
 ${agentPrompt}
+
+${documentDeliveryInstruction(Boolean(input.documentDeliveryMode))}
 
 Devuelve exclusivamente JSON valido para el esquema solicitado. No uses Markdown.`;
 }
@@ -474,6 +477,8 @@ function continuationPrompt(input: LicitationAgentInput) {
 
 MENSAJE ACTUAL DEL USUARIO:
 ${clean(input.userMessage)}
+
+${documentDeliveryInstruction(Boolean(input.documentDeliveryMode))}
 
 Usa la memoria de esta sesion, context/current.json y los guardrails ya definidos. Si el contexto actual cambió, el backend abrirá una sesion nueva. Devuelve exclusivamente JSON valido para el esquema solicitado.`;
 }
@@ -637,7 +642,7 @@ export async function* streamCodexLicitationAgent(
       hot.workspacePath === workspacePath;
     const prompt = canResume
       ? continuationPrompt(input)
-      : initialPrompt(prepared.prompt);
+      : initialPrompt(prepared.prompt, input);
     let threadId = canResume ? hot.codexThreadId : null;
     let assistantText = "";
     let usage: JsonObject = {};
