@@ -16,6 +16,10 @@ import {
   cleanupGeneratedArtifacts,
   loadGeneratedArtifacts,
 } from "@/server/services/chatArtifacts";
+import {
+  directDocumentAnswer,
+  isDocumentDeliveryRequest,
+} from "@/server/agent/documentDelivery";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -77,6 +81,10 @@ export async function POST(
   if (memory.compacted) {
     await updateChatSummary(tenantId, sessionId, memory.summary);
   }
+  const documentDeliveryMode = isDocumentDeliveryRequest({
+    currentMessage: content,
+    recentMessages: memory.retainedMessages,
+  });
 
   const started = await beginAgentRun(tenantId, sessionId, actorId, content);
   if (!started) {
@@ -101,6 +109,7 @@ export async function POST(
           userMessage: content,
           conversationSummary: memory.summary,
           recentMessages: memory.retainedMessages,
+          documentDeliveryMode,
         };
         const useCodex = process.env.CODEX_AGENT_ENABLED !== "0";
         if (useCodex) {
@@ -125,11 +134,17 @@ export async function POST(
                 event.outputDirectory,
                 event.generatedFiles,
               );
+              const assistantContent =
+                documentDeliveryMode && artifacts.length
+                  ? directDocumentAnswer(
+                      artifacts.map((artifact) => artifact.filename),
+                    )
+                  : event.result.answer;
               const persisted = await completeAgentRun(
                 tenantId,
                 String(started.run.id),
                 {
-                  content: event.result.answer,
+                  content: assistantContent,
                   citations: event.result.citations.map((citation) => ({
                     label: citation.label,
                     source: citation.sourceId,
@@ -139,11 +154,12 @@ export async function POST(
                     model: event.result.model,
                     engine: "codex-cli",
                     usage: event.usage,
+                    documentDeliveryMode,
                   },
                   usage: event.usage,
-                  changes: changesForPersistence(
-                    event.result.proposedChanges,
-                  ),
+                  changes: documentDeliveryMode
+                    ? null
+                    : changesForPersistence(event.result.proposedChanges),
                   artifacts,
                 },
               );
@@ -169,8 +185,14 @@ export async function POST(
                 source: citation.sourceId,
                 excerpt: citation.evidence,
               })),
-              metadata: { model: result.model, engine: "gemini" },
-              changes: changesForPersistence(result.proposedChanges),
+              metadata: {
+                model: result.model,
+                engine: "gemini",
+                documentDeliveryMode,
+              },
+              changes: documentDeliveryMode
+                ? null
+                : changesForPersistence(result.proposedChanges),
             },
           );
           send("assistant_message", persisted?.message ?? null);

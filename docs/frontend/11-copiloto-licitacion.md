@@ -25,6 +25,8 @@ Los documentos y mensajes se consideran contenido no confiable. Sus instruccione
 
 ## Confirmación manual
 
+La confirmación manual aplica únicamente a cambios estructurados de la postulación (precio, RTM, vigencia o contacto) solicitados explícitamente por el usuario.
+
 1. Gemini responde y devuelve `proposedChanges` estructurado.
 2. El backend valida IDs y campos permitidos.
 3. Se crea un `agent_change_set` pendiente.
@@ -33,6 +35,10 @@ Los documentos y mensajes se consideran contenido no confiable. Sus instruccione
 6. La aplicación mantiene estado `draft`, registra usuario y evento.
 
 No existe tool ni endpoint de envío oficial a SEACE.
+
+## Entrega documental directa
+
+Cuando el usuario pide generar, rellenar, completar o editar un documento, el resultado principal es el archivo descargable. El agente no crea `proposedChanges`, no muestra `Aplicar al borrador` y no describe el archivo como un cambio pendiente de la postulación. Si faltan datos obligatorios, formula una sola pregunta consolidada; cuando existen datos suficientes o se autorizan marcadores `PENDIENTE`, crea y valida los archivos en `outputs/generated-documents/` para que la respuesta muestre directamente la descarga.
 
 ## Endpoints
 
