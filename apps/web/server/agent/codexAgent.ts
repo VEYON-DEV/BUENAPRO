@@ -23,6 +23,7 @@ import {
   setCodexHotSession,
   touchCodexHotSession,
 } from "./codexSessionStore";
+import { buildCodexArgs, codexSandboxMode } from "./codexCommand";
 
 type JsonObject = Record<string, unknown>;
 
@@ -306,18 +307,6 @@ async function cleanupTemporaryFiles(
   );
 }
 
-function codexSandboxMode() {
-  const value = process.env.CODEX_AGENT_SANDBOX_MODE ?? "workspace-write";
-  if (
-    value === "read-only" ||
-    value === "workspace-write" ||
-    value === "danger-full-access"
-  ) {
-    return value;
-  }
-  return "workspace-write";
-}
-
 function codexOutputJsonSchema() {
   return {
     type: "object",
@@ -505,42 +494,6 @@ function parseAgentJson(text: string): JsonObject {
   }
 }
 
-function codexArgs(options: {
-  prompt: string;
-  schemaPath: string;
-  workspacePath: string;
-  threadId?: string | null;
-}) {
-  const model = process.env.CODEX_AGENT_MODEL;
-  const sandboxMode = codexSandboxMode();
-  if (options.threadId) {
-    return [
-      "exec",
-      "resume",
-      "--json",
-      "--skip-git-repo-check",
-      "--output-schema",
-      options.schemaPath,
-      ...(model ? ["-m", model] : []),
-      options.threadId,
-      options.prompt,
-    ];
-  }
-  return [
-    "exec",
-    "--json",
-    "--skip-git-repo-check",
-    "--output-schema",
-    options.schemaPath,
-    "--sandbox",
-    sandboxMode,
-    ...(model ? ["-m", model] : []),
-    "-C",
-    options.workspacePath,
-    options.prompt,
-  ];
-}
-
 async function* spawnCodex(options: {
   prompt: string;
   schemaPath: string;
@@ -554,7 +507,7 @@ async function* spawnCodex(options: {
   usage?: JsonObject;
   error?: string;
 }> {
-  const child = spawn("codex", codexArgs(options), {
+  const child = spawn("codex", buildCodexArgs(options), {
     cwd: options.workspacePath,
     env: process.env,
     stdio: ["ignore", "pipe", "pipe"],
