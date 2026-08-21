@@ -2,7 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   directDocumentAnswer,
+  finalDocumentFilename,
   isDocumentDeliveryRequest,
+  referencedDocumentFilenames,
 } from "./documentDelivery.ts";
 
 test("detecta solicitudes directas de generación documental", () => {
@@ -11,6 +13,7 @@ test("detecta solicitudes directas de generación documental", () => {
     "Rellena la plantilla con los datos disponibles",
     "Prepara los documentos y deja PENDIENTE lo que falta",
     "Edita el archivo Word",
+    "Dame el doc",
   ]) {
     assert.equal(
       isDocumentDeliveryRequest({ currentMessage: message }),
@@ -18,6 +21,26 @@ test("detecta solicitudes directas de generación documental", () => {
       message,
     );
   }
+});
+
+test("recupera un documento existente cuando Codex devuelve su ruta interna", () => {
+  assert.deepEqual(
+    referencedDocumentFilenames(
+      "Está en outputs/generated-documents/oferta_final.docx",
+      ["otro.pdf", "oferta_final.docx"],
+    ),
+    ["oferta_final.docx"],
+  );
+});
+
+test("elimina borrador del nombre final entregado", () => {
+  assert.equal(
+    finalDocumentFilename(
+      "FORMATOS_ACTUALIZADOS_completado_borrador_VEYON_SAC.docx",
+    ),
+    "FORMATOS_ACTUALIZADOS_completado_VEYON_SAC.docx",
+  );
+  assert.equal(finalDocumentFilename("borrador-final.pdf"), "final.pdf");
 });
 
 test("mantiene el modo documental en una confirmación breve", () => {

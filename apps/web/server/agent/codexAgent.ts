@@ -24,7 +24,10 @@ import {
   touchCodexHotSession,
 } from "./codexSessionStore";
 import { buildCodexArgs, codexSandboxMode } from "./codexCommand";
-import { documentDeliveryInstruction } from "./documentDelivery";
+import {
+  documentDeliveryInstruction,
+  referencedDocumentFilenames,
+} from "./documentDelivery";
 
 type JsonObject = Record<string, unknown>;
 
@@ -696,9 +699,15 @@ export async function* streamCodexLicitationAgent(
       await touchCodexHotSession(input.tenantId, chatSessionId);
     }
     const filesAfterRun = await generatedFileSnapshot(outputDirectory);
-    const generatedFiles = [...filesAfterRun.entries()]
+    let generatedFiles = [...filesAfterRun.entries()]
       .filter(([name, fingerprint]) => filesBeforeRun.get(name) !== fingerprint)
       .map(([name]) => path.join(outputDirectory, name));
+    if (input.documentDeliveryMode && generatedFiles.length === 0) {
+      generatedFiles = referencedDocumentFilenames(
+        result.answer,
+        [...filesAfterRun.keys()],
+      ).map((name) => path.join(outputDirectory, name));
+    }
     yield {
       type: "done",
       result,
