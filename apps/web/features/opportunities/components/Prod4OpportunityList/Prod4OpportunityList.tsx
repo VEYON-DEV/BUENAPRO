@@ -54,7 +54,7 @@ function deadlineLabel(row: Prod4OpportunitySummary) {
 }
 
 export function Prod4OpportunityList({ rows }: { rows: Prod4OpportunitySummary[] }) {
-  const [selectedId, setSelectedId] = useState<string | null>(rows[0]?.id_procedimiento ?? null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<Prod4Detail | null>(null);
   const [detailStatus, setDetailStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const primary = useMemo(
@@ -62,9 +62,16 @@ export function Prod4OpportunityList({ rows }: { rows: Prod4OpportunitySummary[]
     [rows, selectedId],
   );
 
+  const firstId = rows[0]?.id_procedimiento ?? null;
+  useEffect(() => {
+    if (window.matchMedia("(min-width: 1401px)").matches) {
+      setSelectedId((current) => current ?? firstId);
+    }
+  }, [firstId]);
+
   useEffect(() => {
     if (selectedId && !rows.some((row) => row.id_procedimiento === selectedId)) {
-      setSelectedId(rows[0]?.id_procedimiento ?? null);
+      setSelectedId(window.matchMedia("(min-width: 1401px)").matches ? rows[0]?.id_procedimiento ?? null : null);
     }
   }, [rows, selectedId]);
 

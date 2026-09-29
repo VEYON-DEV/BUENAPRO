@@ -174,7 +174,17 @@
 
 @media (max-width: 1400px) {
   .board { grid-template-columns: minmax(0, 1fr); }
-  .preview { position: static; }
+  .preview {
+    bottom: 20px;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    position: fixed;
+    right: 20px;
+    top: 80px;
+    width: min(390px, calc(100vw - 40px));
+    z-index: 30;
+  }
 }
 
 @media (max-width: 1050px) {
@@ -195,4 +205,13 @@
   .buyerCell .meta,
   .objectCell .meta { white-space: normal; }
   .preview { padding: 18px; }
+  .preview {
+    border-radius: 22px 22px 0 0;
+    bottom: 0;
+    left: 0;
+    max-height: 78vh;
+    right: 0;
+    top: auto;
+    width: 100%;
+  }
 }

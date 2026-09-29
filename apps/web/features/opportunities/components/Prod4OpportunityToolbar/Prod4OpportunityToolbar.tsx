@@ -22,7 +22,7 @@ export function Prod4OpportunityToolbar({ defaults }: { defaults: Record<string,
         {object ? <input name="object" type="hidden" value={object} /> : null}
         <label className={styles.search}>
           <Search aria-hidden="true" size={18} />
-          <Input aria-label="Buscar concursos de tecnología" autoComplete="off" defaultValue={defaults.q ?? ""} name="q" placeholder="Código, entidad u objeto" type="search" />
+          <Input aria-label="Buscar concursos de tecnología" autoComplete="off" defaultValue={defaults.q ?? ""} name="q" placeholder="Ej.: licencia de software…" type="search" />
         </label>
         <button className={styles.searchButton} type="submit">Buscar</button>
       </form>
