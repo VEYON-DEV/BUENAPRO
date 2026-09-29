@@ -64,6 +64,15 @@ def test_service_cubso_without_technology_language_is_excluded() -> None:
     assert selected == {}
 
 
+def test_service_technology_terms_preserve_data_links_and_named_database_products() -> None:
+    link = {**row(707, 65, "8111210100232427"), "sintesisProceso": "Transmisión de datos entre sedes"}
+    database = {**row(808, 65, "8111180500232427"), "sintesisProceso": "Soporte y mantenimiento de productos Informix"}
+    selected = select_technology_processes(
+        [], [link, database], {81: [link, database]}, ["811121", "811118"], settings().prod4_terms,
+    )
+    assert set(selected) == {707, 808}
+
+
 def test_rejects_ambiguous_native_object_classification() -> None:
     with pytest.raises(ValueError, match="both goods and services"):
         select_technology_processes(

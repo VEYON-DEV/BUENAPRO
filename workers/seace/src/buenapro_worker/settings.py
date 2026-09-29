@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     prod4_service_cubso_prefixes: str = "811115,811116,811117,811118,811119,811120,811121,811122,811123,811124,811125"
     # A CUBSO 81 prefix alone is insufficient: it includes non-IT engineering,
     # biomedical equipment, physical security and administrative services.
-    prod4_technology_terms: str = "software,licencia,informatic,tecnolog,comput,servidor,base de datos,nube,cloud,internet,conectividad,correo electronico,comunicaciones,telecom,ciberseguridad,seguridad perimetral,red interna,telemetria,gps,impresora,cableado estructurado,plataforma virtual,portal web,web,erp,workspace,office 365,microsoft 365,privileged access,antivirus,virtualizacion,etl,sistema integral,aplicaciones,gestion de datos"
+    prod4_technology_terms: str = "software,licencia,informatic,tecnolog,comput,servidor,base de datos,transmision de datos,informix,nube,cloud,internet,conectividad,correo electronico,comunicaciones,telecom,ciberseguridad,seguridad perimetral,red interna,telemetria,gps,impresora,cableado estructurado,plataforma virtual,portal web,web,erp,workspace,office 365,microsoft 365,privileged access,antivirus,virtualizacion,etl,sistema integral,aplicaciones,gestion de datos"
     worker_id: str = "local-worker"
     email_from: str = ""
     smtp_host: str = ""
