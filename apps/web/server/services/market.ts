@@ -74,7 +74,11 @@ function marketQuery(filters: MarketFilters, tenantId: string) {
       JOIN business_lines bl ON bl.profile_id=cp.id AND bl.is_active=true
       WHERE cp.tenant_id=$1 AND cp.is_active=true
     ), filtered AS (
-      SELECT h.* FROM historical_contract_outcomes h
+      SELECT h.*, 'seace_prod6'::text AS source_key,
+        o.record_kind, o.object_type, o.procurement_method,
+        o.lifecycle_stage, o.participation_access, o.actionability
+      FROM historical_contract_outcomes h
+      LEFT JOIN opportunities o ON o.id=h.opportunity_id
       ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
     )
   `;
@@ -175,7 +179,9 @@ export async function getMarketIntelligence(tenantId: string, filters: MarketFil
       values,
     ),
     query(
-      `${cte} SELECT id_contrato,codigo_completo,descripcion,entity_name,department,objeto_codigo,cubso_segmento,
+      `${cte} SELECT id_contrato,opportunity_id,source_key,record_kind,object_type,
+         procurement_method,lifecycle_stage,participation_access,actionability,
+         codigo_completo,descripcion,entity_name,department,objeto_codigo,cubso_segmento,
          cubso_name,estado_resultado,supplier_ruc,supplier_name,precio_total,fec_publica,source_document_url,
          count(*) OVER()::int AS total_count
        FROM filtered ORDER BY COALESCE(fec_fin_cotizacion,fec_publica,created_at) DESC NULLS LAST
@@ -202,11 +208,15 @@ export async function getHistoricalSupplier(ruc: string) {
   const [supplier, contracts, entities, regions, segments] = await Promise.all([
     query(`SELECT * FROM historical_suppliers WHERE ruc=$1`, [ruc]),
     query(
-      `SELECT id_contrato,codigo_completo,descripcion,entity_name,department,objeto_codigo,cubso_segmento,cubso_name,
-         precio_total,fec_publica,source_document_url
-       FROM historical_contract_outcomes
-       WHERE supplier_ruc=$1 AND estado_resultado='ADJUDICADO'
-       ORDER BY COALESCE(fec_fin_cotizacion,fec_publica,created_at) DESC`,
+      `SELECT h.id_contrato,h.opportunity_id,'seace_prod6'::text AS source_key,
+         o.record_kind,o.object_type,o.procurement_method,o.lifecycle_stage,
+         o.participation_access,o.actionability,
+         h.codigo_completo,h.descripcion,h.entity_name,h.department,h.objeto_codigo,
+         h.cubso_segmento,h.cubso_name,h.precio_total,h.fec_publica,h.source_document_url
+       FROM historical_contract_outcomes h
+       LEFT JOIN opportunities o ON o.id=h.opportunity_id
+       WHERE h.supplier_ruc=$1 AND h.estado_resultado='ADJUDICADO'
+       ORDER BY COALESCE(h.fec_fin_cotizacion,h.fec_publica,h.created_at) DESC`,
       [ruc],
     ),
     query(`SELECT entity_name AS name,count(*)::int AS count,sum(precio_total) AS amount FROM historical_contract_outcomes WHERE supplier_ruc=$1 GROUP BY entity_name ORDER BY count DESC LIMIT 8`, [ruc]),

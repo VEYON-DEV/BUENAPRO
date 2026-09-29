@@ -21,6 +21,7 @@ comprobar por endpoint y caso real):
 | Registro | Fuente | Clase | Modalidad | Acción |
 | --- | --- | --- | --- | --- |
 | Contrato menor PROD6 | `seace_prod6` | `opportunity` | `minor_purchase` | `unknown` hasta verificar ventana y elegibilidad |
+| Resultado histórico PROD6 | `seace_prod6` | `opportunity` | `minor_purchase` | `informational`; reutiliza el UUID del contrato vigente si coincide `id_contrato` |
 | Procedimiento de selección PROD4 | `seace_prod4` | `opportunity` | `selection_procedure` | Depende de cronograma y reglas de participación |
 | Anuncio de contratación futura PROD2 | `seace_prod2` | `early_notice` | `selection_procedure` o `unknown` | `informational`; no confundir con convocatoria |
 | Difusión de requerimiento / sondeo PROD2 | `seace_prod2` | `market_sounding` | `unknown` | Verificar si admite manifestar interés o cotizar; no equiparar a postulación |

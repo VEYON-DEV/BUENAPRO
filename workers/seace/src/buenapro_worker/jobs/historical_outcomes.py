@@ -7,6 +7,7 @@ from decimal import Decimal
 from typing import Any
 
 from buenapro_worker.historical.outcomes import classify_outcome, parse_contract_code
+from buenapro_worker.jobs.opportunity_identity import sync_historical_prod6_opportunity
 from buenapro_worker.jobs.poll_search import parse_lima_datetime
 from buenapro_worker.jobs.process_contract import quotation_window_from_detail, update_contract_detail
 from buenapro_worker.queue.repository import JobRepository
@@ -237,6 +238,13 @@ def upsert_historical_outcome(
             source_document_url,
             json.dumps(detail, ensure_ascii=False),
         ),
+    )
+    sync_historical_prod6_opportunity(
+        repo,
+        id_contrato=id_contrato,
+        codigo=code,
+        objeto_codigo=actual_objeto,
+        estado_resultado=outcome.state,
     )
     _refresh_supplier_totals(repo, outcome.supplier_ruc)
     if previous_supplier and previous_supplier["supplier_ruc"] != outcome.supplier_ruc:

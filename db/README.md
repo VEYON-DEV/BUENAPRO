@@ -47,6 +47,13 @@ new PROD6 row. Existing `id_contrato` keys and all dependent tables continue to
 work during this transition. The backfill is safe to rerun and checks that the
 contract and source mapping point to the same UUID.
 
+Migration 0028 extends this identity to `historical_contract_outcomes`. An
+outcome with the same PROD6 `id_contrato` reuses the live row's UUID; a
+history-only outcome receives a new UUID and the same source-key format.
+Adjudicated/deserted records become informational, never open opportunities.
+The historical table keeps its original primary key and remains optimized for
+award comparables.
+
 ## Initial seeds
 
 The initial migration seeds stable SEACE catalogs:

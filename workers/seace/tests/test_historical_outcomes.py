@@ -106,7 +106,8 @@ class HistoricalOutcomeTest(unittest.TestCase):
             ("LIMA", "LIMA", "SAN ISIDRO"),
         )
 
-    def test_historical_upsert_binds_one_parameter_per_column(self) -> None:
+    @patch("buenapro_worker.jobs.historical_outcomes.sync_historical_prod6_opportunity")
+    def test_historical_upsert_binds_one_parameter_per_column(self, sync_identity: MagicMock) -> None:
         repo = MagicMock()
         repo.conn.execute.return_value.fetchone.return_value = None
 
@@ -133,8 +134,10 @@ class HistoricalOutcomeTest(unittest.TestCase):
         self.assertEqual(len(params), 27)
         self.assertEqual(params[1], 2)
         self.assertEqual(result, "DESIERTO")
+        sync_identity.assert_called_once()
 
-    def test_historical_upsert_uses_goods_object_from_detail(self) -> None:
+    @patch("buenapro_worker.jobs.historical_outcomes.sync_historical_prod6_opportunity")
+    def test_historical_upsert_uses_goods_object_from_detail(self, sync_identity: MagicMock) -> None:
         repo = MagicMock()
         repo.conn.execute.return_value.fetchone.return_value = None
         upsert_historical_outcome(
@@ -154,6 +157,7 @@ class HistoricalOutcomeTest(unittest.TestCase):
                            if "INSERT INTO historical_contract_outcomes" in call.args[0])
         self.assertEqual(insert_call.args[1][1], 1)
         self.assertIn("objeto_codigo=EXCLUDED.objeto_codigo", insert_call.args[0])
+        self.assertEqual(sync_identity.call_args.kwargs["objeto_codigo"], 1)
 
     def test_historical_window_uses_actual_publication_date(self) -> None:
         cutoff = _three_year_cutoff(datetime(2026, 9, 29, tzinfo=timezone.utc))
@@ -210,8 +214,11 @@ class HistoricalOutcomeTest(unittest.TestCase):
         self.assertFalse(any("INSERT INTO historical_contract_outcomes" in call.args[0]
                              for call in repo.conn.execute.call_args_list))
 
+    @patch("buenapro_worker.jobs.historical_outcomes.sync_historical_prod6_opportunity")
     @patch("buenapro_worker.jobs.historical_outcomes.SeaceClient")
-    def test_goods_backfill_saves_recent_goods_as_object_one(self, client_class: MagicMock) -> None:
+    def test_goods_backfill_saves_recent_goods_as_object_one(
+        self, client_class: MagicMock, sync_identity: MagicMock,
+    ) -> None:
         repo = MagicMock()
         repo.conn.execute.return_value.fetchone.return_value = None
         published = datetime.now(ZoneInfo("America/Lima")).strftime("%d/%m/%Y %H:%M:%S")
@@ -241,6 +248,7 @@ class HistoricalOutcomeTest(unittest.TestCase):
         stats = backfill_historical_outcomes(MagicMock(), repo, segment=43, objeto_codigo=1, include_files=False)
 
         self.assertEqual(stats["saved"], 1)
+        sync_identity.assert_called_once()
         insert = next(call for call in repo.conn.execute.call_args_list
                       if "INSERT INTO historical_contract_outcomes" in call.args[0])
         self.assertEqual(insert.args[1][1], 1)
