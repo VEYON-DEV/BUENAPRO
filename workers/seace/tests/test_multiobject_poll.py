@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from buenapro_worker.jobs.poll_search import poll_search
+from buenapro_worker.jobs.poll_search import poll_search, upsert_search_item
 from buenapro_worker.jobs.scheduler import enqueue_poll_search_jobs
-from buenapro_worker.seace.schemas import SearchResponse
+from buenapro_worker.seace.schemas import SearchItem, SearchResponse
 from buenapro_worker.settings import Settings
 
 
@@ -71,3 +71,19 @@ def test_poll_rejects_unconfigured_object(client_class: MagicMock) -> None:
     else:
         raise AssertionError("Expected unconfigured object to be rejected")
     client_class.assert_not_called()
+
+
+def test_publication_year_wins_over_ignored_search_year() -> None:
+    repo = MagicMock()
+    repo.conn.execute.return_value.fetchone.return_value = {"inserted": True}
+    item = SearchItem.model_validate({
+        "idContrato": 301,
+        "desContratacion": "CM-301-2025",
+        "idObjetoContrato": 1,
+        "desObjetoContrato": "Equipos",
+        "idEstadoContrato": 2,
+        "fecPublica": "31/12/2025 23:30:00",
+    })
+
+    assert upsert_search_item(repo, item, anio=2026, segment=43)
+    assert repo.conn.execute.call_args.args[1][2] == 2025

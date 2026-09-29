@@ -41,6 +41,8 @@ def is_in_scope(item: SearchItem, settings: Settings, segment: int | None) -> bo
 def upsert_search_item(repo: JobRepository, item: SearchItem, *, anio: int, segment: int | None) -> bool:
     raw = item.model_dump(mode="json", by_alias=True)
     hash_search = canonical_hash(raw)
+    publication = parse_lima_datetime(item.fec_publica)
+    actual_year = publication.astimezone(LIMA_TZ).year if publication else anio
     row = repo.conn.execute(
         """
         INSERT INTO seace_contracts (
@@ -69,6 +71,7 @@ def upsert_search_item(repo: JobRepository, item: SearchItem, *, anio: int, segm
         ON CONFLICT (id_contrato)
         DO UPDATE SET
           codigo = EXCLUDED.codigo,
+          anio = EXCLUDED.anio,
           entidad_nombre = EXCLUDED.entidad_nombre,
           objeto_codigo = EXCLUDED.objeto_codigo,
           estado_codigo = EXCLUDED.estado_codigo,
@@ -88,14 +91,14 @@ def upsert_search_item(repo: JobRepository, item: SearchItem, *, anio: int, segm
         (
             item.id_contrato,
             item.codigo,
-            anio,
+            actual_year,
             item.entidad_nombre,
             item.objeto_codigo,
             item.estado_codigo,
             item.descripcion,
             str(segment) if segment is not None else None,
             item.cotizar,
-            parse_lima_datetime(item.fec_publica),
+            publication,
             parse_lima_datetime(item.fec_ini_cotizacion),
             parse_lima_datetime(item.fec_fin_cotizacion),
             hash_search,

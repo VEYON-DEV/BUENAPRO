@@ -28,7 +28,9 @@ docker compose -f infra/docker/docker-compose.yml run --rm worker-io \
 
 Los resultados culminados se guardan por separado del feed. Se filtran por la
 fecha real de publicación de los últimos tres años, pues `anio` del buscador
-PROD6 no es confiable como filtro. Reanudar después de una interrupción no
+PROD6 no es confiable como filtro. El feed también guarda `anio` derivado de
+`fec_publica` en horario de Lima; el año solicitado solo sirve de fallback si
+la fuente no publica esa fecha. Reanudar después de una interrupción no
 reinicia páginas completadas; `--restart` sí reinicia el checkpoint del par
 objeto/segmento.
 
