@@ -13,6 +13,16 @@ function hrefFor(entries: Record<string, string>, defaults: Record<string, strin
   return `/feed?${params.toString()}`;
 }
 
+function typeHref(defaults: Record<string, string>, object: string) {
+  const params = new URLSearchParams(defaults);
+  params.delete("page");
+  params.delete("open_only");
+  params.delete("closing_before");
+  if (object) params.set("objeto", object);
+  else params.delete("objeto");
+  return `/feed?${params.toString()}`;
+}
+
 function isActive(defaults: Record<string, string>, key: "forYou" | "closing" | "saved") {
   if (key === "saved") return defaults.saved === "true";
   if (key === "closing") return defaults.deadline === "24h";
@@ -44,9 +54,18 @@ export function OpportunityToolbar({ defaults }: { defaults: Record<string, stri
       {filtersOpen ? <div className={styles.disclosure}>
         <form action="/feed" className={styles.filters} id="opportunity-filters">
           <input name="has_extraction" type="hidden" value="true" />
+          {defaults.objeto === "1" || defaults.objeto === "2" ? <input name="objeto" type="hidden" value={defaults.objeto} /> : null}
           {defaults.q ? <input name="q" type="hidden" value={defaults.q} /> : null}
           {defaults.saved === "true" ? <input name="saved" type="hidden" value="true" /> : null}
-          <label><span>Tipo</span><Select defaultValue={defaults.objeto === "1" || defaults.objeto === "2" ? defaults.objeto : ""} name="objeto"><option value="">Todos</option><option value="1">Bienes</option><option value="2">Servicios</option></Select></label>
+          <div className={styles.typeFilter}>
+            <span>Tipo</span>
+            <div aria-label="Tipo de contratación" className={styles.typeChoices} role="group">
+              {[["", "Todos"], ["1", "Bienes"], ["2", "Servicios"]].map(([value, label]) => {
+                const active = (defaults.objeto ?? "") === value;
+                return <a aria-current={active ? "page" : undefined} className={active ? styles.typeActive : undefined} href={typeHref(defaults, value)} key={value}>{label}</a>;
+              })}
+            </div>
+          </div>
           <label><span>Estado</span><Select defaultValue={defaults.estado ?? "2"} name="estado"><option value="2">Vigentes</option><option value="">Todos</option><option value="3">En evaluacion</option><option value="4">Culminados</option></Select></label>
           <label><span>Cierre</span><Select defaultValue={deadline} name="deadline"><option value="open">No cerradas</option><option value="24h">Proximas 24 h</option><option value="week">Esta semana</option><option value="closed">Ya cerradas</option><option value="all">Cualquier cierre</option></Select></label>
           <label><span>Afinidad</span><Select defaultValue={defaults.verdict ?? ""} name="verdict"><option value="">Todas</option><option value="verde">Alta</option><option value="ambar">Media</option><option value="gris">Por revisar</option></Select></label>

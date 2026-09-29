@@ -118,6 +118,7 @@ Referencia: [Inicio](../docs/frontend/02-inicio.md)
 
 - [x] Replantear `/feed` contra la composicion de `docs/new-style/generated-glass/04-oportunidades.png`: busqueda dominante, solo 3 vistas rapidas, filtros secundarios progresivos sin presets hardcodeados de transporte/legal, tabla de 6 columnas utiles y vista rapida glass. QA desktop/mobile sin overflow y prueba funcional del disclosure de filtros (2026-08-03). Evidencia: `docs/new-style/qa/opportunities-reference-match-desktop.png`, `opportunities-reference-match-mobile.png`.
 - [x] Añadir filtro `Tipo` (Todos/Bienes/Servicios) a Oportunidades y conservarlo en búsqueda y vistas rápidas; QA con datos reales, capturas desktop/laptop/mobile y sin overflow a 390 px (2026-09-29).
+- [x] Hacer que `Tipo` en Oportunidades se aplique con un clic mediante opciones visibles, sin depender del desplegable ni del botón `Aplicar`; validar cambio Bienes/Servicios, persistencia en filtros y capturas desktop/laptop/mobile sin overflow (2026-09-29).
 - [x] Simplificar la vista rapida de Oportunidades: mantener visibles entidad, cierre y experiencia economica; mover ubicacion, pago, personal y penalidad a `Mas informacion`, y alinear la paginacion bajo la tabla (2026-08-03).
 - [x] Restaurar la semantica de afinidad en Oportunidades: tres puntos por niveles antes de evaluar y anillo numerico solo cuando existe un score real generado por el analisis IA (2026-08-03).
 

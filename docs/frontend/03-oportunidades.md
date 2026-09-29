@@ -69,7 +69,7 @@ Base:
 - tiene extraccion IA
 - se puede cotizar
 
-El panel de filtros expone `Tipo` con `Todos`, `Bienes` y `Servicios` (`objeto=1/2`). La búsqueda y las vistas rápidas conservan el tipo seleccionado.
+El panel de filtros expone `Tipo` como tres opciones visibles: `Todos`, `Bienes` y `Servicios` (`objeto=1/2`). Al elegir una opción se aplica de inmediato y se marca la activa; `Aplicar`, la búsqueda y las vistas rápidas conservan el tipo seleccionado.
 
 Inteligentes:
 
