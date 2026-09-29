@@ -74,6 +74,7 @@ def select_technology_processes(
     services_rows: list[dict[str, Any]],
     segment_rows: dict[int, list[dict[str, Any]]],
     service_prefixes: list[str],
+    technology_terms: list[str],
 ) -> dict[int, tuple[str, list[dict[str, Any]], list[str]]]:
     """Use native object listings for type, segment rows only for tech relevance.
 
@@ -95,6 +96,7 @@ def select_technology_processes(
             rows_by_id[procedure_id] = (OBJECT_CODES[code], items)
 
     reasons: dict[int, set[str]] = defaultdict(set)
+    normalized_terms = [_slug(term) for term in technology_terms]
     for segment, rows in segment_rows.items():
         for row in rows:
             procedure_id = _id(row)
@@ -106,8 +108,14 @@ def select_technology_processes(
                 reasons[procedure_id].add("cubso:43")
             elif segment == 81 and object_type == "service":
                 match = next((prefix for prefix in service_prefixes if cubso.startswith(prefix)), None)
-                if match:
+                listing_text = _slug(" ".join(
+                    str(part or "")
+                    for item in rows_by_id[procedure_id][1]
+                    for part in (item.get("sintesisProceso"), item.get("detItem"))
+                ))
+                if match and any(term in listing_text for term in normalized_terms):
                     reasons[procedure_id].add(f"cubso:{match}")
+                    reasons[procedure_id].add("text:technology")
 
     return {
         procedure_id: (rows_by_id[procedure_id][0], rows_by_id[procedure_id][1], sorted(match_reasons))
@@ -354,7 +362,7 @@ def poll_prod4(settings: Settings, repo: JobRepository, client: Prod4Client | No
         segments = {segment: source.by_segment(segment) for segment in settings.prod4_segments}
         if not goods or not services or not any(segments.values()):
             raise ValueError("PROD4 returned an unexpectedly empty source slice; snapshot was not applied")
-        selected = select_technology_processes(goods, services, segments, settings.prod4_service_prefixes)
+        selected = select_technology_processes(goods, services, segments, settings.prod4_service_prefixes, settings.prod4_terms)
         previous_count = repo.conn.execute(
             "SELECT count(*) AS total FROM prod4_processes WHERE missing_since IS NULL"
         ).fetchone()["total"]

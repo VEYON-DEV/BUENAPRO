@@ -30,6 +30,7 @@ def row(procedure_id: int, object_code: int, cubso: str, *, item: int = 1) -> di
         "nroItem": str(item),
         "codCubso": cubso,
         "nomenclatura": f"LP-ABR-{procedure_id}-2026",
+        "sintesisProceso": "Servicio de software" if object_code == 65 else "Equipos informáticos",
     }
 
 
@@ -44,21 +45,30 @@ def test_selects_technology_with_authoritative_object_and_dedupes_items() -> Non
         {**row(404, 65, "8111250100375850"), "detObjeto": "Consultoría de Obra"},
     ]
 
-    selected = select_technology_processes(goods, services, {43: segment_43, 81: segment_81}, ["811121"])
+    selected = select_technology_processes(goods, services, {43: segment_43, 81: segment_81}, ["811121"], ["software"])
 
     assert set(selected) == {101, 202}
     assert selected[101][0] == "good"
     assert len(selected[101][1]) == 2
     assert selected[101][2] == ["cubso:43"]
     assert selected[202][0] == "service"
-    assert selected[202][2] == ["cubso:811121"]
+    assert selected[202][2] == ["cubso:811121", "text:technology"]
+
+
+def test_service_cubso_without_technology_language_is_excluded() -> None:
+    medical = {**row(505, 65, "8111240100232694"), "sintesisProceso": "Alquiler de equipos biomédicos neonatales"}
+    documents = {**row(606, 65, "8111200200345480"), "sintesisProceso": "Consolidación y verificación documentaria"}
+    selected = select_technology_processes(
+        [], [medical, documents], {81: [medical, documents]}, ["811124", "811120"], ["software", "informatic", "tecnolog"],
+    )
+    assert selected == {}
 
 
 def test_rejects_ambiguous_native_object_classification() -> None:
     with pytest.raises(ValueError, match="both goods and services"):
         select_technology_processes(
             [row(101, 62, "43")], [row(101, 65, "811121")],
-            {43: [row(101, 62, "43")]}, ["811121"],
+            {43: [row(101, 62, "43")]}, ["811121"], ["software"],
         )
 
 
