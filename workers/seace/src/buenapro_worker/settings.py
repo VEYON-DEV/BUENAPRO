@@ -23,6 +23,13 @@ class Settings(BaseSettings):
     seace_allowed_estado_contrato: str = "2"
     seace_allowed_codigo_objeto: str = "2"
     seace_allowed_segments: str = "43,81,78,80"
+    prod4_enabled: bool = True
+    prod4_base_url: str = "https://prod4.seace.gob.pe:8086/api/oportunidades"
+    prod4_poll_interval_minutes: int = 30
+    prod4_detail_limit: int = 100
+    prod4_technology_segments: str = "43,81"
+    # Segment 81 also contains non-IT engineering and works consulting.
+    prod4_service_cubso_prefixes: str = "811115,811116,811117,811118,811119,811120,811121,811122,811123,811124,811125"
     worker_id: str = "local-worker"
     email_from: str = ""
     smtp_host: str = ""
@@ -48,6 +55,18 @@ class Settings(BaseSettings):
     @property
     def allowed_segments(self) -> list[int]:
         return self._parse_csv_ints(self.seace_allowed_segments)
+
+    @property
+    def prod4_segments(self) -> list[int]:
+        segments = self._parse_csv_ints(self.prod4_technology_segments)
+        unsupported = set(segments) - {43, 81}
+        if unsupported:
+            raise ValueError(f"Unsupported PROD4 technology segments: {sorted(unsupported)}")
+        return segments
+
+    @property
+    def prod4_service_prefixes(self) -> list[str]:
+        return [part.strip() for part in self.prod4_service_cubso_prefixes.split(",") if part.strip()]
 
     @property
     def primary_estado_contrato(self) -> int:

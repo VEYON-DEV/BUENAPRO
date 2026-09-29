@@ -100,6 +100,18 @@ def command_poll_once(args: argparse.Namespace, settings: Settings) -> int:
     return 0
 
 
+def command_prod4_poll_once(args: argparse.Namespace, settings: Settings) -> int:
+    from buenapro_worker.db.connection import connect
+    from buenapro_worker.jobs.poll_prod4 import poll_prod4
+    from buenapro_worker.queue.repository import JobRepository
+
+    with connect(settings) as conn:
+        with conn.transaction():
+            stats = poll_prod4(settings, JobRepository(conn))
+    print(stats)
+    return 0
+
+
 def command_auto_evaluate_current(args: argparse.Namespace, settings: Settings) -> int:
     from buenapro_worker.db.connection import connect
     from buenapro_worker.jobs.match import enqueue_current_contract_sweep
@@ -167,6 +179,7 @@ def command_run(args: argparse.Namespace, settings: Settings) -> int:
 
     handlers = {
         "poll_search": handle_poll_search,
+        "poll_prod4": lambda job: _handle_poll_prod4(settings, job),
         "contract_test": lambda job: _handle_contract_test(settings, job),
         "process_contract": lambda job: _handle_process_contract(settings, job),
         "poll_lifecycle": lambda job: _handle_poll_lifecycle(settings, poll_lifecycle),
@@ -185,6 +198,16 @@ def command_run(args: argparse.Namespace, settings: Settings) -> int:
     runner = QueueRunner(settings, handlers)
     runner.run_forever(args.queues)
     return 0
+
+
+def _handle_poll_prod4(settings: Settings, _job) -> None:
+    from buenapro_worker.db.connection import connect
+    from buenapro_worker.jobs.poll_prod4 import poll_prod4
+    from buenapro_worker.queue.repository import JobRepository
+
+    with connect(settings) as conn:
+        with conn.transaction():
+            poll_prod4(settings, JobRepository(conn))
 
 
 def _handle_recent_closures(settings: Settings, job) -> None:
@@ -426,6 +449,11 @@ def build_parser() -> argparse.ArgumentParser:
     poll_once.add_argument("--batch-id", default=None)
     poll_once.add_argument("--bucket", default=None)
     poll_once.set_defaults(func=command_poll_once)
+
+    prod4_poll_once = subcommands.add_parser(
+        "prod4-poll-once", help="Poll PROD4 technology goods/services once"
+    )
+    prod4_poll_once.set_defaults(func=command_prod4_poll_once)
 
     auto_evaluate = subcommands.add_parser(
         "auto-evaluate-current",

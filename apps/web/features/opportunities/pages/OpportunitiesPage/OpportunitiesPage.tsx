@@ -2,8 +2,13 @@ import { AppShell } from "@/features/shell";
 import { Pagination } from "@/components/ui/Pagination";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { getTenantOpportunityContext, listContractsForTenant } from "@/server/services/contracts";
+import { listProd4OpportunitiesForTenant, parseProd4ListParams } from "@/server/services/prod4Opportunities";
 import { OpportunityList } from "../../components/OpportunityList";
+import { OpportunitySourceTabs } from "../../components/OpportunitySourceTabs";
 import { OpportunityToolbar } from "../../components/OpportunityToolbar";
+import { Prod4OpportunityList } from "../../components/Prod4OpportunityList";
+import type { Prod4OpportunitySummary } from "../../components/Prod4OpportunityList";
+import { Prod4OpportunityToolbar } from "../../components/Prod4OpportunityToolbar";
 import styles from "./OpportunitiesPage.module.css";
 
 function normalizeDeadline(params: URLSearchParams) {
@@ -51,6 +56,36 @@ function resultLabel(deadline: string, savedOnly: boolean) {
 }
 
 export async function OpportunitiesPage({ tenantId, params }: { tenantId: string; params: URLSearchParams }) {
+  if (params.get("source") === "prod4") {
+    const result = await listProd4OpportunitiesForTenant(tenantId, parseProd4ListParams(params));
+    const totalPages = Math.max(Math.ceil(result.total / result.page_size), 1);
+    const prod4PageHref = (page: number) => {
+      const next = new URLSearchParams(params);
+      next.set("source", "prod4");
+      next.set("page", String(page));
+      return `/feed?${next.toString()}`;
+    };
+    return (
+      <AppShell title="Oportunidades">
+        <PageHeader
+          title="Oportunidades"
+          meta={`${result.total} concursos de tecnología en el radar`}
+          description="Procedimientos de bienes y servicios publicados por SEACE. Revisa el cronograma oficial antes de participar."
+        />
+        <OpportunitySourceTabs source="prod4" />
+        <Prod4OpportunityToolbar defaults={Object.fromEntries(params.entries())} />
+        <Prod4OpportunityList rows={result.data as unknown as Prod4OpportunitySummary[]} />
+        <div className={styles.pagination}>
+          <Pagination
+            page={result.page}
+            totalPages={totalPages}
+            prevHref={result.page > 1 ? prod4PageHref(result.page - 1) : undefined}
+            nextHref={result.page < totalPages ? prod4PageHref(result.page + 1) : undefined}
+          />
+        </div>
+      </AppShell>
+    );
+  }
   if (!params.has("has_extraction")) params.set("has_extraction", "true");
   if (!params.has("estado")) params.set("estado", "2");
   normalizeDeadline(params);
@@ -72,6 +107,7 @@ export async function OpportunitiesPage({ tenantId, params }: { tenantId: string
           ? `Todas las coincidencias para ${context.razon_social}, de mayor a menor afinidad.`
           : "Configura tus líneas de negocio para priorizar las mejores coincidencias."}
       />
+      <OpportunitySourceTabs source="prod6" />
       <OpportunityToolbar defaults={Object.fromEntries(params.entries())} />
       <OpportunityList rows={rows} />
       <div className={styles.pagination}>

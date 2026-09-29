@@ -14,6 +14,17 @@ Proveedor que revisa oportunidades vigentes. Puede estar antes o despues de conf
 /feed
 ```
 
+`/feed?source=prod4` abre la fuente complementaria de procedimientos SEACE vigentes. No mezcla sus filas con los contratos menores de PROD6: ambos usan identidad nativa distinta y se muestran en pestañas de fuente.
+
+## Concursos SEACE (PROD4)
+
+- `GET /api/prod4/opportunities?object=good|service&q=&state=current|exited|all&page=&page_size=`: solo procedimientos marcados como tecnología por CUBSO; la vista usa `current` por defecto.
+- `GET /api/prod4/opportunities/:id`: ficha con ítems, cronograma y metadatos documentales.
+- `GET /api/prod4/opportunities/:id/documents/:code`: proxy autenticado de PDF oficial, sin almacenar el archivo.
+- La fecha de cierre de registro no equivale al cierre de presentación de propuestas. Mostrar ambas por separado y priorizar la segunda solo cuando la ficha oficial la indique.
+- `exited` significa que salió del listado PROD4, no que fue adjudicado, cancelado ni cerrado. No inferir estado jurídico desde esa ausencia.
+- La vista rápida es informativa: no afirma elegibilidad, no ejecuta postulación y remite al módulo oficial para comprobar cronograma y requisitos.
+
 ## Dos modos
 
 ### Explorar

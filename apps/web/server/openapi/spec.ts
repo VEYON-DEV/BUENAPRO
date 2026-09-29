@@ -36,6 +36,7 @@ export const openApiSpec = {
   tags: [
     { name: "Feed" },
     { name: "Contracts" },
+    { name: "PROD4" },
     { name: "Catalogs" },
     { name: "Documents" },
     { name: "Facets" },
@@ -97,6 +98,51 @@ export const openApiSpec = {
         responses: {
           "200": { ...paginatedResponse, description: "Contratos cargados con ID legado y metadatos canónicos de oportunidad" },
           "401": { $ref: "#/components/responses/Unauthorized" },
+        },
+      },
+    },
+    "/api/prod4/opportunities": {
+      get: {
+        tags: ["PROD4"],
+        summary: "Lista procedimientos vigentes de bienes y servicios tecnológicos detectados en PROD4",
+        description: "Una fila por idProcedimiento; los ítems CUBSO quedan anidados en el detalle. Por defecto excluye procesos que salieron del listado. Salir del listado no implica adjudicación.",
+        parameters: [
+          { name: "object", in: "query", schema: { type: "string", enum: ["good", "service"] } },
+          { name: "q", in: "query", schema: { type: "string", maxLength: 120 } },
+          { name: "state", in: "query", schema: { type: "string", enum: ["current", "exited", "all"], default: "current" } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          { name: "page_size", in: "query", schema: { type: "integer", minimum: 1, maximum: 100, default: 20 } },
+        ],
+        responses: {
+          "200": { description: "Procedimientos tecnológicos", content: json({ $ref: "#/components/schemas/Prod4ListResponse" }) },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+        },
+      },
+    },
+    "/api/prod4/opportunities/{id}": {
+      get: {
+        tags: ["PROD4"],
+        summary: "Ficha PROD4 con ítems, documentos y cronograma",
+        parameters: [idPathParam],
+        responses: {
+          "200": { description: "Detalle de procedimiento", content: json({ $ref: "#/components/schemas/Prod4DetailResponse" }) },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "404": { $ref: "#/components/responses/NotFound" },
+        },
+      },
+    },
+    "/api/prod4/opportunities/{id}/documents/{code}": {
+      get: {
+        tags: ["PROD4", "Documents"],
+        summary: "Proxy de lectura de PDF oficial SEACE para documentos conocidos del procedimiento",
+        description: "No almacena el PDF. Solo acepta UUIDs persistidos y archivos PDF hasta 80 MiB; usa el host oficial fijo.",
+        parameters: [idPathParam, { name: "code", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: {
+          "200": { description: "PDF oficial", content: { "application/pdf": { schema: { type: "string", format: "binary" } } } },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "415": { description: "Archivo no PDF" },
+          "502": { description: "Documento oficial no disponible" },
         },
       },
     },
@@ -1412,6 +1458,50 @@ export const openApiSpec = {
       InternalServerError: { description: "Error interno del servidor" },
     },
     schemas: {
+      Prod4ListResponse: {
+        type: "object",
+        required: ["data", "total", "page", "page_size"],
+        properties: {
+          data: { type: "array", items: { $ref: "#/components/schemas/Prod4Process" } },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1 },
+        },
+      },
+      Prod4Process: {
+        type: "object",
+        properties: {
+          id_procedimiento: { type: "string", description: "ID oficial PROD4; una fila por procedimiento" },
+          opportunity_id: { type: "string", format: "uuid" },
+          source_key: { type: "string", enum: ["seace_prod4"] },
+          nomenclatura: { type: ["string", "null"] },
+          title: { type: ["string", "null"] },
+          description: { type: ["string", "null"] },
+          object_type: { type: "string", enum: ["good", "service"] },
+          procedure_type: { type: ["string", "null"] },
+          buyer_name: { type: ["string", "null"] },
+          region: { type: ["string", "null"] },
+          published_at: { type: ["string", "null"], format: "date-time" },
+          proposals_closes_at: { type: ["string", "null"], format: "date-time" },
+          source_url: { type: "string", format: "uri" },
+          technology_segments: { type: "array", items: { type: "string" } },
+          items_count: { type: "integer", minimum: 0 },
+          documents_count: { type: "integer", minimum: 0 },
+          source_window_status: { type: "string", enum: ["current", "exited"] },
+          actionability: { type: "string", description: "No equivale automáticamente a fecha abierta para postular" },
+        },
+        additionalProperties: true,
+      },
+      Prod4DetailResponse: {
+        type: "object",
+        required: ["process", "items", "documents", "schedule"],
+        properties: {
+          process: { $ref: "#/components/schemas/Prod4Process" },
+          items: { type: "array", items: { type: "object", additionalProperties: true } },
+          documents: { type: "array", items: { type: "object", additionalProperties: true } },
+          schedule: { type: "array", items: { type: "object", additionalProperties: true } },
+        },
+      },
       ListResponse: {
         type: "object",
         required: ["data"],
