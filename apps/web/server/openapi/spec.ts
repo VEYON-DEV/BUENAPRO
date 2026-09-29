@@ -105,7 +105,7 @@ export const openApiSpec = {
       get: {
         tags: ["PROD4"],
         summary: "Lista procedimientos vigentes de bienes y servicios tecnológicos detectados en PROD4",
-        description: "Una fila por idProcedimiento; los ítems CUBSO quedan anidados en el detalle. Por defecto excluye procesos que salieron del listado. Salir del listado no implica adjudicación.",
+        description: "Una fila por idProcedimiento; los ítems CUBSO quedan anidados en el detalle. El listado autenticado calcula afinidad preliminar por perfil y solo muestra score/veredicto cuando existe análisis documental del worker. Por defecto excluye procesos que salieron del listado. Salir del listado no implica adjudicación.",
         parameters: [
           { name: "object", in: "query", schema: { type: "string", enum: ["good", "service"] } },
           { name: "q", in: "query", schema: { type: "string", maxLength: 120 } },
@@ -1489,6 +1489,13 @@ export const openApiSpec = {
           documents_count: { type: "integer", minimum: 0 },
           source_window_status: { type: "string", enum: ["current", "exited"] },
           actionability: { type: "string", description: "No equivale automáticamente a fecha abierta para postular" },
+          fit_points: { type: ["integer", "null"], description: "Señales preliminares del rubro; no es evaluación de requisitos" },
+          fit_score: { type: ["integer", "null"], minimum: 0, maximum: 100, description: "Afinidad preliminar; la UI la representa en 1–3 puntos" },
+          fit_level: { type: ["integer", "null"], minimum: 1, maximum: 3 },
+          business_line_name: { type: ["string", "null"] },
+          keyword_hits: { type: "array", items: { type: "object", additionalProperties: true } },
+          match_score: { type: ["integer", "null"], minimum: 0, maximum: 100, description: "Solo existe tras analizar bases o TDR oficial con el worker" },
+          match_verdict: { type: ["string", "null"], enum: ["verde", "ambar", "rojo", "gris", null] },
         },
         additionalProperties: true,
       },

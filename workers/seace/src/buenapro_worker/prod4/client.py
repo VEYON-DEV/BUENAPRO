@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+from uuid import UUID
 
 import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential_jitter
@@ -57,3 +58,34 @@ class Prod4Client:
         if not isinstance(payload, dict) or int(payload.get("nidExpediente") or -1) != procedure_id:
             raise TypeError(f"PROD4 detail identity mismatch: {procedure_id}")
         return payload
+
+    def download_document(self, code: UUID, *, max_bytes: int) -> bytes:
+        """Download one official PDF conservatively; never persist the PDF itself."""
+        if max_bytes < 5:
+            raise ValueError("max_bytes must fit a PDF signature")
+        url = "https://prod1.seace.gob.pe/SeaceWeb-PRO/SdescargarArchivoAlfresco"
+        headers = {
+            "Accept": "application/pdf,*/*",
+            "Referer": "https://prod4.seace.gob.pe/openegocio/",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/128.0.0.0 Safari/537.36",
+        }
+        chunks: list[bytes] = []
+        size = 0
+        with self._client.stream("GET", url, params={"fileCode": str(code)}, headers=headers) as response:
+            response.raise_for_status()
+            length = response.headers.get("Content-Length")
+            if length and int(length) > max_bytes:
+                raise DocumentTooLargeError(f"Official PDF declares {length} bytes, limit {max_bytes}")
+            for chunk in response.iter_bytes():
+                size += len(chunk)
+                if size > max_bytes:
+                    raise DocumentTooLargeError(f"Official PDF exceeded {max_bytes} bytes")
+                chunks.append(chunk)
+        content = b"".join(chunks)
+        if not content.startswith(b"%PDF-"):
+            raise ValueError("Official document is not a PDF")
+        return content
+
+
+class DocumentTooLargeError(ValueError):
+    pass

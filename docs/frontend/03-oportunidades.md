@@ -24,6 +24,8 @@ Proveedor que revisa oportunidades vigentes. Puede estar antes o despues de conf
 - La fecha de cierre de registro no equivale al cierre de presentación de propuestas. Mostrar ambas por separado y priorizar la segunda solo cuando la ficha oficial la indique.
 - `exited` significa que salió del listado PROD4, no que fue adjudicado, cancelado ni cerrado. No inferir estado jurídico desde esa ausencia.
 - La vista rápida es informativa: no afirma elegibilidad, no ejecuta postulación y remite al módulo oficial para comprobar cronograma y requisitos.
+- El listado autenticado compara CUBSO y texto de los ítems con las líneas de negocio activas del perfil. Ordena por afinidad preliminar y muestra 1–3 puntos: general, relacionado o rubro exacto. Si no hay segmento compatible, deja la afinidad sin calcular; no inventa el nivel 1.
+- El anillo 0–100 y el veredicto solo aparecen cuando el worker extrajo requisitos de un PDF oficial de bases/EETT/TDR y ejecutó el análisis con Gemini. Los puntos preliminares no significan que el proveedor cumpla los requisitos.
 
 ## Dos modos
 

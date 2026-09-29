@@ -18,9 +18,14 @@ PROMPT_FILENAME = "tdr_extraction_v2.txt"
 EETT_PROMPT_VERSION = "eett_extraction_v1"
 EETT_SCHEMA_VERSION = "eett_extraction_schema_v1"
 EETT_PROMPT_FILENAME = "eett_extraction_v1.txt"
+BASES_PROMPT_VERSION = "bases_extraction_v1"
+BASES_SCHEMA_VERSION = "bases_extraction_schema_v1"
+BASES_PROMPT_FILENAME = "bases_extraction_v1.txt"
 
 
 def prompt_version_for_doc_class(doc_class: str | None) -> str:
+    if doc_class in {"bases_good", "bases_service"}:
+        return BASES_PROMPT_VERSION
     return EETT_PROMPT_VERSION if doc_class == "eett" else PROMPT_VERSION
 
 MODEL_PRICES_USD_PER_MILLION = {
@@ -54,6 +59,8 @@ class GeminiExtractor:
         self.prompts = {
             "tdr": read_prompt(PROMPT_FILENAME),
             "eett": read_prompt(EETT_PROMPT_FILENAME),
+            "bases_good": read_prompt(BASES_PROMPT_FILENAME),
+            "bases_service": read_prompt(BASES_PROMPT_FILENAME),
         }
 
     def count_tokens(self, pdf_bytes: bytes, *, mime: str = "application/pdf") -> int:
@@ -120,7 +127,7 @@ class GeminiExtractor:
         max_output_tokens: int,
         requires_human_review: bool = False,
     ) -> ExtractionResult:
-        schema = EettExtractionV1 if doc_class == "eett" else TdrExtractionV2
+        schema = EettExtractionV1 if doc_class in {"eett", "bases_good"} else TdrExtractionV2
         response = self.client.models.generate_content(
             model=model,
             contents=self._contents(pdf_bytes, mime=mime),
@@ -150,7 +157,10 @@ class GeminiExtractor:
             raw_json=raw_json,
             model=model,
             prompt_version=prompt_version_for_doc_class(doc_class),
-            schema_version=EETT_SCHEMA_VERSION if doc_class == "eett" else SCHEMA_VERSION,
+            schema_version=(
+                BASES_SCHEMA_VERSION if doc_class in {"bases_good", "bases_service"}
+                else EETT_SCHEMA_VERSION if doc_class == "eett" else SCHEMA_VERSION
+            ),
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cost_usd=estimate_cost(model, input_tokens, output_tokens),

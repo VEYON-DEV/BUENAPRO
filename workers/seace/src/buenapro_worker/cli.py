@@ -112,6 +112,18 @@ def command_prod4_poll_once(args: argparse.Namespace, settings: Settings) -> int
     return 0
 
 
+def command_prod4_document_sweep(args: argparse.Namespace, settings: Settings) -> int:
+    from buenapro_worker.db.connection import connect
+    from buenapro_worker.jobs.prod4_documents import enqueue_current_prod4_document_sweep
+    from buenapro_worker.queue.repository import JobRepository
+
+    with connect(settings) as conn:
+        with conn.transaction():
+            stats = enqueue_current_prod4_document_sweep(settings, JobRepository(conn), limit=args.limit)
+    print(stats)
+    return 0
+
+
 def command_auto_evaluate_current(args: argparse.Namespace, settings: Settings) -> int:
     from buenapro_worker.db.connection import connect
     from buenapro_worker.jobs.match import enqueue_current_contract_sweep
@@ -180,6 +192,9 @@ def command_run(args: argparse.Namespace, settings: Settings) -> int:
     handlers = {
         "poll_search": handle_poll_search,
         "poll_prod4": lambda job: _handle_poll_prod4(settings, job),
+        "extract_prod4_document": lambda job: _handle_extract_prod4_document(settings, job),
+        "route_prod4_profiles": lambda job: _handle_route_prod4_profiles(settings, job),
+        "analyze_prod4_match": lambda job: _handle_analyze_prod4_match(settings, job),
         "contract_test": lambda job: _handle_contract_test(settings, job),
         "process_contract": lambda job: _handle_process_contract(settings, job),
         "poll_lifecycle": lambda job: _handle_poll_lifecycle(settings, poll_lifecycle),
@@ -208,6 +223,55 @@ def _handle_poll_prod4(settings: Settings, _job) -> None:
     with connect(settings) as conn:
         with conn.transaction():
             poll_prod4(settings, JobRepository(conn))
+
+
+def _handle_extract_prod4_document(settings: Settings, job) -> None:
+    from buenapro_worker.db.connection import connect
+    from buenapro_worker.jobs.prod4_documents import extract_prod4_document_job
+    from buenapro_worker.queue.repository import JobRepository
+
+    with connect(settings) as conn:
+        with conn.transaction():
+            extract_prod4_document_job(
+                settings, JobRepository(conn),
+                id_procedimiento=int(job.payload["id_procedimiento"]),
+                codigo_alfresco=str(job.payload["codigo_alfresco"]),
+            )
+
+
+def _handle_route_prod4_profiles(settings: Settings, job) -> None:
+    from buenapro_worker.db.connection import connect
+    from buenapro_worker.jobs.prod4_match import route_prod4_profiles_job
+    from buenapro_worker.queue.repository import JobRepository
+
+    with connect(settings) as conn:
+        with conn.transaction():
+            route_prod4_profiles_job(
+                settings, JobRepository(conn),
+                id_procedimiento=int(job.payload["id_procedimiento"]),
+                extraction_id=int(job.payload["extraction_id"]),
+            )
+
+
+def _handle_analyze_prod4_match(settings: Settings, job) -> None:
+    from buenapro_worker.db.connection import connect
+    from buenapro_worker.jobs.prod4_match import analyze_prod4_match_job
+    from buenapro_worker.queue.repository import JobRepository
+
+    with connect(settings) as conn:
+        with conn.transaction():
+            analyze_prod4_match_job(
+                settings, JobRepository(conn),
+                id_procedimiento=int(job.payload["id_procedimiento"]),
+                extraction_id=int(job.payload["extraction_id"]),
+                profile_id=str(job.payload["profile_id"]),
+                business_line_id=job.payload.get("business_line_id"),
+                source=str(job.payload.get("source") or "worker"),
+                fit_points=job.payload.get("fit_points"),
+                fit_score=job.payload.get("fit_score"),
+                fit_level=job.payload.get("fit_level"),
+                keyword_hits=job.payload.get("keyword_hits"),
+            )
 
 
 def _handle_recent_closures(settings: Settings, job) -> None:
@@ -454,6 +518,12 @@ def build_parser() -> argparse.ArgumentParser:
         "prod4-poll-once", help="Poll PROD4 technology goods/services once"
     )
     prod4_poll_once.set_defaults(func=command_prod4_poll_once)
+
+    prod4_document_sweep = subcommands.add_parser(
+        "prod4-document-sweep", help="Queue a bounded sweep of official PROD4 bases PDFs"
+    )
+    prod4_document_sweep.add_argument("--limit", type=int, default=10)
+    prod4_document_sweep.set_defaults(func=command_prod4_document_sweep)
 
     auto_evaluate = subcommands.add_parser(
         "auto-evaluate-current",

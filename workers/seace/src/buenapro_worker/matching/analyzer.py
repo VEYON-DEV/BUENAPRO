@@ -34,10 +34,17 @@ class MatchAnalysisResult:
 
 
 class MatchAnalyzer:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        prompt_filename: str = ANALYSIS_PROMPT_FILENAME,
+        prompt_version: str = ANALYSIS_PROMPT_VERSION,
+    ) -> None:
         self.settings = settings
         self.client = genai.Client(api_key=settings.gemini_api_key)
-        self.prompt = read_analysis_prompt()
+        self.prompt = read_analysis_prompt(prompt_filename)
+        self.prompt_version = prompt_version
 
     def analyze(
         self,
@@ -79,21 +86,21 @@ class MatchAnalyzer:
             analysis=analysis,
             raw_json=raw_json,
             model=model,
-            prompt_version=ANALYSIS_PROMPT_VERSION,
+            prompt_version=self.prompt_version,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cost_usd=estimate_cost(model, input_tokens, output_tokens),
         )
 
 
-def read_analysis_prompt() -> str:
+def read_analysis_prompt(filename: str = ANALYSIS_PROMPT_FILENAME) -> str:
     candidates = [
-        Path(__file__).resolve().parents[3] / "prompts" / ANALYSIS_PROMPT_FILENAME,
-        Path.cwd() / "prompts" / ANALYSIS_PROMPT_FILENAME,
-        Path("/app/workers/seace/prompts") / ANALYSIS_PROMPT_FILENAME,
+        Path(__file__).resolve().parents[3] / "prompts" / filename,
+        Path.cwd() / "prompts" / filename,
+        Path("/app/workers/seace/prompts") / filename,
     ]
     for candidate in candidates:
         if candidate.exists():
             return candidate.read_text(encoding="utf-8")
     searched = ", ".join(str(candidate) for candidate in candidates)
-    raise FileNotFoundError(f"Prompt {ANALYSIS_PROMPT_FILENAME} not found. Searched: {searched}")
+    raise FileNotFoundError(f"Prompt {filename} not found. Searched: {searched}")

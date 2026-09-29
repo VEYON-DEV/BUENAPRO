@@ -67,7 +67,7 @@ const BASE_SELECT = `
   ), ARRAY[]::text[]) AS technology_segments
 `;
 
-export async function listProd4Opportunities(params: Prod4ListParams) {
+function buildListWhere(params: Prod4ListParams) {
   const values: unknown[] = [];
   const where = ["p.technology_relevant = true"];
   if (params.object) {
@@ -81,7 +81,11 @@ export async function listProd4Opportunities(params: Prod4ListParams) {
     values.push(`%${params.q}%`);
     where.push(`(p.nomenclatura ILIKE $${values.length} OR p.title ILIKE $${values.length} OR p.description ILIKE $${values.length} OR p.buyer_name ILIKE $${values.length})`);
   }
-  const whereSql = where.join(" AND ");
+  return { values, whereSql: where.join(" AND ") };
+}
+
+export async function listProd4Opportunities(params: Prod4ListParams) {
+  const { values, whereSql } = buildListWhere(params);
   const count = await query<{ total: number }>(
     `SELECT count(*)::int AS total FROM prod4_processes p WHERE ${whereSql}`,
     values,
@@ -104,11 +108,61 @@ export async function listProd4Opportunities(params: Prod4ListParams) {
   };
 }
 
-// PROD4 is public procurement data, but the web surface remains tenant-authenticated.
-// The tenant parameter is deliberately kept in the service contract for future
-// tenant-specific relevance/matching without changing callers.
-export async function listProd4OpportunitiesForTenant(_tenantId: string, params: Prod4ListParams) {
-  return listProd4Opportunities(params);
+// The same source window is visible to every tenant, but fit is calculated
+// against each tenant's active profile. An unmatched segment has no fit level.
+export async function listProd4OpportunitiesForTenant(tenantId: string, params: Prod4ListParams) {
+  const { values, whereSql } = buildListWhere(params);
+  const count = await query<{ total: number }>(
+    `SELECT count(*)::int AS total FROM prod4_processes p WHERE ${whereSql}`,
+    values,
+  );
+  const offset = (params.page - 1) * params.pageSize;
+  const tenantParam = values.length + 1;
+  const rows = await query(
+    `SELECT ${BASE_SELECT},
+       fit.fit_points,
+       fit.fit_score,
+       fit.fit_level,
+       fit.business_line_id AS fit_business_line_id,
+       fit.business_line_name,
+       COALESCE(fit.keyword_hits, '[]'::jsonb) AS keyword_hits,
+       matched.score AS match_score,
+       matched.verdict AS match_verdict
+     FROM prod4_processes p
+     JOIN opportunities o ON o.id = p.opportunity_id
+     LEFT JOIN LATERAL (
+       SELECT score.*
+       FROM company_profiles cp
+       CROSS JOIN LATERAL profile_prod4_fit(cp.id, p.id_procedimiento) score
+       WHERE cp.tenant_id = $${tenantParam} AND cp.is_active = true
+       ORDER BY score.keyword_points DESC, score.business_line_id
+       LIMIT 1
+     ) fit ON true
+     LEFT JOIN LATERAL (
+       SELECT m.score, m.verdict
+       FROM opportunity_matches m
+       JOIN company_profiles cp ON cp.id = m.profile_id
+       WHERE cp.tenant_id = $${tenantParam}
+         AND cp.is_active = true
+         AND m.opportunity_id = p.opportunity_id
+       ORDER BY m.updated_at DESC, m.score DESC
+       LIMIT 1
+     ) matched ON true
+     WHERE ${whereSql}
+     ORDER BY fit.keyword_points DESC NULLS LAST,
+              fit.fit_points DESC NULLS LAST,
+              p.proposals_closes_at ASC NULLS LAST,
+              p.published_at DESC NULLS LAST,
+              p.id_procedimiento DESC
+     LIMIT $${tenantParam + 1} OFFSET $${tenantParam + 2}`,
+    [...values, tenantId, params.pageSize, offset],
+  );
+  return {
+    data: rows.rows,
+    total: count.rows[0]?.total ?? 0,
+    page: params.page,
+    page_size: params.pageSize,
+  };
 }
 
 export async function getProd4Opportunity(id: string) {
@@ -146,6 +200,47 @@ export async function getProd4Opportunity(id: string) {
   };
 }
 
-export async function getProd4OpportunityForTenant(_tenantId: string, id: string) {
-  return getProd4Opportunity(id);
+export async function getProd4OpportunityForTenant(tenantId: string, id: string) {
+  const detail = await getProd4Opportunity(id);
+  if (!detail) return null;
+  const affinity = await query(
+    `SELECT fit.fit_points, fit.fit_score, fit.fit_level,
+            fit.business_line_id AS fit_business_line_id,
+            fit.business_line_name,
+            COALESCE(fit.keyword_hits, '[]'::jsonb) AS keyword_hits,
+            matched.score AS match_score,
+            matched.verdict AS match_verdict
+     FROM prod4_processes p
+     LEFT JOIN LATERAL (
+       SELECT score.*
+       FROM company_profiles cp
+       CROSS JOIN LATERAL profile_prod4_fit(cp.id, p.id_procedimiento) score
+       WHERE cp.tenant_id = $1 AND cp.is_active = true
+       ORDER BY score.keyword_points DESC, score.business_line_id
+       LIMIT 1
+     ) fit ON true
+     LEFT JOIN LATERAL (
+       SELECT m.score, m.verdict
+       FROM opportunity_matches m
+       JOIN company_profiles cp ON cp.id = m.profile_id
+       WHERE cp.tenant_id = $1
+         AND cp.is_active = true
+         AND m.opportunity_id = p.opportunity_id
+       ORDER BY m.updated_at DESC, m.score DESC
+       LIMIT 1
+     ) matched ON true
+     WHERE p.id_procedimiento = $2::bigint`,
+    [tenantId, id],
+  );
+  const tenantFit = affinity.rows[0] ?? {
+    fit_points: null,
+    fit_score: null,
+    fit_level: null,
+    fit_business_line_id: null,
+    business_line_name: null,
+    keyword_hits: [],
+    match_score: null,
+    match_verdict: null,
+  };
+  return { ...detail, process: { ...detail.process, ...tenantFit } };
 }

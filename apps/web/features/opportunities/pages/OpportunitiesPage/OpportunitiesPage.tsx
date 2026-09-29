@@ -57,7 +57,10 @@ function resultLabel(deadline: string, savedOnly: boolean) {
 
 export async function OpportunitiesPage({ tenantId, params }: { tenantId: string; params: URLSearchParams }) {
   if (params.get("source") === "prod4") {
-    const result = await listProd4OpportunitiesForTenant(tenantId, parseProd4ListParams(params));
+    const [result, context] = await Promise.all([
+      listProd4OpportunitiesForTenant(tenantId, parseProd4ListParams(params)),
+      getTenantOpportunityContext(tenantId),
+    ]);
     const totalPages = Math.max(Math.ceil(result.total / result.page_size), 1);
     const prod4PageHref = (page: number) => {
       const next = new URLSearchParams(params);
@@ -70,7 +73,9 @@ export async function OpportunitiesPage({ tenantId, params }: { tenantId: string
         <PageHeader
           title="Oportunidades"
           meta={`${result.total} concursos de tecnología en el radar`}
-          description="Procedimientos de bienes y servicios publicados por SEACE. Revisa el cronograma oficial antes de participar."
+          description={context.lines.length
+            ? `Concursos de bienes y servicios ordenados por afinidad preliminar con ${context.razon_social}. Revisa las bases y el cronograma oficial antes de participar.`
+            : "Configura tus líneas de negocio para ver afinidad. Revisa las bases y el cronograma oficial antes de participar."}
         />
         <OpportunitySourceTabs source="prod4" />
         <Prod4OpportunityToolbar defaults={Object.fromEntries(params.entries())} />

@@ -125,7 +125,7 @@ def select_technology_processes(
 
 def _existing(repo: JobRepository, procedure_id: int) -> dict[str, Any] | None:
     return repo.conn.execute(
-        "SELECT opportunity_id, raw_listing, raw_detail FROM prod4_processes WHERE id_procedimiento = %s",
+        "SELECT opportunity_id, raw_listing, raw_detail, detail_fetched_at FROM prod4_processes WHERE id_procedimiento = %s",
         (procedure_id,),
     ).fetchone()
 
@@ -183,7 +183,16 @@ def _upsert_listing(
     first = rows[0]
     existing = _existing(repo, procedure_id)
     listing_changed = existing is None or existing["raw_listing"] != rows
-    needs_detail = listing_changed or existing["raw_detail"] is None
+    # Documents and dates can change without a listing-text change. Revisit
+    # each current ficha at most daily to discover updated bases.
+    detail_stale = (
+        existing is not None
+        and (
+            existing["detail_fetched_at"] is None
+            or (scan_at - existing["detail_fetched_at"]).total_seconds() >= 24 * 3600
+        )
+    )
+    needs_detail = listing_changed or existing["raw_detail"] is None or detail_stale
     opportunity_id = _ensure_identity(repo, procedure_id, object_type)
     repo.conn.execute(
         """INSERT INTO prod4_processes (
@@ -260,6 +269,11 @@ def _upsert_listing(
 
 
 def _upsert_detail(repo: JobRepository, procedure_id: int, detail: dict[str, Any]) -> None:
+    previous_analysis = repo.conn.execute(
+        """SELECT opportunity_id, analyzed_document_code
+           FROM prod4_processes WHERE id_procedimiento = %s""",
+        (procedure_id,),
+    ).fetchone()
     schedule = detail.get("listaCronograma") or []
     if not isinstance(schedule, list):
         raise TypeError("PROD4 detail schedule changed shape")
@@ -288,7 +302,7 @@ def _upsert_detail(repo: JobRepository, procedure_id: int, detail: dict[str, Any
              region = %s, published_at = COALESCE(%s, published_at),
              proposals_start_at = COALESCE(%s, proposals_start_at),
              proposals_closes_at = %s, reference_amount = COALESCE(%s, reference_amount),
-             raw_detail = %s::jsonb, updated_at = now()
+             raw_detail = %s::jsonb, detail_fetched_at = now(), updated_at = now()
            WHERE id_procedimiento = %s""",
         (
             detail.get("idConvocatoriaPub"), detail.get("numeroProcedimiento"),
@@ -339,6 +353,39 @@ def _upsert_detail(repo: JobRepository, procedure_id: int, detail: dict[str, Any
                 DOCUMENT_URL.format(alfresco), _json(document),
             ),
         )
+    # A new or removed bases PDF must invalidate the old final verdict even
+    # when the opt-in LLM pipeline is disabled. Preliminary fit remains intact.
+    if previous_analysis and previous_analysis["analyzed_document_code"] is not None:
+        from buenapro_worker.jobs.prod4_documents import select_official_requirements_pdf
+
+        current_documents = repo.conn.execute(
+            """SELECT codigo_alfresco, name, document_type, extension, published_at
+               FROM prod4_documents WHERE id_procedimiento = %s""",
+            (procedure_id,),
+        ).fetchall()
+        selected = select_official_requirements_pdf([dict(row) for row in current_documents])
+        selected_code = selected["codigo_alfresco"] if selected else None
+        if selected_code != previous_analysis["analyzed_document_code"]:
+            repo.conn.execute(
+                "DELETE FROM opportunity_matches WHERE opportunity_id = %s",
+                (previous_analysis["opportunity_id"],),
+            )
+            repo.conn.execute(
+                """UPDATE prod4_document_extractions SET is_current = false
+                   WHERE id_procedimiento = %s AND is_current = true""",
+                (procedure_id,),
+            )
+            repo.conn.execute(
+                """UPDATE prod4_requirement_facets SET is_current = false
+                   WHERE id_procedimiento = %s AND is_current = true""",
+                (procedure_id,),
+            )
+            repo.conn.execute(
+                """UPDATE prod4_processes SET document_analysis_status = NULL,
+                     document_analysis_reason = NULL, analyzed_document_code = NULL,
+                     document_analysis_checked_at = NULL WHERE id_procedimiento = %s""",
+                (procedure_id,),
+            )
     repo.conn.execute(
         """UPDATE opportunity_sources
            SET native_values = native_values || %s::jsonb
@@ -352,8 +399,8 @@ def poll_prod4(settings: Settings, repo: JobRepository, client: Prod4Client | No
     """Poll one complete public snapshot; never infer an award from disappearance."""
     if not settings.prod4_enabled:
         return {"selected": 0, "details": 0, "missing": 0}
-    if settings.prod4_detail_limit < 0:
-        raise ValueError("prod4_detail_limit cannot be negative")
+    if settings.prod4_detail_limit < 0 or settings.prod4_document_enqueue_limit_per_poll < 0:
+        raise ValueError("PROD4 detail and document limits cannot be negative")
 
     def run(source: Prod4Client) -> dict[str, int]:
         # Fetch every configured slice before changing snapshot presence state.
@@ -375,7 +422,8 @@ def poll_prod4(settings: Settings, repo: JobRepository, client: Prod4Client | No
             if _upsert_listing(repo, procedure_id, object_type, rows, reasons, scan_at):
                 changed_ids.append(procedure_id)
 
-        # A detail is useful for dates and bases, but there is no PDF/LLM fanout.
+        # Detail refresh is bounded. PDF/LLM analysis stays opt-in and has its
+        # own smaller enqueue cap to avoid a sudden historical fanout.
         details = 0
         for procedure_id in changed_ids[:settings.prod4_detail_limit]:
             try:
@@ -390,6 +438,15 @@ def poll_prod4(settings: Settings, repo: JobRepository, client: Prod4Client | No
                 # successfully fetched complete listing snapshot.
                 logger.exception("prod4_detail_unavailable", extra={"id_procedimiento": procedure_id})
             time_module.sleep(0.12)
+
+        if settings.prod4_document_analysis_enabled:
+            from buenapro_worker.jobs.prod4_documents import enqueue_current_prod4_document_sweep
+
+            # The sweep scans past already-analyzed rows. It also advances the
+            # initial 72-row backfill without requiring a manual CLI command.
+            enqueue_current_prod4_document_sweep(
+                settings, repo, limit=settings.prod4_document_enqueue_limit_per_poll
+            )
 
         # Because all four slices returned successfully, absence is meaningful
         # only as a departure from this source snapshot, not as an adjudication.

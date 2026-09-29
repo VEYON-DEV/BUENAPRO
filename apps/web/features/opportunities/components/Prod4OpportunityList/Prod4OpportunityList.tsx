@@ -1,8 +1,10 @@
 "use client";
 
 import { ExternalLink, FileText, X } from "lucide-react";
+import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { verdictShortLabels } from "@/lib/extraction/opportunity";
 import { formatDateTime, formatShortDateTime } from "@/lib/format/date";
 import styles from "./Prod4OpportunityList.module.css";
 
@@ -29,6 +31,13 @@ export type Prod4OpportunitySummary = {
   documents_count: number;
   source_window_status: "current" | "exited";
   actionability: string;
+  fit_points: number | null;
+  fit_score: number | null;
+  fit_level: number | null;
+  business_line_name: string | null;
+  keyword_hits: Array<{ keyword: string }> | null;
+  match_score: number | null;
+  match_verdict: string | null;
 };
 
 type Prod4Detail = {
@@ -51,6 +60,36 @@ function deadlineLabel(row: Prod4OpportunitySummary) {
   if (!deadline) return "Cronograma por confirmar";
   const prefix = row.proposals_closes_at ? "Propuestas" : "Registro";
   return `${prefix} · ${formatShortDateTime(deadline)}`;
+}
+
+function affinityLabel(level: number) {
+  if (level >= 3) return "Tu rubro exacto";
+  if (level >= 2) return "Muy relacionado";
+  return "Rubro general";
+}
+
+function AffinityMark({ row }: { row: Prod4OpportunitySummary }) {
+  if (row.match_score != null && row.match_verdict) {
+    const score = Math.max(0, Math.min(100, Number(row.match_score) || 0));
+    return (
+      <span aria-label={`Evaluación de requisitos: ${score} de 100, ${verdictShortLabels[row.match_verdict] ?? row.match_verdict}`} className={[styles.finalAffinity, styles[`verdict_${row.match_verdict}`] ?? ""].join(" ")}>
+        <span className={styles.scoreRing} style={{ "--score": `${score * 3.6}deg` } as CSSProperties}>{score}</span>
+        <strong>{verdictShortLabels[row.match_verdict] ?? row.match_verdict}</strong>
+      </span>
+    );
+  }
+  const level = Number(row.fit_level);
+  if (!Number.isInteger(level) || level < 1 || level > 3) {
+    return <span className={styles.noAffinity}>Sin afinidad calculada</span>;
+  }
+  const hits = row.keyword_hits?.map((hit) => hit.keyword).filter(Boolean).slice(0, 3).join(", ");
+  const explanation = `Afinidad preliminar${row.fit_score != null ? ` ${row.fit_score} de 100` : ""}: ${affinityLabel(level)}${row.business_line_name ? ` en ${row.business_line_name}` : ""}${hits ? `. Coincidencias: ${hits}` : ""}. No confirma que cumplas los requisitos.`;
+  return (
+    <span aria-label={explanation} className={styles.preliminaryAffinity} title={explanation}>
+      <span aria-hidden="true" className={styles.fitDots}>{[1, 2, 3].map((dot) => <i className={dot <= level ? styles.fitDotOn : styles.fitDotOff} key={dot} />)}</span>
+      <strong>{affinityLabel(level)}</strong>
+    </span>
+  );
 }
 
 export function Prod4OpportunityList({ rows }: { rows: Prod4OpportunitySummary[] }) {
@@ -114,7 +153,7 @@ export function Prod4OpportunityList({ rows }: { rows: Prod4OpportunitySummary[]
     <section className={[styles.board, primary ? "" : styles.noPreview].join(" ")}>
       <div className={styles.list}>
         <div className={styles.listHead}>
-          <span>Procedimiento</span><span>Objeto</span><span>Entidad</span><span>Tipo</span><span>Próxima fecha</span><span>Ficha</span>
+          <span>Procedimiento</span><span>Objeto</span><span>Entidad</span><span>Tipo</span><span>Próxima fecha</span><span>Afinidad</span>
         </div>
         <div className={styles.rows}>
           {rows.map((row) => (
@@ -126,7 +165,7 @@ export function Prod4OpportunityList({ rows }: { rows: Prod4OpportunitySummary[]
                 </div>
                 <div className={styles.objectCell}>
                   <strong>{row.title || row.description || "Objeto sin descripción"}</strong>
-                  <span className={styles.meta}>{row.technology_segments?.length ? `CUBSO ${row.technology_segments.join(", ")}` : "Tecnología"}</span>
+                  <span className={styles.meta}>{row.technology_segments?.length ? `CUBSO ${row.technology_segments.join(", ")}` : "Tecnología"} · {row.documents_count ?? 0} documentos</span>
                 </div>
                 <div className={styles.buyerCell}>
                   <span>{row.buyer_name || "Entidad no informada"}</span>
@@ -137,7 +176,7 @@ export function Prod4OpportunityList({ rows }: { rows: Prod4OpportunitySummary[]
                   <strong>{deadlineLabel(row)}</strong>
                   <span className={styles.meta}>{row.source_window_status === "current" ? "En radar oficial" : "Fuera del radar"}</span>
                 </div>
-                <span className={styles.docCount}><FileText aria-hidden="true" size={15} /> {row.documents_count ?? 0}</span>
+                <AffinityMark row={row} />
               </button>
             </article>
           ))}
@@ -153,6 +192,7 @@ export function Prod4OpportunityList({ rows }: { rows: Prod4OpportunitySummary[]
           <span className={styles.previewCode}>{primary.nomenclatura ?? primary.id_procedimiento}</span>
           <h2>{primary.title || primary.description || "Objeto sin descripción"}</h2>
           <div className={styles.pills}><span>{objectLabel(primary.object_type)}</span><span>Procedimiento de selección</span></div>
+          <div className={styles.previewAffinity}><span>Afinidad con tu empresa</span><AffinityMark row={detail?.process ?? primary} /></div>
           <p className={styles.eligibility}>La presencia en PROD4 no confirma que aún puedas presentar una oferta. Revisa el cronograma y los requisitos oficiales.</p>
           <dl className={styles.facts}>
             <div><dt>Entidad</dt><dd>{primary.buyer_name || "No informada"}</dd></div>

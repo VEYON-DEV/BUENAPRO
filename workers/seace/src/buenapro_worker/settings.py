@@ -27,6 +27,13 @@ class Settings(BaseSettings):
     prod4_base_url: str = "https://prod4.seace.gob.pe:8086/api/oportunidades"
     prod4_poll_interval_minutes: int = 30
     prod4_detail_limit: int = 100
+    # Deep analysis advances gradually: no more than three newly queued PDFs
+    # per poll and ten per day, with an additional per-profile final-score cap.
+    prod4_document_analysis_enabled: bool = True
+    prod4_document_enqueue_limit_per_poll: int = 3
+    prod4_document_daily_limit: int = 10
+    prod4_profile_evaluations_daily_default: int = 10
+    prod4_max_analysis_pdf_bytes: int = 20 * 1024 * 1024
     prod4_technology_segments: str = "43,81"
     # Segment 81 also contains non-IT engineering and works consulting.
     prod4_service_cubso_prefixes: str = "811115,811116,811117,811118,811119,811120,811121,811122,811123,811124,811125"

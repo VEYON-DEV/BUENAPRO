@@ -119,6 +119,51 @@ El comando solo encola trabajo. Supervisar las colas `match`, `llm` y `notify` h
 
 Antes de probar un destinatario personal, ese usuario debe abrir el bot y pulsar **Start**. Un mismo bot admite varios `chat_id` activos desde `/configuracion`.
 
+## PROD4: bases oficiales y puntaje final
+
+Tras aplicar las migraciones `0030` y `0031`, el polling PROD4 calcula la afinidad
+preliminar por perfil sin Gemini para todos los procesos tecnológicos. El worker
+extrae automáticamente **solo** un PDF oficial de bases integradas, bases
+administrativas o TDR/EETT por procedimiento con afinidad preliminar de nivel
+`2+`. Gemini estructura sus requisitos y después compara el perfil para guardar
+el puntaje final en `opportunity_matches`. Si el PDF no contiene requisitos
+sustantivos verificables, no se genera veredicto final.
+
+La activación por defecto es `PROD4_DOCUMENT_ANALYSIS_ENABLED=true`. Los límites
+por defecto son `PROD4_DOCUMENT_ENQUEUE_LIMIT_PER_POLL=3`,
+`PROD4_DOCUMENT_DAILY_LIMIT=10`, `PROD4_PROFILE_EVALUATIONS_DAILY_DEFAULT=10`
+y `PROD4_MAX_ANALYSIS_PDF_BYTES=20971520` (20 MiB). Los PDFs grandes o no-PDF
+quedan marcados `skipped` con motivo; no se suben a almacenamiento propio. El
+poll diario de fichas detecta reemplazos de bases e invalida scores finales
+anteriores. El barrido inicial avanza automáticamente en cada poll, no encola
+las 72 descargas a la vez.
+
+Para adelantar un lote manual sin saltarse los límites diarios:
+
+```bash
+docker compose -f infra/docker/docker-compose.yml run --rm worker-io \
+  buenapro-worker prod4-document-sweep --limit 10
+```
+
+Monitoreo de cobertura/costo:
+
+```sql
+SELECT document_analysis_status, document_analysis_reason, count(*)
+FROM prod4_processes
+WHERE technology_relevant = true AND missing_since IS NULL
+GROUP BY 1, 2 ORDER BY 1, 2;
+
+SELECT count(*) AS extracciones, COALESCE(sum(cost_usd), 0) AS usd
+FROM prod4_document_extractions;
+
+SELECT count(*) AS puntajes_finales FROM opportunity_matches;
+```
+
+Por ahora no se emiten alertas Telegram por `opportunity_matches`; el veredicto
+queda en la BD/API. Los documentos superiores a 20 MiB necesitan un flujo
+específico de reducción de páginas o subida a Gemini Files antes de obtener
+puntaje final; la interfaz debe mantener solo la afinidad preliminar en ellos.
+
 ## Verificar BD
 
 ```sql
