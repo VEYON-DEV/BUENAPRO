@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
+import httpx
+
 from buenapro_worker.documents.pdf import sha256_bytes
 from buenapro_worker.extraction.gemini import GeminiExtractor, prompt_version_for_doc_class
 from buenapro_worker.normalization.facets import derive_facets, derive_summary, facet_hash
@@ -210,6 +212,17 @@ def extract_prod4_document_job(
     except DocumentTooLargeError:
         _mark_skipped(repo, id_procedimiento, code, "pdf_exceeds_analysis_limit")
         return {"skipped": "pdf_exceeds_analysis_limit"}
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code not in {401, 403}:
+            raise
+        # A protected origin must not become an endless retry/queue loop.
+        # Keep the preliminary fit and expose the access limitation instead.
+        _mark_skipped(repo, id_procedimiento, code, "official_document_access_denied")
+        logger.warning(
+            "prod4_document_access_denied",
+            extra={"id_procedimiento": id_procedimiento, "status_code": exc.response.status_code},
+        )
+        return {"skipped": "official_document_access_denied"}
     except ValueError as exc:
         _mark_skipped(repo, id_procedimiento, code, "official_document_not_pdf")
         logger.warning("prod4_document_not_pdf", extra={"id_procedimiento": id_procedimiento, "error": str(exc)})

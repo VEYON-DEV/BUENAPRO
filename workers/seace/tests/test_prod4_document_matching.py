@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
+import httpx
 
 from buenapro_worker.jobs.poll_prod4 import _upsert_detail
 from buenapro_worker.jobs.prod4_documents import (
@@ -143,6 +144,34 @@ def test_large_official_pdf_skips_gemini_and_records_reason() -> None:
     assert any(
         "document_analysis_status = 'skipped'" in call.args[0]
         for call in repo.conn.execute.call_args_list
+    )
+
+
+def test_denied_official_pdf_skips_gemini_without_retry_loop() -> None:
+    repo = MagicMock()
+    repo.conn.execute.return_value.fetchone.side_effect = [
+        {"opportunity_id": uuid4(), "object_type": "service", "technology_relevant": True, "missing_since": None},
+        {"eligible": True},
+        None,
+    ]
+    repo.conn.execute.return_value.fetchall.return_value = [document(CODE_A, "Bases Integradas")]
+    client = MagicMock()
+    request = httpx.Request("GET", "https://prod1.seace.gob.pe/official.pdf")
+    response = httpx.Response(403, request=request)
+    client.download_document.side_effect = httpx.HTTPStatusError(
+        "Forbidden", request=request, response=response,
+    )
+    extractor = MagicMock()
+    result = extract_prod4_document_job(
+        settings(), repo, id_procedimiento=123, codigo_alfresco=str(CODE_A),
+        client=client, extractor=extractor,
+    )
+    assert result == {"skipped": "official_document_access_denied"}
+    extractor.extract.assert_not_called()
+    assert any(
+        call.args[1][0] == "official_document_access_denied"
+        for call in repo.conn.execute.call_args_list
+        if "document_analysis_status = 'skipped'" in call.args[0]
     )
 
 

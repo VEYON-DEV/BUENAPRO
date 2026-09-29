@@ -138,6 +138,13 @@ poll diario de fichas detecta reemplazos de bases e invalida scores finales
 anteriores. El barrido inicial avanza automáticamente en cada poll, no encola
 las 72 descargas a la vez.
 
+Comprobación productiva del 2026-09-29: el origen oficial `prod1.seace.gob.pe`
+devolvió `403` desde la VM (aunque una descarga local con las mismas cabeceras
+respondió `200`). El worker registra `official_document_access_denied`, no
+envía ese PDF a Gemini y conserva solamente la afinidad preliminar. Antes de
+prometer puntajes finales en producción hay que resolver el acceso oficial a
+documentos desde la VM; no usar CAPTCHA ni evadir el bloqueo de origen.
+
 Para adelantar un lote manual sin saltarse los límites diarios:
 
 ```bash
