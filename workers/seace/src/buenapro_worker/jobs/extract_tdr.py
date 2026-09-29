@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 
-from buenapro_worker.extraction.gemini import GeminiExtractor, PROMPT_VERSION
+from buenapro_worker.extraction.gemini import GeminiExtractor, prompt_version_for_doc_class
 from buenapro_worker.queue.repository import JobRepository
 from buenapro_worker.seace.client import SeaceClient
 from buenapro_worker.settings import Settings
@@ -24,16 +24,24 @@ def extract_tdr_job(
 ) -> int:
     document = repo.conn.execute(
         """
-        SELECT id, mime, sha256_original
-        FROM contract_documents
-        WHERE id_contrato = %s AND id_contrato_archivo = %s
+        SELECT d.id, d.mime, d.sha256_original, c.objeto_codigo
+        FROM contract_documents d
+        JOIN seace_contracts c ON c.id_contrato = d.id_contrato
+        WHERE d.id_contrato = %s AND d.id_contrato_archivo = %s
         """,
         (id_contrato, id_contrato_archivo),
     ).fetchone()
     if document is None:
         raise ValueError(f"Document not found: {id_contrato}/{id_contrato_archivo}")
 
-    reusable = find_reusable_extraction(repo, document_id=int(document["id"]), sha256_original=str(document["sha256_original"]))
+    # El objeto nativo resuelve documentos ya descargados antes de introducir EETT.
+    doc_class = "eett" if int(document["objeto_codigo"]) == 1 else "tdr"
+    reusable = find_reusable_extraction(
+        repo,
+        document_id=int(document["id"]),
+        sha256_original=str(document["sha256_original"]),
+        prompt_version=prompt_version_for_doc_class(doc_class),
+    )
     if reusable is not None:
         extraction_id = insert_reused_extraction(repo, document_id=int(document["id"]), source=reusable)
         mark_contract_extracted(repo, id_contrato)
@@ -60,7 +68,9 @@ def extract_tdr_job(
     with SeaceClient(settings) as client:
         pdf_bytes = client.download_file(id_contrato_archivo)
 
-    result = GeminiExtractor(settings).extract(pdf_bytes, mime=document["mime"] or "application/pdf")
+    result = GeminiExtractor(settings).extract(
+        pdf_bytes, mime=document["mime"] or "application/pdf", doc_class=doc_class
+    )
 
     row = repo.conn.execute(
         """
@@ -145,7 +155,9 @@ def mark_contract_extracted(repo: JobRepository, id_contrato: int) -> None:
     )
 
 
-def find_reusable_extraction(repo: JobRepository, *, document_id: int, sha256_original: str) -> dict | None:
+def find_reusable_extraction(
+    repo: JobRepository, *, document_id: int, sha256_original: str, prompt_version: str
+) -> dict | None:
     if not sha256_original or sha256_original.startswith("pending:"):
         return None
     row = repo.conn.execute(
@@ -169,7 +181,7 @@ def find_reusable_extraction(repo: JobRepository, *, document_id: int, sha256_or
         ORDER BY e.requires_human_review ASC, e.created_at DESC, e.id DESC
         LIMIT 1
         """,
-        (sha256_original, document_id, PROMPT_VERSION),
+        (sha256_original, document_id, prompt_version),
     ).fetchone()
     return None if row is None else dict(row)
 

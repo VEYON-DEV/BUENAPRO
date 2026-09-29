@@ -9,14 +9,8 @@ from buenapro_worker.settings import Settings
 
 def enqueue_scheduled_jobs(settings: Settings, repo: JobRepository, *, anio: int | None = None) -> dict[str, int | None]:
     year = anio or datetime.now(timezone.utc).year
-    return {
-        "poll_search": repo.enqueue(
-            "poll_search",
-            {"anio": year},
-            queue_name="io",
-            dedup_key=f"poll_search:{year}",
-            priority=1,
-        ),
+    poll_jobs = enqueue_poll_search_jobs(settings, repo, year=year)
+    return poll_jobs | {
         "poll_lifecycle": repo.enqueue(
             "poll_lifecycle",
             {"anio": year},
@@ -41,6 +35,21 @@ def enqueue_scheduled_jobs(settings: Settings, repo: JobRepository, *, anio: int
     }
 
 
+def enqueue_poll_search_jobs(settings: Settings, repo: JobRepository, *, year: int) -> dict[str, int | None]:
+    jobs: dict[str, int | None] = {}
+    for objeto in settings.allowed_codigo_objeto:
+        for segment in settings.allowed_segments:
+            key = f"poll_search:{year}:{objeto}:{segment}"
+            jobs[key] = repo.enqueue(
+                "poll_search",
+                {"anio": year, "objects": [objeto], "segments": [segment]},
+                queue_name="io",
+                dedup_key=key,
+                priority=1,
+            )
+    return jobs
+
+
 def run_scheduler_forever(settings: Settings, repo_factory, *, anio: int | None = None) -> None:
     last_poll = 0.0
     last_lifecycle = 0.0
@@ -53,13 +62,7 @@ def run_scheduler_forever(settings: Settings, repo_factory, *, anio: int | None 
 
         with repo_factory() as repo:
             if now - last_poll >= settings.seace_poll_interval_minutes * 60:
-                repo.enqueue(
-                    "poll_search",
-                    {"anio": year},
-                    queue_name="io",
-                    dedup_key=f"poll_search:{year}",
-                    priority=1,
-                )
+                enqueue_poll_search_jobs(settings, repo, year=year)
                 last_poll = now
 
             if now - last_lifecycle >= settings.seace_lifecycle_interval_hours * 3600:

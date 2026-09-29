@@ -8,13 +8,20 @@ from typing import Any
 from google import genai
 from google.genai import types
 
-from buenapro_worker.extraction.schemas import TdrExtractionV2
+from buenapro_worker.extraction.schemas import EettExtractionV1, TdrExtractionV2
 from buenapro_worker.settings import Settings
 
 
 PROMPT_VERSION = "tdr_extraction_v2"
 SCHEMA_VERSION = "tdr_extraction_schema_v2"
 PROMPT_FILENAME = "tdr_extraction_v2.txt"
+EETT_PROMPT_VERSION = "eett_extraction_v1"
+EETT_SCHEMA_VERSION = "eett_extraction_schema_v1"
+EETT_PROMPT_FILENAME = "eett_extraction_v1.txt"
+
+
+def prompt_version_for_doc_class(doc_class: str | None) -> str:
+    return EETT_PROMPT_VERSION if doc_class == "eett" else PROMPT_VERSION
 
 MODEL_PRICES_USD_PER_MILLION = {
     "gemini-3.1-flash-lite": {"input": 0.25, "output": 1.50},
@@ -25,7 +32,7 @@ MODEL_PRICES_USD_PER_MILLION = {
 
 @dataclass(frozen=True)
 class ExtractionResult:
-    extraction: TdrExtractionV2
+    extraction: TdrExtractionV2 | EettExtractionV1
     raw_json: dict[str, Any]
     model: str
     prompt_version: str
@@ -44,7 +51,10 @@ class GeminiExtractor:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.client = genai.Client(api_key=settings.gemini_api_key)
-        self.prompt = read_prompt()
+        self.prompts = {
+            "tdr": read_prompt(PROMPT_FILENAME),
+            "eett": read_prompt(EETT_PROMPT_FILENAME),
+        }
 
     def count_tokens(self, pdf_bytes: bytes, *, mime: str = "application/pdf") -> int:
         response = self.client.models.count_tokens(
@@ -53,12 +63,17 @@ class GeminiExtractor:
         )
         return int(response.total_tokens or 0)
 
-    def extract(self, pdf_bytes: bytes, *, mime: str = "application/pdf") -> ExtractionResult:
+    def extract(
+        self, pdf_bytes: bytes, *, mime: str = "application/pdf", doc_class: str = "tdr"
+    ) -> ExtractionResult:
+        if doc_class not in self.prompts:
+            raise ValueError(f"Unsupported document class for extraction: {doc_class}")
         try:
             return self._extract_with_model(
                 self.settings.gemini_model,
                 pdf_bytes,
                 mime=mime,
+                doc_class=doc_class,
                 max_output_tokens=16384,
             )
         except TruncatedResponseError:
@@ -67,6 +82,7 @@ class GeminiExtractor:
                     self.settings.gemini_model,
                     pdf_bytes,
                     mime=mime,
+                    doc_class=doc_class,
                     max_output_tokens=24576,
                     requires_human_review=True,
                 )
@@ -75,6 +91,7 @@ class GeminiExtractor:
                     self.settings.gemini_fallback_model,
                     pdf_bytes,
                     mime=mime,
+                    doc_class=doc_class,
                     max_output_tokens=24576,
                     requires_human_review=True,
                 )
@@ -83,6 +100,7 @@ class GeminiExtractor:
                 self.settings.gemini_fallback_model,
                 pdf_bytes,
                 mime=mime,
+                doc_class=doc_class,
                 max_output_tokens=24576,
                 requires_human_review=True,
             )
@@ -98,16 +116,18 @@ class GeminiExtractor:
         pdf_bytes: bytes,
         *,
         mime: str,
+        doc_class: str,
         max_output_tokens: int,
         requires_human_review: bool = False,
     ) -> ExtractionResult:
+        schema = EettExtractionV1 if doc_class == "eett" else TdrExtractionV2
         response = self.client.models.generate_content(
             model=model,
             contents=self._contents(pdf_bytes, mime=mime),
             config=types.GenerateContentConfig(
-                system_instruction=self.prompt,
+                system_instruction=self.prompts[doc_class],
                 response_mime_type="application/json",
-                response_schema=TdrExtractionV2,
+                response_schema=schema,
                 temperature=0,
                 max_output_tokens=max_output_tokens,
             ),
@@ -119,7 +139,9 @@ class GeminiExtractor:
             # PDF probablemente escaneado/ilegible: forzar el fallback (flash),
             # que lee mejor documentos dificiles, y marcar para revision humana.
             raise EmptyExtractionError("Gemini returned an empty extraction")
-        extraction = TdrExtractionV2.model_validate(raw_json)
+        extraction = schema.model_validate(raw_json)
+        if isinstance(extraction, EettExtractionV1) and not extraction.goods.items:
+            requires_human_review = True
         usage = response.usage_metadata
         input_tokens = int(getattr(usage, "prompt_token_count", 0) or 0)
         output_tokens = int(getattr(usage, "candidates_token_count", 0) or 0)
@@ -127,8 +149,8 @@ class GeminiExtractor:
             extraction=extraction,
             raw_json=raw_json,
             model=model,
-            prompt_version=PROMPT_VERSION,
-            schema_version=SCHEMA_VERSION,
+            prompt_version=prompt_version_for_doc_class(doc_class),
+            schema_version=EETT_SCHEMA_VERSION if doc_class == "eett" else SCHEMA_VERSION,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cost_usd=estimate_cost(model, input_tokens, output_tokens),
@@ -163,17 +185,17 @@ class EmptyExtractionError(RuntimeError):
     pass
 
 
-def read_prompt() -> str:
+def read_prompt(filename: str = PROMPT_FILENAME) -> str:
     candidates = [
-        Path(__file__).resolve().parents[3] / "prompts" / PROMPT_FILENAME,
-        Path.cwd() / "prompts" / PROMPT_FILENAME,
-        Path("/app/workers/seace/prompts") / PROMPT_FILENAME,
+        Path(__file__).resolve().parents[3] / "prompts" / filename,
+        Path.cwd() / "prompts" / filename,
+        Path("/app/workers/seace/prompts") / filename,
     ]
     for candidate in candidates:
         if candidate.exists():
             return candidate.read_text(encoding="utf-8")
     searched = ", ".join(str(candidate) for candidate in candidates)
-    raise FileNotFoundError(f"Prompt {PROMPT_FILENAME} not found. Searched: {searched}")
+    raise FileNotFoundError(f"Prompt {filename} not found. Searched: {searched}")
 
 
 def is_truncated(response: Any) -> bool:

@@ -27,9 +27,10 @@ def download_file_job(
     # para identificarlo (sha256/MIME/clase) y disparar la extraccion.
     row = repo.conn.execute(
         """
-        SELECT filename, categoria
-        FROM contract_documents
-        WHERE id_contrato = %s AND id_contrato_archivo = %s
+        SELECT d.filename, d.categoria, c.objeto_codigo
+        FROM contract_documents d
+        JOIN seace_contracts c ON c.id_contrato = d.id_contrato
+        WHERE d.id_contrato = %s AND d.id_contrato_archivo = %s
         """,
         (id_contrato, id_contrato_archivo),
     ).fetchone()
@@ -42,9 +43,16 @@ def download_file_job(
     sha_original = sha256_bytes(content)
     mime = detect_mime(content)
     doc_class = classify_document(filename, mime)
-    # La categoria 1 de SEACE ES el requerimiento/TDR por definicion; el nombre
-    # del archivo no es confiable (llegan como "P513.pdf" o "ANEXO 02_...").
-    if categoria == 1 and doc_class == "otro":
+    # La categoria 1 es el requerimiento. Su clase depende del objeto nativo
+    # de SEACE; el nombre suele ser generico o incluso decir "ANEXO".
+    if categoria == 1 and row:
+        if int(row["objeto_codigo"]) == 1:
+            doc_class = "eett"
+        elif int(row["objeto_codigo"]) == 2:
+            doc_class = "tdr"
+        elif doc_class == "otro":
+            doc_class = "tdr"
+    elif categoria == 1 and doc_class == "otro":
         doc_class = "tdr"
 
     repo.conn.execute(

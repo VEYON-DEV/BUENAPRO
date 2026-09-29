@@ -4,6 +4,7 @@ export type MarketFilters = {
   scope: "profile" | "all";
   view: "overview" | "contracts" | "suppliers";
   q: string;
+  object: string;
   segment: string;
   result: string;
   department: string;
@@ -22,6 +23,7 @@ export function parseMarketFilters(params: URLSearchParams): MarketFilters {
     scope,
     view,
     q: (params.get("q") ?? "").trim().slice(0, 120),
+    object: ["1", "2", "3", "4"].includes(params.get("object") ?? "") ? String(params.get("object")) : "",
     segment: (params.get("segment") ?? "").replace(/[^0-9]/g, "").slice(0, 4),
     result: ["ADJUDICADO", "DESIERTO", "SIN_RESULTADO"].includes(params.get("result") ?? "")
       ? String(params.get("result"))
@@ -57,6 +59,7 @@ function marketQuery(filters: MarketFilters, tenantId: string) {
     )`);
   }
   if (filters.segment) conditions.push(`h.cubso_segmento=${add(filters.segment)}`);
+  if (filters.object) conditions.push(`h.objeto_codigo=${add(Number(filters.object))}`);
   if (filters.result) conditions.push(`h.estado_resultado=${add(filters.result)}`);
   if (filters.department) conditions.push(`h.department=${add(filters.department)}`);
   if (filters.entity) conditions.push(`h.seace_entity_id=${add(Number(filters.entity))}`);
@@ -97,6 +100,12 @@ export async function getMarketIntelligence(tenantId: string, filters: MarketFil
          WHERE cp.tenant_id=$1 AND cp.is_active=true
        )
        SELECT
+         (SELECT json_agg(row_to_json(o) ORDER BY o.code) FROM (
+           SELECT h.objeto_codigo AS code, co.nombre AS name, count(*)::int AS count
+           FROM historical_contract_outcomes h JOIN cat_seace_objects co ON co.codigo=h.objeto_codigo
+           WHERE ($2::boolean OR EXISTS (SELECT 1 FROM profile_segments ps WHERE ps.code=h.cubso_segmento))
+           GROUP BY h.objeto_codigo,co.nombre
+         ) o) AS objects,
          (SELECT json_agg(row_to_json(s) ORDER BY s.code) FROM (
            SELECT h.cubso_segmento AS code, COALESCE(c.nombre, 'Segmento ' || h.cubso_segmento) AS name, count(*)::int AS count
            FROM historical_contract_outcomes h LEFT JOIN cat_cubso_segmentos c ON c.codigo=h.cubso_segmento
@@ -166,7 +175,7 @@ export async function getMarketIntelligence(tenantId: string, filters: MarketFil
       values,
     ),
     query(
-      `${cte} SELECT id_contrato,codigo_completo,descripcion,entity_name,department,cubso_segmento,
+      `${cte} SELECT id_contrato,codigo_completo,descripcion,entity_name,department,objeto_codigo,cubso_segmento,
          cubso_name,estado_resultado,supplier_ruc,supplier_name,precio_total,fec_publica,source_document_url,
          count(*) OVER()::int AS total_count
        FROM filtered ORDER BY COALESCE(fec_fin_cotizacion,fec_publica,created_at) DESC NULLS LAST
@@ -193,7 +202,7 @@ export async function getHistoricalSupplier(ruc: string) {
   const [supplier, contracts, entities, regions, segments] = await Promise.all([
     query(`SELECT * FROM historical_suppliers WHERE ruc=$1`, [ruc]),
     query(
-      `SELECT id_contrato,codigo_completo,descripcion,entity_name,department,cubso_segmento,cubso_name,
+      `SELECT id_contrato,codigo_completo,descripcion,entity_name,department,objeto_codigo,cubso_segmento,cubso_name,
          precio_total,fec_publica,source_document_url
        FROM historical_contract_outcomes
        WHERE supplier_ruc=$1 AND estado_resultado='ADJUDICADO'

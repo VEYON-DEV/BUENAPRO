@@ -157,6 +157,38 @@ class TdrExtractionV2(StrictModel):
     summary: SummaryV2 = Field(default_factory=SummaryV2)
 
 
+class GoodsItemV1(StrictModel):
+    nombre: str = ""
+    cantidad: float | None = None
+    unidad_medida: str | None = None
+    especificaciones: list[str] = Field(default_factory=list)
+
+
+class GoodsDeliveryV1(StrictModel):
+    lugar: str | None = None
+    plazo_texto: str | None = None
+    plazo_dias: int | None = None
+    condiciones: str | None = None
+
+
+class GoodsWarrantyV1(StrictModel):
+    plazo_texto: str | None = None
+    cobertura: str | None = None
+    condiciones: str | None = None
+
+
+class GoodsV1(StrictModel):
+    items: list[GoodsItemV1] = Field(default_factory=list)
+    entrega: GoodsDeliveryV1 = Field(default_factory=GoodsDeliveryV1)
+    garantia: GoodsWarrantyV1 = Field(default_factory=GoodsWarrantyV1)
+
+
+class EettExtractionV1(TdrExtractionV2):
+    """Mantiene los campos consumidos por la normalizacion y agrega datos de Bienes."""
+
+    goods: GoodsV1 = Field(default_factory=GoodsV1)
+
+
 def repair_optional_fields(payload: dict[str, Any]) -> dict[str, Any]:
     repaired = dict(payload)
     for key in ("contract", "execution", "payment", "requirements", "contract_management"):

@@ -25,6 +25,7 @@ def command_historical_backfill(args: argparse.Namespace, settings: Settings) ->
             settings,
             repo,
             segment=args.segment,
+            objeto_codigo=args.object,
             limit=args.limit,
             year=args.year,
             page_size=args.page_size,
@@ -54,7 +55,7 @@ def command_historical_stats(args: argparse.Namespace, settings: Settings) -> in
     from buenapro_worker.queue.repository import JobRepository
 
     with connect(settings) as conn:
-        stats = historical_stats(JobRepository(conn), segment=args.segment)
+        stats = historical_stats(JobRepository(conn), segment=args.segment, objeto_codigo=args.object)
     print(stats)
     return 0
 
@@ -69,6 +70,7 @@ def command_historical_retry_failed(args: argparse.Namespace, settings: Settings
             settings,
             JobRepository(conn),
             segment=args.segment,
+            objeto_codigo=args.object,
             year=args.year,
             include_files=not args.skip_files,
         )
@@ -90,6 +92,7 @@ def command_poll_once(args: argparse.Namespace, settings: Settings) -> int:
                 anio=args.year,
                 max_contracts=args.limit,
                 segments=_parse_segments(args.segments),
+                objects=_parse_segments(args.objects),
                 batch_id=args.batch_id,
                 bucket=args.bucket,
             )
@@ -157,6 +160,7 @@ def command_run(args: argparse.Namespace, settings: Settings) -> int:
                     anio=int(job.payload.get("anio") or datetime.now(timezone.utc).year),
                     max_contracts=job.payload.get("max_contracts"),
                     segments=_coerce_segments(job.payload.get("segments")),
+                    objects=_coerce_segments(job.payload.get("objects")),
                     batch_id=job.payload.get("batch_id"),
                     bucket=job.payload.get("bucket"),
                 )
@@ -210,6 +214,7 @@ def _handle_historical_backfill(settings: Settings, job) -> None:
             settings,
             repo,
             segment=int(job.payload["segment"]),
+            objeto_codigo=int(job.payload.get("object") or 2),
             limit=int(job.payload["limit"]) if job.payload.get("limit") else None,
             year=int(job.payload.get("year") or datetime.now(timezone.utc).year),
         )
@@ -417,6 +422,7 @@ def build_parser() -> argparse.ArgumentParser:
     poll_once.add_argument("--year", type=int, default=datetime.now(timezone.utc).year)
     poll_once.add_argument("--limit", type=int, default=None, help="Max new/changed contracts to enqueue")
     poll_once.add_argument("--segments", default=None, help="Comma-separated CUBSO segments for this run")
+    poll_once.add_argument("--objects", default=None, help="Comma-separated object codes: 1=Bien, 2=Servicio, 3=Obra, 4=Consultoría de Obra")
     poll_once.add_argument("--batch-id", default=None)
     poll_once.add_argument("--bucket", default=None)
     poll_once.set_defaults(func=command_poll_once)
@@ -437,6 +443,7 @@ def build_parser() -> argparse.ArgumentParser:
         "historical-backfill", help="Backfill culminated SEACE outcomes"
     )
     historical_backfill.add_argument("--segment", type=int, required=True)
+    historical_backfill.add_argument("--object", type=int, choices=(1, 2, 3, 4), default=2)
     historical_backfill.add_argument("--limit", type=int, default=None)
     historical_backfill.add_argument("--year", type=int, default=datetime.now(timezone.utc).year)
     historical_backfill.add_argument("--page-size", type=int, default=50)
@@ -449,6 +456,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Reconcile SEACE IDs and retry failed or missing historical outcomes",
     )
     retry_failed.add_argument("--segment", type=int, required=True)
+    retry_failed.add_argument("--object", type=int, choices=(1, 2, 3, 4), default=2)
     retry_failed.add_argument("--year", type=int, default=datetime.now(timezone.utc).year)
     retry_failed.add_argument("--skip-files", action="store_true")
     retry_failed.set_defaults(func=command_historical_retry_failed)
@@ -462,6 +470,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     stats = subcommands.add_parser("historical-stats", help="Summarize stored historical outcomes")
     stats.add_argument("--segment", type=int, required=True)
+    stats.add_argument("--object", type=int, choices=(1, 2, 3, 4), default=2)
     stats.set_defaults(func=command_historical_stats)
 
     return parser

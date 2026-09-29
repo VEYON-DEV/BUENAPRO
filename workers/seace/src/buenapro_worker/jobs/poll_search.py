@@ -112,11 +112,17 @@ def poll_search(
     anio: int,
     max_contracts: int | None = None,
     segments: list[int] | None = None,
+    objects: list[int] | None = None,
     batch_id: str | None = None,
     bucket: str | None = None,
 ) -> dict[str, int]:
     stats = {"seen": 0, "changed": 0, "enqueued": 0, "skipped": 0, "limit_reached": 0}
     segment_list: list[int | None] = segments or settings.allowed_segments or [None]
+    object_list = objects or settings.allowed_codigo_objeto
+    if not object_list or any(obj not in settings.allowed_codigo_objeto for obj in object_list):
+        raise ValueError("Objects must be a nonempty subset of SEACE_ALLOWED_CODIGO_OBJETO")
+    if any(segment is not None and segment not in settings.allowed_segments for segment in segment_list):
+        raise ValueError("Segments must be configured in SEACE_ALLOWED_SEGMENTS")
 
     def finish(event: str) -> dict[str, int]:
         logger.info(
@@ -131,69 +137,93 @@ def poll_search(
         return stats
 
     with SeaceClient(settings) as client:
-        for segment in segment_list:
-            page = 1
-            while True:
-                if max_contracts is not None and stats["changed"] >= max_contracts:
-                    stats["limit_reached"] = 1
+        for objeto in object_list:
+            for segment in segment_list:
+                segment_stats = _poll_object_segment(
+                    client, settings, repo, stats, anio=anio, objeto=objeto,
+                    segment=segment, max_contracts=max_contracts,
+                    batch_id=batch_id, bucket=bucket,
+                )
+                if segment_stats == "limit_reached":
                     return finish("poll_search_limit_reached")
 
-                response = client.search_contracts(
-                    anio=anio,
-                    estado=settings.primary_estado_contrato,
-                    objeto=settings.primary_codigo_objeto,
-                    segmento=segment,
-                    page=page,
-                    page_size=100,
-                )
-
-                if not response.data:
-                    break
-
-                page_changed = False
-                for item in response.data:
-                    if max_contracts is not None and stats["changed"] >= max_contracts:
-                        stats["limit_reached"] = 1
-                        return finish("poll_search_limit_reached")
-
-                    stats["seen"] += 1
-                    if not is_in_scope(item, settings, segment):
-                        stats["skipped"] += 1
-                        logger.info(
-                            "contract_out_of_mvp_scope",
-                            extra={
-                                "id_contrato": item.id_contrato,
-                                "estado": item.estado_codigo,
-                                "objeto": item.objeto_codigo,
-                                "segment": segment,
-                            },
-                        )
-                        continue
-
-                    changed = upsert_search_item(repo, item, anio=anio, segment=segment)
-                    if changed:
-                        page_changed = True
-                        stats["changed"] += 1
-                        payload: dict[str, object] = {"id_contrato": item.id_contrato}
-                        if batch_id:
-                            payload["batch_id"] = batch_id
-                        if bucket:
-                            payload["bucket"] = bucket
-                        if segment is not None:
-                            payload["segment"] = segment
-                        job_id = repo.enqueue(
-                            "process_contract",
-                            payload,
-                            queue_name="io",
-                            dedup_key=f"process_contract:{batch_id or 'default'}:{item.id_contrato}",
-                            priority=2,
-                        )
-                        if job_id is not None:
-                            stats["enqueued"] += 1
-
-                total_pages = (response.pageable.total_elements + response.pageable.page_size - 1) // response.pageable.page_size
-                if not page_changed or page >= total_pages:
-                    break
-                page += 1
-
     return finish("poll_search_done")
+
+
+def _poll_object_segment(
+    client: SeaceClient,
+    settings: Settings,
+    repo: JobRepository,
+    stats: dict[str, int],
+    *,
+    anio: int,
+    objeto: int,
+    segment: int | None,
+    max_contracts: int | None,
+    batch_id: str | None,
+    bucket: str | None,
+) -> str:
+    page = 1
+    while True:
+        if max_contracts is not None and stats["changed"] >= max_contracts:
+            stats["limit_reached"] = 1
+            return "limit_reached"
+
+        response = client.search_contracts(
+            anio=anio,
+            estado=settings.primary_estado_contrato,
+            objeto=objeto,
+            segmento=segment,
+            page=page,
+            page_size=100,
+        )
+
+        if not response.data:
+            break
+
+        page_changed = False
+        for item in response.data:
+            if max_contracts is not None and stats["changed"] >= max_contracts:
+                stats["limit_reached"] = 1
+                return "limit_reached"
+
+            stats["seen"] += 1
+            if not is_in_scope(item, settings, segment) or item.objeto_codigo != objeto:
+                stats["skipped"] += 1
+                logger.info(
+                    "contract_out_of_mvp_scope",
+                    extra={
+                        "id_contrato": item.id_contrato,
+                        "estado": item.estado_codigo,
+                        "objeto": item.objeto_codigo,
+                        "segment": segment,
+                    },
+                )
+                continue
+
+            changed = upsert_search_item(repo, item, anio=anio, segment=segment)
+            if changed:
+                page_changed = True
+                stats["changed"] += 1
+                payload: dict[str, object] = {"id_contrato": item.id_contrato}
+                if batch_id:
+                    payload["batch_id"] = batch_id
+                if bucket:
+                    payload["bucket"] = bucket
+                if segment is not None:
+                    payload["segment"] = segment
+                job_id = repo.enqueue(
+                    "process_contract",
+                    payload,
+                    queue_name="io",
+                    dedup_key=f"process_contract:{batch_id or 'default'}:{item.id_contrato}",
+                    priority=2,
+                )
+                if job_id is not None:
+                    stats["enqueued"] += 1
+
+        total_pages = (response.pageable.total_elements + response.pageable.page_size - 1) // response.pageable.page_size
+        if not page_changed or page >= total_pages:
+            break
+        page += 1
+    return "done"

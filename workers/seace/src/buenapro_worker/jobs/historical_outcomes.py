@@ -48,6 +48,30 @@ def _location_parts(value: object) -> tuple[str | None, str | None, str | None]:
     return tuple((parts + [None, None, None])[:3])  # type: ignore[return-value]
 
 
+def _three_year_cutoff(now: datetime) -> datetime:
+    try:
+        return now.replace(year=now.year - 3)
+    except ValueError:  # 29 de febrero
+        return now.replace(year=now.year - 3, day=28)
+
+
+def _published_in_window(
+    detail: dict[str, Any], search_item: dict[str, Any], cutoff: datetime,
+) -> bool:
+    projection = detail.get("uitContratoCompletoProjection") or {}
+    published = parse_lima_datetime(projection.get("fecPublica") or search_item.get("fecPublica"))
+    return published is not None and published >= cutoff
+
+
+def _matches_requested_object(
+    detail: dict[str, Any], search_item: dict[str, Any], objeto_codigo: int,
+) -> bool:
+    projection = detail.get("uitContratoCompletoProjection") or {}
+    detail_object = _int(projection.get("idObjetoContrato"))
+    search_object = _int(search_item.get("idObjetoContrato"))
+    return all(value == objeto_codigo for value in (detail_object, search_object) if value is not None)
+
+
 def _refresh_supplier_totals(repo: JobRepository, ruc: str | None) -> None:
     if not ruc:
         return
@@ -74,6 +98,7 @@ def upsert_historical_outcome(
     detail: dict[str, Any],
     search_item: dict[str, Any] | None = None,
     segment: int | str | None = None,
+    objeto_codigo: int = 2,
     source_document_url: str | None = None,
 ) -> str:
     search_item = search_item or {}
@@ -82,6 +107,9 @@ def upsert_historical_outcome(
     id_contrato = _int(projection.get("idContrato") or search_item.get("idContrato"))
     if id_contrato is None:
         raise ValueError("SEACE historical detail has no idContrato")
+    actual_objeto = _int(projection.get("idObjetoContrato") or search_item.get("idObjetoContrato")) or objeto_codigo
+    if actual_objeto not in (1, 2, 3, 4):
+        raise ValueError(f"Unknown SEACE object code: {actual_objeto}")
 
     code = _text(
         projection.get("desContratacion")
@@ -150,19 +178,20 @@ def upsert_historical_outcome(
     repo.conn.execute(
         """
         INSERT INTO historical_contract_outcomes (
-          id_contrato, codigo_completo, codigo_tipo, codigo_correlativo, codigo_anio,
+          id_contrato, objeto_codigo, codigo_completo, codigo_tipo, codigo_correlativo, codigo_anio,
           codigo_sigla, seace_entity_id, seace_area_id, entity_name, area_name,
           department, province, district, cubso_segmento, cubso_item, cubso_name, descripcion, fec_publica,
           fec_ini_cotizacion, fec_fin_cotizacion, estado_resultado, supplier_ruc,
           supplier_name, precio_total, source_document_url, raw_detail_json
         ) VALUES (
-          %s, %s, %s, %s, %s,
+          %s, %s, %s, %s, %s, %s,
           %s, %s, %s, %s, %s,
           %s, %s, %s, %s, %s,
           %s, %s, %s, %s, %s,
           %s, %s, %s, %s, %s, %s::jsonb
         )
         ON CONFLICT (id_contrato) DO UPDATE SET
+          objeto_codigo=EXCLUDED.objeto_codigo,
           codigo_completo=EXCLUDED.codigo_completo, codigo_tipo=EXCLUDED.codigo_tipo,
           codigo_correlativo=EXCLUDED.codigo_correlativo, codigo_anio=EXCLUDED.codigo_anio,
           codigo_sigla=EXCLUDED.codigo_sigla, seace_entity_id=EXCLUDED.seace_entity_id,
@@ -181,6 +210,7 @@ def upsert_historical_outcome(
         """,
         (
             id_contrato,
+            actual_objeto,
             parsed_code["codigo_completo"],
             parsed_code["codigo_tipo"],
             parsed_code["codigo_correlativo"],
@@ -219,16 +249,19 @@ def backfill_historical_outcomes(
     repo: JobRepository,
     *,
     segment: int,
+    objeto_codigo: int = 2,
     limit: int | None = None,
     year: int | None = None,
     page_size: int = 50,
     resume: bool = True,
     include_files: bool = True,
 ) -> dict[str, int]:
+    if objeto_codigo not in (1, 2, 3, 4):
+        raise ValueError(f"Unknown SEACE object code: {objeto_codigo}")
     page_size = max(1, min(100, page_size))
     checkpoint = repo.conn.execute(
-        "SELECT * FROM historical_backfill_progress WHERE cubso_segmento=%s",
-        (str(segment),),
+        "SELECT * FROM historical_backfill_progress WHERE objeto_codigo=%s AND cubso_segmento=%s",
+        (objeto_codigo, str(segment)),
     ).fetchone()
     repo.conn.commit()
     if resume and checkpoint:
@@ -248,14 +281,17 @@ def backfill_historical_outcomes(
     }
     failed_ids = list(checkpoint["failed_ids"] or []) if resume and checkpoint else []
     saved_at_start = stats["saved"]
+    stats["skipped_out_of_range"] = 0
+    stats["skipped_wrong_object"] = 0
     finished_all = False
+    cutoff = _three_year_cutoff(datetime.now(timezone.utc))
     repo.conn.execute(
         """
         INSERT INTO historical_backfill_progress (
-          cubso_segmento, status, next_page, page_size, processed, saved, failed,
+          objeto_codigo, cubso_segmento, status, next_page, page_size, processed, saved, failed,
           failed_ids, started_at, heartbeat_at, completed_at, last_error
-        ) VALUES (%s, 'running', %s, %s, %s, %s, %s, %s::jsonb, now(), now(), NULL, NULL)
-        ON CONFLICT (cubso_segmento) DO UPDATE SET
+        ) VALUES (%s, %s, 'running', %s, %s, %s, %s, %s, %s::jsonb, now(), now(), NULL, NULL)
+        ON CONFLICT (objeto_codigo, cubso_segmento) DO UPDATE SET
           status='running', next_page=EXCLUDED.next_page, page_size=EXCLUDED.page_size,
           processed=EXCLUDED.processed, saved=EXCLUDED.saved, failed=EXCLUDED.failed,
           failed_ids=EXCLUDED.failed_ids,
@@ -263,7 +299,7 @@ def backfill_historical_outcomes(
           heartbeat_at=now(), completed_at=NULL, last_error=NULL, updated_at=now()
         """,
         (
-            str(segment), page, page_size, stats["seen"], stats["saved"], stats["failed"],
+            objeto_codigo, str(segment), page, page_size, stats["seen"], stats["saved"], stats["failed"],
             json.dumps(failed_ids), resume,
         ),
     )
@@ -274,7 +310,7 @@ def backfill_historical_outcomes(
                 response = client.search_contracts(
                     anio=year or datetime.now(timezone.utc).year,
                     estado=4,
-                    objeto=2,
+                    objeto=objeto_codigo,
                     segmento=segment,
                     page=page,
                     page_size=page_size,
@@ -284,9 +320,9 @@ def backfill_historical_outcomes(
                     """
                     UPDATE historical_backfill_progress
                     SET status='failed', last_error=%s, heartbeat_at=now(), updated_at=now()
-                    WHERE cubso_segmento=%s
+                    WHERE objeto_codigo=%s AND cubso_segmento=%s
                     """,
-                    (str(exc)[:2000], str(segment)),
+                    (str(exc)[:2000], objeto_codigo, str(segment)),
                 )
                 repo.conn.commit()
                 raise
@@ -298,6 +334,13 @@ def backfill_historical_outcomes(
                 stats["seen"] += 1
                 try:
                     detail = client.contract_detail(search.id_contrato)
+                    search_item = search.model_dump(mode="json", by_alias=True)
+                    if not _matches_requested_object(detail, search_item, objeto_codigo):
+                        stats["skipped_wrong_object"] += 1
+                        continue
+                    if not _published_in_window(detail, search_item, cutoff):
+                        stats["skipped_out_of_range"] += 1
+                        continue
                     source_document_url = None
                     if include_files:
                         try:
@@ -317,8 +360,9 @@ def backfill_historical_outcomes(
                         state = upsert_historical_outcome(
                             repo,
                             detail=detail,
-                            search_item=search.model_dump(mode="json", by_alias=True),
+                            search_item=search_item,
                             segment=segment,
+                            objeto_codigo=objeto_codigo,
                             source_document_url=source_document_url,
                         )
                     stats["saved"] += 1
@@ -332,7 +376,7 @@ def backfill_historical_outcomes(
                         failed_ids.append(search.id_contrato)
                     logger.exception(
                         "historical_contract_failed",
-                        extra={"id_contrato": search.id_contrato, "segment": segment},
+                        extra={"id_contrato": search.id_contrato, "segment": segment, "objeto_codigo": objeto_codigo},
                     )
             stats["next_page"] = page + 1
             repo.conn.execute(
@@ -341,17 +385,17 @@ def backfill_historical_outcomes(
                   status='running', next_page=%s, page_size=%s, total_elements=%s,
                   processed=%s, saved=%s, failed=%s, failed_ids=%s::jsonb,
                   heartbeat_at=now(), last_error=NULL, updated_at=now()
-                WHERE cubso_segmento=%s
+                WHERE objeto_codigo=%s AND cubso_segmento=%s
                 """,
                 (
                     stats["next_page"], page_size, stats["total"], stats["seen"],
-                    stats["saved"], stats["failed"], json.dumps(failed_ids), str(segment),
+                    stats["saved"], stats["failed"], json.dumps(failed_ids), objeto_codigo, str(segment),
                 ),
             )
             repo.conn.commit()
             logger.info(
                 "historical_backfill_progress",
-                extra=stats | {"segment": segment, "page": page},
+                extra=stats | {"segment": segment, "objeto_codigo": objeto_codigo, "page": page},
             )
             total_pages = (response.pageable.total_elements + response.pageable.page_size - 1) // response.pageable.page_size
             if page >= total_pages:
@@ -367,15 +411,15 @@ def backfill_historical_outcomes(
         SET status=%s, processed=%s, saved=%s, failed=%s, failed_ids=%s::jsonb,
             heartbeat_at=now(), completed_at=CASE WHEN %s THEN now() ELSE NULL END,
             updated_at=now()
-        WHERE cubso_segmento=%s
+        WHERE objeto_codigo=%s AND cubso_segmento=%s
         """,
         (
             status, stats["seen"], stats["saved"], stats["failed"],
-            json.dumps(failed_ids), finished_all, str(segment),
+            json.dumps(failed_ids), finished_all, objeto_codigo, str(segment),
         ),
     )
     repo.conn.commit()
-    logger.info("historical_backfill_done", extra=stats | {"segment": segment})
+    logger.info("historical_backfill_done", extra=stats | {"segment": segment, "objeto_codigo": objeto_codigo})
     return stats
 
 
@@ -384,19 +428,22 @@ def retry_failed_historical_outcomes(
     repo: JobRepository,
     *,
     segment: int,
+    objeto_codigo: int = 2,
     year: int | None = None,
     include_files: bool = True,
 ) -> dict[str, int]:
+    if objeto_codigo not in (1, 2, 3, 4):
+        raise ValueError(f"Unknown SEACE object code: {objeto_codigo}")
     checkpoint = repo.conn.execute(
-        "SELECT failed_ids FROM historical_backfill_progress WHERE cubso_segmento=%s",
-        (str(segment),),
+        "SELECT failed_ids FROM historical_backfill_progress WHERE objeto_codigo=%s AND cubso_segmento=%s",
+        (objeto_codigo, str(segment)),
     ).fetchone()
     pending = {int(value) for value in (checkpoint["failed_ids"] if checkpoint else [])}
     stored = {
         int(row["id_contrato"])
         for row in repo.conn.execute(
-            "SELECT id_contrato FROM historical_contract_outcomes WHERE cubso_segmento=%s",
-            (str(segment),),
+            "SELECT id_contrato FROM historical_contract_outcomes WHERE objeto_codigo=%s AND cubso_segmento=%s",
+            (objeto_codigo, str(segment)),
         ).fetchall()
     }
     repo.conn.commit()
@@ -405,7 +452,10 @@ def retry_failed_historical_outcomes(
         "missing": 0,
         "recovered": 0,
         "remaining": len(pending),
+        "skipped_out_of_range": 0,
+        "skipped_wrong_object": 0,
     }
+    cutoff = _three_year_cutoff(datetime.now(timezone.utc))
 
     page = 1
     with SeaceClient(settings) as client:
@@ -413,7 +463,7 @@ def retry_failed_historical_outcomes(
             response = client.search_contracts(
                 anio=year or datetime.now(timezone.utc).year,
                 estado=4,
-                objeto=2,
+                objeto=objeto_codigo,
                 segmento=segment,
                 page=page,
                 page_size=100,
@@ -427,6 +477,15 @@ def retry_failed_historical_outcomes(
                 stats["missing"] += 1
                 try:
                     detail = client.contract_detail(search.id_contrato)
+                    search_item = search.model_dump(mode="json", by_alias=True)
+                    if not _matches_requested_object(detail, search_item, objeto_codigo):
+                        stats["skipped_wrong_object"] += 1
+                        pending.discard(search.id_contrato)
+                        continue
+                    if not _published_in_window(detail, search_item, cutoff):
+                        stats["skipped_out_of_range"] += 1
+                        pending.discard(search.id_contrato)
+                        continue
                     source_document_url = None
                     if include_files:
                         files = client.list_files(search.id_contrato, category=1)
@@ -440,8 +499,9 @@ def retry_failed_historical_outcomes(
                         upsert_historical_outcome(
                             repo,
                             detail=detail,
-                            search_item=search.model_dump(mode="json", by_alias=True),
+                            search_item=search_item,
                             segment=segment,
+                            objeto_codigo=objeto_codigo,
                             source_document_url=source_document_url,
                         )
                     pending.discard(search.id_contrato)
@@ -451,7 +511,7 @@ def retry_failed_historical_outcomes(
                     pending.add(search.id_contrato)
                     logger.exception(
                         "historical_retry_failed",
-                        extra={"id_contrato": search.id_contrato, "segment": segment},
+                        extra={"id_contrato": search.id_contrato, "segment": segment, "objeto_codigo": objeto_codigo},
                     )
             total_pages = (
                 response.pageable.total_elements + response.pageable.page_size - 1
@@ -464,16 +524,16 @@ def retry_failed_historical_outcomes(
     repo.conn.execute(
         """
         UPDATE historical_backfill_progress
-        SET saved=(SELECT count(*) FROM historical_contract_outcomes WHERE cubso_segmento=%s),
+        SET saved=(SELECT count(*) FROM historical_contract_outcomes WHERE objeto_codigo=%s AND cubso_segmento=%s),
             failed=%s, failed_ids=%s::jsonb,
             status=CASE WHEN %s = 0 AND completed_at IS NOT NULL THEN 'completed' ELSE status END,
             heartbeat_at=now(), updated_at=now()
-        WHERE cubso_segmento=%s
+        WHERE objeto_codigo=%s AND cubso_segmento=%s
         """,
-        (str(segment), len(pending), json.dumps(sorted(pending)), len(pending), str(segment)),
+        (objeto_codigo, str(segment), len(pending), json.dumps(sorted(pending)), len(pending), objeto_codigo, str(segment)),
     )
     repo.conn.commit()
-    logger.info("historical_retry_done", extra=stats | {"segment": segment})
+    logger.info("historical_retry_done", extra=stats | {"segment": segment, "objeto_codigo": objeto_codigo})
     return stats
 
 
@@ -487,7 +547,7 @@ def refresh_recent_closures(
     since = datetime.now(timezone.utc) - timedelta(days=days)
     rows = repo.conn.execute(
         """
-        SELECT id_contrato, cubso_segmento
+        SELECT id_contrato, cubso_segmento, objeto_codigo
         FROM seace_contracts
         WHERE fec_fin_cotizacion BETWEEN %s AND now()
         ORDER BY detail_fetched_at ASC NULLS FIRST, fec_fin_cotizacion DESC
@@ -506,13 +566,16 @@ def refresh_recent_closures(
             state = _int(projection.get("idEstadoContrato"))
             outcome = classify_outcome(detail)
             if state == 4 or outcome.state != "SIN_RESULTADO":
-                upsert_historical_outcome(repo, detail=detail, segment=row["cubso_segmento"])
+                upsert_historical_outcome(
+                    repo, detail=detail, segment=row["cubso_segmento"],
+                    objeto_codigo=int(row["objeto_codigo"]),
+                )
                 stats["historical_saved"] += 1
     logger.info("recent_closures_done", extra=stats | {"days": days})
     return stats
 
 
-def historical_stats(repo: JobRepository, *, segment: int | str) -> dict[str, object]:
+def historical_stats(repo: JobRepository, *, segment: int | str, objeto_codigo: int = 2) -> dict[str, object]:
     row = repo.conn.execute(
         """
         SELECT count(*)::int AS total,
@@ -522,8 +585,8 @@ def historical_stats(repo: JobRepository, *, segment: int | str) -> dict[str, ob
           min(precio_total) AS price_min,
           percentile_cont(0.5) WITHIN GROUP (ORDER BY precio_total) AS price_median,
           max(precio_total) AS price_max
-        FROM historical_contract_outcomes WHERE cubso_segmento=%s
+        FROM historical_contract_outcomes WHERE objeto_codigo=%s AND cubso_segmento=%s
         """,
-        (str(segment),),
+        (objeto_codigo, str(segment)),
     ).fetchone()
     return dict(row or {})

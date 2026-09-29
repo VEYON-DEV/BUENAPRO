@@ -17,6 +17,7 @@ export async function getHistoricalComparables(tenantId: string, idContrato: num
       fec_publica, source_document_url
     FROM historical_contract_outcomes
     WHERE id_contrato <> $1
+      AND objeto_codigo = $5
       AND (
         cubso_segmento = $2
         OR (cubso_item IS NOT NULL AND $3::text IS NOT NULL AND left(cubso_item, 4) = left($3, 4))
@@ -27,7 +28,7 @@ export async function getHistoricalComparables(tenantId: string, idContrato: num
       fec_publica DESC NULLS LAST
     LIMIT 500
     `,
-    [idContrato, contract.cubso_segmento, contract.cubso_item, contract.descripcion],
+    [idContrato, contract.cubso_segmento, contract.cubso_item, contract.descripcion, contract.objeto_codigo],
   );
   const keywordHits = Array.isArray(contract.fit_keyword_hits) ? contract.fit_keyword_hits : [];
   const comparables = result.rows

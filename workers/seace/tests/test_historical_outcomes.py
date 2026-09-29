@@ -1,9 +1,18 @@
 from decimal import Decimal
+from datetime import datetime, timezone
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
+from zoneinfo import ZoneInfo
 
 from buenapro_worker.historical.outcomes import classify_outcome, parse_contract_code
-from buenapro_worker.jobs.historical_outcomes import _location_parts, upsert_historical_outcome
+from buenapro_worker.jobs.historical_outcomes import (
+    _location_parts,
+    _matches_requested_object,
+    _published_in_window,
+    _three_year_cutoff,
+    backfill_historical_outcomes,
+    upsert_historical_outcome,
+)
 from buenapro_worker.jobs.process_contract import quotation_window_from_detail
 from buenapro_worker.jobs.send_notification import verdict_meets_threshold
 
@@ -120,9 +129,123 @@ class HistoricalOutcomeTest(unittest.TestCase):
             if "INSERT INTO historical_contract_outcomes" in call.args[0]
         )
         sql, params = insert_call.args
-        self.assertEqual(sql.count("%s"), 26)
-        self.assertEqual(len(params), 26)
+        self.assertEqual(sql.count("%s"), 27)
+        self.assertEqual(len(params), 27)
+        self.assertEqual(params[1], 2)
         self.assertEqual(result, "DESIERTO")
+
+    def test_historical_upsert_uses_goods_object_from_detail(self) -> None:
+        repo = MagicMock()
+        repo.conn.execute.return_value.fetchone.return_value = None
+        upsert_historical_outcome(
+            repo,
+            detail={
+                "uitContratoCompletoProjection": {
+                    "idContrato": 83676,
+                    "idObjetoContrato": 1,
+                    "desContratacion": "CM-111-2026-UNAAT",
+                },
+                "uitContratoItemProjectionList": [{}],
+            },
+            segment=43,
+            objeto_codigo=1,
+        )
+        insert_call = next(call for call in repo.conn.execute.call_args_list
+                           if "INSERT INTO historical_contract_outcomes" in call.args[0])
+        self.assertEqual(insert_call.args[1][1], 1)
+        self.assertIn("objeto_codigo=EXCLUDED.objeto_codigo", insert_call.args[0])
+
+    def test_historical_window_uses_actual_publication_date(self) -> None:
+        cutoff = _three_year_cutoff(datetime(2026, 9, 29, tzinfo=timezone.utc))
+        self.assertEqual(cutoff.year, 2023)
+        self.assertFalse(_published_in_window(
+            {"uitContratoCompletoProjection": {"fecPublica": "01/01/2020 12:00:00"}},
+            {"fecPublica": "01/09/2026 12:00:00"}, cutoff,
+        ))
+        self.assertTrue(_published_in_window(
+            {"uitContratoCompletoProjection": {"fecPublica": "28/09/2026 12:00:00"}},
+            {}, cutoff,
+        ))
+        self.assertFalse(_published_in_window({}, {}, cutoff))
+
+    def test_rejects_mismatched_object_from_search_or_detail(self) -> None:
+        self.assertFalse(_matches_requested_object(
+            {"uitContratoCompletoProjection": {"idObjetoContrato": 2}},
+            {"idObjetoContrato": 1}, 1,
+        ))
+        self.assertFalse(_matches_requested_object({}, {"idObjetoContrato": 2}, 1))
+        self.assertTrue(_matches_requested_object({}, {"idObjetoContrato": 1}, 1))
+
+    @patch("buenapro_worker.jobs.historical_outcomes.SeaceClient")
+    def test_goods_backfill_uses_separate_checkpoint_and_skips_old_contracts(self, client_class: MagicMock) -> None:
+        repo = MagicMock()
+        repo.conn.execute.return_value.fetchone.return_value = None
+        search = MagicMock()
+        search.id_contrato = 42
+        search.model_dump.return_value = {
+            "idContrato": 42,
+            "idObjetoContrato": 1,
+            "fecPublica": "01/01/2020 12:00:00",
+        }
+        response = MagicMock()
+        response.data = [search]
+        response.pageable.total_elements = 1
+        response.pageable.page_size = 50
+        client = client_class.return_value.__enter__.return_value
+        client.search_contracts.return_value = response
+        client.contract_detail.return_value = {
+            "uitContratoCompletoProjection": {
+                "idContrato": 42,
+                "idObjetoContrato": 1,
+                "fecPublica": "01/01/2020 12:00:00",
+            },
+        }
+
+        stats = backfill_historical_outcomes(MagicMock(), repo, segment=43, objeto_codigo=1, include_files=False)
+
+        self.assertEqual(stats["saved"], 0)
+        self.assertEqual(stats["skipped_out_of_range"], 1)
+        self.assertEqual(client.search_contracts.call_args.kwargs["objeto"], 1)
+        self.assertEqual(repo.conn.execute.call_args_list[0].args[1], (1, "43"))
+        self.assertFalse(any("INSERT INTO historical_contract_outcomes" in call.args[0]
+                             for call in repo.conn.execute.call_args_list))
+
+    @patch("buenapro_worker.jobs.historical_outcomes.SeaceClient")
+    def test_goods_backfill_saves_recent_goods_as_object_one(self, client_class: MagicMock) -> None:
+        repo = MagicMock()
+        repo.conn.execute.return_value.fetchone.return_value = None
+        published = datetime.now(ZoneInfo("America/Lima")).strftime("%d/%m/%Y %H:%M:%S")
+        search = MagicMock()
+        search.id_contrato = 43
+        search.model_dump.return_value = {
+            "idContrato": 43,
+            "idObjetoContrato": 1,
+            "desContratacion": "CM-43-2026-UNAAT",
+            "fecPublica": published,
+        }
+        response = MagicMock()
+        response.data = [search]
+        response.pageable.total_elements = 1
+        response.pageable.page_size = 50
+        client = client_class.return_value.__enter__.return_value
+        client.search_contracts.return_value = response
+        client.contract_detail.return_value = {
+            "uitContratoCompletoProjection": {
+                "idContrato": 43,
+                "idObjetoContrato": 1,
+                "fecPublica": published,
+            },
+            "uitContratoItemProjectionList": [{}],
+        }
+
+        stats = backfill_historical_outcomes(MagicMock(), repo, segment=43, objeto_codigo=1, include_files=False)
+
+        self.assertEqual(stats["saved"], 1)
+        insert = next(call for call in repo.conn.execute.call_args_list
+                      if "INSERT INTO historical_contract_outcomes" in call.args[0])
+        self.assertEqual(insert.args[1][1], 1)
+        self.assertTrue(any("ON CONFLICT (objeto_codigo, cubso_segmento)" in call.args[0]
+                            for call in repo.conn.execute.call_args_list))
 
     def test_notification_threshold_only_accepts_relevant_verdicts(self) -> None:
         self.assertTrue(verdict_meets_threshold("verde", "verde"))

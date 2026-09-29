@@ -5,15 +5,39 @@ mirar logs y verificar BD antes de activar el scheduler recurrente.
 
 ## Alcance MVP
 
-El worker inicial debe consultar solo:
+El worker operativo consulta:
 
 - estado SEACE `2`: vigente
-- objeto SEACE `2`: servicio
+- objetos SEACE `1` (Bien) y `2` (Servicio); `3` (Obra) y `4` (Consultoría de Obra) están en el catálogo pero no se barren mientras no se configuren
 - segmentos CUBSO configurados en `SEACE_ALLOWED_SEGMENTS`
   - `43`: tecnologia / telecomunicaciones
   - `81`: ingenieria, investigacion y tecnologia
   - `78`: transporte
   - `80`: servicios profesionales amplio para legal
+
+El scheduler crea un job independiente por objeto y segmento, con deduplicación
+`poll_search:<año>:<objeto>:<segmento>`. La clave `SEACE_ALLOWED_CODIGO_OBJETO`
+selecciona los objetos; no reemplaza los registros de Servicios existentes.
+
+Para cargar Bienes vigentes de tecnología/telecomunicaciones de forma controlada:
+
+```bash
+docker compose -f infra/docker/docker-compose.yml run --rm worker-io \
+  buenapro-worker poll-once --objects 1 --segments 43,81 --year 2026 --limit 5
+```
+
+Los resultados culminados se guardan por separado del feed. Se filtran por la
+fecha real de publicación de los últimos tres años, pues `anio` del buscador
+PROD6 no es confiable como filtro. Reanudar después de una interrupción no
+reinicia páginas completadas; `--restart` sí reinicia el checkpoint del par
+objeto/segmento.
+
+```bash
+docker compose -f infra/docker/docker-compose.yml run --rm worker-io \
+  buenapro-worker historical-backfill --object 1 --segment 43 --year 2026 --page-size 50
+docker compose -f infra/docker/docker-compose.yml run --rm worker-io \
+  buenapro-worker historical-backfill --object 1 --segment 81 --year 2026 --page-size 50
+```
 
 ## Servicios
 
