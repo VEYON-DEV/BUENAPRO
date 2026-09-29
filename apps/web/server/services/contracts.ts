@@ -7,6 +7,13 @@ export async function getContractForTenant(tenantId: string, idContrato: number)
     `
     SELECT
       c.*,
+      'seace_prod6'::text AS source_key,
+      o.record_kind,
+      o.object_type,
+      o.procurement_method,
+      o.lifecycle_stage,
+      o.participation_access,
+      o.actionability,
       obj.nombre AS objeto_nombre,
       st.nombre AS estado_nombre,
       econ.exigido AS econ_exigido,
@@ -34,6 +41,7 @@ export async function getContractForTenant(tenantId: string, idContrato: number)
       (sc.id_contrato IS NOT NULL) AS is_saved,
       sc.created_at AS saved_at
     FROM seace_contracts c
+    LEFT JOIN opportunities o ON o.id = c.opportunity_id
     LEFT JOIN cat_seace_objects obj ON obj.codigo = c.objeto_codigo
     LEFT JOIN cat_seace_states st ON st.codigo = c.estado_codigo
     LEFT JOIN contract_filter_index fi ON fi.id_contrato = c.id_contrato
@@ -204,6 +212,14 @@ export async function listContractsForTenant(tenantId: string, params: URLSearch
     `
     SELECT
       c.id_contrato,
+      c.opportunity_id,
+      'seace_prod6'::text AS source_key,
+      o.record_kind,
+      o.object_type,
+      o.procurement_method,
+      o.lifecycle_stage,
+      o.participation_access,
+      o.actionability,
       c.codigo,
       c.anio,
       c.entidad_nombre,
@@ -243,6 +259,7 @@ export async function listContractsForTenant(tenantId: string, params: URLSearch
       sc.created_at AS saved_at,
       count(*) OVER()::int AS total_count
     FROM seace_contracts c
+    LEFT JOIN opportunities o ON o.id = c.opportunity_id
     LEFT JOIN cat_seace_objects obj ON obj.codigo = c.objeto_codigo
     LEFT JOIN cat_seace_states st ON st.codigo = c.estado_codigo
     LEFT JOIN contract_filter_index fi ON fi.id_contrato = c.id_contrato

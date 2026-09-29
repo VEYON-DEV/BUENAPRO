@@ -73,7 +73,8 @@ def test_poll_rejects_unconfigured_object(client_class: MagicMock) -> None:
     client_class.assert_not_called()
 
 
-def test_publication_year_wins_over_ignored_search_year() -> None:
+@patch("buenapro_worker.jobs.poll_search.sync_prod6_opportunity")
+def test_publication_year_wins_over_ignored_search_year(sync_identity: MagicMock) -> None:
     repo = MagicMock()
     repo.conn.execute.return_value.fetchone.return_value = {"inserted": True}
     item = SearchItem.model_validate({
@@ -87,3 +88,4 @@ def test_publication_year_wins_over_ignored_search_year() -> None:
 
     assert upsert_search_item(repo, item, anio=2026, segment=43)
     assert repo.conn.execute.call_args.args[1][2] == 2025
+    sync_identity.assert_called_once_with(repo, item)

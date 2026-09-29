@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Any
 
 from buenapro_worker.jobs.poll_search import canonical_hash, parse_lima_datetime
+from buenapro_worker.jobs.opportunity_identity import refresh_prod6_classification
 from buenapro_worker.queue.repository import JobRepository
 from buenapro_worker.seace.client import SeaceClient
 from buenapro_worker.settings import Settings
@@ -109,6 +110,8 @@ def update_contract_detail(repo: JobRepository, id_contrato: int, detail: dict[s
             "UPDATE seace_contracts SET detail_fetched_at = now() WHERE id_contrato = %s",
             (id_contrato,),
         )
+    else:
+        refresh_prod6_classification(repo, id_contrato)
     return row is not None
 
 

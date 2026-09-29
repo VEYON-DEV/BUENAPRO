@@ -15,6 +15,14 @@ export async function GET(request: NextRequest) {
     `
     SELECT
       m.*,
+      c.opportunity_id,
+      'seace_prod6'::text AS source_key,
+      o.record_kind,
+      o.object_type,
+      o.procurement_method,
+      o.lifecycle_stage,
+      o.participation_access,
+      o.actionability,
       c.codigo,
       c.entidad_nombre,
       c.descripcion,
@@ -30,9 +38,10 @@ export async function GET(request: NextRequest) {
     FROM matches m
     JOIN company_profiles cp ON cp.id = m.profile_id
     JOIN seace_contracts c ON c.id_contrato = m.id_contrato
+    LEFT JOIN opportunities o ON o.id = c.opportunity_id
     LEFT JOIN match_tasks mt ON mt.match_id = m.id
     WHERE ${where.join(" AND ")}
-    GROUP BY m.id, c.id_contrato
+    GROUP BY m.id, c.id_contrato, o.id
     ORDER BY m.updated_at DESC
     `,
     values,

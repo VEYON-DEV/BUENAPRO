@@ -5,11 +5,15 @@ export async function getDashboard(tenantId: string) {
     query(`SELECT id, razon_social FROM company_profiles WHERE tenant_id=$1 AND is_active=true LIMIT 1`, [tenantId]),
     query(
       `
-      SELECT c.id_contrato, c.codigo, c.descripcion, c.entidad_nombre, c.departamento,
+      SELECT c.id_contrato, c.opportunity_id, 'seace_prod6'::text AS source_key,
+        o.record_kind, o.object_type, o.procurement_method, o.lifecycle_stage,
+        o.participation_access, o.actionability,
+        c.codigo, c.descripcion, c.entidad_nombre, c.departamento,
         c.provincia, c.fec_fin_cotizacion, sc.created_at AS saved_at,
         match.score, match.verdict
       FROM saved_contracts sc
       JOIN seace_contracts c ON c.id_contrato=sc.id_contrato
+      LEFT JOIN opportunities o ON o.id=c.opportunity_id
       LEFT JOIN LATERAL (
         SELECT m.score, m.verdict
         FROM matches m
@@ -48,10 +52,15 @@ export async function getDashboard(tenantId: string) {
     ),
     query(
       `
-      SELECT m.id AS match_id, m.id_contrato, m.user_state, m.updated_at, c.codigo,
+      SELECT m.id AS match_id, m.id_contrato, c.opportunity_id,
+        'seace_prod6'::text AS source_key,
+        o.record_kind, o.object_type, o.procurement_method, o.lifecycle_stage,
+        o.participation_access, o.actionability,
+        m.user_state, m.updated_at, c.codigo,
         c.descripcion, c.fec_fin_cotizacion, (ad.id IS NOT NULL) AS has_draft
       FROM matches m JOIN company_profiles cp ON cp.id=m.profile_id
       JOIN seace_contracts c ON c.id_contrato=m.id_contrato
+      LEFT JOIN opportunities o ON o.id=c.opportunity_id
       LEFT JOIN application_drafts ad ON ad.match_id=m.id
       WHERE cp.tenant_id=$1 AND m.user_state IN ('en_preparacion','postulada')
       ORDER BY CASE WHEN m.user_state='en_preparacion' THEN 0 ELSE 1 END,

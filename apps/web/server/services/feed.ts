@@ -101,6 +101,14 @@ export async function getFeed(tenantId: string, params: URLSearchParams) {
       m.verdict,
       m.user_state,
       c.id_contrato,
+      c.opportunity_id,
+      'seace_prod6'::text AS source_key,
+      o.record_kind,
+      o.object_type,
+      o.procurement_method,
+      o.lifecycle_stage,
+      o.participation_access,
+      o.actionability,
       c.codigo,
       c.entidad_nombre,
       c.descripcion,
@@ -125,6 +133,7 @@ export async function getFeed(tenantId: string, params: URLSearchParams) {
     FROM matches m
     JOIN company_profiles cp ON cp.id = m.profile_id
     JOIN seace_contracts c ON c.id_contrato = m.id_contrato
+    LEFT JOIN opportunities o ON o.id = c.opportunity_id
     LEFT JOIN cat_seace_objects obj ON obj.codigo = c.objeto_codigo
     LEFT JOIN cat_seace_states st ON st.codigo = c.estado_codigo
     LEFT JOIN contract_filter_index fi ON fi.id_contrato = c.id_contrato

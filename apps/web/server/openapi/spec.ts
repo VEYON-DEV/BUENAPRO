@@ -71,7 +71,7 @@ export const openApiSpec = {
           { name: "page_size", in: "query", schema: { type: "integer", minimum: 1, maximum: 100, default: 20 } },
         ],
         responses: {
-          "200": { ...listResponse, description: "Feed de oportunidades" },
+          "200": { ...listResponse, description: "Feed de oportunidades; cada fila conserva id_contrato y expone opportunity_id, source_key y clasificación canónica" },
           "401": { $ref: "#/components/responses/Unauthorized" },
         },
       },
@@ -95,7 +95,7 @@ export const openApiSpec = {
           { name: "closing_before", in: "query", schema: { type: "string", format: "date-time" } },
         ],
         responses: {
-          "200": { ...paginatedResponse, description: "Contratos cargados" },
+          "200": { ...paginatedResponse, description: "Contratos cargados con ID legado y metadatos canónicos de oportunidad" },
           "401": { $ref: "#/components/responses/Unauthorized" },
         },
       },
@@ -107,7 +107,7 @@ export const openApiSpec = {
         parameters: [idPathParam],
         responses: {
           "200": {
-            description: "Contrato con facets, documentos y match",
+            description: "Contrato con facets, documentos, match y metadatos canónicos de oportunidad",
             content: json({ $ref: "#/components/schemas/ContractDetailResponse" }),
           },
           "404": { $ref: "#/components/responses/NotFound" },
@@ -143,7 +143,7 @@ export const openApiSpec = {
         tags: ["Feed", "Tracking"],
         summary: "Radar diario del tenant con cierres, postulaciones y mercado",
         responses: {
-          "200": { ...singleResponse, description: "Acciones y métricas accionables del perfil activo" },
+          "200": { ...singleResponse, description: "Acciones y métricas del perfil activo; las filas de acciones y seguimiento incluyen metadatos canónicos" },
           "401": { $ref: "#/components/responses/Unauthorized" },
         },
       },
@@ -1112,7 +1112,7 @@ export const openApiSpec = {
         summary: "Lista matches en embudo de seguimiento",
         parameters: [{ name: "state", in: "query", schema: { type: "string" } }],
         responses: {
-          "200": { ...listResponse, description: "Matches" },
+          "200": { ...listResponse, description: "Matches con ID de contrato legado y metadatos canónicos de oportunidad" },
           "401": { $ref: "#/components/responses/Unauthorized" },
         },
       },
@@ -1442,7 +1442,21 @@ export const openApiSpec = {
       ContractDetailResponse: {
         type: "object",
         properties: {
-          contract: { type: "object", additionalProperties: true },
+          contract: {
+            type: "object",
+            additionalProperties: true,
+            properties: {
+              id_contrato: { type: "integer", description: "Identificador legado de PROD6 usado por las rutas actuales" },
+              opportunity_id: { type: ["string", "null"], format: "uuid", description: "Identificador interno de la oportunidad" },
+              source_key: { type: "string", example: "seace_prod6" },
+              record_kind: { type: ["string", "null"] },
+              object_type: { type: ["string", "null"] },
+              procurement_method: { type: ["string", "null"], example: "minor_purchase" },
+              lifecycle_stage: { type: ["string", "null"] },
+              participation_access: { type: ["string", "null"] },
+              actionability: { type: ["string", "null"], description: "No se infiere elegibilidad para postular de la etapa" },
+            },
+          },
           facets: { type: "array", items: { type: "object", additionalProperties: true } },
           documents: { type: "array", items: { type: "object", additionalProperties: true } },
         },

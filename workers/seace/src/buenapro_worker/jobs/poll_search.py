@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from buenapro_worker.queue.repository import JobRepository
+from buenapro_worker.jobs.opportunity_identity import sync_prod6_opportunity
 from buenapro_worker.seace.client import SeaceClient
 from buenapro_worker.seace.schemas import SearchItem
 from buenapro_worker.settings import Settings
@@ -105,6 +106,7 @@ def upsert_search_item(repo: JobRepository, item: SearchItem, *, anio: int, segm
             json.dumps(raw, ensure_ascii=False),
         ),
     ).fetchone()
+    sync_prod6_opportunity(repo, item)
     return row is not None
 
 
