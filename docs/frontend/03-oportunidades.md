@@ -69,6 +69,8 @@ Base:
 - tiene extraccion IA
 - se puede cotizar
 
+El panel de filtros expone `Tipo` con `Todos`, `Bienes` y `Servicios` (`objeto=1/2`). La búsqueda y las vistas rápidas conservan el tipo seleccionado.
+
 Inteligentes:
 
 - verdict

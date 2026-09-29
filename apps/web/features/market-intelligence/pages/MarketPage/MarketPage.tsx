@@ -12,6 +12,7 @@ function tabHref(filters: any, view: string) {
   const params = new URLSearchParams();
   params.set("scope", filters.scope); params.set("view", view);
   if (filters.q) params.set("q", filters.q);
+  if (filters.object) params.set("object", filters.object);
   if (filters.segment) params.set("segment", filters.segment);
   if (filters.result) params.set("result", filters.result);
   if (filters.department) params.set("department", filters.department);

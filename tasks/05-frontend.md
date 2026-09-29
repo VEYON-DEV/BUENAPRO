@@ -99,6 +99,7 @@ Referencia: [Auth](../docs/frontend/01-auth.md)
 - [x] Crear `/mercado` como explorador histórico: búsqueda por keywords, alcance perfil/todo SEACE, filtros por segmento, resultado, región, entidad, año y precio, más vistas de contratos y empresas adjudicadas.
 - [x] Refinar las visualizaciones de Mercado contra `06-mercado.png`: actividad mensual con columnas cápsula violeta/verde, guías discretas y rankings comparables con posición, escala y valor; aplicar la misma paleta al resumen gráfico de Inicio. QA desktop/mobile sin overflow (2026-08-03). Evidencia: `docs/new-style/qa/market-charts-desktop.png`, `market-charts-mobile.png`.
 - [x] Simplificar filtros de Mercado: búsqueda, resultado y departamento visibles; segmento, entidad, año y precios bajo `Filtros avanzados`, con reapertura automática cuando existen valores activos. Interacción y responsive validados (2026-08-03). Evidencia: `docs/new-style/qa/market-filter-desktop.png`, `market-filter-advanced-desktop.png`, `market-filter-mobile.png`.
+- [x] Añadir filtro `Tipo` (Todos/Bienes/Servicios) a Mercado y conservarlo en las tres vistas; QA con datos reales, capturas desktop/laptop/mobile y sin overflow a 390 px (2026-09-29).
 - [x] Crear detalle de empresa `/mercado/empresas/[ruc]` con montos, entidades, regiones, servicios y licitaciones ganadas.
 - [x] Validar `/mercado` desktop/mobile y detalle de proveedor con datos reales de producción. Evidencia: `docs/qa/screenshots/market-intelligence-desktop.png`, `market-intelligence-mobile.png`, `market-supplier-desktop.png`.
 
@@ -116,6 +117,7 @@ Referencia: [Inicio](../docs/frontend/02-inicio.md)
 ## Oportunidades
 
 - [x] Replantear `/feed` contra la composicion de `docs/new-style/generated-glass/04-oportunidades.png`: busqueda dominante, solo 3 vistas rapidas, filtros secundarios progresivos sin presets hardcodeados de transporte/legal, tabla de 6 columnas utiles y vista rapida glass. QA desktop/mobile sin overflow y prueba funcional del disclosure de filtros (2026-08-03). Evidencia: `docs/new-style/qa/opportunities-reference-match-desktop.png`, `opportunities-reference-match-mobile.png`.
+- [x] Añadir filtro `Tipo` (Todos/Bienes/Servicios) a Oportunidades y conservarlo en búsqueda y vistas rápidas; QA con datos reales, capturas desktop/laptop/mobile y sin overflow a 390 px (2026-09-29).
 - [x] Simplificar la vista rapida de Oportunidades: mantener visibles entidad, cierre y experiencia economica; mover ubicacion, pago, personal y penalidad a `Mas informacion`, y alinear la paginacion bajo la tabla (2026-08-03).
 - [x] Restaurar la semantica de afinidad en Oportunidades: tres puntos por niveles antes de evaluar y anillo numerico solo cuando existe un score real generado por el analisis IA (2026-08-03).
 

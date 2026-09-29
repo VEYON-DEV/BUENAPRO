@@ -18,10 +18,12 @@ import type { MarketFilters } from "@/server/services/market";
 import styles from "./MarketFilterBar.module.css";
 
 type Option = { code?: string; id?: number; name: string; count: number };
+type ObjectOption = { code: number; name: string; count: number };
 
 function paramsWith(filters: MarketFilters, changes: Record<string, string>) {
   const params = new URLSearchParams();
   if (filters.q) params.set("q", filters.q);
+  if (filters.object) params.set("object", filters.object);
   if (filters.segment) params.set("segment", filters.segment);
   if (filters.result) params.set("result", filters.result);
   if (filters.department) params.set("department", filters.department);
@@ -37,6 +39,7 @@ function paramsWith(filters: MarketFilters, changes: Record<string, string>) {
 
 export function MarketFilterBar({ filters, options }: { filters: MarketFilters; options: any }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const objects = (options.objects ?? []) as ObjectOption[];
   const segments = (options.segments ?? []) as Option[];
   const departments = (options.departments ?? []) as Option[];
   const entities = (options.entities ?? []) as Option[];
@@ -56,13 +59,21 @@ export function MarketFilterBar({ filters, options }: { filters: MarketFilters; 
         onClick={() => setMobileOpen((current) => !current)}
       >
         <AppIcon name="filter" />
-        {mobileOpen ? "Ocultar filtros" : "Filtrar mercado"}
+        {mobileOpen ? "Ocultar filtros" : `Filtrar mercado${filters.object === "1" ? " · Bienes" : filters.object === "2" ? " · Servicios" : ""}`}
       </button>
       <FilterForm className={[styles.form, mobileOpen ? styles.mobileOpen : ""].filter(Boolean).join(" ")} action="/mercado" id="market-filters">
         <input type="hidden" name="scope" value={filters.scope} />
         <input type="hidden" name="view" value={filters.view} />
         <FilterField className={styles.search} htmlFor="market-search" label="Buscar">
-          <FilterSearch id="market-search" autoComplete="off" name="q" defaultValue={filters.q} placeholder="Servicio, codigo, entidad o proveedor…" />
+          <FilterSearch id="market-search" autoComplete="off" name="q" defaultValue={filters.q} placeholder="Bien, servicio, entidad o proveedor…" />
+        </FilterField>
+        <FilterField htmlFor="market-object" label="Tipo">
+          <Select id="market-object" name="object" defaultValue={filters.object}>
+            <option value="">Todos</option>
+            {objects.filter((item) => item.code === 1 || item.code === 2).map((item) => (
+              <option value={item.code} key={item.code}>{item.name === "Bien" ? "Bienes" : "Servicios"} ({item.count})</option>
+            ))}
+          </Select>
         </FilterField>
         <FilterField htmlFor="market-result" label="Resultado">
           <Select id="market-result" name="result" defaultValue={filters.result}>
