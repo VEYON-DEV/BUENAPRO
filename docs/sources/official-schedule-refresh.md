@@ -108,4 +108,6 @@ fallos y CLI read-only por defecto.
 - Dry-run completo: PROD4 69 fichas/556 etapas, PROD6 206 fichas/412 etapas, cero fallos.
 - Apply completo: mismos conteos, cero fallos; SQL posterior confirma 69 y 206 fechas de refresco. Redis PONG y HTTPS login200.
 - Corrida ejecutada dentro de worker-io con código aislado en `/tmp/buenapro-schedule-src-20261001`; no se alteró checkout, imagen ni proceso habitual del worker. No es un despliegue permanente.
-- Interfaz timeline validada localmente; despliegue web/worker y activación del refresco automático de 30 minutos pendientes. Los jobs habituales de producción continúan con su código anterior.
+- Despliegue permanente posterior: commit `b4e9c28`, Git pull y build/recreación exclusivos de web, worker-io y scheduler. Usar `docker compose --env-file infra/docker/.env -f infra/docker/docker-compose.yml`: `.env.local` tiene conexión localhost para otros usos y no debe usarse como archivo de interpolación del despliegue. PostgreSQL y sus volúmenes no se recrearon.
+- Scheduler verificado con refresco habilitado, intervalo 1800 segundos y límite 500 por fuente; primer job automático `163798` terminado en un intento, sin fallos: PROD4 69 fichas/556 etapas, PROD6 206 fichas/412 etapas. SQL confirma frescura nueva de todas ellas. La web conecta con PostgreSQL y lee dos etapas de la ficha 96189; cierre oficial 05/10/2026 10:00 Lima.
+- Interfaz responsive validada localmente. QA visual autenticado de producción pendiente: el navegador conectado requiere iniciar sesión; no se eludió autenticación.

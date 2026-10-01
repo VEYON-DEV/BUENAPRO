@@ -1,6 +1,10 @@
 # Tareas - Worker
 
+- [x] Implementar y desplegar `schedule-refresh` PROD4/PROD6 para bienes/servicios en alcance configurado: dry-run, límite por fuente, IDs, transacciones por ficha, metadatos preservados, etapas completas y ventanas sin horas inventadas. Docker Compose habilita barrido al arrancar y cada 30 minutos, deduplicado, límite 500 por fuente; ingesta completa guarda cronograma al hidratar fichas. 79 pruebas worker aprobadas. Producción `b4e9c28`, scheduler/worker-io activos con enabled=true/1800 segundos (2026-10-01). Sin PDFs/Gemini/matches/alertas en este barrido. Guía `docs/sources/official-schedule-refresh.md`.
+
 ## Estructura
+
+- [x] Verificar primer barrido automático en producción (2026-10-01): job 163798 terminado en un intento, 69 concursos/556 etapas y 206 menores/412 etapas, cero fallos; fechas de refresco confirmadas en PostgreSQL. Ficha 96189 cierra 05/10/2026 10:00 Lima. Tres servicios running, cero reinicios tras corregir configuración de despliegue.
 
 - [x] Reorganizar `workers/seace/src/buenapro_worker` por dominios: `queue`, `seace`, `documents`, `extraction`, `normalization`, `matching`, `notifications`, `storage`, `db`, `observability`.
 - [x] Crear CLI real con comandos: `run`, `schedule`, `poll-once`, `contract-test`.

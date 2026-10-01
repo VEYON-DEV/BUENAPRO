@@ -1,5 +1,8 @@
 # Tareas - Frontend
 
+- [x] Publicar por Git la sección Cronograma y timeline oficial de ambas fuentes en producción (`b4e9c28`, 2026-10-01): build Docker con TypeScript y 58 páginas aprobado, web activa y conexión a PostgreSQL verificada para ficha 96189 con dos etapas. QA responsive local previo conserva evidencia.
+- [ ] Capturar y revisar visualmente Cronograma en la sesión autenticada de producción: el navegador conectado llega a login; se pidió al usuario iniciar sesión. No marcar QA visual productivo sin acceso y captura real.
+
 Este documento controla el desarrollo de la interfaz de BuenaPro.
 
 Regla: antes de implementar una vista, leer su spec en `docs/frontend/`, el sistema visual en [DESIGN.md](../DESIGN.md) y la guia de adopcion en [docs/new-style/](../docs/new-style/README.md).
