@@ -179,6 +179,7 @@ def _upsert_listing(
     reasons: list[str],
     scan_at: datetime,
 ) -> bool:
+    from buenapro_worker.jobs.refresh_schedule import schedule_instant
     rows = sorted(rows, key=lambda row: (str(row.get("nroItem") or ""), _json(row)))
     first = rows[0]
     existing = _existing(repo, procedure_id)
@@ -215,7 +216,8 @@ def _upsert_listing(
              procedure_type = EXCLUDED.procedure_type,
              buyer_name = EXCLUDED.buyer_name,
              published_at = EXCLUDED.published_at,
-             registration_closes_at = EXCLUDED.registration_closes_at,
+             registration_closes_at = CASE WHEN prod4_processes.raw_detail IS NULL
+               THEN EXCLUDED.registration_closes_at ELSE prod4_processes.registration_closes_at END,
              proposals_start_at = CASE WHEN prod4_processes.raw_detail IS NULL
                THEN EXCLUDED.proposals_start_at ELSE prod4_processes.proposals_start_at END,
              reference_amount = COALESCE(EXCLUDED.reference_amount, prod4_processes.reference_amount),
@@ -233,8 +235,8 @@ def _upsert_listing(
             procedure_id, opportunity_id, first.get("nomenclatura"), first.get("sintesisProceso") or first.get("nomenclatura"),
             first.get("sintesisProceso"), object_type, first.get("detTipoProceso"),
             first.get("detEntidad"), _date(first.get("fechaConvocatoria")),
-            _date(first.get("fecFinParticipantes") or first.get("fechaFin")),
-            _date(first.get("fechaPresentacionPropuestas")), _money(first.get("valorReferencial")),
+            schedule_instant(first.get("fecFinParticipantes") or first.get("fechaFin")),
+            schedule_instant(first.get("fechaPresentacionPropuestas")), _money(first.get("valorReferencial")),
             "PEN" if first.get("monedaProceso") == "Soles" else first.get("monedaProceso"),
             PROD4_PORTAL, _json(reasons), scan_at, _json(rows),
         ),
@@ -269,6 +271,7 @@ def _upsert_listing(
 
 
 def _upsert_detail(repo: JobRepository, procedure_id: int, detail: dict[str, Any]) -> None:
+    from buenapro_worker.jobs.refresh_schedule import schedule_instant
     previous_analysis = repo.conn.execute(
         """SELECT opportunity_id, analyzed_document_code
            FROM prod4_processes WHERE id_procedimiento = %s""",
@@ -279,14 +282,22 @@ def _upsert_detail(repo: JobRepository, procedure_id: int, detail: dict[str, Any
         raise TypeError("PROD4 detail schedule changed shape")
     proposal_start: datetime | None = None
     proposal_close: datetime | None = None
+    registration_close: datetime | None = None
+    for stage in schedule:
+        if not isinstance(stage, dict):
+            continue
+        key = _slug(stage.get("nombreEtapa") or stage.get("descripcionEtapa"))
+        if "registro" in key and "particip" in key:
+            registration_close = schedule_instant(stage.get("fechaFin"), stage.get("horaFin"))
+            break
     for stage in schedule:
         if not isinstance(stage, dict):
             continue
         stage_name = str(stage.get("nombreEtapa") or stage.get("descripcionEtapa") or "")
         key = _slug(stage_name)
         if "presentacion" in key and ("propuestas" in key or "ofertas" in key):
-            proposal_start = _date(stage.get("fechaInicio"), hour=stage.get("horaInicio"))
-            proposal_close = _date(stage.get("fechaFin"), hour=stage.get("horaFin"), end_of_day=True)
+            proposal_start = schedule_instant(stage.get("fechaInicio"), stage.get("horaInicio"))
+            proposal_close = schedule_instant(stage.get("fechaFin"), stage.get("horaFin"))
             break
     buyer = detail.get("entidadConvocante") or {}
     if not isinstance(buyer, dict):
@@ -300,9 +311,10 @@ def _upsert_detail(repo: JobRepository, procedure_id: int, detail: dict[str, Any
              description = COALESCE(%s, description),
              buyer_name = COALESCE(%s, buyer_name), buyer_id = %s,
              region = %s, published_at = COALESCE(%s, published_at),
-             proposals_start_at = COALESCE(%s, proposals_start_at),
+             registration_closes_at = %s,
+             proposals_start_at = %s,
              proposals_closes_at = %s, reference_amount = COALESCE(%s, reference_amount),
-             raw_detail = %s::jsonb, detail_fetched_at = now(), updated_at = now()
+             raw_detail = %s::jsonb, detail_fetched_at = now(), schedule_fetched_at = now(), updated_at = now()
            WHERE id_procedimiento = %s""",
         (
             detail.get("idConvocatoriaPub"), detail.get("numeroProcedimiento"),
@@ -310,7 +322,7 @@ def _upsert_detail(repo: JobRepository, procedure_id: int, detail: dict[str, Any
             detail.get("descripcionObjeto") or detail.get("descripcionObjetoResumen") or detail.get("nomenclatura"),
             detail.get("descripcionObjeto") or detail.get("descripcionObjetoResumen"),
             buyer.get("nombreOrganismo"), str(buyer["idOrganismo"]) if buyer.get("idOrganismo") else None,
-            region, _date(detail.get("fechaPublicacion")), proposal_start, proposal_close,
+            region, _date(detail.get("fechaPublicacion")), registration_close, proposal_start, proposal_close,
             _money(detail.get("valorReferencial")), _json(detail), procedure_id,
         ),
     )
@@ -325,8 +337,8 @@ def _upsert_detail(repo: JobRepository, procedure_id: int, detail: dict[str, Any
                VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb)""",
             (
                 procedure_id, position, _slug(name), name,
-                _date(stage.get("fechaInicio"), hour=stage.get("horaInicio")),
-                _date(stage.get("fechaFin"), hour=stage.get("horaFin"), end_of_day=True),
+                schedule_instant(stage.get("fechaInicio"), stage.get("horaInicio")),
+                schedule_instant(stage.get("fechaFin"), stage.get("horaFin")),
                 _json(stage),
             ),
         )

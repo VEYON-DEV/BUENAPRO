@@ -43,10 +43,19 @@ Proveedor que abrio una oportunidad desde el feed. Necesita decidir en pocos min
 Decisión y requisitos
 Documentos
 Histórico
+Cronograma
 Ejecución
 ```
 
 La navegación interna usa tabs horizontales reales y conserva la selección en el hash de la URL. La lectura ejecutiva y los requisitos pertenecen a una sola sección para que la decisión conserve inmediatamente su evidencia. Solo se renderiza visualmente una sección central a la vez; los grupos de requisitos, SEACE y datos operativos permanecen plegados hasta que el usuario los solicita.
+
+## Cronograma oficial determinista
+
+La pestaña `Cronograma` (`#schedule`) presenta todas las etapas de PROD6 desde `uitContratoEtapaProjectionList`, con respaldo en `contract.cronograma.etapas`. No depende de TDR, extracción ni score Gemini. Distingue preguntas/consultas, respuestas de la entidad y presentación de ofertas/cotizaciones; conserva nombres oficiales y etapas desconocidas. Muestra inicio/cierre, zona `America/Lima` y momento de consulta del detalle. Una fecha sin hora no recibe una hora ficticia, ni una fecha ausente se considera abierta.
+
+El componente de negocio compartido vive en `features/procurement`; el normalizador puro transversal en `lib/procurementSchedule.ts`. El refresco web PROD6 sincroniza fecha inicial/final de cotización en la misma escritura que cronograma/raw/hash. La UI no cambia la periodicidad de polling del worker ni envía consultas al SEACE.
+
+El timeline muestra todas las etapas oficiales de la fuente, sin añadir fases propias de concursos mayores a contratos menores. Conecta visualmente los hitos y etiqueta `Plazo finalizado`, `En plazo`, `Próxima` o `Sin precisión suficiente`. El resumen admite ventanas simultáneas; no afirma que una etapa ocurrió porque venció su fecha. Fecha sin hora del día actual en Lima queda incierta. El reloj se inicia tras hidratación y se actualiza cada minuto. El dato oficial se refresca mediante la corrida documentada en `docs/sources/official-schedule-refresh.md`; `schedule_fetched_at` distingue la actualización parcial del detalle completo.
 
 ## Componentes
 

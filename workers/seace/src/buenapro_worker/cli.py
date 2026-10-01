@@ -124,6 +124,20 @@ def command_prod4_document_sweep(args: argparse.Namespace, settings: Settings) -
     return 0
 
 
+def command_schedule_refresh(args: argparse.Namespace, settings: Settings) -> int:
+    import json
+    from buenapro_worker.db.connection import connect
+    from buenapro_worker.jobs.refresh_schedule import refresh_schedules
+
+    with connect(settings) as conn:
+        conn.commit()  # connect sets TIME ZONE; leave no transaction open.
+        conn.autocommit = True
+        stats = refresh_schedules(settings, conn, source=args.source, limit=args.limit,
+                                  ids=args.ids, apply=args.apply, include_inactive=args.include_inactive)
+    print(json.dumps(stats))
+    return 1 if any(s["failed"] for s in stats["sources"].values()) else 0
+
+
 def command_auto_evaluate_current(args: argparse.Namespace, settings: Settings) -> int:
     from buenapro_worker.db.connection import connect
     from buenapro_worker.jobs.match import enqueue_current_contract_sweep
@@ -190,6 +204,7 @@ def command_run(args: argparse.Namespace, settings: Settings) -> int:
                 )
 
     handlers = {
+        "refresh_schedules": lambda job: _handle_refresh_schedules(settings, job),
         "poll_search": handle_poll_search,
         "poll_prod4": lambda job: _handle_poll_prod4(settings, job),
         "extract_prod4_document": lambda job: _handle_extract_prod4_document(settings, job),
@@ -223,6 +238,22 @@ def _handle_poll_prod4(settings: Settings, _job) -> None:
     with connect(settings) as conn:
         with conn.transaction():
             poll_prod4(settings, JobRepository(conn))
+
+
+def _handle_refresh_schedules(settings: Settings, _job) -> None:
+    from buenapro_worker.db.connection import connect
+    from buenapro_worker.jobs.refresh_schedule import refresh_schedules
+    import logging
+
+    with connect(settings) as conn:
+        conn.commit()
+        conn.autocommit = True
+        stats = refresh_schedules(settings, conn,
+                                  source="both" if settings.prod4_enabled else "prod6",
+                                  limit=settings.schedule_refresh_limit, apply=True)
+    logging.getLogger(__name__).info("schedule_refresh_completed", extra={"schedule_stats": stats})
+    if any(s["failed"] for s in stats["sources"].values()):
+        raise RuntimeError("Some official schedules could not be refreshed; successful records committed")
 
 
 def _handle_extract_prod4_document(settings: Settings, job) -> None:
@@ -518,6 +549,16 @@ def build_parser() -> argparse.ArgumentParser:
         "prod4-poll-once", help="Poll PROD4 technology goods/services once"
     )
     prod4_poll_once.set_defaults(func=command_prod4_poll_once)
+
+    schedule_refresh = subcommands.add_parser(
+        "schedule-refresh", help="Refresh stored technology schedules only (default: read-only)"
+    )
+    schedule_refresh.add_argument("--source", choices=("prod4", "prod6", "both"), default="both")
+    schedule_refresh.add_argument("--limit", type=int, default=100, help="Per-source cap (1..5000)")
+    schedule_refresh.add_argument("--ids", nargs="+", type=int, help="Stored native IDs; requires one source")
+    schedule_refresh.add_argument("--apply", action="store_true", help="Persist schedules; no PDFs or Gemini")
+    schedule_refresh.add_argument("--include-inactive", action="store_true", help="Include already-stored inactive technology records")
+    schedule_refresh.set_defaults(func=command_schedule_refresh)
 
     prod4_document_sweep = subcommands.add_parser(
         "prod4-document-sweep", help="Queue a bounded sweep of official PROD4 bases PDFs"

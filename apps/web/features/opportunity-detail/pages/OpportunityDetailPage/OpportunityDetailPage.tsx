@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatDateTime, formatDeadline } from "@/lib/format/date";
 import { formatMoney } from "@/lib/format/money";
+import { normalizeProd6Schedule } from "@/lib/procurementSchedule";
 import {
   cotizacionStatus,
   fitLabel,
@@ -25,6 +26,7 @@ import { PdfPreview } from "../../components/PdfPreview/PdfPreview";
 import { SeaceWorkspace } from "../../components/SeaceWorkspace";
 import { StartApplicationButton } from "../../components/StartApplicationButton";
 import { HistoricalComparables } from "../../components/HistoricalComparables";
+import { ProcurementSchedule } from "@/features/procurement";
 import { CopilotPanel } from "@/features/copilot";
 import styles from "./OpportunityDetailPage.module.css";
 
@@ -204,12 +206,6 @@ function dedupeDeliverables(deliverables: AnyRecord[]) {
   return Array.from(map.values());
 }
 
-function stages(rawDetail: AnyRecord, contract: AnyRecord) {
-  return asArray<AnyRecord>(
-    rawDetail.uitContratoEtapaProjectionList ?? contract.cronograma?.etapas,
-  );
-}
-
 function DataRow({ label, value }: { label: string; value?: React.ReactNode }) {
   if (value == null || value === "") return null;
   return (
@@ -265,7 +261,7 @@ export async function OpportunityDetailPage({
     extraction.execution?.deliverables ?? extraction.execution?.entregables,
   );
   const penalties = penaltyHighlights(extraction);
-  const etapaList = stages(rawDetail, contract);
+  const officialSchedule = normalizeProd6Schedule(rawDetail.uitContratoEtapaProjectionList ?? contract.cronograma?.etapas);
   const pdfDocuments = documents.filter(
     (doc: any) =>
       doc.mime === "application/pdf" ||
@@ -403,6 +399,7 @@ export async function OpportunityDetailPage({
             },
             { id: "documents", label: "Documentos", count: documents.length },
             { id: "history", label: "Histórico", count: history?.metrics?.total_count },
+            { id: "schedule", label: "Cronograma" },
             { id: "execution", label: "Ejecución" },
           ]}
         >
@@ -581,12 +578,12 @@ export async function OpportunityDetailPage({
             </details>
           ) : null}
 
-          {etapaList.length ? (
-            <details className={`${styles.panel} ${styles.foldPanel}`}>
-              <summary><span><strong>Cronograma SEACE</strong><small>Etapas oficiales del proceso</small></span><b>{etapaList.length} etapas</b></summary>
-              <div className={styles.foldBody}><div className={styles.timeline}>{etapaList.map((stage, index) => <div className={styles.stage} key={`${stage.nomEtapaContrato}-${index}`}><strong>{stage.nomEtapaContrato}</strong><span>{stage.fecIni} — {stage.fecFin}</span></div>)}</div></div>
-            </details>
-          ) : null}
+          </div>
+
+          <div data-detail-pane="schedule" id="detail-pane-schedule" role="tabpanel" aria-labelledby="detail-tab-schedule">
+            <div className={styles.panel}>
+              <ProcurementSchedule stages={officialSchedule} source="prod6" fetchedAt={contract.schedule_fetched_at ?? contract.detail_fetched_at} />
+            </div>
           </div>
 
           <div data-detail-pane="documents" id="detail-pane-documents" role="tabpanel" aria-labelledby="detail-tab-documents">

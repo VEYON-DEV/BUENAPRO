@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { query } from "@/server/db/client";
+import { prod6QuotationWindow } from "@/lib/procurementSchedule";
 
 const SEACE_BASE_URL = process.env.SEACE_BASE_URL ?? "https://prod6.seace.gob.pe/v1/s8uit-services";
 const DETAIL_TTL_MS = 6 * 60 * 60 * 1000; // 6 horas
@@ -73,6 +74,7 @@ export async function refreshContractDetailIfStale(idContrato: number): Promise<
     ? detail.uitContratoEtapaProjectionList
     : [];
   const hashDetail = canonicalHash(detail);
+  const quotationWindow = prod6QuotationWindow(detail);
 
   await query(
     `
@@ -86,7 +88,10 @@ export async function refreshContractDetailIfStale(idContrato: number): Promise<
         cronograma = $8::jsonb,
         hash_detail = $9,
         raw_detail_json = $10::jsonb,
+        fec_ini_cotizacion = $11::timestamptz,
+        fec_fin_cotizacion = $12::timestamptz,
         detail_fetched_at = now(),
+        schedule_fetched_at = now(),
         updated_at = CASE WHEN hash_detail IS DISTINCT FROM $9 THEN now() ELSE updated_at END
     WHERE id_contrato = $1
     `,
@@ -101,6 +106,8 @@ export async function refreshContractDetailIfStale(idContrato: number): Promise<
       JSON.stringify({ etapas }),
       hashDetail,
       JSON.stringify(detail),
+      quotationWindow.startsAt,
+      quotationWindow.endsAt,
     ],
   );
 }

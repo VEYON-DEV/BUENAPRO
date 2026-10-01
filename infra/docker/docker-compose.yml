@@ -62,6 +62,9 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://buenapro:buenapro@postgres:5432/buenapro}
       WORKER_ID: scheduler
+      SCHEDULE_REFRESH_ENABLED: ${SCHEDULE_REFRESH_ENABLED:-true}
+      SCHEDULE_REFRESH_INTERVAL_MINUTES: ${SCHEDULE_REFRESH_INTERVAL_MINUTES:-30}
+      SCHEDULE_REFRESH_LIMIT: ${SCHEDULE_REFRESH_LIMIT:-500}
     command: ["buenapro-worker", "schedule"]
     depends_on:
       postgres:
@@ -77,6 +80,9 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://buenapro:buenapro@postgres:5432/buenapro}
       WORKER_ID: worker-io
+      SCHEDULE_REFRESH_ENABLED: ${SCHEDULE_REFRESH_ENABLED:-true}
+      SCHEDULE_REFRESH_INTERVAL_MINUTES: ${SCHEDULE_REFRESH_INTERVAL_MINUTES:-30}
+      SCHEDULE_REFRESH_LIMIT: ${SCHEDULE_REFRESH_LIMIT:-500}
     command: ["buenapro-worker", "run", "--queues", "io"]
     depends_on:
       postgres:

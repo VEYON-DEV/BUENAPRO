@@ -32,6 +32,7 @@ def _first_item(detail: dict[str, Any]) -> dict[str, Any]:
 
 
 def quotation_window_from_detail(detail: dict[str, Any]) -> tuple[datetime | None, datetime | None]:
+    from buenapro_worker.jobs.refresh_schedule import schedule_instant
     stages = detail.get("uitContratoEtapaProjectionList") or []
     quotation = next(
         (
@@ -45,8 +46,8 @@ def quotation_window_from_detail(detail: dict[str, Any]) -> tuple[datetime | Non
     if not quotation:
         return None, None
     return (
-        parse_lima_datetime(quotation.get("fecIni")),
-        parse_lima_datetime(quotation.get("fecFin")),
+        schedule_instant(quotation.get("fecIni")),
+        schedule_instant(quotation.get("fecFin")),
     )
 
 
@@ -70,13 +71,14 @@ def update_contract_detail(repo: JobRepository, id_contrato: int, detail: dict[s
             provincia = COALESCE(%s, provincia),
             distrito = COALESCE(%s, distrito),
             fec_publica = COALESCE(%s, fec_publica),
-            fec_ini_cotizacion = COALESCE(%s, fec_ini_cotizacion),
-            fec_fin_cotizacion = COALESCE(%s, fec_fin_cotizacion),
+            fec_ini_cotizacion = %s,
+            fec_fin_cotizacion = %s,
             cronograma = %s::jsonb,
             resultado = COALESCE(NULLIF(%s::jsonb, '{}'::jsonb), resultado),
             hash_detail = %s,
             raw_detail_json = %s::jsonb,
             detail_fetched_at = now(),
+            schedule_fetched_at = now(),
             pipeline_state = 'detail_fetched',
             updated_at = now()
         WHERE id_contrato = %s
@@ -107,8 +109,9 @@ def update_contract_detail(repo: JobRepository, id_contrato: int, detail: dict[s
     if row is None:
         # Sin cambios de contenido: igual registrar que el detalle esta fresco.
         repo.conn.execute(
-            "UPDATE seace_contracts SET detail_fetched_at = now() WHERE id_contrato = %s",
-            (id_contrato,),
+            """UPDATE seace_contracts SET detail_fetched_at = now(), schedule_fetched_at = now(),
+                 fec_ini_cotizacion = %s, fec_fin_cotizacion = %s WHERE id_contrato = %s""",
+            (fec_ini_cotizacion, fec_fin_cotizacion, id_contrato),
         )
     else:
         refresh_prod6_classification(repo, id_contrato)

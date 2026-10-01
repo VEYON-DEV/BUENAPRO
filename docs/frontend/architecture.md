@@ -162,6 +162,7 @@ Cuando dos dominios necesitan la misma pieza:
 | `onboarding` | `/onboarding` |
 | `opportunities` | `/feed` |
 | `opportunity-detail` | `/oportunidad/[id]` |
+| `procurement` | Composiciones de negocio oficiales compartidas entre fuentes, como cronogramas; sin acceso a DB ni rutas |
 | `market-intelligence` | `/mercado`, detalle de proveedor |
 | `tracking` | `/postulaciones` y actividad de seguimiento |
 | `application-workspace` | `/postulaciones/[matchId]` |

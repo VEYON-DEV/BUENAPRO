@@ -65,6 +65,7 @@
 .content[data-active="decision"] > [data-detail-pane="decision"],
 .content[data-active="documents"] > [data-detail-pane="documents"],
 .content[data-active="history"] > [data-detail-pane="history"],
+.content[data-active="schedule"] > [data-detail-pane="schedule"],
 .content[data-active="execution"] > [data-detail-pane="execution"] {
   display: grid;
   gap: 16px;

@@ -10,6 +10,10 @@ from buenapro_worker.settings import Settings
 def enqueue_scheduled_jobs(settings: Settings, repo: JobRepository, *, anio: int | None = None) -> dict[str, int | None]:
     year = anio or datetime.now(timezone.utc).year
     poll_jobs = enqueue_poll_search_jobs(settings, repo, year=year)
+    if settings.schedule_refresh_enabled:
+        poll_jobs["refresh_schedules"] = repo.enqueue(
+            "refresh_schedules", {}, queue_name="io", dedup_key="refresh_schedules", priority=4,
+        )
     if settings.prod4_enabled:
         poll_jobs["poll_prod4"] = repo.enqueue(
             "poll_prod4", {}, queue_name="io", dedup_key="poll_prod4", priority=2,
@@ -60,12 +64,21 @@ def run_scheduler_forever(settings: Settings, repo_factory, *, anio: int | None 
     last_recent_closures = 0.0
     last_contract_test = 0.0
     last_prod4 = 0.0
+    last_schedule_refresh: float | None = None
 
     while True:
         now = time.monotonic()
         year = anio or datetime.now(timezone.utc).year
 
         with repo_factory() as repo:
+            if settings.schedule_refresh_enabled and (
+                last_schedule_refresh is None
+                or now - last_schedule_refresh >= settings.schedule_refresh_interval_seconds
+            ):
+                # The stable key and uq_jobs_dedup index allow only one pending
+                # or claimed sweep, even across overlapping scheduler instances.
+                repo.enqueue("refresh_schedules", {}, queue_name="io", dedup_key="refresh_schedules", priority=4)
+                last_schedule_refresh = now
             if now - last_poll >= settings.seace_poll_interval_minutes * 60:
                 enqueue_poll_search_jobs(settings, repo, year=year)
                 last_poll = now

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
+from datetime import datetime, timezone
 
 import pytest
 
 from buenapro_worker.jobs.poll_prod4 import (
     _date,
     _money,
+    _upsert_detail,
+    _upsert_listing,
     poll_prod4,
     select_technology_processes,
 )
@@ -111,6 +114,36 @@ def test_disabled_poll_does_not_call_source_or_database() -> None:
     }
     source.by_object.assert_not_called()
     repo.conn.execute.assert_not_called()
+
+
+@pytest.mark.parametrize("hour", ["16:30", None])
+def test_detail_syncs_registration_close_with_official_precision(hour) -> None:
+    repo = MagicMock()
+    repo.conn.execute.return_value.fetchone.return_value = None
+    _upsert_detail(repo, 101, {"listaCronograma": [
+        {"nombreEtapa": "REGISTRO DE PARTICIPANTES", "fechaFin": "02/10/2026", "horaFin": hour},
+    ]})
+    calls = [call for call in repo.conn.execute.call_args_list
+             if "UPDATE prod4_processes SET" in call.args[0]]
+    assert len(calls) == 1
+    sql, params = calls[0].args
+    assert "registration_closes_at = %s" in sql
+    assert params[9] == (datetime(2026, 10, 2, 21, 30, tzinfo=timezone.utc) if hour else None)
+
+
+@patch("buenapro_worker.jobs.poll_prod4._ensure_identity", return_value="11111111-1111-4111-8111-111111111111")
+@patch("buenapro_worker.jobs.poll_prod4._existing")
+def test_listing_preserves_existing_official_registration_and_does_not_invent_clock(existing, _identity) -> None:
+    repo = MagicMock()
+    current_row = {**row(101, 62, "43"), "fecFinParticipantes": "02/10/2026",
+                   "fechaPresentacionPropuestas": "03/10/2026"}
+    scan = datetime(2026, 10, 1, tzinfo=timezone.utc)
+    existing.return_value = {"raw_listing": [current_row], "raw_detail": {"listaCronograma": []},
+                             "detail_fetched_at": scan}
+    _upsert_listing(repo, 101, "good", [current_row], ["cubso:43"], scan)
+    sql, params = repo.conn.execute.call_args.args
+    assert "registration_closes_at = CASE WHEN prod4_processes.raw_detail IS NULL" in sql
+    assert params[9] is None and params[10] is None
 
 
 @patch("buenapro_worker.jobs.poll_prod4._upsert_detail", side_effect=RuntimeError("bad detail SQL"))

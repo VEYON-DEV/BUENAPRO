@@ -1,4 +1,5 @@
 import { query } from "@/server/db/client";
+import { normalizeProd4Schedule } from "@/lib/procurementSchedule";
 
 type SourceWindowState = "current" | "exited" | "all";
 
@@ -166,15 +167,16 @@ export async function listProd4OpportunitiesForTenant(tenantId: string, params: 
 }
 
 export async function getProd4Opportunity(id: string) {
-  const process = await query(
+  const processResult = await query(
     `SELECT ${BASE_SELECT}, p.id_convocatoria_pub::text AS id_convocatoria_pub,
-            p.numero_procedimiento, p.buyer_id
+            p.numero_procedimiento, p.buyer_id, p.detail_fetched_at, p.schedule_fetched_at,
+            p.raw_detail->'listaCronograma' AS official_schedule_raw
      FROM prod4_processes p
      JOIN opportunities o ON o.id = p.opportunity_id
      WHERE p.id_procedimiento = $1 AND p.technology_relevant = true`,
     [id],
   );
-  if (!process.rows[0]) return null;
+  if (!processResult.rows[0]) return null;
   const [items, documents, schedule] = await Promise.all([
     query(
       `SELECT nro_item, cubso_code, description, quantity, unit
@@ -192,11 +194,13 @@ export async function getProd4Opportunity(id: string) {
       [id],
     ),
   ]);
+  const { official_schedule_raw, ...process } = processResult.rows[0];
   return {
-    process: process.rows[0],
+    process,
     items: items.rows,
     documents: documents.rows,
     schedule: schedule.rows,
+    official_schedule: normalizeProd4Schedule(official_schedule_raw),
   };
 }
 

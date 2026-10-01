@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
 
 
 class Settings(BaseSettings):
@@ -27,6 +28,11 @@ class Settings(BaseSettings):
     prod4_base_url: str = "https://prod4.seace.gob.pe:8086/api/oportunidades"
     prod4_poll_interval_minutes: int = 30
     prod4_detail_limit: int = 100
+    schedule_refresh_enabled: bool = False
+    schedule_refresh_interval_minutes: int = Field(default=30, ge=1)
+    # Legacy deployments may still configure hours. Explicit minutes win.
+    schedule_refresh_interval_hours: int | None = Field(default=None, ge=1)
+    schedule_refresh_limit: int = 500
     # Deep analysis advances gradually: no more than three newly queued PDFs
     # per poll and ten per day, with an additional per-profile final-score cap.
     prod4_document_analysis_enabled: bool = True
@@ -81,6 +87,12 @@ class Settings(BaseSettings):
     @property
     def prod4_terms(self) -> list[str]:
         return [part.strip() for part in self.prod4_technology_terms.split(",") if part.strip()]
+
+    @property
+    def schedule_refresh_interval_seconds(self) -> int:
+        if "schedule_refresh_interval_minutes" not in self.model_fields_set and self.schedule_refresh_interval_hours is not None:
+            return self.schedule_refresh_interval_hours * 3600
+        return self.schedule_refresh_interval_minutes * 60
 
     @property
     def primary_estado_contrato(self) -> int:

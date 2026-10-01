@@ -1,0 +1,43 @@
+.schedule { color: var(--bp-color-text); min-width: 0; }
+.header { display: flex; align-items: flex-start; gap: var(--bp-space-3); margin-bottom: var(--bp-space-4); }
+.header > svg { flex: none; color: var(--bp-color-brand); margin-top: 3px; }
+.header h2 { color: var(--bp-color-ink); font-size: 20px; line-height: 28px; margin: 0; text-wrap: balance; }
+.header p { color: var(--bp-color-text-2); font-size: 12px; line-height: 18px; margin: 3px 0 0; }
+.stages { list-style: none; margin: 0; padding: 0; }
+.stage { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: var(--bp-space-5); padding: var(--bp-space-4) 0 var(--bp-space-5) 42px; }
+.stage::before { content: ""; position: absolute; left: 12px; top: 0; bottom: 0; width: 2px; background: var(--bp-color-border); }
+.stage:first-child::before { top: 24px; }
+.stage:last-child::before { bottom: 24px; }
+.marker { position: absolute; top: 20px; left: 0; width: 26px; height: 26px; border: 2px solid var(--bp-color-border); border-radius: 50%; display: grid; place-items: center; color: var(--bp-color-text-2); background: var(--bp-color-panel); }
+.stage[data-state="active"] .marker { color: var(--bp-color-brand); border-color: var(--bp-color-brand); background: var(--bp-color-brand-soft); box-shadow: 0 0 0 4px var(--bp-color-brand-soft); }
+.stage[data-state="upcoming"] .marker { border-color: var(--bp-color-text-2); color: var(--bp-color-text); }
+.stageName { min-width: 0; }
+.state { display: inline-block; color: var(--bp-color-text-2); font-size: 11px; line-height: 17px; margin-bottom: 4px; }
+.stage[data-state="active"] .state { color: var(--bp-color-brand); font-weight: 700; }
+.stage[data-state="unknown"] .marker { border-style: dashed; }
+.position { background: var(--bp-color-brand-soft); border-radius: var(--bp-radius-md); padding: var(--bp-space-4); margin-bottom: var(--bp-space-3); }
+.positionLabel { display: block; color: var(--bp-color-text-2); font-size: 11px; line-height: 17px; margin-bottom: 4px; }
+.position strong { display: block; color: var(--bp-color-ink); font-size: 14px; line-height: 22px; overflow-wrap: anywhere; }
+.position p { color: var(--bp-color-text-2); font-size: 12px; line-height: 18px; margin: 4px 0 0; }
+.stageName h3 { color: var(--bp-color-ink); font-size: 14px; line-height: 22px; margin: 0; font-weight: 650; text-wrap: pretty; }
+.stageName p { color: var(--bp-color-text-2); font-size: 11px; line-height: 17px; margin: 3px 0 0; overflow-wrap: anywhere; }
+.dates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--bp-space-4); margin: 0; min-width: 0; }
+.dates dt { color: var(--bp-color-text-2); font-size: 12px; line-height: 18px; margin-bottom: 4px; }
+.dates dd { font-size: 13px; line-height: 21px; margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.dates time { display: block; font-weight: 650; }
+.dates time span { display: block; white-space: nowrap; }
+.dates small { color: var(--bp-color-text-2); display: block; font-size: 11px; line-height: 17px; }
+.unknown { color: var(--bp-color-text-2); }
+.footer { border-top: 1px solid var(--bp-color-border); color: var(--bp-color-text-2); display: grid; gap: 4px; font-size: 11px; line-height: 17px; padding-top: var(--bp-space-3); }
+.footer p { margin: 3px 0 0; text-wrap: pretty; }
+.empty { color: var(--bp-color-text-2); font-size: 13px; line-height: 21px; margin: 0 0 var(--bp-space-4); }
+.compact .header h2 { font-size: 16px; line-height: 24px; }
+.compact .stage { grid-template-columns: minmax(0, 1fr); gap: var(--bp-space-3); }
+.compact .dates { padding-left: 0; }
+.otherStages summary { cursor: pointer; color: var(--bp-color-brand); display: list-item; font-size: 12px; font-weight: 650; min-height: 44px; padding-block: var(--bp-space-3); }
+.otherStages summary:hover { color: var(--bp-color-brand-hover); }
+.otherStages summary:focus-visible { outline: 2px solid var(--bp-color-brand); outline-offset: 2px; border-radius: var(--bp-radius-sm); }
+@media (max-width: 760px) {
+  .stage { grid-template-columns: minmax(0, 1fr); gap: var(--bp-space-3); }
+  .dates { padding-left: 0; }
+}
