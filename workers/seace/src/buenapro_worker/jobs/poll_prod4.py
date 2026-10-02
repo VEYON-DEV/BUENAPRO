@@ -379,6 +379,12 @@ def _upsert_detail(repo: JobRepository, procedure_id: int, detail: dict[str, Any
         selected_code = selected["codigo_alfresco"] if selected else None
         if selected_code != previous_analysis["analyzed_document_code"]:
             repo.conn.execute(
+                """UPDATE opportunities SET consortium_status = 'not_identified',
+                     subcontracting_status = 'not_identified', participation_terms_json = '{}'::jsonb,
+                     updated_at = now() WHERE id = %s""",
+                (previous_analysis["opportunity_id"],),
+            )
+            repo.conn.execute(
                 "DELETE FROM opportunity_matches WHERE opportunity_id = %s",
                 (previous_analysis["opportunity_id"],),
             )

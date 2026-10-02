@@ -80,6 +80,7 @@ def parse_days(value: Any) -> int | None:
 
 
 def derive_summary(raw: dict[str, Any]) -> dict[str, Any]:
+    from buenapro_worker.normalization.participation import derive_participation
     summary_raw = raw.get("summary")
     summary = as_dict(summary_raw)
     summary_text = _text(summary_raw)
@@ -91,6 +92,7 @@ def derive_summary(raw: dict[str, Any]) -> dict[str, Any]:
     deliverables = _deliverables(execution, payment)
 
     return {
+        "participation": derive_participation(raw),
         "descripcion_corta": _descripcion_corta(summary, summary_text, contract),
         "modalidad": _modalidad(contract, execution),
         "valor_estimado": _valor_estimado(summary, contract),

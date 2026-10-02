@@ -4,6 +4,7 @@ import json
 import logging
 
 from buenapro_worker.normalization.facets import derive_facets, derive_summary, facet_hash
+from buenapro_worker.normalization.participation_repository import persist_participation
 from buenapro_worker.queue.repository import JobRepository
 
 
@@ -21,16 +22,21 @@ def derive_summary_job(
 ) -> dict[str, object]:
     row = repo.conn.execute(
         """
-        SELECT raw_extraction_json
-        FROM tdr_extractions
-        WHERE id = %s
+        SELECT e.raw_extraction_json, c.opportunity_id, d.sha256_original
+        FROM tdr_extractions e
+        JOIN contract_documents d ON d.id = e.contract_document_id
+        JOIN seace_contracts c ON c.id_contrato = d.id_contrato
+        WHERE e.id = %s AND e.is_current AND d.id_contrato = %s
         """,
-        (extraction_id,),
+        (extraction_id, id_contrato),
     ).fetchone()
     if row is None:
         raise ValueError(f"Extraction not found: {extraction_id}")
 
     raw = dict(row["raw_extraction_json"])
+    persist_participation(repo, opportunity_id=row.get("opportunity_id"), raw=raw,
+                          extraction_id=extraction_id, source="seace_prod6",
+                          document_sha256=row.get("sha256_original"))
     summary = derive_summary(raw)
     facets = derive_facets(raw)
     old_hashes = _current_hashes(repo, id_contrato)

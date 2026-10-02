@@ -171,6 +171,7 @@ export async function getProd4Opportunity(id: string) {
   const processResult = await query(
     `SELECT ${BASE_SELECT}, p.id_convocatoria_pub::text AS id_convocatoria_pub,
             p.numero_procedimiento, p.buyer_id, p.detail_fetched_at, p.schedule_fetched_at,
+            o.consortium_status, o.subcontracting_status, o.participation_terms_json,
             p.raw_detail->'listaCronograma' AS official_schedule_raw
      FROM prod4_processes p
      JOIN opportunities o ON o.id = p.opportunity_id

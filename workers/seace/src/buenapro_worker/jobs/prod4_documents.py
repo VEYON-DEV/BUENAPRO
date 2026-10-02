@@ -11,6 +11,7 @@ import httpx
 from buenapro_worker.documents.pdf import sha256_bytes
 from buenapro_worker.extraction.gemini import GeminiExtractor, prompt_version_for_doc_class
 from buenapro_worker.normalization.facets import derive_facets, derive_summary, facet_hash
+from buenapro_worker.normalization.participation_repository import persist_participation
 from buenapro_worker.prod4.client import DocumentTooLargeError, Prod4Client
 from buenapro_worker.queue.repository import JobRepository
 from buenapro_worker.settings import Settings
@@ -260,6 +261,9 @@ def extract_prod4_document_job(
         ),
     ).fetchone()
     extraction_id = int(extraction["id"])
+    persist_participation(repo, opportunity_id=process["opportunity_id"], raw=raw,
+                          extraction_id=extraction_id, source="seace_prod4",
+                          document_sha256=sha256_bytes(pdf_bytes))
     repo.conn.execute(
         """UPDATE prod4_requirement_facets SET is_current = false
            WHERE id_procedimiento = %s AND is_current = true""",

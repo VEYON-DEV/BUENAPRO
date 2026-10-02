@@ -147,6 +147,21 @@ class SummaryV2(StrictModel):
     observaciones_clave: list[str] = Field(default_factory=list)
 
 
+PARTICIPATION_STATUSES = Literal["permitted", "prohibited", "conditional", "not_identified"]
+
+
+class ParticipationTermV1(StrictModel):
+    status: PARTICIPATION_STATUSES = "not_identified"
+    clause: str | None = None
+    page: int | None = Field(default=None, ge=1, strict=True)
+    conditions: list[str] = Field(default_factory=list)
+
+
+class ParticipationV1(StrictModel):
+    consorcio: ParticipationTermV1 = Field(default_factory=ParticipationTermV1)
+    subcontratacion: ParticipationTermV1 = Field(default_factory=ParticipationTermV1)
+
+
 class TdrExtractionV2(StrictModel):
     contract: ContractV2 = Field(default_factory=ContractV2)
     execution: ExecutionV2 = Field(default_factory=ExecutionV2)
@@ -155,6 +170,7 @@ class TdrExtractionV2(StrictModel):
     penalties: list[PenaltyV2] = Field(default_factory=list)
     contract_management: ContractManagementV2 = Field(default_factory=ContractManagementV2)
     summary: SummaryV2 = Field(default_factory=SummaryV2)
+    participation: ParticipationV1 = Field(default_factory=ParticipationV1)
 
 
 class GoodsItemV1(StrictModel):

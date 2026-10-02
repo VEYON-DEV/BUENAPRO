@@ -12,17 +12,33 @@ from buenapro_worker.extraction.schemas import BasesGoodsExtractionV2, EettExtra
 from buenapro_worker.settings import Settings
 
 
-PROMPT_VERSION = "tdr_extraction_v2"
-SCHEMA_VERSION = "tdr_extraction_schema_v2"
+PROMPT_VERSION = "tdr_extraction_v3"
+SCHEMA_VERSION = "tdr_extraction_schema_v3"
 PROMPT_FILENAME = "tdr_extraction_v2.txt"
-EETT_PROMPT_VERSION = "eett_extraction_v1"
-EETT_SCHEMA_VERSION = "eett_extraction_schema_v1"
+EETT_PROMPT_VERSION = "eett_extraction_v2"
+EETT_SCHEMA_VERSION = "eett_extraction_schema_v2"
 EETT_PROMPT_FILENAME = "eett_extraction_v1.txt"
-BASES_PROMPT_VERSION = "bases_extraction_v1"
-BASES_SCHEMA_VERSION = "bases_extraction_schema_v1"
+BASES_PROMPT_VERSION = "bases_extraction_v2"
+BASES_SCHEMA_VERSION = "bases_extraction_schema_v2"
 BASES_PROMPT_FILENAME = "bases_extraction_v1.txt"
-BASES_GOODS_PROMPT_VERSION = "bases_goods_extraction_v2"
-BASES_GOODS_SCHEMA_VERSION = "bases_goods_extraction_schema_v2"
+BASES_GOODS_PROMPT_VERSION = "bases_goods_extraction_v3"
+BASES_GOODS_SCHEMA_VERSION = "bases_goods_extraction_schema_v3"
+PARTICIPATION_INSTRUCTION = (
+    "\nIncluye participation.consorcio y participation.subcontratacion. Para cada uno, "
+    "revisa la clausula especifica de esta convocatoria y devuelve status "
+    "(permitted, prohibited, conditional o not_identified), clause, page y conditions. "
+    "clause debe ser una cita literal de la clausula aplicable; page debe indicar la "
+    "pagina original del PDF, contando desde 1, no una pagina de un recorte. "
+    "Los anexos genericos o formatos de promesa de consorcio no bastan para concluir "
+    "que esta convocatoria permite consorcio. Una mencion generica, normativa o un "
+    "formato tampoco acredita autorizacion de subcontratacion. La ausencia de clausula "
+    "no significa permitido: devuelve not_identified, clause=null, page=null y "
+    "conditions=[]. Usa prohibited para una prohibicion explicita, permitted solo "
+    "para una autorizacion explicita sin condiciones y conditional cuando existan "
+    "condiciones explicitas (porcentajes, autorizacion previa, limites o requisitos). "
+    "Recoge esas condiciones como texto en conditions sin inventarlas. No clasifiques "
+    "como permitted, prohibited o conditional sin evidencia literal y pagina."
+)
 BASES_GOODS_INSTRUCTION = (
     "\nEsta convocatoria es de BIENES. Incluye obligatoriamente el objeto goods y su "
     "lista items en el JSON. Extrae los bienes que se adquieren desde las especificaciones "
@@ -69,10 +85,13 @@ class GeminiExtractor:
         self.settings = settings
         self.client = genai.Client(api_key=settings.gemini_api_key)
         self.prompts = {
-            "tdr": read_prompt(PROMPT_FILENAME),
-            "eett": read_prompt(EETT_PROMPT_FILENAME),
-            "bases_good": read_prompt(BASES_PROMPT_FILENAME) + BASES_GOODS_INSTRUCTION,
-            "bases_service": read_prompt(BASES_PROMPT_FILENAME),
+            "tdr": read_prompt(PROMPT_FILENAME) + PARTICIPATION_INSTRUCTION,
+            "eett": read_prompt(EETT_PROMPT_FILENAME) + PARTICIPATION_INSTRUCTION,
+            "bases_good": (
+                read_prompt(BASES_PROMPT_FILENAME)
+                + BASES_GOODS_INSTRUCTION + PARTICIPATION_INSTRUCTION
+            ),
+            "bases_service": read_prompt(BASES_PROMPT_FILENAME) + PARTICIPATION_INSTRUCTION,
         }
 
     def count_tokens(self, pdf_bytes: bytes, *, mime: str = "application/pdf") -> int:
