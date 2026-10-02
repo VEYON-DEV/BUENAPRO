@@ -1,7 +1,7 @@
 # Tareas - Worker
 
 - [x] Implementar y validar ejecutor local PROD4 con navegador normal, túnel SSH temporal, pipeline Gemini existente y borrado solo tras verificar persistencia. 20 pruebas; lote real: 10 extracciones, 27 matching, 1 revisión, 2 PDFs demasiado grandes; coste extracción USD 0.123770. Guía `docs/sources/prod4-local-worker.md` (2026-10-02).
-- [ ] Procesar los 18 documentos elegibles restantes en jornadas posteriores y resolver política de tamaño de los 2 PDFs grandes; no aumentar límites silenciosamente.
+- [x] Completar lote autorizado PROD4: 30 extracciones actuales, cero revisión pendiente, 88 evaluaciones actuales (afinidad mínima respetada), tres PDFs grandes completos y cuatro bienes reextraídos con esquema versionado. Ampliaciones solo por ejecución; 103 pruebas y temporales eliminados tras verificación (2026-10-02).
 
 - [x] Implementar y desplegar `schedule-refresh` PROD4/PROD6 para bienes/servicios en alcance configurado: dry-run, límite por fuente, IDs, transacciones por ficha, metadatos preservados, etapas completas y ventanas sin horas inventadas. Docker Compose habilita barrido al arrancar y cada 30 minutos, deduplicado, límite 500 por fuente; ingesta completa guarda cronograma al hidratar fichas. 79 pruebas worker aprobadas. Producción `b4e9c28`, scheduler/worker-io activos con enabled=true/1800 segundos (2026-10-01). Sin PDFs/Gemini/matches/alertas en este barrido. Guía `docs/sources/official-schedule-refresh.md`.
 

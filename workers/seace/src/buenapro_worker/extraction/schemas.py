@@ -189,6 +189,18 @@ class EettExtractionV1(TdrExtractionV2):
     goods: GoodsV1 = Field(default_factory=GoodsV1)
 
 
+class BasesGoodsV2(GoodsV1):
+    # Required structure, not fabricated content: [] remains valid when the
+    # official document does not disclose identifiable purchased items.
+    items: list[GoodsItemV1]
+
+
+class BasesGoodsExtractionV2(EettExtractionV1):
+    """Goods bases must explicitly report goods/items, including an empty list."""
+
+    goods: BasesGoodsV2
+
+
 def repair_optional_fields(payload: dict[str, Any]) -> dict[str, Any]:
     repaired = dict(payload)
     for key in ("contract", "execution", "payment", "requirements", "contract_management"):

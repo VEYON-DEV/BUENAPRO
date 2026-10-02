@@ -8,7 +8,7 @@ from typing import Any
 from google import genai
 from google.genai import types
 
-from buenapro_worker.extraction.schemas import EettExtractionV1, TdrExtractionV2
+from buenapro_worker.extraction.schemas import BasesGoodsExtractionV2, EettExtractionV1, TdrExtractionV2
 from buenapro_worker.settings import Settings
 
 
@@ -21,9 +21,21 @@ EETT_PROMPT_FILENAME = "eett_extraction_v1.txt"
 BASES_PROMPT_VERSION = "bases_extraction_v1"
 BASES_SCHEMA_VERSION = "bases_extraction_schema_v1"
 BASES_PROMPT_FILENAME = "bases_extraction_v1.txt"
+BASES_GOODS_PROMPT_VERSION = "bases_goods_extraction_v2"
+BASES_GOODS_SCHEMA_VERSION = "bases_goods_extraction_schema_v2"
+BASES_GOODS_INSTRUCTION = (
+    "\nEsta convocatoria es de BIENES. Incluye obligatoriamente el objeto goods y su "
+    "lista items en el JSON. Extrae los bienes que se adquieren desde las especificaciones "
+    "tecnicas de esta convocatoria, con cantidades, unidades y especificaciones solo "
+    "cuando esten documentadas. No confundas los bienes con equipamiento del postor. "
+    "Si el documento no identifica los bienes, devuelve goods.items=[] y explicalo en "
+    "summary.observaciones_clave; no inventes items para llenar la lista."
+)
 
 
 def prompt_version_for_doc_class(doc_class: str | None) -> str:
+    if doc_class == "bases_good":
+        return BASES_GOODS_PROMPT_VERSION
     if doc_class in {"bases_good", "bases_service"}:
         return BASES_PROMPT_VERSION
     return EETT_PROMPT_VERSION if doc_class == "eett" else PROMPT_VERSION
@@ -59,7 +71,7 @@ class GeminiExtractor:
         self.prompts = {
             "tdr": read_prompt(PROMPT_FILENAME),
             "eett": read_prompt(EETT_PROMPT_FILENAME),
-            "bases_good": read_prompt(BASES_PROMPT_FILENAME),
+            "bases_good": read_prompt(BASES_PROMPT_FILENAME) + BASES_GOODS_INSTRUCTION,
             "bases_service": read_prompt(BASES_PROMPT_FILENAME),
         }
 
@@ -127,7 +139,10 @@ class GeminiExtractor:
         max_output_tokens: int,
         requires_human_review: bool = False,
     ) -> ExtractionResult:
-        schema = EettExtractionV1 if doc_class in {"eett", "bases_good"} else TdrExtractionV2
+        schema = (
+            BasesGoodsExtractionV2 if doc_class == "bases_good"
+            else EettExtractionV1 if doc_class == "eett" else TdrExtractionV2
+        )
         response = self.client.models.generate_content(
             model=model,
             contents=self._contents(pdf_bytes, mime=mime),
@@ -158,7 +173,8 @@ class GeminiExtractor:
             model=model,
             prompt_version=prompt_version_for_doc_class(doc_class),
             schema_version=(
-                BASES_SCHEMA_VERSION if doc_class in {"bases_good", "bases_service"}
+                BASES_GOODS_SCHEMA_VERSION if doc_class == "bases_good"
+                else BASES_SCHEMA_VERSION if doc_class == "bases_service"
                 else EETT_SCHEMA_VERSION if doc_class == "eett" else SCHEMA_VERSION
             ),
             input_tokens=input_tokens,
