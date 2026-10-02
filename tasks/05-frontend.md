@@ -1,5 +1,7 @@
 # Tareas - Frontend
 
+- [x] Desplegar rework de perfil en producción por Git (`c01e54b`, 2026-10-02): build Docker/TypeScript aprobado, web running sin reinicios, login HTTP200 y `/perfil` sin sesión redirige a login. Sin migración de DB ni cambios de workers. QA visual responsive aprobado en local con datos reales de lectura; no se verificó sesión autenticada productiva ni subida real de QA a R2.
+
 - [x] Rework de `/perfil` por Radar/Equipo/Experiencia/Recursos/Documentos/Empresa: fichas agregables de profesionales, experiencia y certificados con respaldo en biblioteca; reemplazar CSV/pipe por registros, preservar metadata/strings existentes, validación oculta y guardado seguro. Ocho tests, arquitectura/TypeScript/build, QA responsive con datos reales de lectura y escrituras interceptadas, diez capturas revisadas (2026-10-02). Evidencia `docs/new-style/qa/profile-*-20261002.png`; spec `docs/frontend/05-perfil-empresa.md`.
 
 - [x] Implementar `/cronograma` en sidebar con Gantt amplio PROD6/PROD4, afinidad 2–3 sin evaluar o amarillo/verde documental, etapas oficiales sin solapamiento, Hoy/rangos/búsqueda/detalle y agenda móvil. Diez pruebas, TypeScript/arquitectura, capturas reales desktop1600/laptop1024/mobile390 revisadas, teclado y empty/error aprobados (2026-10-02). Evidencia `docs/new-style/qa/gantt-prod{4,6}-{desktop,laptop,mobile}-20261002.png`.
