@@ -110,7 +110,7 @@
 .metric small {
   overflow: visible;
   white-space: normal;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
 }
 
 .icon svg { height: 20px; width: 20px; }
