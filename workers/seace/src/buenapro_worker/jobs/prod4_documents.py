@@ -35,13 +35,41 @@ def _document_priority(row: dict[str, Any]) -> tuple[int, datetime, str]:
 
 
 def select_official_requirements_pdf(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
-    """Choose one authoritative bases/requirements PDF; never analyze arbitrary annexes."""
-    candidates = [
-        row for row in rows
-        if str(row.get("extension") or "").lower().lstrip(".") == "pdf"
-        and _document_priority(row)[0] > 0
-    ]
-    return max(candidates, key=_document_priority) if candidates else None
+    """Choose the current authoritative version, THEN require PDF support.
+
+    An older administrative PDF cannot replace newer integrated DOCX/RAR
+    bases. A PDF twin with the same stage and publication time is supported.
+    """
+    candidates = [row for row in rows if _document_priority(row)[0] > 0]
+    if not candidates:
+        return None
+    latest = max(_document_priority(row)[:2] for row in candidates)
+    pdfs = [row for row in candidates if _document_priority(row)[:2] == latest
+            and str(row.get("extension") or "").lower().lstrip(".") == "pdf"]
+    return max(pdfs, key=_document_priority) if pdfs else None
+
+
+def mark_unsupported_current_document(
+    repo: JobRepository, procedure_id: int, rows: list[dict[str, Any]],
+) -> bool:
+    """Persist a format limitation, distinct from absence of an official file."""
+    official = [row for row in rows if _document_priority(row)[0] > 0]
+    if not official or select_official_requirements_pdf(official) is not None:
+        return False
+    current = max(official, key=_document_priority)
+    # Also covers an already-queued old PDF job that executes after a source
+    # refresh: neither a stale extraction nor its verdict remains current.
+    repo.conn.execute("UPDATE prod4_document_extractions SET is_current = false WHERE id_procedimiento = %s AND is_current = true", (procedure_id,))
+    repo.conn.execute("UPDATE prod4_requirement_facets SET is_current = false WHERE id_procedimiento = %s AND is_current = true", (procedure_id,))
+    repo.conn.execute("DELETE FROM opportunity_matches WHERE opportunity_id = (SELECT opportunity_id FROM prod4_processes WHERE id_procedimiento = %s)", (procedure_id,))
+    repo.conn.execute(
+        """UPDATE opportunities SET consortium_status = 'not_identified',
+             subcontracting_status = 'not_identified', participation_terms_json = '{}'::jsonb,
+             updated_at = now() WHERE id = (SELECT opportunity_id FROM prod4_processes WHERE id_procedimiento = %s)""",
+        (procedure_id,),
+    )
+    _mark_skipped(repo, procedure_id, current["codigo_alfresco"], "unsupported_current_format")
+    return True
 
 
 def _profile_has_relevant_fit(repo: JobRepository, procedure_id: int) -> bool:
@@ -94,6 +122,7 @@ def enqueue_prod4_document_if_eligible(
     ).fetchall()
     selected = select_official_requirements_pdf([dict(row) for row in docs])
     if selected is None:
+        mark_unsupported_current_document(repo, procedure_id, [dict(row) for row in docs])
         return False
     code = selected["codigo_alfresco"]
     if process["analyzed_document_code"] == code and process["document_analysis_status"] in {"extracted", "skipped"}:
@@ -186,6 +215,8 @@ def extract_prod4_document_job(
         (id_procedimiento,),
     ).fetchall()
     selected = select_official_requirements_pdf([dict(row) for row in docs])
+    if selected is None and mark_unsupported_current_document(repo, id_procedimiento, [dict(row) for row in docs]):
+        return {"skipped": "unsupported_current_format"}
     if selected is None or selected["codigo_alfresco"] != code:
         return {"skipped": "document_superseded"}
     if not _profile_has_relevant_fit(repo, id_procedimiento):

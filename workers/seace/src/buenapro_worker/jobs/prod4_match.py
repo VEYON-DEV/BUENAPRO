@@ -13,6 +13,7 @@ from buenapro_worker.jobs.analyze_match import (
     clamp_score,
 )
 from buenapro_worker.matching.analyzer import MatchAnalyzer
+from buenapro_worker.matching.profile_evidence import EVIDENCE_POLICY_VERSION, evidence_only_profile, guard_participation_actions
 from buenapro_worker.normalization.facets import canonical_hash
 from buenapro_worker.queue.repository import JobRepository
 from buenapro_worker.settings import Settings
@@ -50,7 +51,8 @@ def _guard_prod4_economic_claim(
 
 
 def route_prod4_profiles_job(
-    settings: Settings, repo: JobRepository, *, id_procedimiento: int, extraction_id: int
+    settings: Settings, repo: JobRepository, *, id_procedimiento: int, extraction_id: int,
+    profile_id: str | None = None,
 ) -> dict[str, int]:
     """Route only validated, document-backed opportunities with a relevant profile fit."""
     rows = repo.conn.execute(
@@ -67,6 +69,7 @@ def route_prod4_profiles_job(
           AND e.id = %s AND e.is_current = true AND e.quality <> 'failed'
           AND e.requires_human_review = false AND e.facet_count > 0
         JOIN company_profiles cp ON cp.is_active = true
+          AND (%s::uuid IS NULL OR cp.id = %s::uuid)
         LEFT JOIN automation_rules ar ON ar.profile_id = cp.id
         JOIN LATERAL profile_prod4_fit(cp.id, p.id_procedimiento) fit ON true
         WHERE p.id_procedimiento = %s AND p.technology_relevant = true
@@ -75,7 +78,7 @@ def route_prod4_profiles_job(
           AND fit.business_line_id IS NOT NULL
         ORDER BY fit.fit_level DESC, fit.fit_score DESC, cp.id
         """,
-        (extraction_id, id_procedimiento),
+        (extraction_id, profile_id, profile_id, id_procedimiento),
     ).fetchall()
     stats = {"profiles": len(rows), "eligible": 0, "enqueued": 0, "limited": 0}
     for row in rows:
@@ -189,6 +192,7 @@ def analyze_prod4_match_job(
         previous_meta.get("profile_hash") == profile_hash
         and previous_meta.get("facets_hash") == facets_hash
         and previous_meta.get("extraction_id") == extraction_id
+        and previous_meta.get("evidence_policy_version") == EVIDENCE_POLICY_VERSION
     ):
         return {"skipped": "unchanged", "match_id": int(existing["id"])}
 
@@ -198,7 +202,8 @@ def analyze_prod4_match_job(
         for row in facets if row["facet"] != "penalty_condition"
     ]
     analisis_previo = None
-    if existing and previous.get("requisitos"):
+    if (existing and previous.get("requisitos")
+            and previous_meta.get("evidence_policy_version") == EVIDENCE_POLICY_VERSION):
         analisis_previo = {
             "veredicto": existing["verdict"], "score": existing["score"],
             "requisitos": [
@@ -206,12 +211,13 @@ def analyze_prod4_match_job(
                 for item in previous["requisitos"] if isinstance(item, dict)
             ],
         }
+    profile_evidence = evidence_only_profile({field: profile[field] for field in PROFILE_FIELDS})
     result = (analyzer or MatchAnalyzer(
         settings,
         prompt_filename="match_analysis_prod4_v1.txt",
         prompt_version=PROD4_MATCH_PROMPT_VERSION,
     )).analyze(
-        perfil={field: profile[field] for field in PROFILE_FIELDS},
+        perfil=profile_evidence,
         oportunidad={
             "codigo": opportunity["nomenclatura"],
             "descripcion": opportunity["description"],
@@ -226,7 +232,10 @@ def analyze_prod4_match_job(
     _guard_prod4_economic_claim(
         requisitos_final,
         exigido=_econ_exigido(facets),
-        capacidad=_econ_capacity({field: profile[field] for field in PROFILE_FIELDS}),
+        capacidad=_econ_capacity(profile_evidence),
+    )
+    guarded_actions = guard_participation_actions(
+        requisitos_final, list(analysis.acciones_recomendadas), opportunity["summary_json"],
     )
     verdict = _derive_verdict(requisitos_final)
     score = clamp_score(verdict, analysis.score)
@@ -247,7 +256,7 @@ def analyze_prod4_match_job(
             for item in requisitos_final
         ],
         "acciones_recomendadas": [
-            clipped for clipped in (_clip(item, 110) for item in analysis.acciones_recomendadas[:4])
+            clipped for clipped in (_clip(item, 110) for item in guarded_actions[:4])
             if clipped
         ],
         "meta": {
@@ -256,6 +265,7 @@ def analyze_prod4_match_job(
             "extraction_id": extraction_id,
             "profile_hash": profile_hash, "facets_hash": facets_hash,
             "model": result.model, "prompt_version": result.prompt_version,
+            "evidence_policy_version": EVIDENCE_POLICY_VERSION,
             "input_tokens": result.input_tokens, "output_tokens": result.output_tokens,
             "cost_usd": result.cost_usd,
             "fit_points": fit_points, "fit_score": fit_score, "fit_level": fit_level,

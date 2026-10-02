@@ -329,6 +329,26 @@ docker compose -f infra/docker/docker-compose.yml up -d --scale worker-io=3 work
 Mantener `worker-llm=1` al inicio para no golpear limites de Gemini. Subirlo solo cuando haya
 metricas claras de costo y rate limit.
 
+## Ingesta PROD6 por perfil (opt-in)
+
+`PROD6_PROFILE_POLL_ENABLED=true` habilita `poll_prod6_profiles` en el mismo ciclo
+de 30 minutos del polling convencional. Solo toma perfiles activos con
+`identity_json.profile_ingestion_enabled=true`; no modifica el alcance legado.
+Los segmentos, frases y términos salen de sus líneas activas en PostgreSQL.
+
+Solo guarda bienes/servicios vigentes publicados en el año consultado y con una
+frase configurada o dos términos distintos de la misma línea en la descripción.
+El descubrimiento no afirma cumplimiento ni reemplaza leer las bases. Encola
+`process_contract` (flujo documental/LLM1), sin ejecutar LLM2 en el poll.
+Los IDs oficiales deduplican las oportunidades compartidas entre perfiles.
+
+Por defecto recorre hasta diez páginas de cien filas por objeto/segmento y
+guarda hasta doscientos candidatos por perfil/ciclo. `capped_segments` y
+`limit_reached` indican cobertura parcial; no hay barrido histórico automático.
+También se puede llamar `poll_prod6_profile(..., profile_id=..., anio=2026,
+max_pages_per_segment=10, max_candidates=200, batch_id=...)` para una corrida
+controlada. El payload del job recurrente admite los mismos límites y batch.
+
 ## Pausa de emergencia
 
 ```bash

@@ -59,6 +59,7 @@ services:
     restart: unless-stopped
     env_file:
       - ../../.env.local
+      - ./profile-ingestion.env
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://buenapro:buenapro@postgres:5432/buenapro}
       WORKER_ID: scheduler
@@ -77,6 +78,7 @@ services:
     restart: unless-stopped
     env_file:
       - ../../.env.local
+      - ./profile-ingestion.env
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://buenapro:buenapro@postgres:5432/buenapro}
       WORKER_ID: worker-io
@@ -95,6 +97,7 @@ services:
     restart: unless-stopped
     env_file:
       - ../../.env.local
+      - ./profile-ingestion.env
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://buenapro:buenapro@postgres:5432/buenapro}
       WORKER_ID: worker-llm
@@ -110,6 +113,7 @@ services:
     restart: unless-stopped
     env_file:
       - ../../.env.local
+      - ./profile-ingestion.env
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://buenapro:buenapro@postgres:5432/buenapro}
       WORKER_ID: worker-match

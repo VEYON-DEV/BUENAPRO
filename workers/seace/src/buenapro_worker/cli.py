@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
@@ -204,6 +205,7 @@ def command_run(args: argparse.Namespace, settings: Settings) -> int:
                 )
 
     handlers = {
+        "poll_prod6_profiles": lambda job: _handle_poll_prod6_profiles(settings, job),
         "refresh_schedules": lambda job: _handle_refresh_schedules(settings, job),
         "poll_search": handle_poll_search,
         "poll_prod4": lambda job: _handle_poll_prod4(settings, job),
@@ -228,6 +230,28 @@ def command_run(args: argparse.Namespace, settings: Settings) -> int:
     runner = QueueRunner(settings, handlers)
     runner.run_forever(args.queues)
     return 0
+
+
+def _handle_poll_prod6_profiles(settings: Settings, job) -> None:
+    from buenapro_worker.jobs.poll_prod6_profile import poll_prod6_profile
+    from buenapro_worker.db.connection import connect
+    from buenapro_worker.queue.repository import JobRepository
+
+    with connect(settings) as conn:
+        profiles = conn.execute(
+            """SELECT id FROM company_profiles WHERE is_active = true
+               AND identity_json->>'profile_ingestion_enabled' = 'true'"""
+        ).fetchall()
+        for profile in profiles:
+            with conn.transaction():
+                stats = poll_prod6_profile(
+                    settings, JobRepository(conn), profile_id=str(profile["id"]),
+                    anio=job.payload.get("anio"),
+                    max_pages_per_segment=int(job.payload.get("max_pages_per_segment", 10)),
+                    max_candidates=int(job.payload.get("max_candidates", 200)),
+                    batch_id=job.payload.get("batch_id"),
+                )
+                logging.getLogger(__name__).info("poll_prod6_profile_done", extra=stats)
 
 
 def _handle_poll_prod4(settings: Settings, _job) -> None:
@@ -281,6 +305,7 @@ def _handle_route_prod4_profiles(settings: Settings, job) -> None:
                 settings, JobRepository(conn),
                 id_procedimiento=int(job.payload["id_procedimiento"]),
                 extraction_id=int(job.payload["extraction_id"]),
+                profile_id=str(job.payload["profile_id"]) if job.payload.get("profile_id") else None,
             )
 
 

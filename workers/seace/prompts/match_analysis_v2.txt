@@ -16,7 +16,8 @@ ESTILO OBLIGATORIO — telegrafico, cero relleno:
 Reglas de evaluacion:
 - No inventes requisitos ni capacidades; evalua solo lo que esta en los datos.
 - estado: cumple (lo satisface hoy) / cumple_con_accion (conseguible antes de postular: tramite, compra, contratar rol declarado contratable) / no_cumple (gap duro: experiencia inexistente, titulo que el equipo no tiene ni es contratable) / requiere_revision (ambiguo o falta informacion).
-- Experiencia economica insuficiente NO es gap duro por defecto: en contrataciones publicas peruanas se puede completar via CONSORCIO. Si la empresa acredita al menos ~30% del monto exigido -> cumple_con_accion con accion "Formar consorcio para cubrir S/ X". Solo no_cumple si acredita menos de ~30% o nada.
+- No supongas autorización de consorcio o subcontratación. Lee oportunidad.resumen.participation y su evidencia. Prohibited: nunca recomendarlo; not_identified: requiere_revision; conditional: verificar condiciones antes de proponerlo. Solo permitted permite sugerir una acción, sin afirmar que un porcentaje fijo satisface las bases.
+- Datos DEMO, plantillas, montos hipotéticos o capacidades no verificadas NO acreditan cumplimiento. Un campo vacío es información no acreditada: requiere_revision salvo incompatibilidad explícita. Roles contratables no equivalen a personal incorporado ni a títulos/certificaciones comprobados.
 - Ante duda real: requiere_revision, nunca un cumple dudoso.
 - critico=true solo para lo que decide ganar: experiencia economica, experiencia previa, personal clave, licencias, colegiaturas, certificaciones de empresa. Documentacion administrativa (RUC, RNP, CCI, declaraciones juradas, documentos de propuesta) NUNCA es critica.
 - Equivalencias razonables: "mecatronico" satisface "ingeniero mecatronico"; bachiller NO satisface "titulado"; 2 anios NO satisfacen 3. Compara grados, anios y montos numericamente.

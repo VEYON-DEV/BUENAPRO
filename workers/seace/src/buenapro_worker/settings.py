@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 
@@ -15,6 +17,7 @@ class Settings(BaseSettings):
     seace_user_agent: str = "BuenaPro/0.1 (+https://veyon-solutions.local)"
     seace_timeout_seconds: float = 45.0
     seace_poll_interval_minutes: int = 30
+    prod6_profile_poll_enabled: bool = False
     seace_lifecycle_interval_hours: int = 6
     seace_recent_closures_interval_hours: int = 2
     seace_recent_closures_days: int = 15
@@ -41,6 +44,9 @@ class Settings(BaseSettings):
     prod4_profile_evaluations_daily_default: int = 10
     prod4_max_analysis_pdf_bytes: int = 20 * 1024 * 1024
     prod4_technology_segments: str = "43,81"
+    # Optional, versioned sector rules; never enable an entire broad segment
+    # without a specific phrase/acronym signal. Empty preserves the IT radar.
+    prod4_additional_relevance_rules: str = "[]"
     # Segment 81 also contains non-IT engineering and works consulting.
     prod4_service_cubso_prefixes: str = "811115,811116,811117,811118,811119,811120,811121,811122,811123,811124,811125"
     # A CUBSO 81 prefix alone is insufficient: it includes non-IT engineering,
@@ -78,7 +84,32 @@ class Settings(BaseSettings):
         unsupported = set(segments) - {43, 81}
         if unsupported:
             raise ValueError(f"Unsupported PROD4 technology segments: {sorted(unsupported)}")
-        return segments
+        return sorted(set(segments).union(
+            segment for rule in self.prod4_relevance_rules for segment in rule["segments"]
+        ))
+
+    @property
+    def prod4_relevance_rules(self) -> list[dict]:
+        rules = json.loads(self.prod4_additional_relevance_rules)
+        if not isinstance(rules, list) or len(rules) > 32:
+            raise ValueError("PROD4 additional relevance rules must be a list of at most 32 rules")
+        for rule in rules:
+            if not isinstance(rule, dict) or not isinstance(rule.get("key"), str) or not rule["key"].strip():
+                raise ValueError("Each PROD4 relevance rule requires a key")
+            segments = rule.get("segments")
+            objects = rule.get("objects")
+            terms = rule.get("terms")
+            if not isinstance(segments, list) or not segments or any(
+                type(segment) is not int or not 10 <= segment <= 99 for segment in segments
+            ):
+                raise ValueError("PROD4 relevance rule segments must be two-digit CUBSO integers")
+            if not isinstance(objects, list) or not objects or any(obj not in ("good", "service") for obj in objects):
+                raise ValueError("PROD4 relevance rules only accept goods/services")
+            if not isinstance(terms, list) or not terms or len(terms) > 24 or any(
+                not isinstance(term, str) or not 3 <= len(term.strip()) <= 100 for term in terms
+            ):
+                raise ValueError("PROD4 relevance rules require 1–24 specific phrases/acronyms")
+        return rules
 
     @property
     def prod4_service_prefixes(self) -> list[str]:

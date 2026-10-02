@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from buenapro_worker.jobs.send_notification import enqueue_match_notifications
 from buenapro_worker.matching.analyzer import MatchAnalyzer
+from buenapro_worker.matching.profile_evidence import EVIDENCE_POLICY_VERSION, evidence_only_profile, guard_participation_actions
 from buenapro_worker.normalization.facets import canonical_hash
 from buenapro_worker.queue.repository import JobRepository
 from buenapro_worker.settings import Settings
@@ -53,7 +54,8 @@ def _econ_exigido(facet_rows: list) -> float | None:
     return max(amounts) if amounts else None
 
 
-def _apply_econ_rule(requisitos: list[dict], *, exigido: float | None, capacidad: float) -> None:
+def _apply_econ_rule(requisitos: list[dict], *, exigido: float | None, capacidad: float,
+                     consorcio_status: str = "not_identified") -> None:
     """Regla determinista para experiencia económica: es aritmética, no juicio.
     Cubre todo -> cumple; >=30% -> accionable vía consorcio; <30% -> gap duro."""
     if exigido is None or exigido <= 0:
@@ -64,6 +66,13 @@ def _apply_econ_rule(requisitos: list[dict], *, exigido: float | None, capacidad
             continue
         if ratio >= 1:
             req.update(estado="cumple", gap=None, accion=None)
+        elif consorcio_status != "permitted":
+            req.update(
+                estado="requiere_revision" if consorcio_status != "prohibited" else "no_cumple",
+                gap=f"Acreditas S/ {capacidad:,.0f} de S/ {exigido:,.0f} exigidos.",
+                accion="Verificar autorización y condiciones en las bases" if consorcio_status != "prohibited"
+                else "Acreditar experiencia propia exigida en las bases",
+            )
         elif ratio >= 0.3:
             req.update(
                 estado="cumple_con_accion",
@@ -164,7 +173,8 @@ def analyze_match_job(
     ).fetchone()
     if existing is not None and not force:
         meta = (existing["breakdown_json"] or {}).get("meta") if isinstance(existing["breakdown_json"], dict) else None
-        if meta and meta.get("facets_hash") == facets_hash and meta.get("profile_hash") == profile_hash:
+        if (meta and meta.get("facets_hash") == facets_hash and meta.get("profile_hash") == profile_hash
+                and meta.get("evidence_policy_version") == EVIDENCE_POLICY_VERSION):
             if source == "automatic":
                 enqueue_match_notifications(
                     repo,
@@ -197,7 +207,7 @@ def analyze_match_job(
     analisis_previo = None
     if existing is not None and isinstance(existing["breakdown_json"], dict):
         previous_reqs = existing["breakdown_json"].get("requisitos")
-        if previous_reqs:
+        if previous_reqs and (existing["breakdown_json"].get("meta") or {}).get("evidence_policy_version") == EVIDENCE_POLICY_VERSION:
             analisis_previo = {
                 "veredicto": existing["verdict"],
                 "score": existing["score"],
@@ -208,8 +218,9 @@ def analyze_match_job(
                 ],
             }
 
+    profile_evidence = evidence_only_profile({field: profile[field] for field in PROFILE_FIELDS})
     result = MatchAnalyzer(settings).analyze(
-        perfil={field: profile[field] for field in PROFILE_FIELDS},
+        perfil=profile_evidence,
         oportunidad={
             "codigo": contract["codigo"],
             "descripcion": contract["descripcion"],
@@ -226,7 +237,11 @@ def analyze_match_job(
     _apply_econ_rule(
         requisitos_final,
         exigido=_econ_exigido(facet_rows),
-        capacidad=_econ_capacity({field: profile[field] for field in PROFILE_FIELDS}),
+        capacidad=_econ_capacity(profile_evidence),
+        consorcio_status=((contract["summary_json"] or {}).get("participation") or {}).get("consorcio", {}).get("status", "not_identified"),
+    )
+    guarded_actions = guard_participation_actions(
+        requisitos_final, list(analysis.acciones_recomendadas), contract["summary_json"],
     )
 
     # El veredicto se agrega por reglas desde los estados; el score del modelo
@@ -265,10 +280,11 @@ def analyze_match_job(
             for item in requisitos_final
         ],
         "acciones_recomendadas": [
-            clipped for clipped in (_clip(item, 110) for item in analysis.acciones_recomendadas[:4]) if clipped
+            clipped for clipped in (_clip(item, 110) for item in guarded_actions[:4]) if clipped
         ],
         "meta": {
             "model": result.model,
+            "evidence_policy_version": EVIDENCE_POLICY_VERSION,
             "prompt_version": result.prompt_version,
             "profile_hash": profile_hash,
             "facets_hash": facets_hash,

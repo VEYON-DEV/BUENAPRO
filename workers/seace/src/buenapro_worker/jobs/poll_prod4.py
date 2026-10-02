@@ -75,6 +75,7 @@ def select_technology_processes(
     segment_rows: dict[int, list[dict[str, Any]]],
     service_prefixes: list[str],
     technology_terms: list[str],
+    additional_rules: list[dict[str, Any]] | None = None,
 ) -> dict[int, tuple[str, list[dict[str, Any]], list[str]]]:
     """Use native object listings for type, segment rows only for tech relevance.
 
@@ -104,18 +105,32 @@ def select_technology_processes(
                 continue
             object_type = rows_by_id[procedure_id][0]
             cubso = str(row.get("codCubso") or "").strip()
+            listing_text = _slug(" ".join(
+                str(part or "")
+                for item in rows_by_id[procedure_id][1]
+                for part in (item.get("sintesisProceso"), item.get("detItem"))
+            ))
             if segment == 43 and object_type == "good" and cubso.startswith("43"):
                 reasons[procedure_id].add("cubso:43")
             elif segment == 81 and object_type == "service":
                 match = next((prefix for prefix in service_prefixes if cubso.startswith(prefix)), None)
-                listing_text = _slug(" ".join(
-                    str(part or "")
-                    for item in rows_by_id[procedure_id][1]
-                    for part in (item.get("sintesisProceso"), item.get("detItem"))
-                ))
                 if match and any(term in listing_text for term in normalized_terms):
                     reasons[procedure_id].add(f"cubso:{match}")
                     reasons[procedure_id].add("text:technology")
+            for rule in additional_rules or []:
+                if segment not in rule["segments"] or object_type not in rule["objects"]:
+                    continue
+                if not cubso.startswith(str(segment)):
+                    continue
+                # Exact normalized tokens/phrases: PLC must not match an
+                # unrelated word containing those letters (or FAT a surname).
+                for term in rule["terms"]:
+                    signal = _slug(term)
+                    if signal and f"_{signal}_" in f"_{listing_text}_":
+                        reasons[procedure_id].update((
+                            f"sector:{rule['key']}", f"cubso:{segment}", f"text:{signal}",
+                        ))
+                        break
 
     return {
         procedure_id: (rows_by_id[procedure_id][0], rows_by_id[procedure_id][1], sorted(match_reasons))
@@ -369,14 +384,14 @@ def _upsert_detail(repo: JobRepository, procedure_id: int, detail: dict[str, Any
         )
     # A new or removed bases PDF must invalidate the old final verdict even
     # when the opt-in LLM pipeline is disabled. Preliminary fit remains intact.
-    if previous_analysis and previous_analysis["analyzed_document_code"] is not None:
-        from buenapro_worker.jobs.prod4_documents import select_official_requirements_pdf
+    from buenapro_worker.jobs.prod4_documents import mark_unsupported_current_document, select_official_requirements_pdf
 
-        current_documents = repo.conn.execute(
-            """SELECT codigo_alfresco, name, document_type, extension, published_at
-               FROM prod4_documents WHERE id_procedimiento = %s""",
-            (procedure_id,),
-        ).fetchall()
+    current_documents = repo.conn.execute(
+        """SELECT codigo_alfresco, name, document_type, extension, published_at
+           FROM prod4_documents WHERE id_procedimiento = %s""",
+        (procedure_id,),
+    ).fetchall()
+    if previous_analysis and previous_analysis["analyzed_document_code"] is not None:
         selected = select_official_requirements_pdf([dict(row) for row in current_documents])
         selected_code = selected["codigo_alfresco"] if selected else None
         if selected_code != previous_analysis["analyzed_document_code"]:
@@ -406,6 +421,7 @@ def _upsert_detail(repo: JobRepository, procedure_id: int, detail: dict[str, Any
                      document_analysis_checked_at = NULL WHERE id_procedimiento = %s""",
                 (procedure_id,),
             )
+    mark_unsupported_current_document(repo, procedure_id, [dict(row) for row in current_documents])
     repo.conn.execute(
         """UPDATE opportunity_sources
            SET native_values = native_values || %s::jsonb
@@ -429,7 +445,10 @@ def poll_prod4(settings: Settings, repo: JobRepository, client: Prod4Client | No
         segments = {segment: source.by_segment(segment) for segment in settings.prod4_segments}
         if not goods or not services or not any(segments.values()):
             raise ValueError("PROD4 returned an unexpectedly empty source slice; snapshot was not applied")
-        selected = select_technology_processes(goods, services, segments, settings.prod4_service_prefixes, settings.prod4_terms)
+        selected = select_technology_processes(
+            goods, services, segments, settings.prod4_service_prefixes,
+            settings.prod4_terms, settings.prod4_relevance_rules,
+        )
         previous_count = repo.conn.execute(
             "SELECT count(*) AS total FROM prod4_processes WHERE missing_since IS NULL"
         ).fetchone()["total"]
@@ -468,7 +487,7 @@ def poll_prod4(settings: Settings, repo: JobRepository, client: Prod4Client | No
                 settings, repo, limit=settings.prod4_document_enqueue_limit_per_poll
             )
 
-        # Because all four slices returned successfully, absence is meaningful
+        # Because all configured slices returned successfully, absence is meaningful
         # only as a departure from this source snapshot, not as an adjudication.
         missing = repo.conn.execute(
             """UPDATE prod4_processes SET missing_since = %s, updated_at = now()

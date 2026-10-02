@@ -211,9 +211,19 @@ def run(settings: Settings, args) -> dict:
             pid = int(row["id_procedimiento"])
             if args.process_id and pid != args.process_id:
                 continue
+            profile_id = getattr(args, "profile_id", None)
+            if profile_id:
+                relevant = conn.execute("""SELECT fit.keyword_points > 0 AS relevant
+                    FROM prod4_processes p
+                    JOIN LATERAL profile_prod4_fit(%s, p.id_procedimiento) fit ON true
+                    WHERE p.id_procedimiento = %s
+                      AND (p.proposals_closes_at IS NULL OR p.proposals_closes_at > now())""",
+                    (profile_id, pid)).fetchone()
+                if not relevant or not relevant["relevant"]:
+                    continue
             docs = conn.execute("SELECT * FROM prod4_documents WHERE id_procedimiento = %s", (pid,)).fetchall()
             selected = select_official_requirements_pdf([dict(doc) for doc in docs])
-            if selected is None or not _profile_has_relevant_fit(repo, pid):
+            if selected is None or (not profile_id and not _profile_has_relevant_fit(repo, pid)):
                 continue
             if row["analyzed_document_code"] == selected["codigo_alfresco"] and row["document_analysis_reason"] == "pdf_exceeds_analysis_limit" and settings.prod4_max_analysis_pdf_bytes <= 20 * 1024 * 1024:
                 continue  # Known oversized source needs explicit size-policy review, not repeated downloads.
@@ -295,7 +305,8 @@ def route_matches(settings: Settings, args) -> dict:
         conn.commit()
         for row in rows:
             result = route_prod4_profiles_job(settings, JobRepository(conn),
-                id_procedimiento=row["id_procedimiento"], extraction_id=row["id"])
+                id_procedimiento=row["id_procedimiento"], extraction_id=row["id"],
+                profile_id=getattr(args, "profile_id", None))
             conn.commit()
             totals["documents"] += 1
             totals["enqueued"] += result["enqueued"]
@@ -309,6 +320,7 @@ def main():
     parser.add_argument("--ssh-key", required=True)
     parser.add_argument("--execute", action="store_true", help="Default is read-only inventory")
     parser.add_argument("--process-id", type=int)
+    parser.add_argument("--profile-id", type=UUID, help="Restrict document inventory and matching to one profile; reading requires a keyword hit, matching retains the profile fit threshold")
     parser.add_argument("--limit", type=int, default=1)
     parser.add_argument("--daily-limit", type=int, help="Explicit one-run extraction count override; does not modify production configuration")
     parser.add_argument("--max-pdf-bytes", type=int, help="Explicit local size override, at most 100000000 bytes; per-part Files API size is bounded")

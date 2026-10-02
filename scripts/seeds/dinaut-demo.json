@@ -1,0 +1,42 @@
+{
+  "tenant_name": "DINAUT · Demostración",
+  "profile": {
+    "ruc": "20343877294",
+    "razon_social": "DIN AUTOMATIZACION S.A.C.",
+    "identity_json": {
+      "commercial_name": "DINAUT",
+      "website": "https://dinaut.com/servicios.html",
+      "is_demo": true,
+      "rnp": [],
+      "cci": "",
+      "ruc_source": "https://www.sunat.gob.pe/legislacion/superin/2025/anexo2-000367-2025.pdf",
+      "demo_requested_experience_pen": 5000000,
+      "demo_notice": "Cuenta de demostración. S/ 5 millones es un supuesto solicitado para la presentación, NO experiencia acreditada. No hay profesionales, colegiaturas ni certificados verificados. No usar para afirmar cumplimiento de requisitos."
+    },
+    "finance_json": {},
+    "econ_experience_json": {},
+    "experience_json": [],
+    "team_json": [],
+    "hireable_roles_json": [
+      {"role": "DEMO · Ingeniero de automatización PLC / SCADA", "descripcion": "Plantilla sugerida, no profesional disponible ni acreditado. Completar nombre, CV, colegiatura, años y proyectos reales. Certificados a solicitar: programación PLC, HMI y SCADA del fabricante correspondiente."},
+      {"role": "DEMO · Ingeniero electricista / tableros y CCM", "descripcion": "Plantilla sugerida, no profesional acreditado. Completar experiencia en diseño eléctrico, tableros, CCM y pruebas FAT/SAT; adjuntar título, habilitación CIP y evidencias reales."},
+      {"role": "DEMO · Ingeniero de instrumentación industrial", "descripcion": "Plantilla sugerida, pendiente de contratación o verificación. Solicitar experiencia en lazos de control, transmisores y sensores; certificados reales de instrumentación y calibración cuando corresponda."},
+      {"role": "DEMO · Ingeniero de redes industriales", "descripcion": "Plantilla sugerida, no disponibilidad confirmada. Completar proyectos de Profinet, Profibus y Ethernet industrial; acreditar formación y certificados del fabricante."},
+      {"role": "DEMO · Especialista IIoT / MES / analítica industrial", "descripcion": "Plantilla sugerida. Completar CV y experiencia real en integración industrial, plataformas IIoT, MES, gemelos digitales y mantenimiento predictivo; no hay certificados verificados."},
+      {"role": "DEMO · Jefe de proyectos EPCM", "descripcion": "Plantilla sugerida, no profesional acreditado. Incorporar proyectos, presupuesto gestionado, CV y certificación PMI/PMP solamente si se documenta. Supuesto de presentación: experiencia empresarial S/ 5,000,000, no acreditada ni utilizada para puntajes."}
+    ],
+    "equipment_json": [],
+    "certifications_json": [],
+    "company_keywords": ["automatización industrial", "control industrial", "ingeniería eléctrica", "instrumentación industrial", "tableros eléctricos", "redes industriales", "sistemas scada", "programación plc", "comisionamiento industrial", "digitalización industrial", "mantenimiento predictivo", "integración industrial"]
+  },
+  "lines": [
+    {"nombre": "Automatización y control industrial", "cubso_segmentos": ["81", "73", "43"], "keyword_phrases": ["automatización industrial", "programación de plc", "sistemas scada", "sistemas de control", "control de procesos", "sistemas distribuidos", "tableros de control", "supervisión industrial"], "keyword_terms": ["plc", "scada", "hmi", "dcs", "pcs7", "cemat", "braumat", "automatización", "servos", "controladores"]},
+    {"nombre": "Ingeniería eléctrica y fabricación de tableros", "cubso_segmentos": ["72", "81", "39"], "keyword_phrases": ["ingeniería eléctrica", "tableros eléctricos", "centros de control", "salas eléctricas", "planos unifilares", "montaje eléctrico", "variadores de velocidad", "diseño eléctrico"], "keyword_terms": ["ccm", "tableros", "variadores", "electromecánico", "unifilar", "arrancadores", "contactores", "protecciones", "cableado", "motores"]},
+    {"nombre": "Instrumentación y medición industrial", "cubso_segmentos": ["81", "41", "32"], "keyword_phrases": ["instrumentación industrial", "lazos de control", "sensores industriales", "transmisores de presión", "medición de caudal", "control de nivel", "medición de temperatura", "integración de sensores"], "keyword_terms": ["instrumentación", "transmisores", "sensores", "caudalímetros", "presión", "temperatura", "actuadores", "medición", "instrumentos", "registradores"]},
+    {"nombre": "Comisionamiento y puesta en marcha", "cubso_segmentos": ["72", "73", "81"], "keyword_phrases": ["puesta en marcha", "pruebas fat", "pruebas sat", "comisionamiento de equipos", "mantenimiento industrial", "mantenimiento electromecánico", "soporte remoto", "mantenimiento de tableros"], "keyword_terms": ["comisionamiento", "commissioning", "fat", "sat", "cat", "diagnóstico", "electromecánica", "arranque", "planta", "operación"]},
+    {"nombre": "Digitalización industrial, IIoT y MES", "cubso_segmentos": ["81", "43"], "keyword_phrases": ["internet industrial", "mantenimiento predictivo", "gemelos digitales", "visión artificial", "sistemas mes", "analítica industrial", "integración erp", "monitoreo de condiciones"], "keyword_terms": ["iiot", "iot", "mes", "erp", "telemetría", "predictivo", "digitalización", "manufactura", "trazabilidad", "analítica"]},
+    {"nombre": "Redes de comunicación industrial", "cubso_segmentos": ["43", "32", "81"], "keyword_phrases": ["redes industriales", "comunicación industrial", "ethernet industrial", "arquitectura de comunicación", "configuración de redes", "redes profibus", "redes profinet", "switch industrial"], "keyword_terms": ["profinet", "profibus", "ethernet", "devicenet", "mpi", "asi", "modbus", "conectividad", "comunicaciones", "switch"]},
+    {"nombre": "Robótica y optimización de procesos", "cubso_segmentos": ["81", "23", "43"], "keyword_phrases": ["robótica colaborativa", "robots colaborativos", "automatización de procesos", "inspección visual", "cámaras industriales", "optimización de procesos", "aprendizaje automático", "realidad aumentada"], "keyword_terms": ["cobots", "robótica", "robots", "visión", "inspección", "simulación", "optimización", "cámaras", "algoritmos", "productividad"]},
+    {"nombre": "Capacitación en automatización industrial", "cubso_segmentos": ["86", "81"], "keyword_phrases": ["capacitación en automatización", "cursos de plc", "capacitación scada", "control de procesos", "entrenamiento industrial", "configuración de sistemas", "capacitación redes industriales", "operación de equipos"], "keyword_terms": ["capacitación", "entrenamiento", "plc", "scada", "hmi", "dcs", "profinet", "profibus", "cemat", "pcs7"]}
+  ]
+}

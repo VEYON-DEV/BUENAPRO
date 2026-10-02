@@ -13,6 +13,7 @@ class Prod4Client:
     """Read-only client for the public current-opportunities API."""
 
     def __init__(self, settings: Settings) -> None:
+        self._allowed_segments = frozenset(settings.prod4_segments)
         self._client = httpx.Client(
             base_url=settings.prod4_base_url.rstrip("/") + "/",
             timeout=settings.seace_timeout_seconds,
@@ -46,8 +47,8 @@ class Prod4Client:
         return rows
 
     def by_segment(self, segment: int) -> list[dict[str, Any]]:
-        if segment not in (43, 81):
-            raise ValueError("Only configured technology segments are in scope")
+        if segment not in self._allowed_segments:
+            raise ValueError("Only configured relevance-rule segments are in scope")
         rows = self._get(f"listaProcesosCubso/codigoSegmento/{segment}")
         if not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
             raise TypeError("PROD4 segment listing changed shape")

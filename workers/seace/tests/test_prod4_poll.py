@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from unittest.mock import MagicMock, patch
 from datetime import datetime, timezone
 
@@ -14,6 +15,7 @@ from buenapro_worker.jobs.poll_prod4 import (
     select_technology_processes,
 )
 from buenapro_worker.settings import Settings
+from buenapro_worker.prod4.client import Prod4Client
 
 
 def settings(**overrides: object) -> Settings:
@@ -82,6 +84,59 @@ def test_rejects_ambiguous_native_object_classification() -> None:
             [row(101, 62, "43")], [row(101, 65, "811121")],
             {43: [row(101, 62, "43")]}, ["811121"], ["software"],
         )
+
+
+def test_configurable_industrial_rules_require_segment_and_specific_signal() -> None:
+    electric = {**row(901, 62, "391211"), "sintesisProceso": "Adquisición de tableros eléctricos y PLC"}
+    generic = {**row(902, 62, "391211"), "sintesisProceso": "Adquisición de lámparas LED"}
+    engineering = {**row(903, 65, "811015"), "sintesisProceso": "Servicio de automatización industrial SCADA"}
+    accidental = {**row(904, 65, "811015"), "sintesisProceso": "Servicio de impresión de catálogos"}
+    rules = [{"key": "industrial", "segments": [39, 81], "objects": ["good", "service"],
+              "terms": ["tableros eléctricos", "plc", "scada", "cat"]}]
+    selected = select_technology_processes(
+        [electric, generic], [engineering, accidental],
+        {39: [electric, generic], 81: [engineering, accidental]}, [], [], rules,
+    )
+    assert set(selected) == {901, 903}
+    assert "sector:industrial" in selected[901][2]
+    assert selected[903][0] == "service"
+    assert select_technology_processes([electric], [], {39: [electric]}, [], []) == {}
+
+
+def test_industrial_rule_cannot_use_mismatched_cubso_or_object() -> None:
+    item = {**row(901, 62, "431211"), "sintesisProceso": "Tableros eléctricos"}
+    rules = [{"key": "electric", "segments": [39], "objects": ["good"], "terms": ["tableros eléctricos"]}]
+    assert select_technology_processes([item], [], {39: [item]}, [], [], rules) == {}
+    rules[0]["objects"] = ["service"]
+    item["codCubso"] = "391211"
+    assert select_technology_processes([item], [], {39: [item]}, [], [], rules) == {}
+
+
+def test_settings_expand_segments_only_from_explicit_rules() -> None:
+    config = settings(prod4_additional_relevance_rules=json.dumps([
+        {"key": "electric", "segments": [39, 72, 81], "objects": ["good", "service"], "terms": ["tableros eléctricos"]},
+    ]))
+    assert config.prod4_segments == [39, 43, 72, 81]
+    assert settings().prod4_segments == [43, 81]
+
+
+@pytest.mark.parametrize("rules", ["{}", '[{"key":"industrial","segments":[39],"objects":["work"],"terms":["scada"]}]',
+    '[{"key":"industrial","segments":[39],"objects":["good"],"terms":[]}]'])
+def test_invalid_industrial_configuration_fails_closed(rules: str) -> None:
+    with pytest.raises(ValueError):
+        _ = settings(prod4_additional_relevance_rules=rules).prod4_segments
+
+
+def test_client_accepts_explicit_sector_segments_and_rejects_unconfigured_ones() -> None:
+    config = settings(prod4_additional_relevance_rules=json.dumps([
+        {"key": "electric", "segments": [39], "objects": ["good"], "terms": ["tableros eléctricos"]},
+    ]))
+    with Prod4Client(config) as client:
+        with patch.object(client, "_get", return_value=[]) as get:
+            assert client.by_segment(39) == []
+            get.assert_called_once_with("listaProcesosCubso/codigoSegmento/39")
+            with pytest.raises(ValueError, match="configured"):
+                client.by_segment(80)
 
 
 def test_dates_and_reserved_amount_keep_distinct_deadlines() -> None:

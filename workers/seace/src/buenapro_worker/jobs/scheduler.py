@@ -45,6 +45,11 @@ def enqueue_scheduled_jobs(settings: Settings, repo: JobRepository, *, anio: int
 
 def enqueue_poll_search_jobs(settings: Settings, repo: JobRepository, *, year: int) -> dict[str, int | None]:
     jobs: dict[str, int | None] = {}
+    if settings.prod6_profile_poll_enabled:
+        jobs["poll_prod6_profiles"] = repo.enqueue(
+            "poll_prod6_profiles", {"anio": year}, queue_name="io",
+            dedup_key=f"poll_prod6_profiles:{year}", priority=1,
+        )
     for objeto in settings.allowed_codigo_objeto:
         for segment in settings.allowed_segments:
             key = f"poll_search:{year}:{objeto}:{segment}"

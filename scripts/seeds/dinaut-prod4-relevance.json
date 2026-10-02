@@ -1,0 +1,50 @@
+[
+  {
+    "key": "dinaut-control-industrial",
+    "segments": [81, 73, 43],
+    "objects": ["good", "service"],
+    "terms": ["automatización industrial", "programación de plc", "sistemas scada", "tableros de control", "tablero de control", "controlador lógico programable", "controladores lógicos programables", "plc", "scada", "hmi", "dcs", "pcs7", "cemat", "braumat"]
+  },
+  {
+    "key": "dinaut-electrica-tableros",
+    "segments": [72, 81, 39],
+    "objects": ["good", "service"],
+    "terms": ["tableros eléctricos", "tablero eléctrico", "montaje eléctrico", "variadores de velocidad", "variador de velocidad", "ingeniería eléctrica", "diseño eléctrico", "salas eléctricas", "planos unifilares", "electromecánico", "electromecánica", "ccm"]
+  },
+  {
+    "key": "dinaut-instrumentacion",
+    "segments": [81, 41, 32],
+    "objects": ["good", "service"],
+    "terms": ["instrumentación industrial", "lazos de control", "sensores industriales", "transmisores de presión", "medición de caudal", "control de nivel", "integración de sensores", "caudalímetros"]
+  },
+  {
+    "key": "dinaut-comisionamiento",
+    "segments": [72, 73, 81],
+    "objects": ["good", "service"],
+    "terms": ["pruebas fat", "pruebas sat", "comisionamiento de equipos", "mantenimiento industrial", "mantenimiento electromecánico", "mantenimiento de tableros", "comisionamiento", "commissioning"]
+  },
+  {
+    "key": "dinaut-digitalizacion-industrial",
+    "segments": [81, 43],
+    "objects": ["good", "service"],
+    "terms": ["internet industrial", "mantenimiento predictivo", "gemelos digitales", "sistemas mes", "analítica industrial", "monitoreo de condiciones", "iiot"]
+  },
+  {
+    "key": "dinaut-redes-industriales",
+    "segments": [43, 32, 81],
+    "objects": ["good", "service"],
+    "terms": ["redes industriales", "comunicación industrial", "ethernet industrial", "redes profibus", "redes profinet", "switch industrial", "profinet", "profibus", "devicenet", "modbus"]
+  },
+  {
+    "key": "dinaut-robotica-industrial",
+    "segments": [81, 23, 43],
+    "objects": ["good", "service"],
+    "terms": ["robótica colaborativa", "robots colaborativos", "cámaras industriales", "cobots"]
+  },
+  {
+    "key": "dinaut-capacitacion-industrial",
+    "segments": [86, 81],
+    "objects": ["service"],
+    "terms": ["capacitación en automatización", "cursos de plc", "capacitación scada", "entrenamiento industrial", "capacitación redes industriales", "plc", "scada", "profinet", "profibus", "cemat", "pcs7"]
+  }
+]
