@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Archive, Download, FileText, Plus, Search, ShieldCheck, Trash2, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -67,6 +67,11 @@ export function CompanyLibraryPanel({ initialLibrary }: Props) {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const refresh = () => { void apiFetch<{ data: LibraryData }>("/api/profile/library").then(result => setLibrary(result.data)).catch(() => setStatus("El archivo se guardó. Recarga la página para actualizar la biblioteca.")); };
+    window.addEventListener("profile-library-changed", refresh);
+    return () => window.removeEventListener("profile-library-changed", refresh);
+  }, []);
 
   const filteredKnowledge = useMemo(
     () =>

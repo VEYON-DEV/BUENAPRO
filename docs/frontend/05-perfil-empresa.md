@@ -103,6 +103,24 @@ Guardar perfil o lineas encola `match_profile` en backend.
 
 ## UX
 
+### Rework de capacidad y equipo (2026-10-02)
+
+Por solicitud del usuario, la composición pasa del rail estrecho de capacidad a seis secciones de ancho completo: Radar, Equipo, Experiencia, Recursos, Documentos y Empresa. Mantiene materiales, controles, jerarquía y shell de `09-perfil-empresa.png` y del Components Kit aprobado; la navegación progresiva sustituye la sábana de formularios. Esta especificación reemplaza las indicaciones de rail de capacidad de la versión anterior.
+
+- Radar conserva líneas y keywords; Empresa contiene identidad/RNP/CCI y conexión SEACE independiente.
+- Equipo: ficha por profesional con rol, nombre opcional (sin DNI), grado, carrera, experiencia en años, colegiatura y especialidad. Cada ficha admite múltiples experiencias, capacitaciones/certificados y respaldo por archivo. Perfiles contratables plegados y separados de profesionales disponibles.
+- Experiencia: montos acreditables de servicios/bienes y contratos individuales con entidad, objeto, monto, año y conformidad.
+- Recursos: certificaciones/seguros de empresa y equipamiento, con altas individuales. No convertir registros ricos en CSV.
+- Se conserva la metadata desconocida y los strings heredados; solamente el registro editado se normaliza a objeto. No requiere migración SQL ni modifica workers/modelos.
+- Persistencia en las columnas JSONB existentes por `PUT /api/profile`. Campos personales: `team_json[].{role,nombre,grado,carrera,experiencia_anios,colegiatura,especialidad,experience[],certifications[],documents[]}`. Contratos conservan `{objeto,entidad,monto,anio}`. Certificados usan `{nombre,entidad,fecha,valid_until,horas,descripcion}` según contexto.
+- `documents[]` contiene referencias `{id,title,filename,downloadUrl}` devueltas por `POST /api/profile/library/documents`; la descarga usa la ruta tenant-safe por ID, no una URL externa introducida en JSON. Archivos hasta 10 MB en los formatos existentes. Desvincular una ficha no borra archivos de la biblioteca.
+- Subir respaldo **no extrae automáticamente su contenido**: matching recibe datos declarados y referencias, no lectura de los archivos. No representar adjuntos como acreditación verificada.
+- Borrado con confirmación, validación de nuevos registros incluso si están plegados o en otra sección, guardado bloqueado durante subida, prevención de salida con cambios pendientes y error recuperable. RUC existente no editable para evitar crear accidentalmente otro perfil.
+- Guardar conserva keywords del radar, actualiza el resumen y encola el rematch existente. Los puntajes documentales requieren reevaluación, no se prometen inmediatos.
+- «Secciones con datos» reemplaza «Completitud»: mide presencia, no calidad ni cumplimiento. Mobile reduce el resumen y revela el editor sin un rail lateral.
+
+QA: `node --test scripts/profile_records.test.mjs` (8 casos); `scripts/qa_profile.py` (datos reales de lectura, todas las escrituras/subidas interceptadas; no altera producción). Capturas `docs/new-style/qa/profile-{radar,team,editor}-{desktop,laptop,mobile}-20261002.png` y `profile-team-list-mobile-20261002.png`. Guardado compatible y upload payload comprobados en navegador; no se realizó una subida real de QA a R2.
+
 - No mostrar todo como una sabana interminable.
 - Usar secciones colapsables o tabs verticales.
 - Guardado por seccion.

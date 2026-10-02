@@ -1,7 +1,7 @@
 import { AppShell } from "@/features/shell";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { query } from "@/server/db/client";
-import { ProfileForm } from "../../components/ProfileForm";
+import { ProfileWorkspace } from "../../components/ProfileWorkspace";
 import { BusinessLinesPanel } from "../../components/BusinessLinesPanel";
 import { SeaceConnectionPanel } from "../../components/SeaceConnectionPanel";
 import { CompanyKeywordsPanel } from "../../components/CompanyKeywordsPanel";
@@ -69,33 +69,26 @@ export async function ProfilePage({ tenantId }: { tenantId: string }) {
 
   return (
     <AppShell title="Perfil">
-      <PageHeader title="Perfil de empresa" description="Configura el radar que BuenaPro usa para descubrir y evaluar oportunidades." meta={tenant.rows[0]?.name ?? "Workspace"} />
+      <PageHeader title="Perfil de empresa" description="Organiza tu radar, equipo y evidencia para evaluar oportunidades." meta={tenant.rows[0]?.name ?? "Empresa"} />
       <section className={styles.identity}>
         <div className={styles.companyMark}>{(profileRow?.razon_social ?? "BP").slice(0, 2).toUpperCase()}</div>
         <div className={styles.company}><h2>{profileRow?.razon_social ?? "Completa tu empresa"}</h2><p>{profileRow?.ruc ? `RUC ${profileRow.ruc}` : "Sin RUC registrado"}</p></div>
-        <div className={styles.completion}><div><span>Completitud</span><strong>{completion}%</strong></div><i><b style={{ width: `${completion}%` }} /></i></div>
+        <div className={styles.completion}><div><span>Secciones con datos</span><strong>{completion}%</strong></div><i><b style={{ width: `${completion}%` }} /></i><small>No acredita cumplimiento ni verifica documentos.</small></div>
       </section>
       <section className={styles.signalStrip} aria-label="Resumen del perfil">
         <div><span>Líneas</span><strong>{lines.rows.length}</strong></div>
-        <div><span>Keywords</span><strong>{keywordCount}</strong></div>
+        <div><span>Palabras clave</span><strong>{keywordCount}</strong></div>
         <div><span>Experiencia acreditable</span><strong>{money(Object.values(profileRow?.econ_experience_json ?? {}).map(Number).filter(Number.isFinite).sort((a, b) => b - a)[0])}</strong></div>
         <div><span>Equipo</span><strong>{profileRow?.team_json?.length ?? 0} perfiles</strong></div>
         <div><span>Biblioteca</span><strong>{libraryCount} piezas</strong></div>
       </section>
-      <div className={styles.workspace}>
-        <div className={styles.primary}>
+      <ProfileWorkspace profile={profileRow} radar={<>
           {profileRow ? <CompanyKeywordsPanel keywords={(profileRow.company_keywords ?? []) as string[]} /> : null}
           <BusinessLinesPanel
             lines={lines.rows as any[]}
             catalogs={catalogs.rows as Array<{ codigo: string; nombre: string; enabled: boolean }>}
           />
-          <CompanyLibraryPanel initialLibrary={library} />
-        </div>
-        <aside className={styles.secondary}>
-          <ProfileForm profile={profileRow} />
-          <SeaceConnectionPanel />
-        </aside>
-      </div>
+          </>} library={<CompanyLibraryPanel initialLibrary={library} />} connection={<SeaceConnectionPanel />} />
     </AppShell>
   );
 }
