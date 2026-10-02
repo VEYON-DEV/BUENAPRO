@@ -146,6 +146,36 @@ def test_listing_preserves_existing_official_registration_and_does_not_invent_cl
     assert params[9] is None and params[10] is None
 
 
+@pytest.mark.parametrize("procedure_id", [101, 1234567])
+@pytest.mark.parametrize("already_exists", [False, True])
+@patch("buenapro_worker.jobs.poll_prod4._ensure_identity", return_value="11111111-1111-4111-8111-111111111111")
+@patch("buenapro_worker.jobs.poll_prod4._existing")
+def test_listing_uses_process_ficha_url_on_insert_and_conflict(
+    existing, _identity, procedure_id: int, already_exists: bool,
+) -> None:
+    repo = MagicMock()
+    current_row = row(procedure_id, 62, "43")
+    scan = datetime(2026, 10, 1, tzinfo=timezone.utc)
+    existing.return_value = (
+        {"raw_listing": [current_row], "raw_detail": {"listaCronograma": []},
+         "detail_fetched_at": scan}
+        if already_exists else None
+    )
+
+    needs_detail = _upsert_listing(repo, procedure_id, "good", [current_row], ["cubso:43"], scan)
+
+    calls = [call for call in repo.conn.execute.call_args_list
+             if "INSERT INTO prod4_processes" in call.args[0]]
+    assert len(calls) == 1
+    sql, params = calls[0].args
+    assert params[0] == procedure_id
+    assert params[13] == f"https://prod4.seace.gob.pe/openegocio/#/ficha/idProceso/{procedure_id}"
+    conflict_sql = sql.split("ON CONFLICT (id_procedimiento) DO UPDATE SET", 1)[1]
+    assert "source_url = EXCLUDED.source_url" in conflict_sql
+    assert "prod4_processes.source_url IS DISTINCT FROM EXCLUDED.source_url" in conflict_sql
+    assert needs_detail is not already_exists
+
+
 @patch("buenapro_worker.jobs.poll_prod4._upsert_detail", side_effect=RuntimeError("bad detail SQL"))
 @patch("buenapro_worker.jobs.poll_prod4._upsert_listing", return_value=True)
 def test_bad_detail_uses_savepoint_and_snapshot_continues(_listing: MagicMock, _detail: MagicMock) -> None:

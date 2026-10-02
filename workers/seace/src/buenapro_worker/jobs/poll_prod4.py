@@ -19,7 +19,7 @@ from buenapro_worker.settings import Settings
 
 logger = logging.getLogger(__name__)
 LIMA = ZoneInfo("America/Lima")
-PROD4_PORTAL = "https://prod4.seace.gob.pe/openegocio/#/georeferenciacion/"
+PROD4_FICHA_URL = "https://prod4.seace.gob.pe/openegocio/#/ficha/idProceso/{}"
 DOCUMENT_URL = "https://prod1.seace.gob.pe/SeaceWeb-PRO/SdescargarArchivoAlfresco?fileCode={}"
 OBJECT_CODES = {62: "good", 65: "service"}
 
@@ -222,6 +222,7 @@ def _upsert_listing(
                THEN EXCLUDED.proposals_start_at ELSE prod4_processes.proposals_start_at END,
              reference_amount = COALESCE(EXCLUDED.reference_amount, prod4_processes.reference_amount),
              currency = EXCLUDED.currency,
+             source_url = EXCLUDED.source_url,
              technology_relevant = true,
              technology_match_reason = EXCLUDED.technology_match_reason,
              last_seen_at = EXCLUDED.last_seen_at,
@@ -229,6 +230,7 @@ def _upsert_listing(
              raw_listing = EXCLUDED.raw_listing,
              updated_at = CASE
                WHEN prod4_processes.raw_listing IS DISTINCT FROM EXCLUDED.raw_listing
+                 OR prod4_processes.source_url IS DISTINCT FROM EXCLUDED.source_url
                  OR prod4_processes.missing_since IS NOT NULL
                THEN now() ELSE prod4_processes.updated_at END""",
         (
@@ -238,7 +240,7 @@ def _upsert_listing(
             schedule_instant(first.get("fecFinParticipantes") or first.get("fechaFin")),
             schedule_instant(first.get("fechaPresentacionPropuestas")), _money(first.get("valorReferencial")),
             "PEN" if first.get("monedaProceso") == "Soles" else first.get("monedaProceso"),
-            PROD4_PORTAL, _json(reasons), scan_at, _json(rows),
+            PROD4_FICHA_URL.format(procedure_id), _json(reasons), scan_at, _json(rows),
         ),
     )
     if not listing_changed:

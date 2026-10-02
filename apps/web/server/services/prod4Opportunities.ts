@@ -49,7 +49,7 @@ const BASE_SELECT = `
   p.proposals_closes_at,
   p.reference_amount,
   p.currency,
-  p.source_url,
+  ('https://prod4.seace.gob.pe/openegocio/#/ficha/idProceso/' || p.id_procedimiento::text) AS source_url,
   p.technology_match_reason,
   p.last_seen_at,
   p.missing_since,
