@@ -1,5 +1,8 @@
 # Tareas - Frontend
 
+- [x] Desplegar detalle PROD4 mediante Git y build Docker web (`702ccda`, 2026-10-02); servicio running, cero reinicios, nueva ruta registrada y acceso sin sesión redirige a login. PostgreSQL confirma 10 extracciones y 27 matching.
+- [ ] Validar visualmente el nuevo detalle PROD4 con sesión autenticada en producción; navegador de QA llega a login. Capturas responsive aprobadas corresponden a app local con datos reales de producción.
+
 - [x] Implementar `/oportunidad/seace/[id]` y conectar Ver detalle completo del radar PROD4: lectura ejecutiva, evaluación personalizada, brechas, evidencia original, documentos oficiales, cronograma y ejecución/ítems; estados pendientes sin puntuación inventada. Reutiliza Glass y componentes aprobados; QA local con datos de producción, nueve capturas responsive y navegación aprobada (2026-10-02).
 - [x] Corregir contador del nuevo detalle PROD4 usando requisitos evaluados con estado `cumple`, no facets menos brechas; conservar cálculo heredado PROD6 pendiente de revisión específica (2026-10-02).
 
