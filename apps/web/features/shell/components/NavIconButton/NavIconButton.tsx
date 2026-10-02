@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, ClipboardCheck, House, Search } from "lucide-react";
+import { BarChart3, ClipboardCheck, House, Search, ChartNoAxesGantt } from "lucide-react";
 import styles from "./NavIconButton.module.css";
 
-const icons = { home: House, search: Search, market: BarChart3, applications: ClipboardCheck };
+const icons = { home: House, search: Search, market: BarChart3, applications: ClipboardCheck, calendar: ChartNoAxesGantt };
 type NavIconName = keyof typeof icons;
 
 export function NavIconButton({ href, label, icon }: { href: string; label: string; icon: NavIconName }) {

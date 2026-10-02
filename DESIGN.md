@@ -135,7 +135,7 @@ Familia: `Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "S
 - Marca arriba; cuenta y accesos secundarios abajo.
 - Item activo con fondo violeta suave, icono y texto violeta, radio `14px`.
 - Topbar se integra con el lienzo; no repite el titulo principal.
-- Mobile usa bottom navigation glass con los tres destinos principales.
+- Mobile usa bottom navigation glass con Inicio, Oportunidades, Cronograma, Mercado y Postulaciones.
 
 ## Componentes
 

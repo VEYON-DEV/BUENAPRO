@@ -165,3 +165,4 @@ Perfil y Alertas viven en el menu de cuenta. Admin y Swagger no forman parte del
 - [10 Workspace de postulación](./10-postulacion.md)
 - [11 Copiloto de licitación](./11-copiloto-licitacion.md)
 - [12 Inteligencia de mercado](./12-mercado.md)
+- [13 Cronograma de oportunidades](./13-cronograma.md)

@@ -1,5 +1,7 @@
 # Tareas - Backend/Web
 
+- [x] Crear `GET /api/cronograma` tenant-scoped en lote para menores/SEACE, con match documental vigente prioritario sobre fit, exclusión rojo/gris/vencidos y todos los eventos oficiales con precisión/fuente. Ocho pruebas backend, consultas read-only reales con 11 menores/23 SEACE y aislamiento de tenants aprobadas; sin LLM ni cambios DB (2026-10-02).
+
 - [x] Corregir «Revisar en SEACE»: API genera ficha oficial por id_procedimiento, migración0034 repara94/94 URLs y worker mantiene enlace por concurso. Desplegado3609491 web/worker-io; test backend, TypeScript/build y175 pruebas worker; ficha1254603 verificada en navegador normal, sin cambio visual ni auth (2026-10-02).
 
 - [x] Exponer consortium_status, subcontracting_status y participation_terms_json en detalle API de contratos menores/concursos SEACE, conservando payload previo. TypeScript/build aprobados y web desplegada24577ed; sin cambios visuales (2026-10-02).

@@ -1,5 +1,8 @@
 # Tareas - Frontend
 
+- [x] Implementar `/cronograma` en sidebar con Gantt amplio PROD6/PROD4, afinidad 2–3 sin evaluar o amarillo/verde documental, etapas oficiales sin solapamiento, Hoy/rangos/búsqueda/detalle y agenda móvil. Diez pruebas, TypeScript/arquitectura, capturas reales desktop1600/laptop1024/mobile390 revisadas, teclado y empty/error aprobados (2026-10-02). Evidencia `docs/new-style/qa/gantt-prod{4,6}-{desktop,laptop,mobile}-20261002.png`.
+- [ ] Publicar Gantt en producción por Git y verificar web/rutas privadas sin alterar workers ni ejecutar Gemini.
+
 - [x] Desplegar detalle PROD4 mediante Git y build Docker web (`702ccda`, 2026-10-02); servicio running, cero reinicios, nueva ruta registrada y acceso sin sesión redirige a login. PostgreSQL confirma 10 extracciones y 27 matching.
 - [ ] Validar visualmente el nuevo detalle PROD4 con sesión autenticada en producción; navegador de QA llega a login. Capturas responsive aprobadas corresponden a app local con datos reales de producción.
 

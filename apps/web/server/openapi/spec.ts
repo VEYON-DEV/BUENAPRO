@@ -53,6 +53,22 @@ export const openApiSpec = {
     { name: "Auth" },
   ],
   paths: {
+    "/api/cronograma": {
+      get: {
+        tags: ["Feed"],
+        summary: "Gantt tenant-scoped con etapas oficiales de oportunidades relevantes",
+        description: "Todas las oportunidades actuales con afinidad 2–3 sin evaluación o evaluación documental vigente ambar/verde; excluye ofertas vencidas. Conserva precisión de día/hora y fechas desconocidas, sin LLM. Respuesta directa {data,meta}, sin paginación.",
+        parameters: [
+          { name: "source", in: "query", schema: { type: "string", enum: ["prod6", "prod4"], default: "prod6" } },
+          { name: "q", in: "query", schema: { type: "string", maxLength: 120 } },
+        ],
+        responses: {
+          "200": { description: "Oportunidades con identidad canónica, afinidad/evaluación, schedule, deadline y fecha de consulta", content: json({ type: "object", required: ["data", "meta"], properties: { data: { type: "array", items: { type: "object" } }, meta: { type: "object" } } }) },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+        },
+      },
+    },
     "/api/feed": {
       get: {
         tags: ["Feed"],

@@ -10,6 +10,7 @@ import styles from "./IconRail.module.css";
 const nav = [
   { href: "/", label: "Inicio", icon: "home" as const },
   { href: "/feed", label: "Oportunidades", icon: "search" as const },
+  { href: "/cronograma", label: "Cronograma", icon: "calendar" as const },
   { href: "/mercado", label: "Mercado", icon: "market" as const },
   { href: "/postulaciones", label: "Postulaciones", icon: "applications" as const },
 ];

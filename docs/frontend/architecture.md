@@ -161,6 +161,7 @@ Cuando dos dominios necesitan la misma pieza:
 | `auth` | `/login`, `/registro` |
 | `onboarding` | `/onboarding` |
 | `opportunities` | `/feed` |
+| `timeline` | `/cronograma`, Gantt de oportunidades relevantes y agenda móvil |
 | `opportunity-detail` | `/oportunidad/[id]` |
 | `procurement` | Composiciones de negocio oficiales compartidas entre fuentes, como cronogramas; sin acceso a DB ni rutas |
 | `market-intelligence` | `/mercado`, detalle de proveedor |
