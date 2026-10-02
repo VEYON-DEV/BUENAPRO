@@ -152,6 +152,9 @@ las 88 evaluaciones actuales. No es una factura ni un ledger de todos los
 intentos: excluye thinking, llamadas descartadas y evaluaciones sustituidas.
 Los temporales locales verificados fueron eliminados, no los PDF de SEACE.
 Validación: 103 pruebas del worker pasando.
+Código publicado en `8a118b9` y desplegado en scheduler/worker-io/worker-llm;
+se mantiene modelo `gemini-3.1-flash-lite`, límite remoto 10/día y 20 MiB.
+La ampliación de tamaño y cantidad no quedó activada globalmente en producción.
 
 Para enrutar un lote autorizado ya extraído hacia los workers normales:
 
