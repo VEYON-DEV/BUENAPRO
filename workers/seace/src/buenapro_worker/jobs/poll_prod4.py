@@ -392,7 +392,13 @@ def _upsert_detail(repo: JobRepository, procedure_id: int, detail: dict[str, Any
         (procedure_id,),
     ).fetchall()
     if previous_analysis and previous_analysis["analyzed_document_code"] is not None:
-        selected = select_official_requirements_pdf([dict(row) for row in current_documents])
+        # This comparison is source identity, not a transport capability test.
+        # Preserve a locally-converted current DOCX/RAR/ZIP extraction even
+        # though the server downloader itself remains PDF-only.
+        selected = select_official_requirements_pdf(
+            [dict(row) for row in current_documents],
+            supported_extensions={"pdf", "docx", "rar", "zip"},
+        )
         selected_code = selected["codigo_alfresco"] if selected else None
         if selected_code != previous_analysis["analyzed_document_code"]:
             repo.conn.execute(

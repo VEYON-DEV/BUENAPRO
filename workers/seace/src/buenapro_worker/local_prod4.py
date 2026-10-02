@@ -10,6 +10,7 @@ import hashlib
 import io
 import json
 import socket
+import shutil
 import subprocess
 import tempfile
 import time
@@ -32,6 +33,7 @@ from buenapro_worker.prod4.client import DocumentTooLargeError
 from buenapro_worker.settings import Settings
 from buenapro_worker.jobs.prod4_match import route_prod4_profiles_job
 from google.genai import types
+from buenapro_worker.local_document_conversion import prepare_pdf
 
 
 class BrowserAccessError(RuntimeError):
@@ -83,12 +85,16 @@ def production_settings(args):
 
 
 class OfficialBrowserDownload:
+    supported_extensions = {"pdf", "docx", "rar", "zip"}
+
     def __init__(self, browser, procedure_id: int, directory: Path):
         self.browser = browser
         self.procedure_id = procedure_id
         self.directory = directory
         self.path: Path | None = None
         self.sha256: str | None = None
+        self.original_sha256: str | None = None
+        self.original_path: Path | None = None
 
     def download_document(self, code: UUID, *, max_bytes: int) -> bytes:
         context = self.browser.new_context(accept_downloads=True, locale="es-PE")
@@ -112,17 +118,20 @@ class OfficialBrowserDownload:
             download = event.value
             if download.failure():
                 raise ValueError("Official browser download failed")
-            self.path = self.directory / "official-document.pdf"
+            suggested = download.suggested_filename
+            extension = Path(suggested).suffix.lower().lstrip(".") if isinstance(suggested, str) else "pdf"
+            if extension not in self.supported_extensions:
+                raise ValueError("Unsupported official document extension")
+            self.path = self.directory / f"official-document.{extension}"
+            self.original_path = self.path
             download.save_as(str(self.path))
             if self.path.stat().st_size > max_bytes:
-                raise DocumentTooLargeError("PDF exceeds configured analysis size limit")
+                raise DocumentTooLargeError("Official document exceeds configured analysis size limit")
             content = self.path.read_bytes()
-            if not content.startswith(b"%PDF-"):
-                raise ValueError("Official document is not a PDF")
-            # Parse independently before spending Gemini tokens.
-            subprocess.run(["pdfinfo", str(self.path)], capture_output=True, check=True, timeout=30)
             self.sha256 = hashlib.sha256(content).hexdigest()
-            return content
+            self.original_sha256 = self.sha256
+            self.path = prepare_pdf(self.path, extension, max_bytes=max_bytes)
+            return self.path.read_bytes()
         finally:
             context.close()
 
@@ -222,7 +231,8 @@ def run(settings: Settings, args) -> dict:
                 if not relevant or not relevant["relevant"]:
                     continue
             docs = conn.execute("SELECT * FROM prod4_documents WHERE id_procedimiento = %s", (pid,)).fetchall()
-            selected = select_official_requirements_pdf([dict(doc) for doc in docs])
+            selected = select_official_requirements_pdf([dict(doc) for doc in docs],
+                                                       supported_extensions=OfficialBrowserDownload.supported_extensions)
             if selected is None or (not profile_id and not _profile_has_relevant_fit(repo, pid)):
                 continue
             if row["analyzed_document_code"] == selected["codigo_alfresco"] and row["document_analysis_reason"] == "pdf_exceeds_analysis_limit" and settings.prod4_max_analysis_pdf_bytes <= 20 * 1024 * 1024:
@@ -268,9 +278,10 @@ def run(settings: Settings, args) -> dict:
                             raise RuntimeError("Durable extraction verification failed; keeping PDF")
                         report["cost_usd"] += float(saved["cost_usd"] or 0)
                         report["verified"] += 1
-                        if downloader.path:
-                            downloader.path.unlink()
-                        directory.rmdir()
+                        # Exact mkdtemp-owned directory; never remove failed or unverified downloads.
+                        if directory.parent.resolve() != args.work_dir.resolve() or not directory.name.startswith(f"prod4-{pid}-"):
+                            raise RuntimeError("Unexpected local cleanup target")
+                        shutil.rmtree(directory)
                     else:
                         if downloader.path is None:
                             directory.rmdir()

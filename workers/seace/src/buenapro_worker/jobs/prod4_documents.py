@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
@@ -34,7 +35,9 @@ def _document_priority(row: dict[str, Any]) -> tuple[int, datetime, str]:
     return rank, published_at, str(row.get("codigo_alfresco"))
 
 
-def select_official_requirements_pdf(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
+def select_official_requirements_pdf(
+    rows: list[dict[str, Any]], *, supported_extensions: set[str] | None = None,
+) -> dict[str, Any] | None:
     """Choose the current authoritative version, THEN require PDF support.
 
     An older administrative PDF cannot replace newer integrated DOCX/RAR
@@ -44,19 +47,36 @@ def select_official_requirements_pdf(rows: list[dict[str, Any]]) -> dict[str, An
     if not candidates:
         return None
     latest = max(_document_priority(row)[:2] for row in candidates)
-    pdfs = [row for row in candidates if _document_priority(row)[:2] == latest
-            and str(row.get("extension") or "").lower().lstrip(".") == "pdf"]
-    return max(pdfs, key=_document_priority) if pdfs else None
+    supported = {extension.lower().lstrip(".") for extension in supported_extensions or {"pdf"}}
+    available = [row for row in candidates if _document_priority(row)[:2] == latest
+                 and str(row.get("extension") or "").lower().lstrip(".") in supported]
+    # Prefer the PDF twin when one exists; converters remain explicitly local.
+    pdfs = [row for row in available if str(row.get("extension") or "").lower().lstrip(".") == "pdf"]
+    return max(pdfs or available, key=_document_priority) if available else None
 
 
 def mark_unsupported_current_document(
-    repo: JobRepository, procedure_id: int, rows: list[dict[str, Any]],
+    repo: JobRepository, procedure_id: int, rows: list[dict[str, Any]], *,
+    supported_extensions: set[str] | None = None,
 ) -> bool:
     """Persist a format limitation, distinct from absence of an official file."""
     official = [row for row in rows if _document_priority(row)[0] > 0]
-    if not official or select_official_requirements_pdf(official) is not None:
+    if not official or select_official_requirements_pdf(official, supported_extensions=supported_extensions) is not None:
         return False
     current = max(official, key=_document_priority)
+    # A PDF-only server cannot redownload this format, but a local reader may
+    # already have converted and analyzed this exact official source. Preserve
+    # that result until the authoritative document identity actually changes.
+    saved = repo.conn.execute(
+        """SELECT id, sha256_original FROM prod4_document_extractions
+           WHERE id_procedimiento = %s AND codigo_alfresco = %s
+             AND is_current = true AND quality <> 'failed'
+           ORDER BY id DESC LIMIT 1""",
+        (procedure_id, current["codigo_alfresco"]),
+    ).fetchone()
+    saved_sha = saved.get("sha256_original") if isinstance(saved, dict) else None
+    if isinstance(saved_sha, str) and re.fullmatch(r"[0-9a-fA-F]{64}", saved_sha):
+        return False
     # Also covers an already-queued old PDF job that executes after a source
     # refresh: neither a stale extraction nor its verdict remains current.
     repo.conn.execute("UPDATE prod4_document_extractions SET is_current = false WHERE id_procedimiento = %s AND is_current = true", (procedure_id,))
@@ -70,6 +90,22 @@ def mark_unsupported_current_document(
     )
     _mark_skipped(repo, procedure_id, current["codigo_alfresco"], "unsupported_current_format")
     return True
+
+
+def _client_extensions(client: Any) -> set[str] | None:
+    declared = getattr(client, "supported_extensions", None)
+    if isinstance(declared, (set, frozenset, tuple, list)) and all(isinstance(value, str) for value in declared):
+        return set(declared)
+    return None
+
+
+def _original_document_sha256(client: Any, content: bytes, extension: str) -> str:
+    original_sha = getattr(client, "original_sha256", None)
+    if isinstance(original_sha, str) and re.fullmatch(r"[0-9a-fA-F]{64}", original_sha):
+        return original_sha.lower()
+    if extension.lower().lstrip(".") != "pdf":
+        raise ValueError("A converted document requires a verified original SHA-256")
+    return sha256_bytes(content)
 
 
 def _profile_has_relevant_fit(repo: JobRepository, procedure_id: int) -> bool:
@@ -214,8 +250,11 @@ def extract_prod4_document_job(
            FROM prod4_documents WHERE id_procedimiento = %s""",
         (id_procedimiento,),
     ).fetchall()
-    selected = select_official_requirements_pdf([dict(row) for row in docs])
-    if selected is None and mark_unsupported_current_document(repo, id_procedimiento, [dict(row) for row in docs]):
+    supported_extensions = _client_extensions(client)
+    selected = select_official_requirements_pdf([dict(row) for row in docs], supported_extensions=supported_extensions)
+    if selected is None and mark_unsupported_current_document(
+        repo, id_procedimiento, [dict(row) for row in docs], supported_extensions=supported_extensions,
+    ):
         return {"skipped": "unsupported_current_format"}
     if selected is None or selected["codigo_alfresco"] != code:
         return {"skipped": "document_superseded"}
@@ -234,14 +273,21 @@ def extract_prod4_document_job(
         return {"skipped": "already_extracted", "extraction_id": int(current["id"])}
 
     def download(source: Prod4Client) -> bytes:
-        return source.download_document(code, max_bytes=settings.prod4_max_analysis_pdf_bytes)
+        content = source.download_document(code, max_bytes=settings.prod4_max_analysis_pdf_bytes)
+        if not content.startswith(b"%PDF-"):
+            raise ValueError("Document transport did not produce a PDF")
+        if len(content) > settings.prod4_max_analysis_pdf_bytes:
+            raise DocumentTooLargeError("Converted PDF exceeds configured analysis size limit")
+        return content
 
     try:
         if client is None:
             with Prod4Client(settings) as source:
                 pdf_bytes = download(source)
+                original_sha256 = _original_document_sha256(source, pdf_bytes, selected["extension"])
         else:
             pdf_bytes = download(client)
+            original_sha256 = _original_document_sha256(client, pdf_bytes, selected["extension"])
     except DocumentTooLargeError:
         _mark_skipped(repo, id_procedimiento, code, "pdf_exceeds_analysis_limit")
         return {"skipped": "pdf_exceeds_analysis_limit"}
@@ -284,7 +330,7 @@ def extract_prod4_document_job(
            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                      %s::jsonb, %s::jsonb, %s, %s, true) RETURNING id""",
         (
-            id_procedimiento, process["opportunity_id"], code, sha256_bytes(pdf_bytes),
+            id_procedimiento, process["opportunity_id"], code, original_sha256,
             result.model, result.prompt_version, result.schema_version,
             result.input_tokens, result.output_tokens, result.cost_usd,
             json.dumps(raw, ensure_ascii=False), json.dumps(summary, ensure_ascii=False),
@@ -294,7 +340,7 @@ def extract_prod4_document_job(
     extraction_id = int(extraction["id"])
     persist_participation(repo, opportunity_id=process["opportunity_id"], raw=raw,
                           extraction_id=extraction_id, source="seace_prod4",
-                          document_sha256=sha256_bytes(pdf_bytes))
+                          document_sha256=original_sha256)
     repo.conn.execute(
         """UPDATE prod4_requirement_facets SET is_current = false
            WHERE id_procedimiento = %s AND is_current = true""",
