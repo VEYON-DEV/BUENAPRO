@@ -206,7 +206,8 @@ def test_generic_bases_extraction_is_saved_without_final_scoring() -> None:
     repo.enqueue.assert_not_called()
 
 
-def test_substantive_bases_extraction_routes_profile_evaluation() -> None:
+@pytest.mark.parametrize("enqueue_matching", [True, False, None])
+def test_substantive_bases_extraction_routes_profile_evaluation(enqueue_matching: bool | None) -> None:
     repo = MagicMock()
     repo.conn.execute.return_value.fetchone.side_effect = [
         {"opportunity_id": uuid4(), "object_type": "service", "technology_relevant": True, "missing_since": None},
@@ -232,9 +233,13 @@ def test_substantive_bases_extraction_routes_profile_evaluation() -> None:
     result = extract_prod4_document_job(
         settings(), repo, id_procedimiento=123, codigo_alfresco=str(CODE_A),
         client=client, extractor=extractor,
+        **({"enqueue_matching": enqueue_matching} if enqueue_matching is not None else {}),
     )
     assert result == {"extraction_id": 76, "facets": 1, "match_eligible": True}
-    assert repo.enqueue.call_args.args[0] == "route_prod4_profiles"
+    if enqueue_matching is not False:
+        assert repo.enqueue.call_args.args[0] == "route_prod4_profiles"
+    else:
+        repo.enqueue.assert_not_called()
 
 
 def test_final_match_requires_current_validated_document() -> None:

@@ -169,6 +169,7 @@ def extract_prod4_document_job(
     codigo_alfresco: str,
     client: Prod4Client | None = None,
     extractor: GeminiExtractor | None = None,
+    enqueue_matching: bool = True,
 ) -> dict[str, Any]:
     code = UUID(codigo_alfresco)
     process = repo.conn.execute(
@@ -285,7 +286,7 @@ def extract_prod4_document_job(
            WHERE id_procedimiento = %s""",
         ("extracted" if can_match else "skipped", reason, code, id_procedimiento),
     )
-    if can_match:
+    if can_match and enqueue_matching:
         repo.enqueue(
             "route_prod4_profiles",
             {"id_procedimiento": id_procedimiento, "extraction_id": extraction_id},

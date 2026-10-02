@@ -67,6 +67,18 @@ podría ejecutar el mismo módulo solo después de comprobar su acceso real.
 
 ## Recuperación
 
+Para detener el flujo en LLM1, añadir `--extraction-only` a la ejecución de
+lectura. Guarda resumen, requisitos y evidencia, pero no encola
+`route_prod4_profiles` ni evaluación/puntaje por empresa. El flujo por defecto
+no cambia. No se puede combinar con `--route-matches`; la extracción puede
+ser apta para matching (`match_eligible=true`) sin que se haya ejecutado.
+
+Corrida solo LLM1 del 2026-10-02: procesos 1254878, 1254875, 1254861,
+1254828, 1254739 y 1254603; seis extracciones verificadas (IDs35–40), 61 facets,
+ninguna revisión pendiente y USD0.078702 estimados registrados. PostgreSQL
+confirma cero jobs route/analyze de matching y cero evaluaciones en esos seis.
+PDF temporales eliminados tras verificación. 108 pruebas worker pasando.
+
 Un documento fallido conserva su directorio exacto dentro de `tmp/prod4-local/`,
 ignorado por Git; no se borra sin verificar persistencia. Reejecutar vuelve a
 inventariar la BD y omite extracciones existentes; un documento oficial nuevo

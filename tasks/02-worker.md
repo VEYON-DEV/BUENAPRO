@@ -1,5 +1,7 @@
 # Tareas - Worker
 
+- [x] Ejecutar seis nuevas licitaciones PROD4 hasta LLM1 exclusivamente: modo local --extraction-only, seis resúmenes/extracciones actuales y 61 facets verificados en producción, cero jobs LLM2 ni evaluaciones; temporales eliminados tras persistencia. 108 pruebas; guía actualizada (2026-10-02).
+
 - [x] Publicar y desplegar mejoras locales PROD4/esquema de bienes en `8a118b9`; scheduler, worker-io y worker-llm activos sin reinicios; modelo Flash Lite y límites remotos 10/día/20 MiB conservados, web/login 200 (2026-10-02).
 
 - [x] Implementar y validar ejecutor local PROD4 con navegador normal, túnel SSH temporal, pipeline Gemini existente y borrado solo tras verificar persistencia. 20 pruebas; lote real: 10 extracciones, 27 matching, 1 revisión, 2 PDFs demasiado grandes; coste extracción USD 0.123770. Guía `docs/sources/prod4-local-worker.md` (2026-10-02).

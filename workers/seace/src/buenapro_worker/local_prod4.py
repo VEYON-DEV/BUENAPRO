@@ -244,7 +244,8 @@ def run(settings: Settings, args) -> dict:
                     conn.execute("SELECT id_procedimiento FROM prod4_processes WHERE id_procedimiento = %s FOR UPDATE", (pid,))
                     result = extract_prod4_document_job(settings, repo, id_procedimiento=pid,
                         codigo_alfresco=str(code), client=downloader,
-                        extractor=BudgetedExtractor(settings, args.max_cost_usd - report["cost_usd"]))
+                        extractor=BudgetedExtractor(settings, args.max_cost_usd - report["cost_usd"]),
+                        enqueue_matching=not args.extraction_only)
                     conn.commit()
                     report["processed"] += 1
                     if result.get("extraction_id"):
@@ -313,6 +314,7 @@ def main():
     parser.add_argument("--max-pdf-bytes", type=int, help="Explicit local size override, at most 100000000 bytes; per-part Files API size is bounded")
     parser.add_argument("--retry-review", action="store_true", help="Consider the current review extraction for an explicit process; normal versioned idempotence still applies")
     parser.add_argument("--route-matches", action="store_true", help="Only enqueue normal production matching for current validated documents")
+    parser.add_argument("--extraction-only", action="store_true", help="Persist document reading only; do not enqueue profile evaluation")
     parser.add_argument("--profile-daily-limit", type=int, help="One-run default matching count override; explicit tenant rules still win")
     parser.add_argument("--max-cost-usd", type=float, default=1.0, help="Extraction budget only; production match retains its own daily cap")
     parser.add_argument("--headless", action="store_true", help="Default normal headed Chromium")
@@ -329,6 +331,8 @@ def main():
         parser.error("Review retry requires an explicit process ID")
     if args.route_matches and not args.execute:
         parser.error("Routing matching writes jobs and requires --execute")
+    if args.extraction_only and args.route_matches:
+        parser.error("Extraction-only cannot route profile matching")
     if args.profile_daily_limit is not None and not (args.route_matches and 1 <= args.profile_daily_limit <= 100):
         parser.error("Profile limit requires routing mode and must be between 1 and 100")
     with production_settings(args) as settings:

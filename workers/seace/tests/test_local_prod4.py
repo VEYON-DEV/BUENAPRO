@@ -3,9 +3,31 @@ from uuid import UUID
 
 import pytest
 
-from buenapro_worker.local_prod4 import BudgetedExtractor, LocalFileExtractor, OfficialBrowserDownload, tunnel_url
+from buenapro_worker.local_prod4 import BudgetedExtractor, LocalFileExtractor, OfficialBrowserDownload, main, tunnel_url
 from buenapro_worker.prod4.client import DocumentTooLargeError
 from buenapro_worker.settings import Settings
+
+
+def test_extraction_only_rejects_matching_route_before_connecting():
+    with patch("sys.argv", ["local_prod4", "--ssh-host", "unused", "--ssh-key", "unused",
+                            "--execute", "--extraction-only", "--route-matches"]), \
+         patch("buenapro_worker.local_prod4.production_settings") as connect:
+        with pytest.raises(SystemExit) as error:
+            main()
+        assert error.value.code == 2
+        connect.assert_not_called()
+
+
+@pytest.mark.parametrize("extraction_only", [True, False])
+def test_cli_passes_extraction_mode_to_runner(extraction_only):
+    arguments = ["local_prod4", "--ssh-host", "unused", "--ssh-key", "unused"]
+    if extraction_only:
+        arguments.append("--extraction-only")
+    with patch("sys.argv", arguments), \
+         patch("buenapro_worker.local_prod4.production_settings"), \
+         patch("buenapro_worker.local_prod4.run", return_value={"failed": 0}) as run:
+        main()
+        assert run.call_args.args[1].extraction_only is extraction_only
 
 
 def test_tunnel_rewrites_only_host_without_losing_encoded_credentials():
