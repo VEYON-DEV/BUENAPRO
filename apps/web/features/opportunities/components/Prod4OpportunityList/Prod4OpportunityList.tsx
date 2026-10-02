@@ -1,6 +1,7 @@
 "use client";
 
 import { ExternalLink, FileText, X } from "lucide-react";
+import Link from "next/link";
 import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -198,6 +199,7 @@ export function Prod4OpportunityList({ rows }: { rows: Prod4OpportunitySummary[]
           <h2>{primary.title || primary.description || "Objeto sin descripción"}</h2>
           <div className={styles.pills}><span>{objectLabel(primary.object_type)}</span><span>Procedimiento de selección</span></div>
           <div className={styles.previewAffinity}><span>Afinidad con tu empresa</span><AffinityMark row={detail?.process ?? primary} /></div>
+          <Link className={styles.openOfficial} href={`/oportunidad/seace/${primary.id_procedimiento}`}>Ver detalle completo →</Link>
           <p className={styles.eligibility}>La presencia en PROD4 no confirma que aún puedas presentar una oferta. Revisa el cronograma y los requisitos oficiales.</p>
           <dl className={styles.facts}>
             <div><dt>Entidad</dt><dd>{primary.buyer_name || "No informada"}</dd></div>

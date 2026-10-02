@@ -12,6 +12,7 @@ type DecisionOverviewProps = {
   deadlineDate: string;
   requirementsTotal: number;
   missingCount: number;
+  coveredCount?: number;
   marketMedian?: string | null;
   marketRange?: string | null;
   actions: ReactNode;
@@ -27,12 +28,13 @@ export function DecisionOverview({
   deadlineDate,
   requirementsTotal,
   missingCount,
+  coveredCount,
   marketMedian,
   marketRange,
   actions,
 }: DecisionOverviewProps) {
   const numericScore = analyzed ? Math.max(0, Math.min(100, Number(score) || 0)) : 0;
-  const completed = Math.max(requirementsTotal - missingCount, 0);
+  const completed = Math.min(requirementsTotal, Math.max(coveredCount ?? (requirementsTotal - missingCount), 0));
   const completion = requirementsTotal ? Math.round((completed / requirementsTotal) * 100) : 0;
 
   return (
@@ -62,7 +64,7 @@ export function DecisionOverview({
           <span className={styles.label}>Requisitos cubiertos</span>
           <strong>{requirementsTotal ? `${completed} de ${requirementsTotal}` : "Por analizar"}</strong>
           <span className={styles.progressTrack}><i style={{ width: `${completion}%` }} /></span>
-          <small>{missingCount ? `${missingCount} requieren acción` : "Sin brechas detectadas"}</small>
+          <small>{requirementsTotal ? (missingCount ? `${missingCount} requieren acción` : "Sin brechas detectadas") : "Pendiente de evaluación"}</small>
         </div>
       </div>
 

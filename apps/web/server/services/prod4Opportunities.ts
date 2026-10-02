@@ -1,5 +1,6 @@
 import { query } from "@/server/db/client";
 import { normalizeProd4Schedule } from "@/lib/procurementSchedule";
+import { buildProd4Analysis, type Prod4Extraction, type Prod4RequirementFacet, type Prod4DocumentMatch } from "@/lib/prod4Analysis";
 
 type SourceWindowState = "current" | "exited" | "all";
 
@@ -246,5 +247,47 @@ export async function getProd4OpportunityForTenant(tenantId: string, id: string)
     match_score: null,
     match_verdict: null,
   };
-  return { ...detail, process: { ...detail.process, ...tenantFit } };
+  const [analysisState, extractionResult, facetsResult, matchResult] = await Promise.all([
+    query<{ document_analysis_status: string | null; document_analysis_reason: string | null; checked_at: string | null }>(
+      `SELECT document_analysis_status, document_analysis_reason,
+              document_analysis_checked_at::text AS checked_at
+       FROM prod4_processes WHERE id_procedimiento = $1::bigint`, [id],
+    ),
+    query<Prod4Extraction>(
+      `SELECT id::text, codigo_alfresco::text, summary_json, raw_extraction_json,
+              model, prompt_version, schema_version, quality, requires_human_review,
+              facet_count, created_at::text
+       FROM prod4_document_extractions
+       WHERE id_procedimiento = $1::bigint AND is_current = true
+       ORDER BY created_at DESC, id DESC LIMIT 1`, [id],
+    ),
+    query<Prod4RequirementFacet>(
+      `SELECT f.id::text, f.facet, f.label, f.required, f.details_json, f.evidence_json
+       FROM prod4_requirement_facets f
+       JOIN prod4_document_extractions e ON e.id = f.extraction_id AND e.is_current = true
+       WHERE f.id_procedimiento = $1::bigint AND f.is_current = true
+       ORDER BY f.id`, [id],
+    ),
+    query<Prod4DocumentMatch>(
+      `SELECT m.id::text, m.profile_id::text, m.score, m.verdict,
+              m.breakdown_json, m.missing_actions_json,
+              m.matched_at::text, m.updated_at::text
+       FROM opportunity_matches m
+       JOIN company_profiles cp ON cp.id = m.profile_id
+       JOIN prod4_processes p ON p.opportunity_id = m.opportunity_id
+       WHERE cp.tenant_id = $1 AND cp.is_active = true
+         AND p.id_procedimiento = $2::bigint
+       ORDER BY m.updated_at DESC, m.score DESC, m.id DESC LIMIT 1`, [tenantId, id],
+    ),
+  ]);
+  const state = analysisState.rows[0];
+  const analysis = buildProd4Analysis({
+    sourceStatus: state?.document_analysis_status ?? null,
+    reason: state?.document_analysis_reason ?? null,
+    checkedAt: state?.checked_at ?? null,
+    extraction: extractionResult.rows[0] ?? null,
+    facets: facetsResult.rows,
+    match: matchResult.rows[0] ?? null,
+  });
+  return { ...detail, process: { ...detail.process, ...tenantFit }, analysis };
 }

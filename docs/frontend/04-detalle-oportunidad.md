@@ -108,6 +108,12 @@ GET /api/contracts/:id/seace/quote-context
 
 ## Criterios de done
 
+### Extensión PROD4 (2026-10-02)
+
+Ruta `/oportunidad/seace/[id]`, enlazada desde la vista rápida del radar. Reutiliza el shell Glass, DecisionOverview, navegación de secciones y cronograma oficial. El servicio tenant-scoped añade `analysis`: extracción vigente, facets/evidencia y match del perfil activo ligado a esa extracción. La afinidad preliminar no sustituye puntuación documental.
+
+Las bases se leen con el ejecutor local documentado en `../sources/prod4-local-worker.md`. La vista muestra pendientes/revisión explícitos. Documentos abren el original en SEACE desde la conexión del usuario; no dependen del proxy bloqueado de la VM ni prometen preview R2. Las etapas provienen del cronograma oficial, no de fechas inferidas del PDF. Historial no se muestra hasta tener integración real.
+
 - El detalle no depende de que exista match.
 - El detalle no repite monto, responsable, notas ni checklist; la coordinación vive en la postulación y seguimiento.
 - Los requisitos muestran evidencia expandible.

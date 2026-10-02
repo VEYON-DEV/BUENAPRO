@@ -106,6 +106,13 @@
   width: 42px;
 }
 
+.metric strong,
+.metric small {
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .icon svg { height: 20px; width: 20px; }
 
 .progressTrack {
