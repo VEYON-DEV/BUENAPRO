@@ -311,6 +311,11 @@ def extract_prod4_document_job(
         pdf_bytes, mime="application/pdf", doc_class=doc_class
     )
     raw = result.raw_json
+    manifest = getattr(client, "document_manifest", None)
+    if isinstance(manifest, list) and manifest and all(isinstance(item, dict) for item in manifest):
+        # Archive derivatives number pages consecutively. Keep the mapping to
+        # the source members before laptop-only temporary files are removed.
+        raw["source_document_manifest"] = manifest
     summary = derive_summary(raw)
     facets = derive_facets(raw)
     # A scanned/incomplete or generic bases document cannot establish a final

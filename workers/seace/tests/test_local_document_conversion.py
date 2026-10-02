@@ -29,6 +29,34 @@ def test_zip_selects_integrated_bases_without_extracting_other_files(tmp_path):
     assert not (tmp_path / "docs").exists()
 
 
+def test_bases_and_companion_tdr_are_not_ambiguous():
+    assert select_bases_member(["CPS 009 BASES ARANDA.pdf", "CPS 009 TDR ARANDA.pdf"]) == "CPS 009 BASES ARANDA.pdf"
+
+
+def test_archive_reads_bases_and_tdr_with_page_provenance(tmp_path):
+    import io
+    import json
+    from pypdf import PdfWriter, PdfReader
+    content = io.BytesIO()
+    writer = PdfWriter()
+    writer.add_blank_page(width=612, height=792)
+    writer.write(content)
+    archive = tmp_path / "original.zip"
+    with zipfile.ZipFile(archive, "w") as output:
+        output.writestr("BASES proceso.pdf", content.getvalue())
+        output.writestr("TDR proceso.pdf", content.getvalue())
+    combined = extract_archive(archive, "zip", max_bytes=100_000)
+    assert len(PdfReader(combined).pages) == 2
+    manifest = json.loads((tmp_path / "local-document-manifest.json").read_text())
+    assert manifest == [{"member": "BASES proceso.pdf", "start_page": 1, "end_page": 1},
+                        {"member": "TDR proceso.pdf", "start_page": 2, "end_page": 2}]
+
+
+def test_integrated_bases_do_not_mix_other_versions():
+    from buenapro_worker.local_document_conversion import select_requirements_members
+    assert select_requirements_members(["BASES INTEGRADAS.pdf", "TDR anterior.pdf"]) == ["BASES INTEGRADAS.pdf"]
+
+
 @pytest.mark.parametrize("names", [["first.pdf", "second.pdf"], ["bases.pdf", "run.exe"], ["../bases.pdf"]])
 def test_ambiguous_and_executable_archives_are_rejected(names):
     with pytest.raises(ValueError):
@@ -71,11 +99,33 @@ def test_docx_normal_normative_hyperlinks_and_isolated_profile(tmp_path):
         assert "--headless" in command
         assert any("UserInstallation=" in item for item in command)
         assert kwargs["timeout"] == 120
-        path.with_suffix(".pdf").write_bytes(b"%PDF-test")
+        assert kwargs["env"]["SAL_USE_VCLPLUGIN"] == "svp"
+        outdir = Path(command[command.index("--outdir") + 1])
+        (outdir / path.with_suffix(".pdf").name).write_bytes(b"%PDF-test")
     with patch("buenapro_worker.local_document_conversion.shutil.which", return_value="/mock/soffice"), \
          patch("buenapro_worker.local_document_conversion.subprocess.run", side_effect=convert):
         assert convert_docx(path, max_bytes=100_000).read_bytes() == b"%PDF-test"
-    assert "MacroSecurityLevel" in (tmp_path / "libreoffice-profile/user/registrymodifications.xcu").read_text()
+    profile = next(tmp_path.glob("libreoffice-profile-*"))
+    assert "MacroSecurityLevel" in (profile / "user/registrymodifications.xcu").read_text()
+
+
+def test_docx_detaches_external_author_template_only_from_derivative(tmp_path):
+    path = tmp_path / "bases.docx"
+    make_docx(path, {"word/settings.xml": '<settings xmlns:r="urn:r"><attachedTemplate r:id="rId1"/></settings>',
+        "word/_rels/settings.xml.rels": '<Relationships><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/attachedTemplate" TargetMode="External" Target="file:///C:/author/template.dotx"/></Relationships>'})
+    original = path.read_bytes()
+    def convert(command, **kwargs):
+        source = Path(command[-1])
+        assert source.name == "sanitized-bases.docx"
+        with zipfile.ZipFile(source) as archive:
+            assert b"attachedTemplate" not in archive.read("word/_rels/settings.xml.rels")
+            assert b"attachedTemplate" not in archive.read("word/settings.xml")
+        outdir = Path(command[command.index("--outdir") + 1])
+        (outdir / source.with_suffix(".pdf").name).write_bytes(b"%PDF-test")
+    with patch("buenapro_worker.local_document_conversion.shutil.which", return_value="/mock/soffice"), \
+         patch("buenapro_worker.local_document_conversion.subprocess.run", side_effect=convert):
+        assert convert_docx(path, max_bytes=100_000).name == "sanitized-bases.pdf"
+    assert path.read_bytes() == original
 
 
 def test_rar_member_is_streamed_with_size_limits(tmp_path):

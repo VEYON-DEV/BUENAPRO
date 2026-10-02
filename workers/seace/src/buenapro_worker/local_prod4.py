@@ -95,6 +95,7 @@ class OfficialBrowserDownload:
         self.sha256: str | None = None
         self.original_sha256: str | None = None
         self.original_path: Path | None = None
+        self.document_manifest: list[dict] | None = None
 
     def download_document(self, code: UUID, *, max_bytes: int) -> bytes:
         context = self.browser.new_context(accept_downloads=True, locale="es-PE")
@@ -131,6 +132,9 @@ class OfficialBrowserDownload:
             self.sha256 = hashlib.sha256(content).hexdigest()
             self.original_sha256 = self.sha256
             self.path = prepare_pdf(self.path, extension, max_bytes=max_bytes)
+            manifest = self.directory / "local-document-manifest.json"
+            if manifest.exists():
+                self.document_manifest = json.loads(manifest.read_text(encoding="utf-8"))
             return self.path.read_bytes()
         finally:
             context.close()

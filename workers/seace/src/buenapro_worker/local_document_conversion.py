@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import os
+import json
 import re
 import select
 import shutil
 import stat
 import subprocess
+import tempfile
 import time
 import zipfile
 from pathlib import Path, PurePosixPath
@@ -74,24 +76,39 @@ def select_bases_member(names: list[str]) -> str:
     bases = [name for name in documents if re.search(r"base|t[eé]rminos|\btdr\b|eett|especificacion", name, re.I)]
     # Prefer explicitly named integrated bases, never combine unrelated members.
     integrated = [name for name in bases if "integrad" in name.casefold()]
-    selected = integrated or bases or documents
+    named_bases = [name for name in bases if re.search(r"\bbases?\b", name, re.I)]
+    selected = integrated or named_bases or bases or documents
     if len(selected) != 1:
         raise ValueError("Archive has no unambiguous official requirements document")
     return selected[0]
+
+
+def select_requirements_members(names: list[str]) -> list[str]:
+    primary = select_bases_member(names)
+    if "integrad" in primary.casefold():
+        return [primary]
+    companions = [name for name in names if name != primary
+                  and Path(name).suffix.lower() in {".pdf", ".docx"}
+                  and re.search(r"\btdr\b|t[eé]rminos|eett|especificacion", name, re.I)]
+    if len(companions) > 1:
+        raise ValueError("Archive has ambiguous companion requirements")
+    return [primary, *companions]
 
 
 def extract_archive(path: Path, kind: str, *, max_bytes: int) -> Path:
     if kind == "zip":
         with zipfile.ZipFile(path) as archive:
             members = zip_members(archive, max_bytes)
-            name = select_bases_member([item.filename for item in members if not item.is_dir()])
-            with archive.open(name) as source:
-                content = source.read(max_bytes + 1)
+            names = select_requirements_members([item.filename for item in members if not item.is_dir()])
+            contents = []
+            for name in names:
+                with archive.open(name) as source:
+                    contents.append((name, source.read(max_bytes + 1)))
     else:
         names = bounded_command(["/usr/bin/bsdtar", "-tf", str(path)], limit=1_000_000).decode("utf-8").splitlines()
         if len(names) > 2000:
             raise ValueError("Archive member count exceeds policy")
-        name = select_bases_member(names)
+        names = select_requirements_members(names)
         listing = bounded_command(["/usr/bin/bsdtar", "-tvf", str(path)], limit=2_000_000).decode("utf-8").splitlines()
         total = 0
         for row in listing:
@@ -104,15 +121,45 @@ def extract_archive(path: Path, kind: str, *, max_bytes: int) -> Path:
             total += size
         if total > max_bytes * 2:
             raise ValueError("Archive expansion exceeds size policy")
-        content = bounded_command(["/usr/bin/bsdtar", "-xOf", str(path), "--", name], limit=max_bytes)
-    if len(content) > max_bytes:
+        contents = [(name, bounded_command(["/usr/bin/bsdtar", "-xOf", str(path), "--", name], limit=max_bytes))
+                    for name in names]
+    if sum(len(content) for _, content in contents) > max_bytes:
         raise ValueError("Archive document exceeds size policy")
-    target = path.parent / ("archive-bases" + Path(name).suffix.lower())
-    target.write_bytes(content)
+    targets = []
+    for index, (name, content) in enumerate(contents):
+        target = path.parent / (f"archive-bases-{index}" + Path(name).suffix.lower())
+        target.write_bytes(content)
+        targets.append(target)
+    if len(targets) == 1:
+        return targets[0]
+    from pypdf import PdfReader, PdfWriter
+    writer = PdfWriter()
+    manifest = []
+    start = 1
+    for (name, _), target in zip(contents, targets):
+        if target.suffix == ".docx":
+            target = convert_docx(target, max_bytes=max_bytes)
+        reader = PdfReader(target)
+        if reader.is_encrypted or len(reader.pages) > 1500:
+            raise ValueError("Archive PDF is encrypted or exceeds page policy")
+        for page in reader.pages:
+            writer.add_page(page)
+        manifest.append({"member": name, "start_page": start, "end_page": start + len(reader.pages) - 1})
+        start += len(reader.pages)
+    if start > 1501:
+        raise ValueError("Combined archive exceeds page policy")
+    target = path.parent / "archive-combined.pdf"
+    with target.open("wb") as output:
+        writer.write(output)
+    if target.stat().st_size > max_bytes:
+        raise ValueError("Combined archive exceeds size policy")
+    (path.parent / "local-document-manifest.json").write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
     return target
 
 
 def convert_docx(path: Path, *, max_bytes: int) -> Path:
+    path = path.resolve()
+    replacements = {}
     with zipfile.ZipFile(path) as archive:
         members = zip_members(archive, max_bytes)
         names = [item.filename for item in members]
@@ -129,25 +176,61 @@ def convert_docx(path: Path, *, max_bytes: int) -> Path:
                 xml = archive.read(name)
                 if b"<!DOCTYPE" in xml.upper() or b"<!ENTITY" in xml.upper():
                     raise ValueError("Word relationships contain unsafe XML")
-                for relationship in ElementTree.fromstring(xml):
-                    if relationship.get("TargetMode") == "External" and not str(relationship.get("Type", "")).endswith("/hyperlink"):
+                root = ElementTree.fromstring(xml)
+                removed_templates = set()
+                for relationship in list(root):
+                    if relationship.get("TargetMode") != "External":
+                        continue
+                    relationship_type = str(relationship.get("Type", ""))
+                    if relationship_type.endswith("/attachedTemplate"):
+                        # Never follow author-machine template paths. Embedded document
+                        # styles remain intact; sanitize ONLY the conversion derivative.
+                        removed_templates.add(relationship.get("Id"))
+                        root.remove(relationship)
+                    elif not relationship_type.endswith("/hyperlink"):
                         raise ValueError("Word contains active external relationships")
+                if removed_templates:
+                    replacements[name] = ElementTree.tostring(root, encoding="utf-8", xml_declaration=True)
+                    owner = name.replace("/_rels/", "/").removesuffix(".rels")
+                    if owner in names:
+                        # Preserve Word's namespace aliases referenced in mc:Ignorable.
+                        # XML reserialization renames aliases and can invalidate the file.
+                        owner_xml = archive.read(owner)
+                        replacements[owner] = re.sub(
+                            rb'<(?:[A-Za-z0-9_]+:)?attachedTemplate\b[^>]*/>', b'', owner_xml,
+                        )
+        if replacements:
+            sanitized = path.parent / "sanitized-bases.docx"
+            with zipfile.ZipFile(sanitized, "w", compression=zipfile.ZIP_DEFLATED) as output:
+                for member in members:
+                    output.writestr(member.filename, replacements.get(member.filename, archive.read(member.filename)))
+            path = sanitized
     soffice = shutil.which("soffice")
     if not soffice:
         raise RuntimeError("LibreOffice is unavailable for local DOCX conversion")
-    profile = path.parent / "libreoffice-profile"
-    profile.mkdir(exist_ok=True)
+    profile = Path(tempfile.mkdtemp(prefix="libreoffice-profile-", dir=path.parent))
     # Isolated profile: very high macro security and no automatic link updates.
     (profile / "user").mkdir(exist_ok=True)
     (profile / "user" / "registrymodifications.xcu").write_text(
         '<?xml version="1.0"?><oor:items xmlns:oor="http://openoffice.org/2001/registry">'
         '<item oor:path="/org.openoffice.Office.Common/Security/Scripting"><prop oor:name="MacroSecurityLevel" oor:op="fuse"><value>3</value></prop><prop oor:name="DisableMacrosExecution" oor:op="fuse"><value>true</value></prop><prop oor:name="DisableActiveContent" oor:op="fuse"><value>true</value></prop></item>'
         '<item oor:path="/org.openoffice.Office.Writer/Content/Update"><prop oor:name="Link" oor:op="fuse"><value>2</value></prop></item></oor:items>', encoding="utf-8")
+    # The bundled macOS headless runtime needs its virtual renderer and fontconfig.
+    # Its default Cocoa PDF export can abort (SfxBaseModel Io Abort 27).
+    environment = {**os.environ, "SAL_USE_VCLPLUGIN": "svp"}
+    soffice_path = Path(soffice).resolve()
+    bundled_fonts = ((soffice_path.parents[2] / "native/libreoffice-headless/libreoffice/LibreOfficeDev.app/Contents/Resources/fontconfig/fonts.conf")
+                     if len(soffice_path.parents) >= 3 else None)
+    if bundled_fonts and bundled_fonts.is_file():
+        environment["FONTCONFIG_FILE"] = str(bundled_fonts)
+    output_directory = profile / "converted"
+    output_directory.mkdir()
     subprocess.run([soffice, "--headless", "--nologo", "--nodefault", "--norestore", "--nolockcheck",
                     f"-env:UserInstallation={profile.as_uri()}", "--convert-to", "pdf:writer_pdf_Export",
-                    "--outdir", str(path.parent), str(path)],
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, timeout=120)
-    output = path.with_suffix(".pdf")
+                    "--outdir", str(output_directory), str(path)],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, timeout=120,
+                   env=environment)
+    output = output_directory / path.with_suffix(".pdf").name
     if not output.exists() or output.stat().st_size > max_bytes:
         raise ValueError("Word PDF conversion failed or exceeds size policy")
     return output
