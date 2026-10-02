@@ -1,5 +1,7 @@
 # Tareas - Backend/Web
 
+- [x] Exponer consortium_status, subcontracting_status y participation_terms_json en detalle API de contratos menores/concursos SEACE, conservando payload previo. TypeScript/build aprobados y web desplegada24577ed; sin cambios visuales (2026-10-02).
+
 - [x] Exponer análisis documental PROD4 en detalle tenant-scoped: extracción vigente, facets, match del perfil activo y rechazo de puntajes de otra versión documental; seis regresiones aprobadas sin alterar campos existentes (2026-10-02).
 
 ## Estructura Next.js

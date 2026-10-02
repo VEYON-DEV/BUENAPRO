@@ -1,5 +1,7 @@
 # Tareas - Database
 
+- [x] Aplicar migración0033 de consorcio/subcontratación en opportunities con cuatro estados y evidencia JSON, defaults no identificados sin inferencia histórica; PostgreSQL16 valida constraints/idempotencia y smoke productivo revertido conserva datos (2026-10-02).
+
 ## Base del proyecto
 
 - [ ] Reconciliar `schema_migrations` de producción con las tablas existentes para `0009` y `0011`-`0014`; verificar estructura antes de registrar versiones y evitar reejecutar DDL ya aplicado.

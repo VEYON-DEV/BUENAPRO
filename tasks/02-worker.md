@@ -1,5 +1,7 @@
 # Tareas - Worker
 
+- [x] Actualizar LLM1 TDR/EETT/bases de bienes/servicios para extraer consorcio y subcontratación con cláusula/página/condiciones; normalización conservadora, persistencia canónica PROD6/PROD4 e invalidación por nuevas bases. 165 pruebas; workers desplegados24577ed, sin relectura histórica ni LLM2 (2026-10-02).
+
 - [x] Ejecutar seis nuevas licitaciones PROD4 hasta LLM1 exclusivamente: modo local --extraction-only, seis resúmenes/extracciones actuales y 61 facets verificados en producción, cero jobs LLM2 ni evaluaciones; temporales eliminados tras persistencia. 108 pruebas; guía actualizada (2026-10-02).
 
 - [x] Publicar y desplegar mejoras locales PROD4/esquema de bienes en `8a118b9`; scheduler, worker-io y worker-llm activos sin reinicios; modelo Flash Lite y límites remotos 10/día/20 MiB conservados, web/login 200 (2026-10-02).

@@ -50,3 +50,13 @@ campos; este cambio no añade columnas visuales ni modifica el layout.
 No se ejecuta LLM2 ni se reanalizan PDFs antiguos por aplicar la migración.
 Los permisos se completarán en futuras lecturas LLM1; un backfill documental
 se debe ejecutar expresamente, con presupuesto y acceso al PDF original.
+
+## Verificación 2026-10-02
+
+Migración aplicada en producción, 7645 oportunidades conservadas inicialmente
+en `not_identified` para ambos campos. Código `24577ed` desplegado en web,
+scheduler y workers IO/LLM/match; servicios activos sin reinicios, login200.
+165 pruebas worker, TypeScript y build web aprobados. PostgreSQL16 aislado
+valida idempotencia/defaults/constraints. Smoke real de persistencia canónica
+valida estados y evidencia dentro de una transacción revertida, sin dejar datos
+QA ni jobs LLM. No se relanzó el histórico ni se llamó Gemini en este cambio.
