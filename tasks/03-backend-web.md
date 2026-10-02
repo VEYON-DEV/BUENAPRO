@@ -1,5 +1,7 @@
 # Tareas - Backend/Web
 
+- [x] Exponer análisis documental PROD4 en detalle tenant-scoped: extracción vigente, facets, match del perfil activo y rechazo de puntajes de otra versión documental; seis regresiones aprobadas sin alterar campos existentes (2026-10-02).
+
 ## Estructura Next.js
 
 - [x] Organizar `apps/web` por features: `feed`, `opportunity`, `profile`, `tracking`, `settings`.

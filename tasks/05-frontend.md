@@ -1,5 +1,8 @@
 # Tareas - Frontend
 
+- [x] Implementar `/oportunidad/seace/[id]` y conectar Ver detalle completo del radar PROD4: lectura ejecutiva, evaluación personalizada, brechas, evidencia original, documentos oficiales, cronograma y ejecución/ítems; estados pendientes sin puntuación inventada. Reutiliza Glass y componentes aprobados; QA local con datos de producción, nueve capturas responsive y navegación aprobada (2026-10-02).
+- [x] Corregir contador del nuevo detalle PROD4 usando requisitos evaluados con estado `cumple`, no facets menos brechas; conservar cálculo heredado PROD6 pendiente de revisión específica (2026-10-02).
+
 - [x] Publicar por Git la sección Cronograma y timeline oficial de ambas fuentes en producción (`b4e9c28`, 2026-10-01): build Docker con TypeScript y 58 páginas aprobado, web activa y conexión a PostgreSQL verificada para ficha 96189 con dos etapas. QA responsive local previo conserva evidencia.
 - [ ] Capturar y revisar visualmente Cronograma en la sesión autenticada de producción: el navegador conectado llega a login; se pidió al usuario iniciar sesión. No marcar QA visual productivo sin acceso y captura real.
 
