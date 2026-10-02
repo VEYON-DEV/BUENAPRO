@@ -1,5 +1,7 @@
 # Tareas - Backend/Web
 
+- [x] Corregir «Revisar en SEACE»: API genera ficha oficial por id_procedimiento, migración0034 repara94/94 URLs y worker mantiene enlace por concurso. Desplegado3609491 web/worker-io; test backend, TypeScript/build y175 pruebas worker; ficha1254603 verificada en navegador normal, sin cambio visual ni auth (2026-10-02).
+
 - [x] Exponer consortium_status, subcontracting_status y participation_terms_json en detalle API de contratos menores/concursos SEACE, conservando payload previo. TypeScript/build aprobados y web desplegada24577ed; sin cambios visuales (2026-10-02).
 
 - [x] Exponer análisis documental PROD4 en detalle tenant-scoped: extracción vigente, facets, match del perfil activo y rechazo de puntajes de otra versión documental; seis regresiones aprobadas sin alterar campos existentes (2026-10-02).
