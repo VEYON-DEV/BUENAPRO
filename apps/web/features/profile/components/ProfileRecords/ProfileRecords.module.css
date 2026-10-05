@@ -12,6 +12,7 @@
 .overview { display: grid; flex: 1; min-width: 0; gap: 5px; overflow-wrap: anywhere; }
 .overview strong { font-size: 14px; }
 .overview > span { color: var(--bp-color-text-2); font-size: 12px; line-height: 1.6; }
+.overview > .money { color: var(--bp-color-ink); font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .rotated { transform: rotate(180deg); }
 .editor { border: 0; margin: 0; padding: 8px 0 24px 60px; min-width: 0; }
 .fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }

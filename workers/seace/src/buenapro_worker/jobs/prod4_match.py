@@ -9,6 +9,7 @@ from buenapro_worker.jobs.analyze_match import (
     PROFILE_FIELDS,
     _derive_verdict,
     _econ_capacity,
+    _guard_area_economic_requirements,
     _econ_exigido,
     clamp_score,
 )
@@ -36,9 +37,12 @@ def _daily_prod4_evaluations(repo: JobRepository, profile_id: str) -> int:
 
 
 def _guard_prod4_economic_claim(
-    requisitos: list[dict], *, exigido: float | None, capacidad: float
+    requisitos: list[dict], *, exigido: float | None, capacidad: float | None
 ) -> None:
     """A numerical shortfall cannot be marked compliant from model inference."""
+    if capacidad is None:
+        _guard_area_economic_requirements(requisitos)
+        return
     if exigido is None or exigido <= 0 or capacidad >= exigido:
         return
     for requirement in requisitos:

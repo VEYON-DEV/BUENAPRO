@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/server/db/client";
 import { requireTenantId } from "@/server/auth/tenant";
 import { cleanCompanyKeywords } from "@/server/services/companyKeywords";
-import { validateExperienceRecords } from "@/features/profile";
+import { validateExperienceRecords, validateEconomicExperience } from "@/features/profile";
 
 export async function GET() {
   const tenantId = await requireTenantId();
@@ -15,6 +15,8 @@ export async function PUT(request: NextRequest) {
   const body = await request.json();
   const experienceError = validateExperienceRecords(body.experience_json);
   if (experienceError) return NextResponse.json({ error: experienceError }, { status: 400 });
+  const economicError = validateEconomicExperience(body.econ_experience_json);
+  if (economicError) return NextResponse.json({ error: economicError }, { status: 400 });
   const companyKeywords = body.company_keywords == null ? null : cleanCompanyKeywords(body.company_keywords);
   const result = await query(
     `

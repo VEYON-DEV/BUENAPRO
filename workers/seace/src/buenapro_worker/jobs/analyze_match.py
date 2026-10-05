@@ -29,10 +29,14 @@ def clamp_score(verdict: str, score: int) -> int:
     return max(low, min(high, int(score)))
 
 
-def _econ_capacity(profile: dict) -> float:
+def _econ_capacity(profile: dict) -> float | None:
     values = []
     econ = profile.get("econ_experience_json") or {}
     if isinstance(econ, dict):
+        # Area declarations are not interchangeable or additive capacity. A
+        # specialty/currency/evidence comparison is required before arithmetic.
+        if isinstance(econ.get("areas"), list) and econ["areas"]:
+            return None
         for value in econ.values():
             try:
                 values.append(float(value))
@@ -54,10 +58,23 @@ def _econ_exigido(facet_rows: list) -> float | None:
     return max(amounts) if amounts else None
 
 
-def _apply_econ_rule(requisitos: list[dict], *, exigido: float | None, capacidad: float,
+def _guard_area_economic_requirements(requisitos: list[dict]) -> None:
+    for requirement in requisitos:
+        if requirement.get("categoria") == "experiencia_economica":
+            requirement.update(
+                estado="requiere_revision",
+                gap="La experiencia está desglosada por área; no hay un monto compatible acreditado automáticamente.",
+                accion="Verificar rubro, especialidad, moneda y respaldo compatibles con la experiencia exigida en las bases.",
+            )
+
+
+def _apply_econ_rule(requisitos: list[dict], *, exigido: float | None, capacidad: float | None,
                      consorcio_status: str = "not_identified") -> None:
     """Regla determinista para experiencia económica: es aritmética, no juicio.
     Cubre todo -> cumple; >=30% -> accionable vía consorcio; <30% -> gap duro."""
+    if capacidad is None:
+        _guard_area_economic_requirements(requisitos)
+        return
     if exigido is None or exigido <= 0:
         return
     ratio = capacidad / exigido

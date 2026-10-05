@@ -1,5 +1,5 @@
 from buenapro_worker.matching.profile_evidence import evidence_only_profile, guard_participation_actions
-from buenapro_worker.jobs.analyze_match import _apply_econ_rule
+from buenapro_worker.jobs.analyze_match import _apply_econ_rule, _econ_capacity
 
 
 def test_demo_templates_do_not_become_accredited_capacity():
@@ -23,6 +23,32 @@ def test_demo_templates_do_not_become_accredited_capacity():
 def test_legacy_self_reported_capacity_is_not_deleted():
     profile = {"econ_experience_json": {"servicios": 24_000}, "certifications_json": ["ISO 9001"]}
     assert evidence_only_profile(profile) == profile
+
+
+def test_area_capacity_does_not_use_unrelated_global_amount_or_sum_currencies():
+    profile = {"econ_experience_json": {"servicios": 9_000_000, "areas": [
+        {"rubro": "Software", "monto": 200_000, "moneda": "PEN"},
+        {"rubro": "Servidores", "monto": 400_000, "moneda": "USD"},
+    ]}}
+    assert _econ_capacity(profile) is None
+    assert _econ_capacity({"econ_experience_json": {"servicios": 24_000, "areas": []}}) == 24_000
+    assert _econ_capacity({"econ_experience_json": {"servicios": 24_000}}) == 24_000
+
+
+def test_prod6_areas_require_compatibility_review_regardless_of_model_state():
+    for estado in ("cumple", "no_cumple", "cumple_con_accion"):
+        req = [{"categoria": "experiencia_economica", "estado": estado},
+               {"categoria": "legal", "estado": "cumple"}]
+        _apply_econ_rule(req, exigido=100, capacidad=None, consorcio_status="permitted")
+        assert req[0]["estado"] == "requiere_revision"
+        assert "especialidad, moneda y respaldo" in req[0]["accion"]
+        assert req[1]["estado"] == "cumple"
+
+
+def test_area_review_does_not_depend_on_extracted_numeric_minimum():
+    req = [{"categoria": "experiencia_economica", "estado": "cumple"}]
+    _apply_econ_rule(req, exigido=None, capacidad=None)
+    assert req[0]["estado"] == "requiere_revision"
 
 
 def test_unknown_consortium_does_not_generate_an_executable_economic_action():

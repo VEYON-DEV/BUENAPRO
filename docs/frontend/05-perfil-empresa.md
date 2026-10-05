@@ -142,6 +142,24 @@ QA: `node --test scripts/profile_records.test.mjs` (8 casos); `scripts/qa_profil
 
 ## Estados
 
+### Montos de experiencia por área (2026-10-05)
+
+La sección Experiencia comienza con «Experiencia económica por área» y «Agregar área».
+Cada registro de `econ_experience_json.areas[]` contiene `rubro`, `especialidad`,
+`tipo_objeto`, `monto`, `moneda`, `descripcion` y referencias opcionales `documents[]`.
+Las filas plegadas muestran su monto y moneda individual. Se requiere rubro,
+monto no negativo y moneda PEN/USD/EUR; admite hasta 100 registros. Guardar conserva
+los montos generales anteriores y cualquier metadata, sin sumar ni convertir monedas.
+Los valores anteriores de bienes/servicios permanecen plegados y no se asignan a
+áreas automáticamente. El resumen del perfil cuenta áreas, no presenta una suma.
+
+Las áreas viajan como datos al LLM2. Si existen áreas, los guards PROD4/PROD6 ya no
+usan el máximo global para acreditar un requisito económico: señalan revisión de
+especialidad, moneda y respaldo. No se implementa aún la selección automática de
+experiencia admisible por TDR. No se ejecuta reevaluación ni Gemini en el despliegue.
+QA de guardado y preservación: `scripts/qa_profile_economic_areas.py`, escrituras
+interceptadas y capturas desktop/laptop/mobile.
+
 ### Experiencia por contrato y especialidad (2026-10-05)
 
 Experiencia prioriza contratos agregables, con tres grupos de edición: Contrato y especialidad, Monto y participación, Fechas y respaldo. Se persisten en `experience_json` los campos `objeto`, `entidad`, `numero_contrato`, `rubro`, `especialidad`, `tipo_objeto`, `actividades`, `monto`, `moneda`, `modalidad_participacion`, `porcentaje_participacion`, `alcance_participacion`, `fecha_inicio`, `fecha_fin`, `fecha_conformidad`, `anio`, `acreditacion`, `conformidad`, `descripcion` y `documents[]`.

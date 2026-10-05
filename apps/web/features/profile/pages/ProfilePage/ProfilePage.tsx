@@ -13,8 +13,9 @@ function profileCompletion(profile: any | null, libraryCount = 0) {
   if (!profile) return 0;
   const hasPositiveValue = (value: unknown) => {
     if (typeof value === "number") return value > 0;
+    if (Array.isArray(value)) return value.length > 0;
     if (value && typeof value === "object" && !Array.isArray(value)) {
-      return Object.values(value).some((item) => (typeof item === "number" ? item > 0 : Boolean(item)));
+      return Object.values(value).some((item) => (Array.isArray(item) ? item.length > 0 : typeof item === "number" ? item > 0 : Boolean(item)));
     }
     return Boolean(value);
   };
@@ -66,6 +67,7 @@ export async function ProfilePage({ tenantId }: { tenantId: string }) {
   const libraryCount = library.knowledge.length + library.documents.length;
   const completion = profileCompletion(profileRow, libraryCount);
   const keywordCount = new Set([...(profileRow?.company_keywords ?? []), ...lines.rows.flatMap((line: any) => line.keywords ?? [])]).size;
+  const economicAreaCount = Array.isArray(profileRow?.econ_experience_json?.areas) ? profileRow.econ_experience_json.areas.length : 0;
 
   return (
     <AppShell title="Perfil">
@@ -78,7 +80,7 @@ export async function ProfilePage({ tenantId }: { tenantId: string }) {
       <section className={styles.signalStrip} aria-label="Resumen del perfil">
         <div><span>Líneas</span><strong>{lines.rows.length}</strong></div>
         <div><span>Palabras clave</span><strong>{keywordCount}</strong></div>
-        <div><span>Experiencia acreditable</span><strong>{money(Object.values(profileRow?.econ_experience_json ?? {}).map(Number).filter(Number.isFinite).sort((a, b) => b - a)[0])}</strong></div>
+        <div><span>Experiencia registrada</span><strong>{economicAreaCount ? `${economicAreaCount} ${economicAreaCount === 1 ? "área" : "áreas"}` : money(Object.values(profileRow?.econ_experience_json ?? {}).map(Number).filter(Number.isFinite).sort((a, b) => b - a)[0])}</strong></div>
         <div><span>Equipo</span><strong>{profileRow?.team_json?.length ?? 0} perfiles</strong></div>
         <div><span>Biblioteca</span><strong>{libraryCount} piezas</strong></div>
       </section>

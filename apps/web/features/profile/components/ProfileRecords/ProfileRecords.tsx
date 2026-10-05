@@ -13,7 +13,7 @@ export type RecordField = { key: string; label: string; type?: "number" | "date"
 type Props = {
   title: string; description: string; addLabel: string; primary: string;
   fields: RecordField[]; records: ProfileRecord[]; onChange: (records: ProfileRecord[]) => void;
-  professional?: boolean; disabled?: boolean; onUploading?: (busy: boolean) => void;
+  professional?: boolean; monetaryOverview?: boolean; disabled?: boolean; onUploading?: (busy: boolean) => void;
 };
 
 const certificates: RecordField[] = [
@@ -31,7 +31,7 @@ const experience: RecordField[] = [
   { key: "descripcion", label: "Proyecto y responsabilidades", type: "textarea" },
 ];
 
-export function ProfileRecords({ title, description, addLabel, primary, fields, records, onChange, professional, disabled, onUploading }: Props) {
+export function ProfileRecords({ title, description, addLabel, primary, fields, records, onChange, professional, monetaryOverview, disabled, onUploading }: Props) {
   const [expanded, setExpanded] = useState<number | null>(null);
   const [uploading, setUploading] = useState<number | null>(null);
   const [error, setError] = useState("");
@@ -58,12 +58,13 @@ export function ProfileRecords({ title, description, addLabel, primary, fields, 
       const value = recordObject(record, primary);
       const label = recordText(record, primary, primary) || "Nuevo registro";
       const opened = expanded === index;
-      const detail = professional ? [value.nombre, value.grado, value.carrera, value.experiencia_anios != null ? `${value.experiencia_anios} años de experiencia` : null] : fields.slice(1, 4).map(field => value[field.key]);
+      const detail = professional ? [value.nombre, value.grado, value.carrera, value.experiencia_anios != null ? `${value.experiencia_anios} años de experiencia` : null] : monetaryOverview ? [value.especialidad, ({ bienes: "Bienes", servicios: "Servicios", obras: "Obras", consultoria_obras: "Consultoría de obras" } as Record<string, string>)[value.tipo_objeto]] : fields.slice(1, 4).map(field => value[field.key]);
+      const money = monetaryOverview && typeof value.monto === "number" && Number.isFinite(value.monto) ? `${value.moneda === "PEN" ? "S/" : value.moneda || "Moneda pendiente"} ${new Intl.NumberFormat("es-PE", { maximumFractionDigits: 2 }).format(value.monto)}` : null;
       return <article className={styles.record} key={index}>
         <div className={styles.row}>
           <button className={styles.toggle} type="button" disabled={disabled || uploading !== null} aria-expanded={opened} onClick={() => setExpanded(opened ? null : index)}>
             <span className={styles.marker} aria-hidden="true">{professional ? label.slice(0, 2).toUpperCase() : <FileText size={18} />}</span>
-            <span className={styles.overview}><strong>{label}</strong><span>{detail.filter(Boolean).join(" · ") || "Completa los datos y agrega evidencia de respaldo"}</span></span>
+            <span className={styles.overview}><strong>{label}</strong><span>{detail.filter(Boolean).join(" · ") || "Completa los datos y agrega evidencia de respaldo"}</span>{money && <span className={styles.money}>{money}</span>}</span>
             <ChevronDown className={opened ? styles.rotated : undefined} size={18} aria-hidden="true" />
           </button>
           <Button variant="ghost" type="button" aria-label={`Eliminar ${label}`} disabled={disabled || uploading !== null} onClick={() => {

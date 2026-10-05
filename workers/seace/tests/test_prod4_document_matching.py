@@ -278,6 +278,17 @@ def test_prod4_economic_shortfall_never_becomes_unverified_cumple() -> None:
     assert "Verificar" in requirements[0]["accion"]
 
 
+def test_prod4_area_experience_needs_review_without_global_amount_override() -> None:
+    for required in (None, 100_000):
+        for state in ("cumple", "no_cumple", "cumple_con_accion"):
+            requirements = [{"categoria": "experiencia_economica", "estado": state},
+                            {"categoria": "legal", "estado": "cumple"}]
+            _guard_prod4_economic_claim(requirements, exigido=required, capacidad=None)
+            assert requirements[0]["estado"] == "requiere_revision"
+            assert "especialidad, moneda y respaldo" in requirements[0]["accion"]
+            assert requirements[1]["estado"] == "cumple"
+
+
 def test_browser_headers_and_pdf_size_guard() -> None:
     upstream = MagicMock()
     upstream.headers = {"Content-Length": "100"}

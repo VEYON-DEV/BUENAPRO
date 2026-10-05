@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/Input";
 import { ProfileRecords, type RecordField } from "../ProfileRecords";
 import { recordList, validateProfileRecords } from "../../model/records";
 import { validateExperienceRecords } from "../../model/experience";
+import { validateEconomicExperience } from "../../model/economicExperience";
 import { saveProfile } from "../../api/profile";
 import styles from "./ProfileForm.module.css";
 
@@ -50,6 +51,14 @@ const certificates: RecordField[] = [
   { key: "nombre", label: "Certificado o seguro", required: true }, { key: "entidad", label: "Entidad emisora" },
   { key: "valid_until", label: "Vigencia hasta", type: "date" }, { key: "descripcion", label: "Alcance y observaciones", type: "textarea" },
 ];
+const economicAreas: RecordField[] = [
+  { key: "rubro", label: "Área o rubro", required: true, placeholder: "Ej. Automatización industrial" },
+  { key: "especialidad", label: "Especialidad del área", placeholder: "Ej. PLC y SCADA" },
+  { key: "tipo_objeto", label: "Tipo de experiencia", type: "select", options: contracts.find(field => field.key === "tipo_objeto")!.options },
+  { key: "monto", label: "Monto de experiencia del área", type: "number", required: true },
+  { key: "moneda", label: "Moneda del área", type: "select", required: true, options: contracts.find(field => field.key === "moneda")!.options },
+  { key: "descripcion", label: "Alcance y sustento del área", type: "textarea", placeholder: "Qué actividades cubre este monto y con qué contratos o documentos puedes sustentarlo." },
+];
 
 export function ProfileForm({ profile, section = "team", onDirtyChange, onBusyChange }: { profile: any | null; section?: ProfileSection; onDirtyChange?: (value: boolean) => void; onBusyChange?: (value: boolean) => void }) {
   const router = useRouter();
@@ -83,6 +92,8 @@ export function ProfileForm({ profile, section = "team", onDirtyChange, onBusyCh
     event.preventDefault();
     const experienceError = validateExperienceRecords(draft.experience_json);
     if (experienceError) { setError(true); setStatus(experienceError); return; }
+    const economicError = validateEconomicExperience(draft.econ_experience_json);
+    if (economicError) { setError(true); setStatus(economicError); return; }
     const invalid = !/^\d{11}$/.test(draft.ruc ?? "") || !String(draft.razon_social ?? "").trim() ? "Completa el RUC de 11 dígitos y la razón social en Empresa." : Object.values(draft.econ_experience_json ?? {}).some(value => typeof value === "number" && (!Number.isFinite(value) || value < 0)) ? "La experiencia económica no puede ser negativa. Revísala en Experiencia." : [["team_json", "role"], ["experience_json", "objeto"], ["certifications_json", "nombre"], ["equipment_json", "nombre"], ["hireable_roles_json", "role"]].map(([key, primary]) => validateProfileRecords(draft[key], primary, baseline?.[key])).find(Boolean);
     if (invalid) { setError(true); setStatus(invalid); return; }
     setBusy(true); setStatus(""); setError(false);
@@ -113,11 +124,12 @@ export function ProfileForm({ profile, section = "team", onDirtyChange, onBusyCh
         </details>
       </>}
       {section === "experience" && <>
+        <ProfileRecords title="Experiencia económica por área" description="Agrega un monto independiente por rubro y especialidad. No sumamos áreas, monedas ni contratos automáticamente." addLabel="Agregar área" primary="rubro" fields={economicAreas} monetaryOverview records={recordList(draft.econ_experience_json?.areas)} onChange={areas => update("econ_experience_json", { ...draft.econ_experience_json, areas })} disabled={busy || uploading} onUploading={setUploading} />
         <p className={styles.helper}>Registra cada contrato una sola vez. Su rubro, actividades y respaldo permiten distinguir experiencia general de experiencia específica según las bases de cada concurso.</p>
         {records("experience_json", { title: "Contratos por rubro y especialidad", description: "Detalla lo ejecutado y tu participación. Un monto de servidores no acredita automáticamente experiencia en software.", addLabel: "Agregar contrato", primary: "objeto", fields: contracts })}
-        <details className={styles.disclosure}><summary>Montos generales registrados <span>Se conservan separados</span></summary>
+        <details className={styles.disclosure}><summary>Montos generales anteriores <span>Sin área asignada</span></summary>
           <div className={styles.fields}>{["servicios", "bienes"].map(kind => <label key={kind}>Experiencia declarada en {kind} (S/)<Input type="number" min="0" step="any" value={draft.econ_experience_json?.[kind] ?? ""} onChange={event => update("econ_experience_json", { ...draft.econ_experience_json, [kind]: event.target.value === "" ? null : Number(event.target.value) })} /></label>)}</div>
-          <p className={styles.helper}>Estos montos anteriores no se recalculan ni se suman con los contratos. Su compatibilidad y acreditación dependen de cada convocatoria; el evaluador actual todavía utiliza este resumen.</p>
+          <p className={styles.helper}>Se conservan como referencia anterior, sin distribuirlos entre áreas ni sumarlos con los registros nuevos. Registrar un monto no acredita por sí solo experiencia compatible con un TDR.</p>
         </details>
       </>}
       {section === "resources" && <>
