@@ -15,6 +15,9 @@
 .rotated { transform: rotate(180deg); }
 .editor { border: 0; margin: 0; padding: 8px 0 24px 60px; min-width: 0; }
 .fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.group { border: 0; margin: 0; padding: 0; min-width: 0; }
+.group + .group { margin-top: 28px; }
+.group legend { color: var(--bp-color-ink); font-size: 13px; font-weight: 700; padding: 0 0 14px; }
 .fields label { display: grid; gap: 7px; color: var(--bp-color-text); font-size: 12px; font-weight: 650; }
 .wide { grid-column: 1 / -1; }
 .fields textarea { width: 100%; resize: vertical; background: var(--bp-color-panel); color: var(--bp-color-text); border: 1px solid var(--bp-color-border-strong); border-radius: var(--bp-radius-md); padding: 12px; font: inherit; }

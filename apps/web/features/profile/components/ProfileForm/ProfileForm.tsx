@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { ProfileRecords, type RecordField } from "../ProfileRecords";
 import { recordList, validateProfileRecords } from "../../model/records";
+import { validateExperienceRecords } from "../../model/experience";
 import { saveProfile } from "../../api/profile";
 import styles from "./ProfileForm.module.css";
 
@@ -25,9 +26,25 @@ const teamFields: RecordField[] = [
   { key: "especialidad", label: "Experiencia específica", type: "textarea" },
 ];
 const contracts: RecordField[] = [
-  { key: "objeto", label: "Objeto del contrato", required: true }, { key: "entidad", label: "Cliente o entidad" },
-  { key: "monto", label: "Monto acreditable (S/)", type: "number" }, { key: "anio", label: "Año", type: "number" },
-  { key: "conformidad", label: "Conformidad o constancia" }, { key: "descripcion", label: "Alcance y observaciones", type: "textarea" },
+  { key: "objeto", label: "Objeto del contrato", required: true, group: "Contrato y especialidad" },
+  { key: "entidad", label: "Cliente o entidad", group: "Contrato y especialidad" },
+  { key: "rubro", label: "Rubro", placeholder: "Ej. Tecnología", group: "Contrato y especialidad" },
+  { key: "especialidad", label: "Especialidad", placeholder: "Ej. Servidores o desarrollo de software", group: "Contrato y especialidad" },
+  { key: "tipo_objeto", label: "Tipo de contratación", type: "select", options: [{ value: "bienes", label: "Bienes" }, { value: "servicios", label: "Servicios" }, { value: "obras", label: "Obras" }, { value: "consultoria_obras", label: "Consultoría de obras" }], group: "Contrato y especialidad" },
+  { key: "numero_contrato", label: "Número de contrato", group: "Contrato y especialidad" },
+  { key: "actividades", label: "Actividades realizadas", type: "textarea", placeholder: "Describe lo ejecutado, no solo el título del contrato.", group: "Contrato y especialidad" },
+  { key: "monto", label: "Monto del contrato", type: "number", group: "Monto y participación" },
+  { key: "moneda", label: "Moneda", type: "select", options: [{ value: "PEN", label: "Soles (PEN)" }, { value: "USD", label: "Dólares (USD)" }, { value: "EUR", label: "Euros (EUR)" }], group: "Monto y participación" },
+  { key: "modalidad_participacion", label: "Participación de la empresa", type: "select", options: [{ value: "individual", label: "Individual" }, { value: "consorcio", label: "En consorcio" }, { value: "subcontratista", label: "Como subcontratista" }], group: "Monto y participación" },
+  { key: "porcentaje_participacion", label: "Participación (%)", type: "number", max: 100, group: "Monto y participación" },
+  { key: "alcance_participacion", label: "Obligaciones y alcance de tu participación", type: "textarea", group: "Monto y participación" },
+  { key: "fecha_inicio", label: "Fecha de inicio", type: "date", group: "Fechas y respaldo" },
+  { key: "fecha_fin", label: "Fecha de finalización", type: "date", group: "Fechas y respaldo" },
+  { key: "fecha_conformidad", label: "Fecha de conformidad", type: "date", group: "Fechas y respaldo" },
+  { key: "anio", label: "Año de referencia", type: "number", group: "Fechas y respaldo" },
+  { key: "acreditacion", label: "Estado del respaldo", type: "select", options: [{ value: "declarada", label: "Declarado por la empresa" }, { value: "documentada", label: "Con documentos de respaldo (sin verificar)" }, { value: "pendiente", label: "Pendiente de documentación" }], group: "Fechas y respaldo" },
+  { key: "conformidad", label: "Conformidad o constancia", group: "Fechas y respaldo" },
+  { key: "descripcion", label: "Alcance y observaciones", type: "textarea", group: "Fechas y respaldo" },
 ];
 const certificates: RecordField[] = [
   { key: "nombre", label: "Certificado o seguro", required: true }, { key: "entidad", label: "Entidad emisora" },
@@ -64,6 +81,8 @@ export function ProfileForm({ profile, section = "team", onDirtyChange, onBusyCh
   function update(key: string, value: unknown) { setDraft((current: any) => ({ ...current, [key]: value })); setDirty(true); setStatus(""); }
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    const experienceError = validateExperienceRecords(draft.experience_json);
+    if (experienceError) { setError(true); setStatus(experienceError); return; }
     const invalid = !/^\d{11}$/.test(draft.ruc ?? "") || !String(draft.razon_social ?? "").trim() ? "Completa el RUC de 11 dígitos y la razón social en Empresa." : Object.values(draft.econ_experience_json ?? {}).some(value => typeof value === "number" && (!Number.isFinite(value) || value < 0)) ? "La experiencia económica no puede ser negativa. Revísala en Experiencia." : [["team_json", "role"], ["experience_json", "objeto"], ["certifications_json", "nombre"], ["equipment_json", "nombre"], ["hireable_roles_json", "role"]].map(([key, primary]) => validateProfileRecords(draft[key], primary, baseline?.[key])).find(Boolean);
     if (invalid) { setError(true); setStatus(invalid); return; }
     setBusy(true); setStatus(""); setError(false);
@@ -94,9 +113,12 @@ export function ProfileForm({ profile, section = "team", onDirtyChange, onBusyCh
         </details>
       </>}
       {section === "experience" && <>
-        <div className={styles.fields}>{["servicios", "bienes"].map(kind => <label key={kind}>Experiencia acreditable en {kind} (S/)<Input type="number" min="0" step="any" value={draft.econ_experience_json?.[kind] ?? ""} onChange={event => update("econ_experience_json", { ...draft.econ_experience_json, [kind]: event.target.value === "" ? null : Number(event.target.value) })} /></label>)}</div>
-        <p className={styles.helper}>Registra solo montos que puedas respaldar. Agregar contratos no suma ni verifica automáticamente este monto.</p>
-        {records("experience_json", { title: "Contratos previos", description: "Separa cada contrato y adjunta su conformidad o constancia.", addLabel: "Agregar contrato", primary: "objeto", fields: contracts })}
+        <p className={styles.helper}>Registra cada contrato una sola vez. Su rubro, actividades y respaldo permiten distinguir experiencia general de experiencia específica según las bases de cada concurso.</p>
+        {records("experience_json", { title: "Contratos por rubro y especialidad", description: "Detalla lo ejecutado y tu participación. Un monto de servidores no acredita automáticamente experiencia en software.", addLabel: "Agregar contrato", primary: "objeto", fields: contracts })}
+        <details className={styles.disclosure}><summary>Montos generales registrados <span>Se conservan separados</span></summary>
+          <div className={styles.fields}>{["servicios", "bienes"].map(kind => <label key={kind}>Experiencia declarada en {kind} (S/)<Input type="number" min="0" step="any" value={draft.econ_experience_json?.[kind] ?? ""} onChange={event => update("econ_experience_json", { ...draft.econ_experience_json, [kind]: event.target.value === "" ? null : Number(event.target.value) })} /></label>)}</div>
+          <p className={styles.helper}>Estos montos anteriores no se recalculan ni se suman con los contratos. Su compatibilidad y acreditación dependen de cada convocatoria; el evaluador actual todavía utiliza este resumen.</p>
+        </details>
       </>}
       {section === "resources" && <>
         {records("certifications_json", { title: "Certificaciones y seguros de empresa", description: "Las capacitaciones personales se registran dentro de cada profesional.", addLabel: "Agregar certificación", primary: "nombre", fields: certificates })}

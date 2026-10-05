@@ -142,6 +142,14 @@ QA: `node --test scripts/profile_records.test.mjs` (8 casos); `scripts/qa_profil
 
 ## Estados
 
+### Experiencia por contrato y especialidad (2026-10-05)
+
+Experiencia prioriza contratos agregables, con tres grupos de edición: Contrato y especialidad, Monto y participación, Fechas y respaldo. Se persisten en `experience_json` los campos `objeto`, `entidad`, `numero_contrato`, `rubro`, `especialidad`, `tipo_objeto`, `actividades`, `monto`, `moneda`, `modalidad_participacion`, `porcentaje_participacion`, `alcance_participacion`, `fecha_inicio`, `fecha_fin`, `fecha_conformidad`, `anio`, `acreditacion`, `conformidad`, `descripcion` y `documents[]`.
+
+Los montos anteriores de `econ_experience_json` se conservan bajo divulgación progresiva, sin sumar contratos ni convertir monedas automáticamente. No se declara un contrato como «general» o «específico» de forma universal: su compatibilidad depende de cada convocatoria. `documentada` significa respaldo declarado, no verificación externa. El worker ya recibe `experience_json`, pero esta ampliación no cambia todavía sus pesos ni la regla económica heredada. No requiere migración SQL.
+
+La API y el cliente validan moneda/objeto/participación/respaldo, montos no negativos, porcentaje de 0 a 100 y fechas válidas. Registros legacy y metadata desconocida se conservan sin reescritura. QA local intercepta todas las escrituras: `scripts/qa_profile_experience.py`.
+
 - Sin perfil: formulario inicial.
 - Perfil incompleto: mostrar pendientes.
 - Guardando: bloquear solo la seccion.
