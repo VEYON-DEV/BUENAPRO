@@ -11,9 +11,16 @@ function load(file, requireModule) {
   return exports;
 }
 const schedule = load(`${__dirname}/../../lib/procurementSchedule.ts`, () => { throw new Error('Unexpected schedule import'); });
+const prod2Analysis = load(`${__dirname}/../../lib/prod2Analysis.ts`, name => { if (name === '@/lib/procurementSchedule') return schedule; throw new Error(`Unexpected import ${name}`); });
+const savedOpportunities = load(`${__dirname}/savedOpportunities.ts`, name => {
+  if (name === '@/server/db/client') return { query: async () => { throw new Error('Unexpected bookmark query'); } };
+  throw new Error(`Unexpected import ${name}`);
+});
 const calls = [];
 const service = load(`${__dirname}/procurementTimeline.ts`, name => {
   if (name === '@/lib/procurementSchedule') return schedule;
+  if (name === '@/lib/prod2Analysis') return prod2Analysis;
+  if (name === './savedOpportunities') return savedOpportunities;
   if (name === '@/server/db/client') return { query: async (sql, values) => { calls.push({ sql, values }); return { rows: [] }; } };
   throw new Error(`Unexpected import ${name}`);
 });
@@ -98,4 +105,53 @@ test('API requires tenant context before querying, binds tenant and disables sha
   authenticated = true;
   const result = await route.GET(request);
   assert.equal(result.init.headers['Cache-Control'], 'private, no-store');
+});
+
+test('Buscador SEACE timeline lists only the tenant saved procedures with their official stages', () => {
+  const sql = service.prod2TimelineSql();
+  assert.match(sql, /FROM saved_opportunities s/);
+  assert.match(sql, /WHERE s.tenant_id = \$1/);
+  assert.match(sql, /d.schedule_json AS official_schedule/);
+  assert.equal(service.parseTimelineParams(new URLSearchParams('source=prod2')).source, 'prod2');
+  const row = { id: 'opp', source_id: '987', code: 'CP-ABR-1', title: 'Licencias', entity: 'Entidad', object_type: 'service', fit_level: null, fit_points: null, score: null, verdict: null, schedule_fetched_at: null, saved: true,
+    official_schedule: [{ stage: 'Presentación de ofertas', starts_at_text: '05/10/2026', ends_at_text: '10/10/2026' }] };
+  const [item] = service.normalizeTimelineRows([row], 'prod2', new Date('2026-10-06T17:00:00Z'));
+  assert.equal(item.status, 'saved');
+  assert.equal(item.saved, true);
+  assert.equal(item.detailHref, '/oportunidad/prod2/987');
+  assert.equal(item.deadline.at, '2026-10-10');
+  assert.equal(service.normalizeTimelineRows([row], 'prod2', new Date('2026-10-12T17:00:00Z')).length, 0, 'closed offers leave the Gantt');
+});
+
+test('saved contratos menores stay on the Gantt even without affinity', () => {
+  assert.match(service.timelineSql('prod6'), /OR EXISTS \(SELECT 1 FROM saved_contracts sc WHERE sc.tenant_id = \$1/);
+  const base = { id: 'uuid', source_id: '55', code: 'CM-55', title: 'Servicio', entity: 'Entidad', object_type: 'service', fit_level: 0, fit_points: 0, score: null, verdict: null, schedule_fetched_at: null, official_schedule: [] };
+  assert.equal(service.normalizeTimelineRows([base], 'prod6').length, 0);
+  const [saved] = service.normalizeTimelineRows([{ ...base, saved: true }], 'prod6');
+  assert.equal(saved.status, 'saved');
+});
+
+test('missing saved_opportunities table yields an empty Buscador SEACE timeline', async () => {
+  const missing = load(`${__dirname}/procurementTimeline.ts`, name => {
+    if (name === '@/lib/procurementSchedule') return schedule;
+    if (name === '@/lib/prod2Analysis') return prod2Analysis;
+    if (name === './savedOpportunities') return savedOpportunities;
+    if (name === '@/server/db/client') return { query: async () => { throw Object.assign(new Error('relation "saved_opportunities" does not exist'), { code: '42P01' }); } };
+    throw new Error(`Unexpected import ${name}`);
+  });
+  const result = await missing.getProcurementTimeline('tenant', { source: 'prod2', q: '' });
+  assert.equal(result.data.length, 0);
+  await assert.rejects(missing.getProcurementTimeline('tenant', { source: 'prod6', q: '' }));
+});
+
+test('Buscador SEACE timeline does not conceal other missing relations', async () => {
+  const error = Object.assign(new Error('relation "prod2_details" does not exist'), { code: '42P01' });
+  const broken = load(`${__dirname}/procurementTimeline.ts`, name => {
+    if (name === '@/lib/procurementSchedule') return schedule;
+    if (name === '@/lib/prod2Analysis') return prod2Analysis;
+    if (name === './savedOpportunities') return savedOpportunities;
+    if (name === '@/server/db/client') return { query: async () => { throw error; } };
+    throw new Error(`Unexpected import ${name}`);
+  });
+  await assert.rejects(broken.getProcurementTimeline('tenant', { source: 'prod2', q: '' }), actual => actual === error);
 });

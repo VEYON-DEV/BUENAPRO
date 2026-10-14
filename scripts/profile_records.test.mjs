@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { recordObject, recordText, updateRecord, validateProfileRecords } from "../apps/web/features/profile/model/records.ts";
+import { formatMoney, groupLabel, groupRecords, recordMatches, recordObject, recordText, updateRecord, validateProfileRecords } from "../apps/web/features/profile/model/records.ts";
 
 test("legacy string becomes a record only when edited", () => {
   assert.equal(recordText("Ingeniero", "role", "role"), "Ingeniero");
@@ -26,4 +26,26 @@ test("normalization does not mutate rich object", () => {
   const record = { nombre: "ISO", unknown: "retain" };
   assert.deepEqual(recordObject(record, "nombre"), record);
   assert.notEqual(recordObject(record, "nombre"), record);
+});
+
+test("groups spelling variants of a rubro together and keeps original indexes", () => {
+  const records = [{ objeto: "A", rubro: "OIL & GAS" }, { objeto: "B", rubro: "Educación" }, { objeto: "C", rubro: "Oil & Gas" }, { objeto: "D" }, "Legado"];
+  const groups = groupRecords(records, "objeto", "rubro");
+  assert.deepEqual(groups.map(group => [group.label, group.items.map(item => item.index)]), [["Oil & Gas", [0, 2]], ["Educación", [1]], ["Sin rubro", [3, 4]]]);
+  assert.equal(records[0].rubro, "OIL & GAS");
+});
+test("all-caps group labels are title-cased for display only", () => {
+  assert.equal(groupLabel(["INSTRUMENTACION DE PLANTA"]), "Instrumentacion de Planta");
+  assert.equal(groupLabel(["AGROINDUSTRIAL", "Agroindustrial"]), "Agroindustrial");
+});
+test("search ignores accents and case across text and numbers", () => {
+  assert.ok(recordMatches({ objeto: "Migración SCADA", entidad: "Agroaurora" }, "objeto", "migracion scada"));
+  assert.ok(recordMatches({ objeto: "X", numero_contrato: 4505459913 }, "objeto", "45054"));
+  assert.ok(!recordMatches({ objeto: "Migración SCADA" }, "objeto", "petroperu"));
+  assert.ok(recordMatches("Servicio legado", "objeto", "legado"));
+});
+test("money keeps the record currency without conversion", () => {
+  assert.equal(formatMoney(41023, "USD"), "USD 41,023");
+  assert.equal(formatMoney(0, "PEN"), "S/ 0");
+  assert.equal(formatMoney(null, "PEN"), null);
 });

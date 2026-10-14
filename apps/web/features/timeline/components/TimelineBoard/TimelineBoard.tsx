@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { Radio, ChevronLeft, ChevronRight, RefreshCw, Clock3, ArrowUpRight, X, CalendarDays } from "lucide-react";
+import { Radio, ChevronLeft, ChevronRight, RefreshCw, Clock3, ArrowUpRight, X, CalendarDays, Bookmark, Landmark } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -14,8 +14,10 @@ import { addDays, dayOffset, formatBoundary, layoutStages, limaDay, stageLabel, 
 import styles from "./TimelineBoard.module.css";
 
 function Signal({ row }: { row: TimelineOpportunity }) {
-  if (row.status === "evaluated") return <span className={`${styles.signal} ${row.verdict === "verde" ? styles.green : styles.amber}`}><b>{row.score}</b>{row.verdict === "verde" ? "Cumples" : "Te falta poco"}</span>;
-  return <span className={`${styles.signal} ${styles.violet}`}><span aria-hidden="true">{"●".repeat(row.fitLevel)}</span>{row.fitLevel === 3 ? "Tu rubro exacto" : "Muy relacionado"}</span>;
+  const saved = row.saved ? <span className={styles.savedMark} title="Guardada en tu lista"><Bookmark size={12} aria-hidden="true" />Guardada</span> : null;
+  if (row.status === "saved") return <span className={styles.signal}>{saved}</span>;
+  if (row.status === "evaluated") return <span className={`${styles.signal} ${row.verdict === "verde" ? styles.green : styles.amber}`}><b>{row.score}</b>{row.verdict === "verde" ? "Cumples" : "Te falta poco"}{saved}</span>;
+  return <span className={`${styles.signal} ${styles.violet}`}><span aria-hidden="true">{"●".repeat(row.fitLevel)}</span>{row.fitLevel === 3 ? "Tu rubro exacto" : "Muy relacionado"}{saved}</span>;
 }
 
 export function TimelineBoard({ initial, initialParams }: { initial: TimelineResponse; initialParams: Record<string, string> }) {
@@ -85,6 +87,7 @@ export function TimelineBoard({ initial, initialParams }: { initial: TimelineRes
     <div className={styles.topline}>
       <nav className={styles.sources} aria-label="Fuente del cronograma">
         <Link href={sourceHref("prod6")} className={source === "prod6" ? styles.sourceActive : ""} aria-current={source === "prod6" ? "page" : undefined}><Radio size={18} aria-hidden="true" />Contratos menores</Link>
+        <Link href={sourceHref("prod2")} className={source === "prod2" ? styles.sourceActive : ""} aria-current={source === "prod2" ? "page" : undefined}><Landmark size={18} aria-hidden="true" />Buscador SEACE</Link>
       </nav>
       <p className={styles.urgency}><Clock3 size={17} aria-hidden="true" /><strong>{urgent}</strong> cierran en las próximas 72 h{urgentDays ? <span> · {urgentDays} próximos con hora no informada</span> : null}</p>
     </div>
@@ -103,10 +106,13 @@ export function TimelineBoard({ initial, initialParams }: { initial: TimelineRes
       </form>
     </div>
     <div className={styles.legend}>
-      <span>{rows.length} oportunidades con potencial</span>
-      <span className={styles.violet}>●● / ●●● Afinidad sin evaluar</span>
-      <span className={styles.amber}>● Te falta poco</span>
-      <span className={styles.green}>● Cumples</span>
+      <span>{rows.length} {source === "prod2" ? (rows.length === 1 ? "procedimiento guardado" : "procedimientos guardados") : "oportunidades con potencial"}</span>
+      {source !== "prod2" ? <>
+        <span className={styles.violet}>●● / ●●● Afinidad sin evaluar</span>
+        <span className={styles.amber}>● Te falta poco</span>
+        <span className={styles.green}>● Cumples</span>
+      </> : null}
+      <span className={styles.violet}><Bookmark size={12} aria-hidden="true" /> Guardada</span>
     </div>
     <p className={styles.mobileHint}>Agenda de cierres · abre una oportunidad para consultar todas sus etapas.</p>
     <div aria-live="polite" className={styles.feedback}>{busy ? "Actualizando cronograma…" : error}</div>
@@ -115,7 +121,9 @@ export function TimelineBoard({ initial, initialParams }: { initial: TimelineRes
       <Link href={`${selected.row.detailHref}#schedule`}>Ver cronograma completo <ArrowUpRight size={16} aria-hidden="true" /></Link>
       <Button variant="ghost" aria-label="Cerrar etapa seleccionada" onClick={() => setSelected(null)}><X size={18} aria-hidden="true" /></Button>
     </section> : null}
-    {!rows.length ? <EmptyState title="No hay oportunidades con estos criterios">Solo aparecen afinidades de 2–3 puntos sin evaluar y evaluaciones amarillas o verdes. Revisa tu búsqueda o tus líneas de negocio.</EmptyState> : <>
+    {!rows.length ? source === "prod2"
+      ? <EmptyState title={q ? "No hay procedimientos guardados con esa búsqueda" : "Aún no guardaste procedimientos del Buscador SEACE"} action={{ label: "Ir al Buscador SEACE", href: "/feed?source=prod2" }}>Usa el marcador de cada procedimiento para seguir aquí sus etapas oficiales. Solo se muestran mientras sus ofertas sigan abiertas.</EmptyState>
+      : <EmptyState title="No hay oportunidades con estos criterios">Aparecen tus guardadas, las afinidades de 2–3 puntos sin evaluar y las evaluaciones amarillas o verdes. Revisa tu búsqueda o tus líneas de negocio.</EmptyState> : <>
       <div className={styles.chart} style={chartVars} role="region" aria-label="Gantt de oportunidades y etapas oficiales" tabIndex={0}>
         <div className={styles.axis}>
           <div className={styles.axisLabel}>Oportunidad <small>Ordenadas por cierre de ofertas</small></div>

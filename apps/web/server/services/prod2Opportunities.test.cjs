@@ -14,7 +14,8 @@ function load(file, mocks = {}, environment = {}) {
     fetch: async () => { throw new Error('Unexpected network call in offline test'); }, process: { env: environment },
     require(name) { return name in mocks ? mocks[name] : name === './prod2OfficialDocument' ? official
       : name === './prod2DocumentStorage' ? defaultStorage
-      : name === './keywordTextScoring' ? load('keywordTextScoring.ts') : require(name); } });
+      : name === './keywordTextScoring' ? load('keywordTextScoring.ts')
+      : name === './savedOpportunities' ? load('savedOpportunities.ts', mocks) : require(name); } });
   return exports;
 }
 const schedule = load('../../lib/procurementSchedule.ts');
@@ -84,7 +85,7 @@ test('pagination uses convocatoria identity and preserves source provenance with
   } }, '@/lib/prod2Analysis': analysis, './prod2DocumentStorage': { prod2StorageAvailable: () => false } });
   const result = await service.listProd2OpportunitiesForTenant('tenant', { object: 'service', q: 'software', page: 2, pageSize: 10, profileId: null });
   assert.equal(result.total, 21); assert.equal(result.page, 2);
-  const selection = statements.at(-1);
+  const selection = statements.find(statement => statement.sql.includes('LIMIT $'));
   assert.deepEqual(Array.from(selection.values.slice(-2)), [10, 10]);
   assert.match(selection.sql, /'seace_prod2'::text AS source_key/);
   assert.match(selection.sql, /prod2_match_provenance/);
@@ -557,4 +558,29 @@ test('all PROD2 read routes preserve a missing-session 401 response', async () =
     assert.equal(result.status, 401, filename);
     assert.equal(reads, 0, filename);
   }
+});
+
+test('saved state comes from the tenant bookmark of each canonical opportunity', async () => {
+  const statements = [];
+  const service = load('prod2Opportunities.ts', { '@/server/db/client': { query: async (sql, values) => {
+    statements.push({ sql, values });
+    if (sql.includes('FROM saved_opportunities')) return { rows: [{ opportunity_id: 'opp-2' }] };
+    if (sql.includes('ORDER BY fit.keyword_points')) return { rows: [{ id_convocatoria: '1', opportunity_id: 'opp-1' }, { id_convocatoria: '2', opportunity_id: 'opp-2' }] };
+    return { rows: sql.includes('count(*)::int AS total') ? [{ total: 2 }] : [] };
+  } }, '@/lib/prod2Analysis': analysis, './prod2DocumentStorage': { prod2StorageAvailable: () => false } });
+  const result = await service.listProd2OpportunitiesForTenant('tenant-a', { object: null, q: '', page: 1, pageSize: 20, profileId: null });
+  assert.deepEqual(result.data.map(row => [row.id_convocatoria, row.is_saved]), [['1', false], ['2', true]]);
+  const lookup = statements.find(statement => statement.sql.includes('FROM saved_opportunities'));
+  assert.equal(lookup.values[0], 'tenant-a');
+  assert.deepEqual(Array.from(lookup.values[1]), ['opp-1', 'opp-2']);
+});
+
+test('lists keep working before the saved_opportunities migration is applied', async () => {
+  const service = load('prod2Opportunities.ts', { '@/server/db/client': { query: async (sql) => {
+    if (sql.includes('FROM saved_opportunities')) throw Object.assign(new Error('relation "saved_opportunities" does not exist'), { code: '42P01' });
+    if (sql.includes('ORDER BY fit.keyword_points')) return { rows: [{ id_convocatoria: '1', opportunity_id: 'opp-1' }] };
+    return { rows: sql.includes('count(*)::int AS total') ? [{ total: 1 }] : [] };
+  } }, '@/lib/prod2Analysis': analysis, './prod2DocumentStorage': { prod2StorageAvailable: () => false } });
+  const result = await service.listProd2OpportunitiesForTenant('tenant-a', { object: null, q: '', page: 1, pageSize: 20, profileId: null });
+  assert.equal(result.data[0].is_saved, false);
 });

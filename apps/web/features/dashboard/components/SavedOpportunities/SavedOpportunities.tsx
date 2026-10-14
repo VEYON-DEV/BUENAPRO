@@ -42,14 +42,16 @@ export function SavedOpportunities({ rows }: { rows: SavedOpportunity[] }) {
         </div>
       ) : (
         <div className={styles.empty}>
-          <Bookmark aria-hidden="true" size={22} />
-          <div><strong>Aún no guardaste oportunidades</strong><p>Marca las que quieras revisar desde Oportunidades.</p></div>
+          <span className={styles.emptyIcon}><Bookmark aria-hidden="true" size={22} /></span>
+          <strong>Aún no guardaste oportunidades</strong>
+          <p>Guarda contratos menores para revisarlos aquí y en el Cronograma. Los procedimientos guardados del Buscador SEACE se consultan en su pestaña del Cronograma.</p>
+          <Link className={styles.emptyAction} href="/feed?source=prod6">Explorar contratos menores <ArrowRight aria-hidden="true" size={15} /></Link>
         </div>
       )}
 
-      <Link className={styles.footerLink} href="/feed?saved=true&deadline=all">
+      {rows.length ? <Link className={styles.footerLink} href="/feed?saved=true&deadline=all">
         Ver todas las guardadas <ArrowRight aria-hidden="true" size={15} />
-      </Link>
+      </Link> : null}
     </section>
   );
 }

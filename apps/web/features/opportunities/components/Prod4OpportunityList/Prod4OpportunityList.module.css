@@ -40,6 +40,12 @@
 
 .row:last-child { border-bottom: 0; }
 
+/* Buscador SEACE rows carry a bookmark beside the row button (never nested inside it). */
+.withSave .row { align-items: center; display: grid; grid-template-columns: minmax(0, 1fr) 52px; }
+.withSave .listHead { grid-template-columns: minmax(180px, 1.8fr) minmax(115px, 1.1fr) 116px 110px minmax(100px, .9fr) minmax(90px, .8fr) 40px; }
+.saveHeading { display: block; }
+.srOnly { clip: rect(0 0 0 0); clip-path: inset(50%); height: 1px; overflow: hidden; position: absolute; white-space: nowrap; width: 1px; }
+
 .active {
   background: rgb(238 236 255 / .72);
   box-shadow: inset 0 0 0 1px rgb(76 60 255 / .34);
@@ -233,6 +239,8 @@
 @media (max-width: 1400px) {
   .board { grid-template-columns: minmax(0, 1fr); }
   .preview {
+    align-content: start;
+    grid-auto-rows: max-content;
     bottom: 20px;
     max-height: calc(100vh - 100px);
     overflow-y: auto;
@@ -273,4 +281,17 @@
     top: auto;
     width: 100%;
   }
+}
+
+@media (min-width: 1401px) and (max-width: 1650px) {
+  .withSave .listHead { grid-template-columns: minmax(145px, 1.7fr) minmax(100px, 1fr) 112px 106px minmax(94px, .9fr) minmax(88px, .8fr) 40px; }
+}
+@media (max-width: 1050px) {
+  .withSave .listHead { grid-template-columns: minmax(165px, 1.7fr) minmax(110px, 1fr) 112px 106px minmax(100px, .9fr) 40px; }
+  .withSave .listHead > :last-child { display: block; }
+  .withSave .listHead > :nth-last-child(2) { display: none; }
+}
+@media (max-width: 700px) {
+  .withSave .row { align-items: start; grid-template-columns: minmax(0, 1fr) 48px; }
+  .withSave .row > :last-child { padding-top: 8px; }
 }

@@ -144,3 +144,12 @@
     width: 100%;
   }
 }
+
+/* Short viewports (tablet/phone sideways): keep brand, every destination and the company link reachable. */
+@media (min-width: 768px) and (max-height: 560px) {
+  .rail { gap: 10px; overflow-y: auto; padding-block: 12px; scrollbar-width: none; }
+  .brand { min-height: 36px; }
+  .nav { gap: 2px; }
+  .company { padding-top: 10px; }
+  .companyMark { flex-basis: 34px; height: 34px; }
+}

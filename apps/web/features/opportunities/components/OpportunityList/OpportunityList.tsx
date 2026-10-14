@@ -97,6 +97,27 @@ function FactRow({ icon, label, children }: { icon: Parameters<typeof AppIcon>[0
 
 export function OpportunityList({ rows }: { rows: any[] }) {
   const [selectedId, setSelectedId] = useState<string | number | null>(rows[0]?.id_contrato ?? null);
+  // Beside the list (>1500px) the inspector is always shown; below that it is an overlay revealed only after the user picks a row.
+  const [userOpened, setUserOpened] = useState(false);
+  const [wideViewport, setWideViewport] = useState(false);
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 1501px)");
+    const sync = () => setWideViewport(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
+  useEffect(() => {
+    if (selectedId == null) return;
+    const close = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !wideViewport) {
+        setSelectedId(null);
+        setUserOpened(false);
+      }
+    };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [selectedId, wideViewport]);
   const [storedDetail, setDetail] = useState<any | null>(null);
   const [detailStatus, setDetailStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const primary = useMemo(
@@ -177,8 +198,8 @@ export function OpportunityList({ rows }: { rows: any[] }) {
                 <button
                   className={styles.rowMain}
                   type="button"
-                  aria-expanded={row.id_contrato === selectedId}
-                  onClick={() => setSelectedId(row.id_contrato === selectedId ? null : row.id_contrato)}
+                  aria-expanded={row.id_contrato === selectedId && (wideViewport || userOpened)}
+                  onClick={() => { const closing = row.id_contrato === selectedId && userOpened; setSelectedId(closing ? null : row.id_contrato); setUserOpened(!closing); }}
                 >
                   <div className={styles.codeCell}>
                     <strong className={styles.code}>{row.codigo}</strong>
@@ -224,14 +245,14 @@ export function OpportunityList({ rows }: { rows: any[] }) {
       </div>
 
       {primary ? (
-        <aside className={styles.preview} aria-label="Vista rápida de la oportunidad">
+        <aside className={[styles.preview, userOpened ? styles.opened : ""].join(" ")} aria-label="Vista rápida de la oportunidad">
           <div className={styles.previewTop}>
             <strong>Vista rápida</strong>
             <button
               className={styles.closeButton}
               type="button"
               aria-label="Cerrar vista rápida"
-              onClick={() => setSelectedId(null)}
+              onClick={() => { setSelectedId(null); setUserOpened(false); }}
             >
               <AppIcon name="close" />
             </button>

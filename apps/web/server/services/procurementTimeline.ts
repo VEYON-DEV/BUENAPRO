@@ -1,5 +1,7 @@
 import { query } from "@/server/db/client";
 import { normalizeProd4Schedule, normalizeProd6Schedule, parseOfficialScheduleDate } from "@/lib/procurementSchedule";
+import { normalizeProd2Schedule } from "@/lib/prod2Analysis";
+import { isMissingSavedOpportunitiesTable } from "./savedOpportunities";
 import type { TimelineOpportunity, TimelineResponse, TimelineSource } from "@/lib/procurementTimeline";
 export type ProcurementTimelineResult = TimelineResponse;
 export type { TimelineOpportunity, TimelineResponse, TimelineSource } from "@/lib/procurementTimeline";
@@ -7,7 +9,7 @@ export type { TimelineOpportunity, TimelineResponse, TimelineSource } from "@/li
 export function parseTimelineParams(params: URLSearchParams): { source: TimelineSource; q: string } {
   const source = params.get("source") || "prod6";
   const q = (params.get("q") || "").trim();
-  if (source !== "prod6" && source !== "prod4") throw new Error("source must be prod6 or prod4");
+  if (source !== "prod6" && source !== "prod4" && source !== "prod2") throw new Error("source must be prod6, prod4 or prod2");
   if (q.length > 120) throw new Error("q must be 120 characters or fewer");
   return { source, q };
 }
@@ -16,7 +18,24 @@ type TimelineRow = {
   id: string; source_id: string; code: string; title: string; entity: string; object_type: string;
   fit_level: number | null; fit_points: number | null; score: number | null; verdict: string | null;
   official_schedule: unknown; schedule_fetched_at: string | null; published_raw?: string | null;
+  saved?: boolean | null;
 };
+
+/** Buscador SEACE has no tenant fit function: its timeline is the workspace's saved procedures. */
+export function prod2TimelineSql(): string {
+  return `SELECT p.opportunity_id::text AS id, p.id_convocatoria::text AS source_id,
+    p.nomenclature AS code, p.description AS title, p.buyer_name AS entity, o.object_type,
+    NULL::int AS fit_level, NULL::int AS fit_points, NULL::int AS score, NULL::text AS verdict,
+    d.schedule_json AS official_schedule, NULL::text AS published_raw,
+    d.detail_fetched_at::text AS schedule_fetched_at, true AS saved
+  FROM saved_opportunities s
+  JOIN prod2_discoveries p ON p.opportunity_id = s.opportunity_id
+  JOIN prod2_details d USING (id_convocatoria)
+  JOIN opportunities o ON o.id = p.opportunity_id
+  WHERE s.tenant_id = $1
+    AND ($2 = '' OR p.nomenclature ILIKE '%' || $2 || '%' OR p.description ILIKE '%' || $2 || '%' OR p.buyer_name ILIKE '%' || $2 || '%')
+  ORDER BY p.id_convocatoria`;
+}
 
 /** Single bulk query per source: active tenant profiles only, no PDF/LLM calls. */
 export function timelineSql(source: TimelineSource): string {
@@ -47,7 +66,8 @@ export function timelineSql(source: TimelineSource): string {
     o.object_type, fit.fit_level, fit.fit_points, matched.score, matched.verdict,
     ${prod4 ? "p.raw_detail->'listaCronograma'" : "COALESCE(c.raw_detail_json->'uitContratoEtapaProjectionList', c.cronograma->'etapas')"} AS official_schedule,
     ${prod4 ? "NULL::text" : "COALESCE(c.raw_detail_json->'uitContratoCompletoProjection'->>'fecPublica', c.raw_search_json->>'fecPublica')"} AS published_raw,
-    ${alias}.schedule_fetched_at::text AS schedule_fetched_at
+    ${alias}.schedule_fetched_at::text AS schedule_fetched_at,
+    ${prod4 ? "false" : "EXISTS (SELECT 1 FROM saved_contracts sc WHERE sc.tenant_id = $1 AND sc.id_contrato = c.id_contrato)"} AS saved
   FROM ${prod4 ? "prod4_processes p" : "seace_contracts c"}
   JOIN opportunities o ON o.id = ${alias}.opportunity_id
   LEFT JOIN LATERAL (
@@ -65,7 +85,8 @@ export function timelineSql(source: TimelineSource): string {
     ORDER BY m.score DESC, m.updated_at DESC, m.id DESC LIMIT 1
   ) matched ON true
   WHERE ${prod4 ? "p.technology_relevant = true AND p.missing_since IS NULL" : "c.estado_codigo = 2"}
-    AND (matched.verdict IN ('verde', 'ambar') OR (matched.verdict IS NULL AND fit.fit_level >= 2))
+    AND (matched.verdict IN ('verde', 'ambar') OR (matched.verdict IS NULL AND fit.fit_level >= 2)
+      ${prod4 ? "" : "OR EXISTS (SELECT 1 FROM saved_contracts sc WHERE sc.tenant_id = $1 AND sc.id_contrato = c.id_contrato)"})
     AND ($2 = '' OR ${prod4 ? "p.nomenclatura" : "c.codigo"} ILIKE '%' || $2 || '%'
       OR ${prod4 ? "p.title" : "c.descripcion"} ILIKE '%' || $2 || '%'
       OR ${prod4 ? "p.buyer_name" : "c.entidad_nombre"} ILIKE '%' || $2 || '%')
@@ -80,9 +101,10 @@ function limaDate(now: Date): string {
 
 export function normalizeTimelineRows(rows: TimelineRow[], source: TimelineSource, now = new Date()): TimelineOpportunity[] {
   const today = limaDate(now);
-  const mapped: TimelineOpportunity[] = rows.filter(row => row.verdict === "verde" || row.verdict === "ambar"
+  const mapped: TimelineOpportunity[] = rows.filter(row => row.saved === true || row.verdict === "verde" || row.verdict === "ambar"
     || (row.verdict == null && Number(row.fit_level) >= 2)).map(row => {
-    const schedule = source === "prod4" ? normalizeProd4Schedule(row.official_schedule) : normalizeProd6Schedule(row.official_schedule);
+    const schedule = source === "prod4" ? normalizeProd4Schedule(row.official_schedule)
+      : source === "prod2" ? normalizeProd2Schedule(row.official_schedule) : normalizeProd6Schedule(row.official_schedule);
     const publication = source === "prod6" ? parseOfficialScheduleDate(row.published_raw) : null;
     if (publication && !schedule.some(stage => stage.kinds.includes("publication"))) {
       schedule.unshift({ id: `prod6-publication-${row.source_id}`, name: "Publicación", kind: "publication", kinds: ["publication"],
@@ -93,11 +115,14 @@ export function normalizeTimelineRows(rows: TimelineRow[], source: TimelineSourc
       .sort((a, b) => a.endsAt!.localeCompare(b.endsAt!)).at(-1);
     const deadline = deadlineStage ? { at: deadlineStage.endsAt!, precision: deadlineStage.endPrecision!, name: deadlineStage.name } : null;
     const verdict = row.verdict === "verde" || row.verdict === "ambar" ? row.verdict : null;
+    const saved = row.saved === true;
+    const fitLevel = Number(row.fit_level ?? 0);
     return {
       id: row.id, source, sourceId: row.source_id, code: row.code, title: row.title, entity: row.entity,
-      objectType: row.object_type, detailHref: source === "prod4" ? `/oportunidad/seace/${row.source_id}` : `/oportunidad/${row.source_id}`,
-      fitLevel: Number(row.fit_level ?? 0), fitPoints: Number(row.fit_points ?? 0),
-      score: verdict ? Number(row.score) : null, verdict, status: verdict ? "evaluated" : "affinity",
+      objectType: row.object_type,
+      detailHref: source === "prod4" ? `/oportunidad/seace/${row.source_id}` : source === "prod2" ? `/oportunidad/prod2/${row.source_id}` : `/oportunidad/${row.source_id}`,
+      fitLevel, fitPoints: Number(row.fit_points ?? 0),
+      score: verdict ? Number(row.score) : null, verdict, status: verdict ? "evaluated" : fitLevel >= 2 ? "affinity" : saved ? "saved" : "affinity", saved,
       schedule, scheduleFetchedAt: row.schedule_fetched_at, deadline,
     };
   });
@@ -115,7 +140,13 @@ export function normalizeTimelineRows(rows: TimelineRow[], source: TimelineSourc
 
 export async function getProcurementTimeline(tenantId: string, params: ReturnType<typeof parseTimelineParams>): Promise<TimelineResponse> {
   const now = new Date();
-  const result = await query<TimelineRow>(timelineSql(params.source), [tenantId, params.q]);
-  const data = normalizeTimelineRows(result.rows, params.source, now);
+  let rows: TimelineRow[] = [];
+  try {
+    rows = (await query<TimelineRow>(params.source === "prod2" ? prod2TimelineSql() : timelineSql(params.source), [tenantId, params.q])).rows;
+  } catch (error) {
+    // Before migration 0044 the Buscador SEACE timeline simply has nothing saved.
+    if (!(params.source === "prod2" && isMissingSavedOpportunitiesTable(error))) throw error;
+  }
+  const data = normalizeTimelineRows(rows, params.source, now);
   return { data, meta: { source: params.source, count: data.length, generatedAt: now.toISOString(), timezone: "America/Lima" } };
 }

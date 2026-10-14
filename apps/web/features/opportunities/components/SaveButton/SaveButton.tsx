@@ -6,17 +6,29 @@ import { Bookmark } from "lucide-react";
 import { apiFetch } from "@/lib/api/client";
 import styles from "./SaveButton.module.css";
 
-export function SaveButton({
+type SaveButtonProps = {
+  idContrato: string | number;
+  /** Save endpoint for non-contract sources (e.g. Buscador SEACE). Defaults to contratos menores. */
+  endpoint?: string;
+  code?: string | null;
+  initialSaved?: boolean;
+  showLabel?: boolean;
+};
+
+export function SaveButton(props: SaveButtonProps) {
+  const endpoint = props.endpoint ?? `/api/contracts/${props.idContrato}/saved`;
+  // A reused inspector must not carry optimistic state or a late response
+  // from the previous opportunity into the new one.
+  return <SaveControl key={JSON.stringify([String(props.idContrato), endpoint])} {...props} endpoint={endpoint} />;
+}
+
+function SaveControl({
   idContrato,
   code,
   initialSaved = false,
   showLabel = false,
-}: {
-  idContrato: string | number;
-  code?: string | null;
-  initialSaved?: boolean;
-  showLabel?: boolean;
-}) {
+  endpoint,
+}: SaveButtonProps) {
   const router = useRouter();
   const [saved, setSaved] = useState(initialSaved);
   const [status, setStatus] = useState<"idle" | "saving" | "error">("idle");
@@ -34,7 +46,7 @@ export function SaveButton({
     setStatus("saving");
     setNotice("Actualizando guardadas…");
     try {
-      await apiFetch(`/api/contracts/${idContrato}/saved`, {
+      await apiFetch(endpoint ?? `/api/contracts/${idContrato}/saved`, {
         method: next ? "PUT" : "DELETE",
       });
       setStatus("idle");

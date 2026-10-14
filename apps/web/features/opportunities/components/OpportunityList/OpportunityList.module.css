@@ -535,8 +535,35 @@
     grid-template-columns: 1fr;
   }
 
+  /* Floating inspector: opened from a row, closed with its button or Escape. */
+  .preview:not(.opened) { display: none; }
   .preview {
-    position: static;
+    align-content: start;
+    grid-auto-rows: max-content;
+    background: rgb(255 255 255 / .94);
+    bottom: 20px;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    position: fixed;
+    right: 20px;
+    top: 80px;
+    width: min(390px, calc(100vw - 40px));
+    z-index: 30;
+  }
+}
+
+@media (max-width: 700px) {
+  .preview {
+    border-radius: 22px 22px 0 0;
+    bottom: 0;
+    left: 0;
+    max-height: 78vh;
+    padding: 18px 18px calc(18px + env(safe-area-inset-bottom));
+    right: 0;
+    top: auto;
+    width: 100%;
+    z-index: calc(var(--bp-z-sticky) + 2);
   }
 }
 

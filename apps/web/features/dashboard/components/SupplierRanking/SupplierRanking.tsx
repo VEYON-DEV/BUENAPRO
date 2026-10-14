@@ -8,8 +8,9 @@ export function SupplierRanking({ rows }: { rows: Array<{ name: string; awards: 
     <div className={styles.list}>
       {rows.map((row, index) => (
         <Link href={`/mercado?view=suppliers&q=${encodeURIComponent(row.name)}`} key={`${row.name}-${index}`}>
-          <span><small>{index + 1}</small><strong>{row.name}</strong><b>{row.awards}</b></span>
-          <i><span style={{ width: `${Number(row.awards) / max * 100}%` }} /></i>
+          <small>{index + 1}</small><strong title={row.name}>{row.name}</strong>
+          <i aria-hidden="true"><span style={{ width: `${Number(row.awards) / max * 100}%` }} /></i>
+          <b>{row.awards}</b>
         </Link>
       ))}
     </div>

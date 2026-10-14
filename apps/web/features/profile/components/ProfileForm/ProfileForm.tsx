@@ -27,25 +27,25 @@ const teamFields: RecordField[] = [
   { key: "especialidad", label: "Experiencia específica", type: "textarea" },
 ];
 const contracts: RecordField[] = [
-  { key: "objeto", label: "Objeto del contrato", required: true, group: "Contrato y especialidad" },
-  { key: "entidad", label: "Cliente o entidad", group: "Contrato y especialidad" },
-  { key: "rubro", label: "Rubro", placeholder: "Ej. Tecnología", group: "Contrato y especialidad" },
-  { key: "especialidad", label: "Especialidad", placeholder: "Ej. Servidores o desarrollo de software", group: "Contrato y especialidad" },
-  { key: "tipo_objeto", label: "Tipo de contratación", type: "select", options: [{ value: "bienes", label: "Bienes" }, { value: "servicios", label: "Servicios" }, { value: "obras", label: "Obras" }, { value: "consultoria_obras", label: "Consultoría de obras" }], group: "Contrato y especialidad" },
-  { key: "numero_contrato", label: "Número de contrato", group: "Contrato y especialidad" },
-  { key: "actividades", label: "Actividades realizadas", type: "textarea", placeholder: "Describe lo ejecutado, no solo el título del contrato.", group: "Contrato y especialidad" },
+  { key: "objeto", label: "Objeto del contrato", required: true, group: "Contrato" },
+  { key: "entidad", label: "Cliente o entidad", group: "Contrato" },
+  { key: "rubro", label: "Rubro", placeholder: "Ej. Tecnología", group: "Contrato" },
+  { key: "especialidad", label: "Especialidad", placeholder: "Ej. Servidores o desarrollo de software", group: "Contrato" },
+  { key: "tipo_objeto", label: "Tipo de contratación", type: "select", options: [{ value: "bienes", label: "Bienes" }, { value: "servicios", label: "Servicios" }, { value: "obras", label: "Obras" }, { value: "consultoria_obras", label: "Consultoría de obras" }], group: "Contrato" },
+  { key: "numero_contrato", label: "Número de contrato", group: "Contrato" },
+  { key: "actividades", label: "Actividades realizadas", type: "textarea", placeholder: "Describe lo ejecutado, no solo el título del contrato.", group: "Contrato" },
   { key: "monto", label: "Monto del contrato", type: "number", group: "Monto y participación" },
   { key: "moneda", label: "Moneda", type: "select", options: [{ value: "PEN", label: "Soles (PEN)" }, { value: "USD", label: "Dólares (USD)" }, { value: "EUR", label: "Euros (EUR)" }], group: "Monto y participación" },
   { key: "modalidad_participacion", label: "Participación de la empresa", type: "select", options: [{ value: "individual", label: "Individual" }, { value: "consorcio", label: "En consorcio" }, { value: "subcontratista", label: "Como subcontratista" }], group: "Monto y participación" },
   { key: "porcentaje_participacion", label: "Participación (%)", type: "number", max: 100, group: "Monto y participación" },
   { key: "alcance_participacion", label: "Obligaciones y alcance de tu participación", type: "textarea", group: "Monto y participación" },
-  { key: "fecha_inicio", label: "Fecha de inicio", type: "date", group: "Fechas y respaldo" },
-  { key: "fecha_fin", label: "Fecha de finalización", type: "date", group: "Fechas y respaldo" },
-  { key: "fecha_conformidad", label: "Fecha de conformidad", type: "date", group: "Fechas y respaldo" },
-  { key: "anio", label: "Año de referencia", type: "number", group: "Fechas y respaldo" },
-  { key: "acreditacion", label: "Estado del respaldo", type: "select", options: [{ value: "declarada", label: "Declarado por la empresa" }, { value: "documentada", label: "Con documentos de respaldo (sin verificar)" }, { value: "pendiente", label: "Pendiente de documentación" }], group: "Fechas y respaldo" },
-  { key: "conformidad", label: "Conformidad o constancia", group: "Fechas y respaldo" },
-  { key: "descripcion", label: "Alcance y observaciones", type: "textarea", group: "Fechas y respaldo" },
+  { key: "fecha_inicio", label: "Fecha de inicio", type: "date", group: "Fechas y conformidad" },
+  { key: "fecha_fin", label: "Fecha de finalización", type: "date", group: "Fechas y conformidad" },
+  { key: "fecha_conformidad", label: "Fecha de conformidad", type: "date", group: "Fechas y conformidad" },
+  { key: "anio", label: "Año de referencia", type: "number", group: "Fechas y conformidad" },
+  { key: "acreditacion", label: "Estado del respaldo", type: "select", options: [{ value: "declarada", label: "Declarado por la empresa" }, { value: "documentada", label: "Con documentos de respaldo (sin verificar)" }, { value: "pendiente", label: "Pendiente de documentación" }], group: "Fechas y conformidad" },
+  { key: "conformidad", label: "Conformidad o constancia", group: "Fechas y conformidad" },
+  { key: "descripcion", label: "Alcance y observaciones", type: "textarea", group: "Fechas y conformidad" },
 ];
 const certificates: RecordField[] = [
   { key: "nombre", label: "Certificado o seguro", required: true }, { key: "entidad", label: "Entidad emisora" },
@@ -69,6 +69,7 @@ export function ProfileForm({ profile, section = "team", onDirtyChange, onBusyCh
   const [status, setStatus] = useState("");
   const [error, setError] = useState(false);
   const [baseline, setBaseline] = useState(profile);
+  const [experienceView, setExperienceView] = useState<"contracts" | "areas">("contracts");
   const feedback = useRef<HTMLParagraphElement>(null);
   useEffect(() => { if (error) feedback.current?.focus(); }, [error, status]);
   useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
@@ -111,22 +112,26 @@ export function ProfileForm({ profile, section = "team", onDirtyChange, onBusyCh
     finally { setBusy(false); }
   }
   const records = (key: string, config: Omit<React.ComponentProps<typeof ProfileRecords>, "records" | "onChange" | "disabled" | "onUploading">) =>
-    <ProfileRecords {...config} records={recordList(draft[key])} onChange={value => update(key, value)} disabled={busy || uploading} onUploading={setUploading} />;
+    <ProfileRecords key={key} {...config} records={recordList(draft[key])} onChange={value => update(key, value)} disabled={busy || uploading} onUploading={setUploading} />;
   return <form onSubmit={submit} className={styles.form}>
     <header className={styles.header}><div><h2>{titles[section][0]}</h2><p>{titles[section][1]}</p></div>
-      {dirty && <Button type="submit" disabled={busy || uploading}><Save size={16} />{busy ? "Guardando…" : "Guardar cambios"}</Button>}
+      {section === "experience" && <div className={styles.views} role="group" aria-label="Tipo de experiencia">
+        <button type="button" aria-pressed={experienceView === "contracts"} disabled={busy || uploading} onClick={() => setExperienceView("contracts")}>Contratos <span>{recordList(draft.experience_json).length}</span></button>
+        <button type="button" aria-pressed={experienceView === "areas"} disabled={busy || uploading} onClick={() => setExperienceView("areas")}>Montos por área <span>{recordList(draft.econ_experience_json?.areas).length}</span></button>
+      </div>}
     </header>
     <fieldset disabled={busy || uploading} className={styles.body}>
       {section === "team" && <>
-        {records("team_json", { title: "Profesionales disponibles", description: "Añade una ficha por profesional. Despliega su rol para completar o editar los datos.", addLabel: "Agregar profesional", primary: "role", fields: teamFields, professional: true })}
+        {records("team_json", { title: "Profesionales disponibles", description: "Una ficha por profesional. Selecciónala para editar sus datos, experiencia, certificados y archivos.", addLabel: "Agregar profesional", primary: "role", fields: teamFields, professional: true, summary: ["nombre", "carrera"] })}
         <details className={styles.disclosure}><summary>Perfiles que puedes incorporar <span>{recordList(draft.hireable_roles_json).length} registrados</span></summary>
           {records("hireable_roles_json", { title: "Perfiles contratables", description: "Se distinguen de tu equipo disponible; no acreditan cumplimiento por sí solos.", addLabel: "Agregar perfil", primary: "role", fields: [{ key: "role", label: "Rol contratable", required: true }, { key: "descripcion", label: "Disponibilidad y condiciones", type: "textarea" }] })}
         </details>
       </>}
-      {section === "experience" && <>
-        <ProfileRecords title="Experiencia económica por área" description="Agrega un monto independiente por rubro y especialidad. No sumamos áreas, monedas ni contratos automáticamente." addLabel="Agregar área" primary="rubro" fields={economicAreas} monetaryOverview records={recordList(draft.econ_experience_json?.areas)} onChange={areas => update("econ_experience_json", { ...draft.econ_experience_json, areas })} disabled={busy || uploading} onUploading={setUploading} />
-        <p className={styles.helper}>Registra cada contrato una sola vez. Su rubro, actividades y respaldo permiten distinguir experiencia general de experiencia específica según las bases de cada concurso.</p>
-        {records("experience_json", { title: "Contratos por rubro y especialidad", description: "Detalla lo ejecutado y tu participación. Un monto de servidores no acredita automáticamente experiencia en software.", addLabel: "Agregar contrato", primary: "objeto", fields: contracts })}
+      {section === "experience" && experienceView === "contracts" && <>
+        {records("experience_json", { title: "Contratos ejecutados", description: "Registra cada contrato una sola vez, con lo ejecutado y tu participación. Un monto de servidores no acredita automáticamente experiencia en software.", addLabel: "Agregar contrato", primary: "objeto", fields: contracts, groupBy: "rubro", summary: ["entidad", "especialidad"], money: true })}
+      </>}
+      {section === "experience" && experienceView === "areas" && <>
+        <ProfileRecords key="economic-areas" title="Montos de experiencia por área" description="Un monto independiente por rubro y especialidad. No sumamos áreas, monedas ni contratos automáticamente." addLabel="Agregar área" primary="rubro" fields={economicAreas} groupBy="rubro" titleKey="especialidad" summary={["tipo_objeto"]} money records={recordList(draft.econ_experience_json?.areas)} onChange={areas => update("econ_experience_json", { ...draft.econ_experience_json, areas })} disabled={busy || uploading} onUploading={setUploading} />
         <details className={styles.disclosure}><summary>Montos generales anteriores <span>Sin área asignada</span></summary>
           <div className={styles.fields}>{["servicios", "bienes"].map(kind => <label key={kind}>Experiencia declarada en {kind} (S/)<Input type="number" min="0" step="any" value={draft.econ_experience_json?.[kind] ?? ""} onChange={event => update("econ_experience_json", { ...draft.econ_experience_json, [kind]: event.target.value === "" ? null : Number(event.target.value) })} /></label>)}</div>
           <p className={styles.helper}>Se conservan como referencia anterior, sin distribuirlos entre áreas ni sumarlos con los registros nuevos. Registrar un monto no acredita por sí solo experiencia compatible con un TDR.</p>
@@ -146,8 +151,8 @@ export function ProfileForm({ profile, section = "team", onDirtyChange, onBusyCh
         }} />{kind}</label>)}</div></div>
       </div>}
     </fieldset>
-    <footer className={styles.footer}><p ref={feedback} tabIndex={-1} className={error ? styles.error : styles.feedback} role="status" aria-live="polite">{status || (uploading ? "Subiendo archivo a tu biblioteca…" : dirty ? "Tienes cambios sin guardar. Puedes cambiar de sección sin perderlos." : "Los datos declarados alimentan la evaluación; no sustituyen una verificación de los documentos.")}</p>
-      {dirty && <Button type="submit" disabled={busy || uploading}>{busy ? "Guardando…" : "Guardar cambios"}</Button>}
+    <footer className={`${styles.footer} ${dirty ? styles.pending : ""}`}><p ref={feedback} tabIndex={-1} className={error ? styles.error : styles.feedback} role="status" aria-live="polite">{status || (uploading ? "Subiendo archivo a tu biblioteca…" : dirty ? "Tienes cambios sin guardar." : "Los datos declarados alimentan la evaluación; no sustituyen una verificación de los documentos.")}</p>
+      {dirty && <Button type="submit" disabled={busy || uploading}><Save size={16} aria-hidden="true" />{busy ? "Guardando…" : "Guardar cambios"}</Button>}
     </footer>
   </form>;
 }

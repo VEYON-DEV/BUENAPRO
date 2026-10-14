@@ -1,25 +1,24 @@
-import { Button } from "@/components/ui/Button";
+import { Inbox, type LucideIcon } from "lucide-react";
+import { buttonClassName } from "@/components/ui/Button";
 import styles from "./EmptyState.module.css";
 
 export function EmptyState({
   title,
   children,
   action,
+  icon: Icon = Inbox,
 }: {
   title: string;
   children?: React.ReactNode;
   action?: { label: string; href?: string };
+  icon?: LucideIcon;
 }) {
   return (
     <div className={styles.empty}>
-      <div className={styles.mark} aria-hidden="true" />
+      <span className={styles.mark} aria-hidden="true"><Icon size={20} strokeWidth={1.8} /></span>
       <h2>{title}</h2>
       {children ? <p>{children}</p> : null}
-      {action?.href ? (
-        <a className={styles.link} href={action.href}>
-          <Button>{action.label}</Button>
-        </a>
-      ) : null}
+      {action?.href ? <a className={buttonClassName("primary", "normal", styles.link)} href={action.href}>{action.label}</a> : null}
     </div>
   );
 }

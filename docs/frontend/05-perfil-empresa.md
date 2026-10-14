@@ -156,6 +156,10 @@ El contexto del copiloto incluye las 43 fuentes mediante resúmenes íntegros y 
 
 ## Estados
 
+### Maestro-detalle para formularios largos (2026-10-13)
+
+Equipo, Experiencia y Recursos usan `ProfileRecords` en modo maestro-detalle: lista compacta a la izquierda (búsqueda desde 6 registros, agrupación opcional por `groupBy` con claves sin acentos/mayúsculas, monto con su moneda original) y editor fijo a la derecha dividido en pasos según `field.group` más «Archivos». Experiencia alterna entre «Contratos» y «Montos por área»; los montos generales anteriores siguen plegados en esta última. En contenedores menores a 760 px la lista y el editor se alternan con «Volver a la lista». Las listas anidadas del profesional (experiencia, certificados) usan la variante `inline`. La barra de guardado queda fija mientras hay cambios. La agrupación es solo de presentación: no reescribe `rubro` ni suma montos. En Radar los segmentos CUBSO son píldoras de una línea (nombre completo en `title`) y cada línea muestra 10 keywords con «+N más».
+
 ### Montos de experiencia por área (2026-10-05)
 
 La sección Experiencia comienza con «Experiencia económica por área» y «Agregar área».

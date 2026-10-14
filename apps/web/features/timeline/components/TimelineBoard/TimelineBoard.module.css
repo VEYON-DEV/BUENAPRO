@@ -44,6 +44,9 @@
 .identity { position: sticky; left: 0; z-index: 2; background: var(--bp-color-panel); border-right: 1px solid var(--bp-color-border); padding: 14px 20px; display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .signal { display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 650; }
 .signal > span { letter-spacing: 2px; font-size: 10px; }
+.savedMark { display: inline-flex; align-items: center; gap: 4px; margin-left: 4px; padding: 2px 7px; border-radius: var(--bp-radius-pill); background: var(--bp-color-brand-soft); color: var(--bp-color-brand); font-size: 10px; font-weight: 700; letter-spacing: 0 !important; }
+.savedMark svg { fill: currentColor; }
+.legend .violet svg { fill: currentColor; vertical-align: -1px; }
 .signal b { display: inline-flex; align-items: center; justify-content: center; border: 2px solid currentColor; width: 24px; height: 24px; border-radius: 50%; font-variant-numeric: tabular-nums; }
 .code { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-weight: 700; font-size: 12px; color: var(--bp-color-ink); overflow-wrap: anywhere; }
 .code:hover { color: var(--bp-color-brand); }
@@ -89,4 +92,14 @@
   .mobileStage { display: grid; gap: 4px; padding: 10px 0 10px 12px; border-left: 2px solid var(--bp-color-border); }
   .mobileStage span { color: var(--bp-color-text-2); font-size: 11px; }
   .selection { flex-wrap: wrap; }
+}
+@media (min-width: 768px) and (max-width: 1023px) { .chart { --identity-width: 230px; } }
+/* Short viewports (phone turned sideways): no nested vertical scroll, the page scrolls; the chart only scrolls sideways. */
+@media (min-width: 768px) and (max-height: 560px) {
+  .chart { max-height: none; overflow-y: visible; --identity-width: 210px; }
+  .axis { position: static; height: 64px; }
+  .axisLabel { padding: 10px 14px; }
+  .identity { padding: 10px 14px; gap: 3px; }
+  .identity p { -webkit-line-clamp: 1; }
+  .legend { margin: 14px 0 10px; }
 }

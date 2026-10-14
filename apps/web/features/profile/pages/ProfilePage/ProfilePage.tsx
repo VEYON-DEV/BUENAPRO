@@ -67,6 +67,7 @@ export async function ProfilePage({ tenantId }: { tenantId: string }) {
   const libraryCount = library.knowledge.length + library.documents.length;
   const completion = profileCompletion(profileRow, libraryCount);
   const keywordCount = new Set([...(profileRow?.company_keywords ?? []), ...lines.rows.flatMap((line: any) => line.keywords ?? [])]).size;
+  const contractCount = Array.isArray(profileRow?.experience_json) ? profileRow.experience_json.length : 0;
   const economicAreaCount = Array.isArray(profileRow?.econ_experience_json?.areas) ? profileRow.econ_experience_json.areas.length : 0;
 
   return (
@@ -80,7 +81,7 @@ export async function ProfilePage({ tenantId }: { tenantId: string }) {
       <section className={styles.signalStrip} aria-label="Resumen del perfil">
         <div><span>Líneas</span><strong>{lines.rows.length}</strong></div>
         <div><span>Palabras clave</span><strong>{keywordCount}</strong></div>
-        <div><span>Experiencia registrada</span><strong>{economicAreaCount ? `${economicAreaCount} ${economicAreaCount === 1 ? "área" : "áreas"}` : money(Object.values(profileRow?.econ_experience_json ?? {}).map(Number).filter(Number.isFinite).sort((a, b) => b - a)[0])}</strong></div>
+        <div><span>Experiencia registrada</span><strong>{contractCount ? `${contractCount} ${contractCount === 1 ? "contrato" : "contratos"}` : economicAreaCount ? `${economicAreaCount} ${economicAreaCount === 1 ? "área" : "áreas"}` : money(Object.values(profileRow?.econ_experience_json ?? {}).map(Number).filter(Number.isFinite).sort((a, b) => b - a)[0])}</strong></div>
         <div><span>Equipo</span><strong>{profileRow?.team_json?.length ?? 0} perfiles</strong></div>
         <div><span>Biblioteca</span><strong>{libraryCount} piezas</strong></div>
       </section>

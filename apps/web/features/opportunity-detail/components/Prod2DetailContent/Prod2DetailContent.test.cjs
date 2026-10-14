@@ -24,6 +24,7 @@ function loadSource(filename) {
     if (specifier.endsWith(".module.css")) return new Proxy({}, { get: (_, key) => key === "__esModule" ? false : String(key) });
     if (specifier === "next/link") return ({ href, children, ...props }) => React.createElement("a", { href, ...props }, children);
     if (specifier === "@/components/ui/Badge") return { Badge: ({ children }) => React.createElement("span", null, children) };
+    if (specifier === "@/features/opportunities") return { SaveButton: ({ initialSaved }) => React.createElement("button", { "data-save": initialSaved ? "saved" : "unsaved" }, "Guardar") };
     if (specifier === "@/features/procurement") return { ParticipationTerms: () => null, ProcurementSchedule: () => null };
     if (specifier === "@/lib/participationTerms") return { participationReading: value => value };
     if (specifier === "@/lib/keywordAffinity") return { keywordAffinitySummary: () => null };

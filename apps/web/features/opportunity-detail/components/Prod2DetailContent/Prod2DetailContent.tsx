@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Building2, ExternalLink, FileText, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
+import { SaveButton } from "@/features/opportunities";
 import { ParticipationTerms, ProcurementSchedule } from "@/features/procurement";
 import { participationReading } from "@/lib/participationTerms";
 import { keywordAffinitySummary } from "@/lib/keywordAffinity";
@@ -78,8 +79,9 @@ export function Prod2DetailContent({ detail }: { detail: Detail }) {
     <DecisionOverview analyzed={evaluation.hasEvaluation} score={match?.score} provisionalScore={match?.provisional_score} scoreUnderReview={evaluation.scoreUnderReview || Boolean(process.match_review_required)} verdict={match ? verdictShortLabels[match.verdict] ?? match.verdict : "Evaluación pendiente"}
       verdictTone={tone(match?.verdict ?? "")} fit={affinity ? `${affinity.label} · ${affinity.pointLabel} puntos` : "Sin afinidad calculada"}
       deadline="Presentación de ofertas" deadlineDate={stageDate(proposals)} requirementsTotal={evaluation.substantive.length} coveredCount={evaluation.coveredCount} missingCount={missing.length} requirementsLabel="Requisitos clave cubiertos"
-      actions={primary?.download_url ? <a className={styles.primaryAction} href={primary.download_url} target="_blank" rel="noopener noreferrer"><FileText aria-hidden="true" size={16} /> Abrir bases en PDF</a>
-        : process.source_url ? <a className={styles.primaryAction} href={process.source_url} target="_blank" rel="noopener noreferrer">Consultar bases en SEACE <ExternalLink aria-hidden="true" size={16} /></a> : <span>Documento pendiente</span>} />
+      actions={<>{primary?.download_url ? <a className={styles.primaryAction} href={primary.download_url} target="_blank" rel="noopener noreferrer"><FileText aria-hidden="true" size={16} /> Abrir bases en PDF</a>
+        : process.source_url ? <a className={styles.primaryAction} href={process.source_url} target="_blank" rel="noopener noreferrer">Consultar bases en SEACE <ExternalLink aria-hidden="true" size={16} /></a> : <span>Documento pendiente</span>}
+        <SaveButton code={process.nomenclatura} idContrato={process.id_convocatoria} endpoint={`/api/prod2/opportunities/${process.id_convocatoria}/saved`} initialSaved={Boolean(process.is_saved)} showLabel /></>} />
     <p className={styles.notice}><ShieldCheck aria-hidden="true" size={18} /><span>{affinity ? <><strong>{affinity.lineName}</strong> · {affinity.pointLabel} de 45 puntos por palabras clave. {affinity.hits.length ? `Coincidencias: ${affinity.hits.join(", ")}. ` : "Sin coincidencias de palabras clave. "}</> : null}{contextNames ? "Convenio declarado; participación conjunta pendiente de verificar. " : "La evaluación usa el perfil registrado. "}
       {extraction?.requires_human_review ? "Las bases requieren revisión humana. " : ""}La afinidad comercial y el puntaje no acreditan elegibilidad ni son probabilidades de adjudicación.</span></p>
     <div className={styles.layout}>

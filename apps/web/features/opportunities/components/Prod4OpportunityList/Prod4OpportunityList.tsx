@@ -13,6 +13,7 @@ import type { ProcurementScheduleStage } from "@/lib/procurementSchedule";
 import { verdictShortLabels } from "@/lib/extraction/opportunity";
 import { formatShortDateTime } from "@/lib/format/date";
 import { seaceDetailRequest } from "../../api/seaceDetail";
+import { SaveButton } from "../SaveButton";
 import { analysisPresentation, provisionalAnalysisScore } from "../../model/analysisPresentation";
 import styles from "./Prod4OpportunityList.module.css";
 
@@ -57,6 +58,7 @@ export type Prod4OpportunitySummary = {
   match_review_required?: boolean;
   provisional_score?: number | null;
   participation_extraction?: unknown;
+  is_saved?: boolean;
 };
 
 type Prod4Detail = {
@@ -168,6 +170,13 @@ export function Prod4OpportunityList({ rows, source = "prod4", profileId }: { ro
   }, [firstId]);
 
   useEffect(() => {
+    if (selectedId == null) return;
+    const close = (event: KeyboardEvent) => { if (event.key === "Escape" && !window.matchMedia("(min-width: 1401px)").matches) setSelectedId(null); };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [selectedId]);
+
+  useEffect(() => {
     if (selectedId && !rows.some((row) => rowId(row) === selectedId)) {
       setSelectedId(window.matchMedia("(min-width: 1401px)").matches ? firstId : null);
     }
@@ -205,10 +214,11 @@ export function Prod4OpportunityList({ rows, source = "prod4", profileId }: { ro
   }
 
   return (
-    <section className={[styles.board, primary ? "" : styles.noPreview].join(" ")}>
+    <section className={[styles.board, primary ? "" : styles.noPreview, source === "prod2" ? styles.withSave : ""].join(" ")}>
       <div className={styles.list}>
         <div className={styles.listHead}>
           <span>Procedimiento / objeto</span><span>Entidad</span><span>Subcontratación</span><span>Consorcio</span><span>Próxima fecha</span><span>Análisis / afinidad</span>
+          {source === "prod2" ? <span className={styles.saveHeading}><span className={styles.srOnly}>Guardar</span></span> : null}
         </div>
         <div className={styles.rows}>
           {rows.map((row) => (
@@ -231,6 +241,7 @@ export function Prod4OpportunityList({ rows, source = "prod4", profileId }: { ro
                 </div>
                 <AffinityMark row={row} source={source} />
               </button>
+              {source === "prod2" ? <SaveButton code={row.nomenclatura} idContrato={rowId(row)} endpoint={`/api/prod2/opportunities/${rowId(row)}/saved`} initialSaved={Boolean(row.is_saved)} /> : null}
             </article>
           ))}
         </div>
@@ -254,6 +265,7 @@ export function Prod4OpportunityList({ rows, source = "prod4", profileId }: { ro
             </p> : null}
           </div>
           <Link className={styles.openOfficial} href={`${source === "prod2" ? "/oportunidad/prod2" : "/oportunidad/seace"}/${rowId(primary)}${source === "prod2" && profileId ? `?profile_id=${encodeURIComponent(profileId)}` : ""}`}>Ver detalle completo →</Link>
+          {source === "prod2" ? <SaveButton code={primary.nomenclatura} idContrato={rowId(primary)} endpoint={`/api/prod2/opportunities/${rowId(primary)}/saved`} initialSaved={Boolean(primary.is_saved)} showLabel /> : null}
           <p className={styles.eligibility}>Revisa el cronograma y la modalidad antes de participar. La afinidad comercial no confirma que puedas presentar una oferta.</p>
           <dl className={styles.facts}>
             <div><dt>Entidad</dt><dd>{primary.buyer_name || "No informada"}</dd></div>

@@ -9,10 +9,14 @@
 }
 
 .mark {
-  background: var(--bp-color-brand);
-  border-radius: 2px;
-  height: 18px;
-  width: 18px;
+  align-items: center;
+  background: var(--bp-color-brand-soft);
+  border-radius: 50%;
+  color: var(--bp-color-brand);
+  display: inline-flex;
+  height: 40px;
+  justify-content: center;
+  width: 40px;
 }
 
 .empty h2 {
@@ -26,5 +30,6 @@
 }
 
 .link {
-  display: inline-flex;
+  justify-self: start;
+  text-decoration: none;
 }

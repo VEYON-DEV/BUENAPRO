@@ -4,6 +4,7 @@ import type { Prod4DocumentMatch, Prod4RequirementFacet } from "@/lib/prod4Analy
 import { prod2StorageAvailable, signedProd2DocumentUrl, validProd2PreviewKey } from "./prod2DocumentStorage";
 import { prod2OfficialDocumentReference, resolveProd2OfficialDocument } from "./prod2OfficialDocument";
 import { keywordTextFitLateralSql } from "./keywordTextScoring";
+import { savedOpportunityIds } from "./savedOpportunities";
 
 export class Prod2RequestError extends Error {
   constructor(message: string, public status = 400) { super(message); }
@@ -170,7 +171,8 @@ export async function listProd2OpportunitiesForTenant(tenantId: string, params: 
     ORDER BY fit.keyword_points DESC NULLS LAST, ${PUBLISHED_MATCH_SCORE} DESC NULLS LAST,
       p.published_at DESC NULLS LAST, p.id_convocatoria DESC
     LIMIT $${values.length + 1} OFFSET $${values.length + 2}`, [...values, params.pageSize, (params.page - 1) * params.pageSize]);
-  return { data: rows.rows.map(processRow), total: count.rows[0]?.total ?? 0, page: params.page, page_size: params.pageSize,
+  const saved = await savedOpportunityIds(tenantId, rows.rows.map(row => row.opportunity_id));
+  return { data: rows.rows.map(row => ({ ...processRow(row), is_saved: saved.has(row.opportunity_id) })), total: count.rows[0]?.total ?? 0, page: params.page, page_size: params.pageSize,
     profile: profile ? { id: profile.id, name: profile.razon_social } : null };
 }
 
@@ -210,7 +212,8 @@ export async function getProd2OpportunityForTenant(tenantId: string, id: string,
   const analysis = buildProd2Analysis({ idConvocatoria: id, profileHash: row.evaluated_profile_hash ?? null,
     extraction: currentExtraction, facets: facets.rows, match });
   const { breakdown_json: _breakdown, missing_actions_json: _actions, evaluated_profile_hash: _hash, ...publicRow } = row;
-  const process = processRow(publicRow);
+  const saved = await savedOpportunityIds(tenantId, [row.opportunity_id]);
+  const process = { ...processRow(publicRow), is_saved: saved.has(row.opportunity_id) };
   const officialEnabled = officialDocumentsEnabled();
   const canDownload = prod2StorageAvailable();
   return { process, items: [], documents: documents.rows.map(({ storage_key, ...document }) => {

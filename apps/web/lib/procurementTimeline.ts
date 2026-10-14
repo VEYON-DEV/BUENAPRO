@@ -1,6 +1,6 @@
 import type { ProcurementScheduleStage, ScheduleDatePrecision } from "./procurementSchedule";
 
-export type TimelineSource = "prod6" | "prod4";
+export type TimelineSource = "prod6" | "prod4" | "prod2";
 export type TimelineOpportunity = {
   id: string;
   source: TimelineSource;
@@ -14,7 +14,9 @@ export type TimelineOpportunity = {
   fitPoints: number;
   score: number | null;
   verdict: "verde" | "ambar" | null;
-  status: "affinity" | "evaluated";
+  status: "affinity" | "evaluated" | "saved";
+  /** Bookmarked by the workspace: always shown while its deadline is open. */
+  saved: boolean;
   schedule: ProcurementScheduleStage[];
   scheduleFetchedAt: string | null;
   deadline: { at: string; precision: ScheduleDatePrecision; name: string } | null;

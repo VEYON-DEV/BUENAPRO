@@ -1,1 +1,10 @@
-.list { display: grid; gap: 18px; }.list a { display: grid; gap: 8px; }.list a > span { align-items: center; display: grid; gap: 10px; grid-template-columns: 18px minmax(0, 1fr) auto; }.list small { color: var(--bp-color-text-3); }.list strong { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.list b { font-size: 12px; }.list i { background: var(--bp-color-subtle); border-radius: var(--bp-radius-pill); display: block; height: 6px; margin-left: 28px; overflow: hidden; }.list i span { background: var(--bp-color-brand); border-radius: inherit; display: block; height: 100%; }.empty { color: var(--bp-color-text-2); font-size: 13px; padding: 30px 0; }
+.list { display: grid; gap: 4px; }
+.list a { align-items: center; border-radius: var(--bp-radius-sm); display: grid; gap: 12px; grid-template-columns: 16px minmax(0, 1fr) minmax(48px, 22%) 28px; min-height: 36px; padding: 0 4px; }
+.list a:hover { background: rgb(76 60 255 / 0.04); }
+.list a:focus-visible { outline: 2px solid var(--bp-color-brand); outline-offset: 1px; }
+.list small { color: var(--bp-color-text-3); font-size: 11px; font-variant-numeric: tabular-nums; }
+.list strong { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list b { font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; }
+.list i { background: var(--bp-color-subtle); border-radius: var(--bp-radius-pill); display: block; height: 6px; overflow: hidden; }
+.list i span { background: var(--bp-color-brand); border-radius: inherit; display: block; height: 100%; }
+.empty { color: var(--bp-color-text-2); font-size: 13px; padding: 30px 0; }

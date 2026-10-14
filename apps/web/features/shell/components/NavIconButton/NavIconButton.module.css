@@ -63,3 +63,7 @@
     width: 20px;
   }
 }
+
+@media (min-width: 768px) and (max-height: 560px) {
+  .link { min-height: 42px; }
+}

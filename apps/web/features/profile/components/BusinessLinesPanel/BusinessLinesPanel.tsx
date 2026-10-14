@@ -139,6 +139,20 @@ function LineEditor({
   );
 }
 
+const KEYWORD_PREVIEW = 10;
+
+function KeywordPreview({ keywords }: { keywords: string[] }) {
+  const [open, setOpen] = useState(false);
+  const hidden = keywords.length - KEYWORD_PREVIEW;
+  const shown = open || hidden <= 0 ? keywords : keywords.slice(0, KEYWORD_PREVIEW);
+  return (
+    <div className={styles.keywords}>
+      {shown.map((keyword) => <span key={keyword}>{keyword}</span>)}
+      {hidden > 0 ? <button className={styles.more} type="button" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? "Ver menos" : `+${hidden} más`}</button> : null}
+    </div>
+  );
+}
+
 export function BusinessLinesPanel({ lines, catalogs }: { lines: BusinessLine[]; catalogs: Segment[] }) {
   const [items, setItems] = useState(lines);
   const [editing, setEditing] = useState<string | "new" | null>(null);
@@ -163,14 +177,13 @@ export function BusinessLinesPanel({ lines, catalogs }: { lines: BusinessLine[];
 
       <div className={styles.lines}>
         {!items.length && editing !== "new" ? <div className={styles.empty}><strong>Aún no tienes líneas de negocio</strong><p>Agrega la primera para definir qué oportunidades debe priorizar BuenaPro.</p><Button onClick={() => setEditing("new")} type="button">Agregar primera línea</Button></div> : null}
-        {items.map((line, index) => (
+        {items.map((line) => (
           <article className={styles.line} key={line.id}>
             {editing === line.id ? (
               <LineEditor catalogs={catalogs} initial={line} onCancel={() => setEditing(null)} onSaved={saved} />
             ) : (
               <>
                 <div className={styles.lineHeader}>
-                  <span className={styles.index}>{String(index + 1).padStart(2, "0")}</span>
                   <div><h3>{line.nombre}</h3><p>{line.keywords.length} keywords activas</p></div>
                   <Button onClick={() => { setNotice(""); setEditing(line.id); }} type="button" variant="secondary">Editar</Button>
                 </div>
@@ -178,10 +191,11 @@ export function BusinessLinesPanel({ lines, catalogs }: { lines: BusinessLine[];
                   <div className={styles.summarySegments}>
                     {(line.cubso_segmentos ?? []).map((codigo) => {
                       const segment = catalogs.find((item) => item.codigo === codigo);
-                      return <span key={codigo}><b>{codigo}</b>{segment?.nombre ?? "Segmento CUBSO"}{!segment?.enabled ? <em>Sin cobertura actual</em> : null}</span>;
+                      const name = segment?.nombre ?? "Segmento CUBSO";
+                      return <span key={codigo} className={segment?.enabled ? undefined : styles.uncovered} title={`${codigo} · ${name}${segment?.enabled ? "" : " · sin cobertura actual"}`}><b>{codigo}</b><span>{name}</span>{!segment?.enabled ? <em>Sin cobertura</em> : null}</span>;
                     })}
                   </div>
-                  <div className={styles.keywords}>{line.keywords.map((keyword) => <span key={keyword}>{keyword}</span>)}</div>
+                  <KeywordPreview keywords={line.keywords} />
                 </div>
               </>
             )}
