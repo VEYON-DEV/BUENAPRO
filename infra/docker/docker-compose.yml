@@ -53,6 +53,7 @@ services:
         condition: service_healthy
 
   scheduler:
+    profiles: ["legacy-workers"]
     build:
       context: ../..
       dockerfile: infra/docker/worker.Dockerfile
@@ -63,7 +64,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://buenapro:buenapro@postgres:5432/buenapro}
       WORKER_ID: scheduler
-      SCHEDULE_REFRESH_ENABLED: ${SCHEDULE_REFRESH_ENABLED:-true}
+      SCHEDULE_REFRESH_ENABLED: ${SCHEDULE_REFRESH_ENABLED:-false}
       SCHEDULE_REFRESH_INTERVAL_MINUTES: ${SCHEDULE_REFRESH_INTERVAL_MINUTES:-30}
       SCHEDULE_REFRESH_LIMIT: ${SCHEDULE_REFRESH_LIMIT:-500}
     command: ["buenapro-worker", "schedule"]
@@ -72,6 +73,7 @@ services:
         condition: service_healthy
 
   worker-io:
+    profiles: ["legacy-workers"]
     build:
       context: ../..
       dockerfile: infra/docker/worker.Dockerfile
@@ -82,7 +84,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://buenapro:buenapro@postgres:5432/buenapro}
       WORKER_ID: worker-io
-      SCHEDULE_REFRESH_ENABLED: ${SCHEDULE_REFRESH_ENABLED:-true}
+      SCHEDULE_REFRESH_ENABLED: ${SCHEDULE_REFRESH_ENABLED:-false}
       SCHEDULE_REFRESH_INTERVAL_MINUTES: ${SCHEDULE_REFRESH_INTERVAL_MINUTES:-30}
       SCHEDULE_REFRESH_LIMIT: ${SCHEDULE_REFRESH_LIMIT:-500}
     command: ["buenapro-worker", "run", "--queues", "io"]
@@ -91,6 +93,7 @@ services:
         condition: service_healthy
 
   worker-llm:
+    profiles: ["legacy-workers"]
     build:
       context: ../..
       dockerfile: infra/docker/worker.Dockerfile
@@ -107,6 +110,7 @@ services:
         condition: service_healthy
 
   worker-match:
+    profiles: ["legacy-workers"]
     build:
       context: ../..
       dockerfile: infra/docker/worker.Dockerfile
@@ -123,6 +127,7 @@ services:
         condition: service_healthy
 
   worker-notify:
+    profiles: ["legacy-workers"]
     build:
       context: ../..
       dockerfile: infra/docker/worker.Dockerfile

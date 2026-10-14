@@ -91,7 +91,7 @@ def derive_summary(raw: dict[str, Any]) -> dict[str, Any]:
 
     deliverables = _deliverables(execution, payment)
 
-    return {
+    result = {
         "participation": derive_participation(raw),
         "descripcion_corta": _descripcion_corta(summary, summary_text, contract),
         "modalidad": _modalidad(contract, execution),
@@ -105,6 +105,16 @@ def derive_summary(raw: dict[str, Any]) -> dict[str, Any]:
         "documentos_clave": _documents(raw),
         "observaciones_clave": as_list(summary.get("observaciones_clave") or summary.get("key_observations")),
     }
+    coverage = raw.get("extraction_coverage")
+    if isinstance(coverage, dict) and coverage.get("policy_version") == "prod2_qualification_focus_v1":
+        result["extraction_coverage"] = {
+            "policy_version": "prod2_qualification_focus_v1",
+            "not_evaluated": ["payment", "requirements.proposal_documents"],
+        }
+        # An excluded field is not evidence that the procedure has no obligation.
+        result["tipo_pago"] = None
+        result["documentos_clave"] = []
+    return result
 
 
 def _modalidad(contract: dict[str, Any], execution: dict[str, Any]) -> str:
@@ -311,16 +321,43 @@ def _penalty_label(key: str) -> str:
     return _PENALTY_LABELS.get(key, _humanize(key))
 
 
-_CAP_KEY_PATTERN = re.compile(r"cap|tope|limite|l[ií]mite|max", re.IGNORECASE)
+_CAP_KEY_PATTERN = re.compile(
+    r"(?:^|[_\s-])(?:cap|tope|l[ií]mite|maximum|max)(?:$|[_\s-])", re.IGNORECASE
+)
 _PCT_PATTERN = re.compile(r"(\d+(?:[.,]\d+)?)\s*%")
-_CAP_CONTEXT_PATTERN = re.compile(r"tope|m[aá]xim|cap|no exceder|hasta el|limit", re.IGNORECASE)
+_CAP_TEXT_PATTERN = re.compile(
+    r"\b(?:tope(?:\s+m[aá]ximo)?|m[aá]xim[oa]|maximum|cap|l[ií]mite|limit|"
+    r"no\s+(?:debe\s+)?exced(?:er[aá]?|e)|hasta(?:\s+un)?(?:\s+m[aá]ximo)?)"
+    r"\s*[:=]?\s*(?:(?:de|del|el|al|a|es|of|is|at|the|un|una|acumulad[oa])\s+){0,3}"
+    r"(\d+(?:[.,]\d+)?)\s*%",
+    re.IGNORECASE,
+)
 
 
 def _penalty_cap(penalties: Any) -> float | None:
     caps: list[float] = []
 
+    def explicit_cap(value: Any, key_hint: str) -> float | None:
+        if not _CAP_KEY_PATTERN.search(key_hint) or isinstance(value, bool):
+            return None
+        if isinstance(value, (int, float)):
+            pct = float(value)
+        else:
+            match = _PCT_PATTERN.search(_text(value))
+            if not match:
+                return None
+            pct = float(match.group(1).replace(",", "."))
+        return pct if 0 < pct <= 100 else None
+
     def scan(value: Any, key_hint: str = "") -> None:
         if isinstance(value, dict):
+            # A typed cap belongs to this penalty; its explanatory percentages
+            # may describe availability, rates or examples rather than the cap.
+            explicit = [pct for key, entry in value.items()
+                        if (pct := explicit_cap(entry, key)) is not None]
+            if explicit:
+                caps.extend(explicit)
+                return
             for key, entry in value.items():
                 scan(entry, key)
             return
@@ -328,21 +365,16 @@ def _penalty_cap(penalties: Any) -> float | None:
             for entry in value:
                 scan(entry, key_hint)
             return
-        if isinstance(value, (int, float)):
-            if _CAP_KEY_PATTERN.search(key_hint) and 0 < float(value) <= 100:
-                caps.append(float(value))
+        declared = explicit_cap(value, key_hint)
+        if declared is not None:
+            caps.append(declared)
             return
         text = _text(value)
         if not text:
             return
-        match = _PCT_PATTERN.search(text)
-        if not match:
-            return
-        if _CAP_KEY_PATTERN.search(key_hint) or _CAP_CONTEXT_PATTERN.search(text):
-            try:
-                pct = float(match.group(1).replace(",", "."))
-            except ValueError:
-                return
+        # Bind the percentage to its cap phrase, never a distant "maximum".
+        for match in _CAP_TEXT_PATTERN.finditer(text):
+            pct = float(match.group(1).replace(",", "."))
             if 0 < pct <= 100:
                 caps.append(pct)
 

@@ -20,3 +20,20 @@ tmp/
 credentials/
 *.pem
 *.key
+
+# Generated build state and duplicate migration sketches.
+*.tsbuildinfo
+db/drafts/
+
+# Local QA / operational evidence may contain company documents or results.
+# Keep these files on the operator's machine; version technical specs instead.
+docs/new-style/qa/
+docs/sources/evidence/
+docs/diagrams/*.png
+docs/*-2026*.json
+docs/*-2026*.md
+scripts/seeds/company-commercial-descriptions.json
+
+# Deployment checkouts and private host runtime state are not application source.
+releases/
+runtime/

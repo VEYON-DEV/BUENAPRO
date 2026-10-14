@@ -2,6 +2,29 @@ import { query } from "@/server/db/client";
 import { pagination } from "@/server/services/crud";
 import { keywordFitLateralSql } from "@/server/services/keywordScoring";
 
+// Read the current document extraction; canonical participation may belong to another source or revision.
+const PARTICIPATION_EXTRACTION = `jsonb_build_object(
+  'id', tx.id::text,
+  'quality', tx.quality,
+  'requires_human_review', tx.requires_human_review,
+  'participation', COALESCE(NULLIF(tx.summary_json->'participation', 'null'::jsonb), tx.raw_extraction_json->'participation'),
+  'page_scope', 'document'
+) AS participation_extraction`;
+
+// Unvalidated scores remain separate from approved scores; the requested
+// provisional projection exposes only the existing stored number with review.
+// Legacy evaluations without the flag keep their existing behavior.
+const PUBLISHED_MATCH_SCORE = "CASE WHEN m.breakdown_json->'meta'->>'score_validated' = 'false' THEN NULL ELSE m.score END";
+const PUBLISHED_MATCH_VERDICT = "CASE WHEN m.breakdown_json->'meta'->>'score_validated' = 'false' THEN 'gris' ELSE m.verdict END";
+const MATCH_REVIEW_REQUIRED = "COALESCE(m.breakdown_json->'meta'->>'score_validated' = 'false', false)";
+const PROVISIONAL_MATCH_SCORE = `CASE WHEN ${MATCH_REVIEW_REQUIRED} AND m.score >= 0 AND m.score <= 100 THEN m.score ELSE NULL END`;
+
+function provisionalScore(row: Record<string, unknown>) {
+  return row.match_id != null && row.match_review_required === true && typeof row.provisional_score === "number"
+    && Number.isFinite(row.provisional_score) && row.provisional_score >= 0 && row.provisional_score <= 100
+    ? row.provisional_score : null;
+}
+
 export async function getContractForTenant(tenantId: string, idContrato: number) {
   const result = await query(
     `
@@ -31,9 +54,14 @@ export async function getContractForTenant(tenantId: string, idContrato: number)
       fi.facets AS filter_facets,
       te.summary_json,
       te.raw_extraction_json,
+      te.extraction_id,
+      te.participation_extraction,
       m.id AS match_id,
-      m.score,
-      m.verdict,
+      ${MATCH_REVIEW_REQUIRED} AS match_review_required,
+      ${PROVISIONAL_MATCH_SCORE} AS provisional_score,
+      m.profile_id::text AS profile_id,
+      ${PUBLISHED_MATCH_SCORE} AS score,
+      ${PUBLISHED_MATCH_VERDICT} AS verdict,
       m.user_state,
       m.responsable_id,
       m.monto_ofertado,
@@ -53,17 +81,17 @@ export async function getContractForTenant(tenantId: string, idContrato: number)
       FROM matches m
       JOIN company_profiles cp ON cp.id = m.profile_id
       WHERE cp.tenant_id = $2 AND m.id_contrato = c.id_contrato
-      ORDER BY m.score DESC, m.updated_at DESC
+      ORDER BY ${PUBLISHED_MATCH_SCORE} DESC NULLS LAST, m.updated_at DESC
       LIMIT 1
     ) m ON true
     LEFT JOIN application_drafts ad ON ad.match_id = m.id
     LEFT JOIN saved_contracts sc ON sc.tenant_id = $2 AND sc.id_contrato = c.id_contrato
     LEFT JOIN LATERAL (
-      SELECT tx.summary_json, tx.raw_extraction_json
+      SELECT tx.id AS extraction_id, tx.summary_json, tx.raw_extraction_json, ${PARTICIPATION_EXTRACTION}
       FROM contract_documents d
       JOIN tdr_extractions tx ON tx.contract_document_id = d.id AND tx.is_current = true
       WHERE d.id_contrato = c.id_contrato
-      ORDER BY tx.created_at DESC
+      ORDER BY tx.created_at DESC, tx.id DESC
       LIMIT 1
     ) te ON true
     ${keywordFitLateralSql(2)}
@@ -73,17 +101,17 @@ export async function getContractForTenant(tenantId: string, idContrato: number)
     `,
     [idContrato, tenantId],
   );
-  const contract = result.rows[0] ?? null;
+  const contract: Record<string, any> | null = result.rows[0] ? { ...result.rows[0], provisional_score: provisionalScore(result.rows[0]) } : null;
   if (!contract) return null;
 
   const facets = await query(
     `
     SELECT id, facet, label, required, details_json, evidence_json
     FROM requirement_facets
-    WHERE id_contrato = $1 AND is_current = true
+    WHERE id_contrato = $1 AND extraction_id = $2 AND is_current = true
     ORDER BY facet, id
     `,
-    [idContrato],
+    [idContrato, contract.extraction_id],
   );
   const documents = await query(
     `
@@ -127,6 +155,7 @@ export async function listContractsForTenant(tenantId: string, params: URLSearch
   const openOnly = params.get("open_only");
   const hasAmount = params.get("has_amount");
   const saved = params.get("saved");
+  const analysis = params.get("analysis");
 
   if (q) {
     values.push(`%${q}%`);
@@ -191,9 +220,11 @@ export async function listContractsForTenant(tenantId: string, params: URLSearch
   }
   if (hasExtraction === "true") where.push("te.summary_json IS NOT NULL");
   if (hasExtraction === "false") where.push("te.summary_json IS NULL");
+  // Analysis availability is independent of publishing its numeric score.
+  if (analysis === "done") where.push("m.id IS NOT NULL");
   if (verdict) {
     values.push(verdict);
-    where.push(`m.verdict = $${values.length}`);
+    where.push(`${PUBLISHED_MATCH_VERDICT} = $${values.length}`);
   }
   if (cotizar === "true") where.push("c.cotizar = true");
   if (cotizar === "false") where.push("c.cotizar = false");
@@ -249,9 +280,12 @@ export async function listContractsForTenant(tenantId: string, params: URLSearch
       fi.roles_requeridos,
       fi.facets,
       te.summary_json,
+      te.participation_extraction,
       m.id AS match_id,
-      m.score,
-      m.verdict,
+      ${MATCH_REVIEW_REQUIRED} AS match_review_required,
+      ${PROVISIONAL_MATCH_SCORE} AS provisional_score,
+      ${PUBLISHED_MATCH_SCORE} AS score,
+      ${PUBLISHED_MATCH_VERDICT} AS verdict,
       m.user_state,
       econ.exigido AS econ_exigido,
       COALESCE(fit.fit_points, 0)::int AS fit_points,
@@ -268,11 +302,11 @@ export async function listContractsForTenant(tenantId: string, params: URLSearch
     LEFT JOIN contract_filter_index fi ON fi.id_contrato = c.id_contrato
     LEFT JOIN saved_contracts sc ON sc.tenant_id = $1 AND sc.id_contrato = c.id_contrato
     LEFT JOIN LATERAL (
-      SELECT tx.summary_json
+      SELECT tx.summary_json, ${PARTICIPATION_EXTRACTION}
       FROM contract_documents d
       JOIN tdr_extractions tx ON tx.contract_document_id = d.id AND tx.is_current = true
       WHERE d.id_contrato = c.id_contrato
-      ORDER BY tx.created_at DESC
+      ORDER BY tx.created_at DESC, tx.id DESC
       LIMIT 1
     ) te ON true
     LEFT JOIN LATERAL (
@@ -280,7 +314,7 @@ export async function listContractsForTenant(tenantId: string, params: URLSearch
       FROM matches m
       JOIN company_profiles cp ON cp.id = m.profile_id
       WHERE cp.tenant_id = $1 AND m.id_contrato = c.id_contrato
-      ORDER BY m.score DESC, m.updated_at DESC
+      ORDER BY ${PUBLISHED_MATCH_SCORE} DESC NULLS LAST, m.updated_at DESC
       LIMIT 1
     ) m ON true
     ${keywordFitLateralSql(1)}
@@ -290,7 +324,7 @@ export async function listContractsForTenant(tenantId: string, params: URLSearch
       ${saved === "true" ? "sc.created_at DESC," : ""}
       COALESCE(fit.keyword_points, 0) DESC,
       fit_points DESC,
-      m.score DESC NULLS LAST,
+      ${PUBLISHED_MATCH_SCORE} DESC NULLS LAST,
       c.fec_fin_cotizacion ASC NULLS LAST,
       c.fec_publica DESC NULLS LAST
     LIMIT $${values.length - 1}
@@ -301,7 +335,7 @@ export async function listContractsForTenant(tenantId: string, params: URLSearch
 
   const total = Number(result.rows[0]?.total_count ?? 0);
   return {
-    data: result.rows.map(({ total_count: _totalCount, ...row }) => row),
+    data: result.rows.map(({ total_count: _totalCount, ...row }) => ({ ...row, provisional_score: provisionalScore(row) })),
     meta: { page, page_size: pageSize, count: result.rows.length, total },
   };
 }

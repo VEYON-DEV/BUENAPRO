@@ -1,0 +1,42 @@
+Use case: infographic-diagram.
+Create a polished Spanish infographic IMAGE explaining a proposed SEACE PROD2 procurement ingestion workflow for a nontechnical business owner. This is a standalone raster infographic, NOT an HTML page, dashboard mockup or slide deck. Portrait composition, large readable typography, generous space. Warm white background, dark navy text, restrained violet and teal accents, small clear document/database/archive icons. Seven numbered rounded cards in ONE vertical column, linked by downward arrows. Every card has a bold title and at most two short body lines. Supporting callouts beside the applicable card only. No crossing arrows, no decorative robots, no meaningless fine print. Carefully render all Spanish text accurately.
+
+Exact main heading: "PROD2 → LLM1"
+Exact subtitle: "Plan sencillo propuesto"
+Small but readable status under subtitle: "Jev documental y ZIP/RAR: pendientes de implementar"
+
+Card 1 title: "1. Buscar licitaciones"
+Body: "Keywords · Bienes y servicios · Últimos 6 meses"
+Second body: "Candidatos temporales en Redis; evitar duplicados"
+
+Card 2 title: "2. Jev: afinidad comercial"
+Body: "60 o más → continuar"
+Second body: "Menos de 60 → fuera de la ingesta"
+
+Card 3 title: "3. Guardar y abrir la ficha"
+Body: "Resultado Jev · Cronograma · Enlaces públicos"
+Second body: "PostgreSQL conserva la información"
+
+Card 4 title: "4. Listar los archivos"
+Body: "PDF, Word y documentos dentro de ZIP/RAR"
+Second body: "Ver nombres y metadatos antes de elegir"
+
+Card 5 title: "5. Jev: elegir documentos"
+Body: "Priorizar el documento principal"
+Second body: "Añadir complementos técnicos necesarios"
+A compact side callout beside Card 5, same readable font, must say exactly: "Jev solo recibe texto: nombres y metadatos"
+A second small side callout below it: "¿Duda? Título / índice / OCR breve"
+Within or underneath Card 5, a small readable annotation: "Anexos de formularios quedan fuera de la lectura inicial"
+
+Card 6 title: "6. Preparar los seleccionados"
+Body: "Word → PDF · Quitar duplicados"
+Second body: "PDF grande → optimizar o usar Files API"
+Small annotation: "Conservar originales, páginas y legibilidad"
+
+Card 7 title: "7. Gemini LLM1 y guardar"
+Body: "Lee el contenido, incluidos PDF escaneados"
+Second body: "Extrae requisitos, participación y citas; guarda en BD"
+A visible finishing capsule below Card 7: "Aquí termina el flujo · Sin LLM2"
+
+Footer, concise and readable: "El ahorro viene de leer solo los documentos necesarios."
+Technical invariants: Jev MUST NOT be depicted reading PDF images or scanning documents directly. Gemini DOES read selected PDF contents, including scanned pages. Redis is temporary; PostgreSQL is durable after commercial gate. ZIP/RAR are inspected locally before selecting their internal PDF/Word files. An annex with technical requirements can be selected as a complement, not every annex is excluded. Do not imply the proposed selector, archive integration, or compression has already been implemented. Do not add fabricated results, percentages, costs, or worker counts. Output one complete infographic with all seven cards and accurate arrows.

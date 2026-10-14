@@ -5,6 +5,8 @@
 .env.*
 !.env.example
 credentials
+tmp
+.tmp
 node_modules
 **/node_modules
 .next
@@ -17,3 +19,10 @@ coverage
 **/coverage
 *.log
 .DS_Store
+releases
+runtime
+**/*.tsbuildinfo
+docs/new-style/qa
+docs/sources/evidence
+docs/*-2026*.json
+docs/*-2026*.md

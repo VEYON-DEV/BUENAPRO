@@ -2,6 +2,8 @@
 
 Ruta: `/cronograma?source=prod6|prod4&start=YYYY-MM-DD&days=14|30|60&q=`.
 
+Desde el 13/10/2026, la UI ofrece únicamente Contratos menores. La pestaña Concursos SEACE se retira junto con la navegación del feed; una URL guardada con `source=prod4` redirige a `source=prod6`, conservando búsqueda y periodo. Las APIs y datos históricos PROD4 permanecen disponibles. El cronograma de PROD2 no está implementado y no se presenta como opción.
+
 ## Objetivo y diseño
 
 Priorizar los próximos cierres sin perder las demás etapas oficiales. Una sola superficie de trabajo amplia: identidad fija a la izquierda, días arriba, etapas en carriles que no se solapan y línea de Hoy. Mantiene Inter, paleta, materialidad y controles de `04-oportunidades.png` y de System Components Kit; el Gantt reemplaza expresamente la tabla/inspector por petición del usuario. No hay imagen aprobada específica de Gantt ni una segunda vista paralela de Oportunidades.

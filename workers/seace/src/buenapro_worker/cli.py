@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 from buenapro_worker.jobs.contract_test import run_contract_test
 from buenapro_worker.observability.logging import configure_logging
+from buenapro_worker.prod4.retirement import PROD4_WORKER_RETIRED_REASON, reject_prod4_execution
 from buenapro_worker.settings import Settings
 
 
@@ -102,6 +103,7 @@ def command_poll_once(args: argparse.Namespace, settings: Settings) -> int:
 
 
 def command_prod4_poll_once(args: argparse.Namespace, settings: Settings) -> int:
+    reject_prod4_execution()
     from buenapro_worker.db.connection import connect
     from buenapro_worker.jobs.poll_prod4 import poll_prod4
     from buenapro_worker.queue.repository import JobRepository
@@ -114,6 +116,7 @@ def command_prod4_poll_once(args: argparse.Namespace, settings: Settings) -> int
 
 
 def command_prod4_document_sweep(args: argparse.Namespace, settings: Settings) -> int:
+    reject_prod4_execution()
     from buenapro_worker.db.connection import connect
     from buenapro_worker.jobs.prod4_documents import enqueue_current_prod4_document_sweep
     from buenapro_worker.queue.repository import JobRepository
@@ -126,6 +129,8 @@ def command_prod4_document_sweep(args: argparse.Namespace, settings: Settings) -
 
 
 def command_schedule_refresh(args: argparse.Namespace, settings: Settings) -> int:
+    if args.source != "prod6":
+        reject_prod4_execution()
     import json
     from buenapro_worker.db.connection import connect
     from buenapro_worker.jobs.refresh_schedule import refresh_schedules
@@ -208,10 +213,6 @@ def command_run(args: argparse.Namespace, settings: Settings) -> int:
         "poll_prod6_profiles": lambda job: _handle_poll_prod6_profiles(settings, job),
         "refresh_schedules": lambda job: _handle_refresh_schedules(settings, job),
         "poll_search": handle_poll_search,
-        "poll_prod4": lambda job: _handle_poll_prod4(settings, job),
-        "extract_prod4_document": lambda job: _handle_extract_prod4_document(settings, job),
-        "route_prod4_profiles": lambda job: _handle_route_prod4_profiles(settings, job),
-        "analyze_prod4_match": lambda job: _handle_analyze_prod4_match(settings, job),
         "contract_test": lambda job: _handle_contract_test(settings, job),
         "process_contract": lambda job: _handle_process_contract(settings, job),
         "poll_lifecycle": lambda job: _handle_poll_lifecycle(settings, poll_lifecycle),
@@ -255,6 +256,7 @@ def _handle_poll_prod6_profiles(settings: Settings, job) -> None:
 
 
 def _handle_poll_prod4(settings: Settings, _job) -> None:
+    reject_prod4_execution()
     from buenapro_worker.db.connection import connect
     from buenapro_worker.jobs.poll_prod4 import poll_prod4
     from buenapro_worker.queue.repository import JobRepository
@@ -273,7 +275,7 @@ def _handle_refresh_schedules(settings: Settings, _job) -> None:
         conn.commit()
         conn.autocommit = True
         stats = refresh_schedules(settings, conn,
-                                  source="both" if settings.prod4_enabled else "prod6",
+                                  source="prod6",
                                   limit=settings.schedule_refresh_limit, apply=True)
     logging.getLogger(__name__).info("schedule_refresh_completed", extra={"schedule_stats": stats})
     if any(s["failed"] for s in stats["sources"].values()):
@@ -281,6 +283,7 @@ def _handle_refresh_schedules(settings: Settings, _job) -> None:
 
 
 def _handle_extract_prod4_document(settings: Settings, job) -> None:
+    reject_prod4_execution()
     from buenapro_worker.db.connection import connect
     from buenapro_worker.jobs.prod4_documents import extract_prod4_document_job
     from buenapro_worker.queue.repository import JobRepository
@@ -295,6 +298,7 @@ def _handle_extract_prod4_document(settings: Settings, job) -> None:
 
 
 def _handle_route_prod4_profiles(settings: Settings, job) -> None:
+    reject_prod4_execution()
     from buenapro_worker.db.connection import connect
     from buenapro_worker.jobs.prod4_match import route_prod4_profiles_job
     from buenapro_worker.queue.repository import JobRepository
@@ -310,6 +314,7 @@ def _handle_route_prod4_profiles(settings: Settings, job) -> None:
 
 
 def _handle_analyze_prod4_match(settings: Settings, job) -> None:
+    reject_prod4_execution()
     from buenapro_worker.db.connection import connect
     from buenapro_worker.jobs.prod4_match import analyze_prod4_match_job
     from buenapro_worker.queue.repository import JobRepository
@@ -327,6 +332,7 @@ def _handle_analyze_prod4_match(settings: Settings, job) -> None:
                 fit_score=job.payload.get("fit_score"),
                 fit_level=job.payload.get("fit_level"),
                 keyword_hits=job.payload.get("keyword_hits"),
+                force=job.payload.get("force") is True,
             )
 
 
@@ -571,14 +577,14 @@ def build_parser() -> argparse.ArgumentParser:
     poll_once.set_defaults(func=command_poll_once)
 
     prod4_poll_once = subcommands.add_parser(
-        "prod4-poll-once", help="Poll PROD4 technology goods/services once"
+        "prod4-poll-once", help="Retired: PROD4 worker execution is disabled"
     )
     prod4_poll_once.set_defaults(func=command_prod4_poll_once)
 
     schedule_refresh = subcommands.add_parser(
         "schedule-refresh", help="Refresh stored technology schedules only (default: read-only)"
     )
-    schedule_refresh.add_argument("--source", choices=("prod4", "prod6", "both"), default="both")
+    schedule_refresh.add_argument("--source", choices=("prod6",), default="prod6")
     schedule_refresh.add_argument("--limit", type=int, default=100, help="Per-source cap (1..5000)")
     schedule_refresh.add_argument("--ids", nargs="+", type=int, help="Stored native IDs; requires one source")
     schedule_refresh.add_argument("--apply", action="store_true", help="Persist schedules; no PDFs or Gemini")
@@ -586,7 +592,7 @@ def build_parser() -> argparse.ArgumentParser:
     schedule_refresh.set_defaults(func=command_schedule_refresh)
 
     prod4_document_sweep = subcommands.add_parser(
-        "prod4-document-sweep", help="Queue a bounded sweep of official PROD4 bases PDFs"
+        "prod4-document-sweep", help="Retired: PROD4 document execution is disabled"
     )
     prod4_document_sweep.add_argument("--limit", type=int, default=10)
     prod4_document_sweep.set_defaults(func=command_prod4_document_sweep)
@@ -659,6 +665,8 @@ def _coerce_segments(value: object) -> list[int] | None:
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
+    if args.func in (command_prod4_poll_once, command_prod4_document_sweep):
+        parser.error(PROD4_WORKER_RETIRED_REASON)
     configure_logging(args.log_level)
     settings = Settings()
     return args.func(args, settings)

@@ -1,0 +1,361 @@
+{
+  "policy": "prod2-business-batches-v1",
+  "source_inventory": "prod2-convenio-keywords.v3.json",
+  "source_inventory_hash": "32c7ce187a93ff8b919d09e92abc44c6d53a25519944125d257fdd99e05106fe",
+  "keyword_snapshot_date": "2026-10-05",
+  "members": {
+    "veyon": "VEYON SAC",
+    "dinaut": "DIN AUTOMATIZACION S.A.C."
+  },
+  "notes": [
+    "Partición de búsqueda del convenio; conserva el perfil comercial conjunto y no acredita cumplimiento.",
+    "Las keywords primarias no se repiten; las relaciones secundarias se unen una sola vez por corrida.",
+    "Intersección literal de16keywords distinta de capacidades compartidas;73digitales y93industriales."
+  ],
+  "broad_keywords": [
+    "ia",
+    "api",
+    "app",
+    "datos",
+    "analítica",
+    "predictivo",
+    "automatización",
+    "soporte",
+    "implementación",
+    "integración",
+    "tecnología",
+    "digital"
+  ],
+  "batches": [
+    {
+      "id": "software_desarrollo",
+      "label": "Desarrollo e integración de software",
+      "scope": "digitales",
+      "primary_keywords": [
+        "desarrollo de software",
+        "sistemas de información",
+        "desarrollo de aplicaciones",
+        "aplicaciones web",
+        "implementación de sistemas",
+        "integración de sistemas",
+        "mantenimiento de software",
+        "plataformas digitales",
+        "software",
+        "aplicativo",
+        "aplicación",
+        "plataforma",
+        "erp",
+        "api",
+        "backend",
+        "frontend",
+        "web",
+        "informática",
+        "sistema de información",
+        "desarrollo de sistema",
+        "aplicación web",
+        "página web",
+        "portal web",
+        "base de datos",
+        "app"
+      ],
+      "source_lines": [
+        {
+          "member": "dinaut",
+          "line": "Desarrollo e integración de software"
+        },
+        {
+          "member": "veyon",
+          "line": "Desarrollo de software"
+        }
+      ]
+    },
+    {
+      "id": "licencias_cloud",
+      "label": "Licencias, suscripciones y cloud",
+      "scope": "digitales",
+      "primary_keywords": [
+        "licencias de software",
+        "suscripción de software",
+        "licencias informáticas",
+        "software empresarial",
+        "licencias microsoft",
+        "soluciones cloud",
+        "herramientas colaborativas",
+        "seguridad informática",
+        "licencia",
+        "suscripción",
+        "microsoft",
+        "powerbi",
+        "antivirus",
+        "vmware",
+        "workspace",
+        "cloud",
+        "saas"
+      ],
+      "source_lines": [
+        {
+          "member": "dinaut",
+          "line": "Licencias y suscripciones de software"
+        }
+      ]
+    },
+    {
+      "id": "ia_datos",
+      "label": "Inteligencia artificial, datos y automatización digital",
+      "scope": "digitales",
+      "primary_keywords": [
+        "inteligencia artificial",
+        "agentes de ia",
+        "aprendizaje automático",
+        "analítica de datos",
+        "ciencia de datos",
+        "automatización de procesos",
+        "asistentes virtuales",
+        "modelos predictivos",
+        "chatbot",
+        "llm",
+        "machinelearning",
+        "python",
+        "rpa",
+        "ia",
+        "datos",
+        "analítica",
+        "predictivo",
+        "automatización",
+        "agentes ia",
+        "whatsapp"
+      ],
+      "source_lines": [
+        {
+          "member": "dinaut",
+          "line": "Inteligencia artificial y automatización digital"
+        },
+        {
+          "member": "veyon",
+          "line": "Agentes IA y automatizacion"
+        }
+      ]
+    },
+    {
+      "id": "soporte_integraciones",
+      "label": "Soporte, infraestructura e integraciones tecnológicas",
+      "scope": "digitales",
+      "primary_keywords": [
+        "soporte técnico",
+        "soporte",
+        "mantenimiento de sistemas",
+        "implementación",
+        "integración",
+        "nube",
+        "servidor",
+        "tecnología",
+        "ciberseguridad",
+        "digital",
+        "aws"
+      ],
+      "source_lines": [
+        {
+          "member": "veyon",
+          "line": "Soporte e integraciones tecnologicas"
+        }
+      ]
+    },
+    {
+      "id": "control_industrial",
+      "label": "Automatización y control industrial",
+      "scope": "industriales",
+      "primary_keywords": [
+        "automatización industrial",
+        "programación de plc",
+        "sistemas scada",
+        "sistemas de control industrial",
+        "control de procesos industriales",
+        "sistemas de control distribuido",
+        "tableros de control industrial",
+        "supervisión industrial",
+        "plc",
+        "scada",
+        "hmi",
+        "dcs",
+        "pcs7",
+        "cemat",
+        "braumat",
+        "servomotores"
+      ],
+      "source_lines": [
+        {
+          "member": "dinaut",
+          "line": "Automatización y control industrial"
+        }
+      ]
+    },
+    {
+      "id": "capacitacion_industrial",
+      "label": "Capacitación en automatización industrial",
+      "scope": "industriales",
+      "primary_keywords": [
+        "capacitación en automatización industrial",
+        "cursos de plc",
+        "capacitación scada",
+        "entrenamiento industrial",
+        "configuración de sistemas industriales",
+        "capacitación redes industriales",
+        "operación de equipos industriales"
+      ],
+      "source_lines": [
+        {
+          "member": "dinaut",
+          "line": "Capacitación en automatización industrial"
+        }
+      ]
+    },
+    {
+      "id": "puesta_marcha",
+      "label": "Comisionamiento y puesta en marcha",
+      "scope": "industriales",
+      "primary_keywords": [
+        "puesta en marcha industrial",
+        "pruebas fat",
+        "pruebas sat",
+        "comisionamiento de equipos industriales",
+        "mantenimiento industrial",
+        "mantenimiento electromecánico",
+        "soporte remoto industrial",
+        "mantenimiento de tableros eléctricos",
+        "comisionamiento",
+        "commissioning",
+        "electromecánica"
+      ],
+      "source_lines": [
+        {
+          "member": "dinaut",
+          "line": "Comisionamiento y puesta en marcha"
+        }
+      ]
+    },
+    {
+      "id": "digitalizacion_industrial",
+      "label": "Digitalización industrial, IIoT y MES",
+      "scope": "industriales",
+      "primary_keywords": [
+        "internet industrial",
+        "mantenimiento predictivo",
+        "gemelos digitales industriales",
+        "visión artificial industrial",
+        "sistemas mes",
+        "analítica industrial",
+        "integración erp industrial",
+        "monitoreo de condiciones industriales",
+        "iiot",
+        "telemetría",
+        "manufactura"
+      ],
+      "source_lines": [
+        {
+          "member": "dinaut",
+          "line": "Digitalización industrial, IIoT y MES"
+        }
+      ]
+    },
+    {
+      "id": "ingenieria_electrica",
+      "label": "Ingeniería eléctrica y fabricación de tableros",
+      "scope": "industriales",
+      "primary_keywords": [
+        "ingeniería eléctrica",
+        "tableros eléctricos",
+        "centros de control de motores",
+        "salas eléctricas",
+        "planos unifilares",
+        "montaje eléctrico industrial",
+        "variadores de velocidad",
+        "diseño eléctrico industrial",
+        "ccm",
+        "variadores",
+        "electromecánico",
+        "unifilar",
+        "arrancadores",
+        "contactores"
+      ],
+      "source_lines": [
+        {
+          "member": "dinaut",
+          "line": "Ingeniería eléctrica y fabricación de tableros"
+        }
+      ]
+    },
+    {
+      "id": "instrumentacion",
+      "label": "Instrumentación y medición industrial",
+      "scope": "industriales",
+      "primary_keywords": [
+        "instrumentación industrial",
+        "lazos de control industrial",
+        "sensores industriales",
+        "transmisores de presión",
+        "medición de caudal",
+        "control de nivel industrial",
+        "medición de temperatura industrial",
+        "integración de sensores industriales",
+        "caudalímetros",
+        "actuadores",
+        "macromedidores",
+        "flujometro"
+      ],
+      "source_lines": [
+        {
+          "member": "dinaut",
+          "line": "Instrumentación y medición industrial"
+        }
+      ]
+    },
+    {
+      "id": "redes_industriales",
+      "label": "Redes de comunicación industrial",
+      "scope": "industriales",
+      "primary_keywords": [
+        "redes industriales",
+        "comunicación industrial",
+        "ethernet industrial",
+        "arquitectura de comunicación industrial",
+        "configuración de redes industriales",
+        "redes profibus",
+        "redes profinet",
+        "switch industrial",
+        "profinet",
+        "profibus",
+        "devicenet",
+        "modbus"
+      ],
+      "source_lines": [
+        {
+          "member": "dinaut",
+          "line": "Redes de comunicación industrial"
+        }
+      ]
+    },
+    {
+      "id": "robotica",
+      "label": "Robótica y optimización de procesos",
+      "scope": "industriales",
+      "primary_keywords": [
+        "robótica colaborativa",
+        "robots colaborativos",
+        "automatización de procesos industriales",
+        "inspección visual industrial",
+        "cámaras industriales",
+        "optimización de procesos industriales",
+        "aprendizaje automático industrial",
+        "realidad aumentada industrial",
+        "cobots",
+        "robótica"
+      ],
+      "source_lines": [
+        {
+          "member": "dinaut",
+          "line": "Robótica y optimización de procesos"
+        }
+      ]
+    }
+  ]
+}

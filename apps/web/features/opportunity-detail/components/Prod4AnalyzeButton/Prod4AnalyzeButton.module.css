@@ -1,0 +1,4 @@
+.action { display:grid; gap:8px; min-width:0; max-width:240px; }
+.action button { width:100%; white-space:normal; }
+.feedback { color:var(--bp-color-text-2); font-size:12px; line-height:1.5; text-align:center; overflow-wrap:anywhere; }
+@media (max-width:1400px) { .action { max-width:none; } }

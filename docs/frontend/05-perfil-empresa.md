@@ -140,6 +140,20 @@ QA: `node --test scripts/profile_records.test.mjs` (8 casos); `scripts/qa_profil
 - Los archivos de biblioteca alimentan al agente como metadata/contexto seleccionado; no enviar archivos completos por defecto si no son necesarios.
 - Mostrar documentos y datos en una superficie de trabajo escaneable con busqueda, acciones claras y formulario progresivo.
 
+### Descripción de documentos (2026-10-13)
+
+La biblioteca muestra el campo `description` de cada documento debajo del nombre del archivo. Una descripción de hasta 280 caracteres se presenta completa; las más largas muestran un extracto y el disclosure «Descripción completa», accesible con teclado. Al expandir se conserva el texto íntegro y sus saltos de línea. Los valores vacíos no generan controles adicionales. Esta vista muestra información guardada, incluida la lectura documental cuando exista; no declara acreditación ni calcula montos automáticamente. Mantiene el archivo y las acciones existentes, sin agregar un segundo editor.
+
+QA aislado del componente: `docs/new-style/qa/company-document-description-fixture-qa-20261013.json` y seis capturas desktop/laptop/mobile. Estas fixtures sintéticas comprueban la presentación y el disclosure; no sustituyen la validación de `/perfil` con los documentos persistidos.
+
+Cuando `metadata.document_text.full_text` contiene texto guardado, cada documento añade un disclosure independiente «Texto del documento», cerrado por defecto. El texto se monta en el DOM solo al abrir, conserva saltos de línea y marcadores de página, permite desplazarse y ajusta las líneas al ancho disponible. Muestra `page_count` y `ocr_pages` cuando son números válidos; una cantidad desconocida se señala sin inferirla. Si `review_pages` identifica páginas con poco texto, recomienda revisar el PDF. Mostrar una extracción no acredita experiencia ni ejecución del contrato.
+
+QA React hidratado con fixtures largas y metadata ausente o inválida: `docs/new-style/qa/company-document-text-fixture-qa-20261013.json`; seis capturas desktop/laptop/mobile plegado y expandido. Incluye teclado, montaje diferido, wrapping, scroll, contador OCR, páginas desconocidas y texto HTML escapado. No conecta APIs ni reemplaza QA de datos reales.
+
+Validación integrada del 13/10/2026: los 43 PDFs de Dinaut tienen texto guardado por página (571 páginas, 532 con OCR local), descripción completa y evidencia de importes/monedas/rubro con citas. API y UI local/productiva coinciden exactamente con el readback PostgreSQL. Doce capturas reales plegadas/expandidas desktop, laptop y mobile revisadas en `docs/new-style/qa/company-reading-{local,production}-*-20261013.png`; resultados y despliegue selectivo en `docs/dinaut-document-reading-20261013.json`. Las discrepancias originales y la revisión humana siguen visibles en las descripciones.
+
+El contexto del copiloto incluye las 43 fuentes mediante resúmenes íntegros y evidencia estructurada con UUID, SHA y páginas. El texto OCR completo permanece por documento en PostgreSQL y en el disclosure; no se duplica en cada prompt. La proyección conserva montos, moneda, base fiscal, clasificación, conformidad, advertencias y datos desconocidos. El JSON se serializa completo con un límite de 128000 caracteres: si lo excede, se rechaza antes de llamar al modelo. La comprobación fresca con un contrato real midió 105611 caracteres y las 43 fuentes, sin inferencia ni escrituras de negocio.
+
 ## Estados
 
 ### Montos de experiencia por área (2026-10-05)

@@ -1,0 +1,139 @@
+{
+  "schema_version": "prod2_embedding_reading_design_v1",
+  "status": "design_only_not_loaded_by_runner",
+  "dated": "2026-10-08",
+  "purpose": "Index complete selected document text once; retrieve evidence for the existing qualification scope before LLM1.",
+  "scope": {
+    "source": "prod2",
+    "publication_months": 6,
+    "objects": ["Bien", "Servicio"],
+    "commercial_affinity_minimum": 60,
+    "end_stage": "llm1",
+    "output_scope": "prod2_qualification_focus_v1",
+    "excluded_output_fields": ["payment", "requirements.proposal_documents"],
+    "document_selection": "existing_v3_with_referenced_annex_expansion",
+    "indexed_coverage": "complete_text_of_selected_documents_with_explicit_unresolved_pages",
+    "absent_retrieval_result": "unknown_not_absent_or_prohibited"
+  },
+  "embedding": {
+    "model": "text-embedding-3-small",
+    "dimensions": 1536,
+    "tokenizer": "cl100k_base",
+    "chunk_target_tokens": 1000,
+    "overlap_target_tokens": 128,
+    "maximum_input_tokens": 8192,
+    "boundaries": ["section", "paragraph", "table_with_headers"],
+    "cache_identity_fields": ["exact_embedding_text_sha256", "model", "dimensions"],
+    "reserve_before_request": true,
+    "automatic_retry_for_uncertain_request": false,
+    "cache_query_vectors": true
+  },
+  "retrieval": {
+    "policy_version": "prod2_qualification_retrieval_design_v1",
+    "semantic_similarity": "cosine",
+    "lexical_search": "spanish_literals_and_section_anchors",
+    "semantic_seed_top_k_per_query": 6,
+    "context_target_tokens": 15000,
+    "context_target_is_hard_limit": false,
+    "include_complete_relevant_sections": true,
+    "include_neighbors_notes_exceptions_and_references": true,
+    "require_per_field_coverage_record": true,
+    "whole_source_index_is_not_whole_source_llm_read": true,
+    "fallback_on_unresolved_coverage": "bounded_expansion_or_needs_review",
+    "queries": [
+      {
+        "id": "contract",
+        "fields": ["contract", "summary"],
+        "query": "Objeto y alcance específico de la contratación, entidad, lugar, plazo, valor estimado, moneda, modalidad y condiciones de inicio.",
+        "literal_anchors": ["objeto", "alcance", "valor estimado", "valor referencial", "plazo", "lugar"]
+      },
+      {
+        "id": "provider_requirements",
+        "fields": ["requirements.provider"],
+        "query": "Requisitos de calificación y habilitación del postor: capacidad legal, RNP, licencias, certificaciones, giro y documentos para acreditar cada requisito.",
+        "literal_anchors": ["requisitos de calificación", "habilitación", "capacidad legal", "RNP", "licencia", "certificación"]
+      },
+      {
+        "id": "provider_experience",
+        "fields": ["requirements.provider"],
+        "query": "Experiencia general, específica y económica del postor: monto facturado, moneda, periodo computable, contratos similares, acreditación, MYPE, alternativas y excepciones.",
+        "literal_anchors": ["experiencia del postor", "facturación", "monto facturado", "similares", "MYPE", "acreditación"]
+      },
+      {
+        "id": "personnel",
+        "fields": ["requirements.key_personnel"],
+        "query": "Personal clave y profesionales exigidos por perfil: cantidad, formación, títulos, colegiatura, habilitación, experiencia, cursos y acreditación.",
+        "literal_anchors": ["personal clave", "personal", "formación académica", "colegiatura", "profesional", "capacitación"]
+      },
+      {
+        "id": "equipment_insurance",
+        "fields": ["requirements.equipment", "requirements.insurance"],
+        "query": "Equipos, vehículos, infraestructura y seguros que el proveedor debe acreditar: cantidades, características, coberturas, disponibilidad y condiciones.",
+        "literal_anchors": ["equipamiento", "infraestructura", "vehículos", "seguro", "póliza", "cobertura"]
+      },
+      {
+        "id": "consortium",
+        "fields": ["participation.consorcio"],
+        "query": "Cláusulas aplicables de consorcio: autorización o prohibición, integrantes, porcentajes de participación y ejecución, experiencia acreditable, límites, condiciones y excepciones.",
+        "literal_anchors": ["consorcio", "consorcios", "consorciado", "consorciados", "participación mínima"]
+      },
+      {
+        "id": "subcontracting",
+        "fields": ["participation.subcontratacion"],
+        "query": "Cláusulas aplicables de subcontratación: permiso o prohibición, porcentaje máximo, autorización previa, actividades permitidas, condiciones y excepciones.",
+        "literal_anchors": ["subcontratación", "subcontratacion", "subcontratar", "subcontratista", "subcontratistas"]
+      },
+      {
+        "id": "execution",
+        "fields": ["execution"],
+        "query": "Actividades y entregables específicos, resultados, productos, lugares y plazos de ejecución por item, etapas y condiciones de entrega.",
+        "literal_anchors": ["actividades", "entregables", "producto", "plazo de ejecución", "cronograma", "lugar de entrega"]
+      },
+      {
+        "id": "goods",
+        "fields": ["goods"],
+        "query": "Bienes e items por adquirir: cantidades, unidades, especificaciones técnicas completas, entrega, garantía, cobertura y condiciones por item.",
+        "literal_anchors": ["especificaciones técnicas", "cantidad", "unidad", "ítem", "garantía", "ficha técnica"]
+      },
+      {
+        "id": "penalties_management",
+        "fields": ["penalties", "contract_management"],
+        "query": "Penalidades aplicables con fórmula, tope y base; conformidad, confidencialidad, vicios ocultos y controversias con sus condiciones.",
+        "literal_anchors": ["penalidad", "penalidades", "conformidad", "confidencialidad", "vicios ocultos", "controversias"]
+      }
+    ]
+  },
+  "evidence": {
+    "bind_source_revision_hashes": true,
+    "locations": ["pdf_source_page", "pdf_global_page", "docx_part_and_block", "table_identity"],
+    "do_not_invent_word_pages": true,
+    "validate_quotes_against_sent_source": true,
+    "unresolved_visual_regions": "visual_evidence_or_needs_review",
+    "unverified_retrieval_projects_canonical_participation": false,
+    "claims_exhaustive_read": false
+  },
+  "storage": {
+    "source_of_truth": "postgresql",
+    "text_and_vectors": "postgresql",
+    "initial_vector_search": "exact_cosine_within_one_corpus",
+    "pgvector_required_for_pilot": false,
+    "queue": "redis",
+    "permanent_new_source_binaries_in_r2": false,
+    "clean_owned_temporary_files_after_verified_persistence": true,
+    "retain_inputs_for_pending_or_uncertain_paid_work": true
+  },
+  "concurrency_proposal": {
+    "http_sweep_workers": 1,
+    "processing_workers": 2,
+    "ocr_slots": 1,
+    "shared_provider_slots": 2,
+    "durable_unique_claims": "postgresql"
+  },
+  "validation": {
+    "annotated_pilot_document_sets": 10,
+    "quality_equality_proven": false,
+    "new_flow_latency_measured": false,
+    "new_flow_cost_savings_measured": false,
+    "implementation_complete": false
+  }
+}

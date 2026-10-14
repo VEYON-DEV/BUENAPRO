@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Archive, Download, FileText, Plus, Search, ShieldCheck, Trash2, Upload } from "lucide-react";
+import { Archive, ChevronDown, Download, FileText, Plus, Search, ShieldCheck, Trash2, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -27,6 +27,7 @@ type CompanyDocument = {
   sizeBytes: number;
   documentType: string;
   description: string | null;
+  metadata?: unknown;
   tags: string[];
   validUntil: string | null;
   amount: number | null;
@@ -61,12 +62,32 @@ function matchesSearch(text: string, search: string) {
   return text.toLowerCase().includes(search.trim().toLowerCase());
 }
 
+function descriptionPreview(description: string) {
+  const compact = description.replace(/\s+/g, " ").trim();
+  if (compact.length <= 280) return compact;
+  const boundary = compact.lastIndexOf(" ", 280);
+  return `${compact.slice(0, boundary >= 180 ? boundary : 280).trimEnd()}…`;
+}
+
+function documentTextMetadata(metadata: unknown) {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return null;
+  const stored = (metadata as Record<string, unknown>).document_text;
+  if (!stored || typeof stored !== "object" || Array.isArray(stored)) return null;
+  const value = stored as Record<string, unknown>;
+  if (typeof value.full_text !== "string" || !value.full_text.trim()) return null;
+  const pageCount = typeof value.page_count === "number" && Number.isInteger(value.page_count) && value.page_count > 0 ? value.page_count : null;
+  const ocrPages = typeof value.ocr_pages === "number" && Number.isInteger(value.ocr_pages) && value.ocr_pages >= 0 && (pageCount == null || value.ocr_pages <= pageCount) ? value.ocr_pages : null;
+  const reviewPages = Array.isArray(value.review_pages) ? new Set(value.review_pages.filter((page) => typeof page === "number" && Number.isInteger(page) && page > 0 && (pageCount == null || page <= pageCount))).size : 0;
+  return { text: value.full_text, pageCount, ocrPages, reviewPages };
+}
+
 export function CompanyLibraryPanel({ initialLibrary }: Props) {
   const [library, setLibrary] = useState(initialLibrary);
   const [mode, setMode] = useState<"knowledge" | "document">("knowledge");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
+  const [openedDocumentTexts, setOpenedDocumentTexts] = useState<Set<string>>(() => new Set());
   useEffect(() => {
     const refresh = () => { void apiFetch<{ data: LibraryData }>("/api/profile/library").then(result => setLibrary(result.data)).catch(() => setStatus("El archivo se guardó. Recarga la página para actualizar la biblioteca.")); };
     window.addEventListener("profile-library-changed", refresh);
@@ -235,18 +256,57 @@ export function CompanyLibraryPanel({ initialLibrary }: Props) {
               </article>
             ))}
 
-            {filteredDocuments.map((document) => (
+            {filteredDocuments.map((document) => {
+              const text = documentTextMetadata(document.metadata);
+              return (
               <article className={styles.item} key={document.id}>
                 <ShieldCheck size={17} aria-hidden="true" />
                 <div>
                   <div className={styles.itemTitle}><strong>{document.title}</strong><Badge tone="sage">Documento</Badge></div>
                   <p>{[document.filename, formatBytes(document.sizeBytes)].filter(Boolean).join(" · ")}</p>
+                  {document.description?.trim() ? (
+                    document.description.trim().length > 280 ? (
+                      <details className={styles.documentDescription}>
+                        <summary>
+                          <span className={styles.descriptionPreview}>{descriptionPreview(document.description)}</span>
+                          <span className={styles.descriptionToggle}>Descripción completa <ChevronDown size={13} aria-hidden="true" /></span>
+                        </summary>
+                        <p>{document.description}</p>
+                      </details>
+                    ) : <p className={styles.descriptionText}>{document.description}</p>
+                  ) : null}
+                  {text ? (
+                    <details className={styles.documentDescription} open={openedDocumentTexts.has(document.id)} onToggle={(event) => {
+                      const open = event.currentTarget.open;
+                      setOpenedDocumentTexts((current) => {
+                        if (current.has(document.id) === open) return current;
+                        const next = new Set(current);
+                        if (open) next.add(document.id); else next.delete(document.id);
+                        return next;
+                      });
+                    }}>
+                      <summary>
+                        <span className={styles.descriptionToggle}>Texto del documento <ChevronDown size={13} aria-hidden="true" /></span>
+                      </summary>
+                      {openedDocumentTexts.has(document.id) ? (
+                        <>
+                          <p>{[
+                            text.pageCount == null ? "Páginas sin registrar" : `${new Intl.NumberFormat("es-PE").format(text.pageCount)} ${text.pageCount === 1 ? "página" : "páginas"}`,
+                            text.ocrPages == null ? null : `${new Intl.NumberFormat("es-PE").format(text.ocrPages)} con OCR local`,
+                          ].filter(Boolean).join(" · ")}</p>
+                          {text.reviewPages > 0 ? <p className={styles.textReview}>{text.reviewPages} {text.reviewPages === 1 ? "página con texto limitado" : "páginas con texto limitado"}. Revisar el PDF.</p> : null}
+                          <pre className={styles.documentTextBody} tabIndex={0} aria-label={`Texto de ${document.title}`}>{text.text}</pre>
+                        </>
+                      ) : null}
+                    </details>
+                  ) : null}
                   <div className={styles.tags}>{document.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>
                 </div>
                 <a aria-label={`Descargar ${document.title}`} href={document.downloadUrl}><Download size={16} /></a>
                 <button aria-label={`Borrar ${document.title}`} disabled={busy} onClick={() => deleteDocument(document.id)} type="button"><Trash2 size={16} /></button>
               </article>
-            ))}
+              );
+            })}
 
             {!filteredKnowledge.length && !filteredDocuments.length ? (
               <div className={styles.empty}>

@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     gemini_api_key: str
     gemini_model: str = "gemini-3.1-flash-lite"
     gemini_fallback_model: str = "gemini-2.5-flash"
+    openai_api_key: str = Field(default="", repr=False)
+    # Internal per-call switch; the primary selected reader stays Gemini.
+    prod2_llm1_provider: str = "gemini"
     seace_base_url: str = "https://prod6.seace.gob.pe/v1/s8uit-services"
     seace_user_agent: str = "BuenaPro/0.1 (+https://veyon-solutions.local)"
     seace_timeout_seconds: float = 45.0
@@ -27,7 +30,8 @@ class Settings(BaseSettings):
     seace_allowed_estado_contrato: str = "2"
     seace_allowed_codigo_objeto: str = "2"
     seace_allowed_segments: str = "43,81,78,80"
-    prod4_enabled: bool = True
+    # Compatibility field only: PROD4 execution entry points are retired.
+    prod4_enabled: bool = False
     prod4_base_url: str = "https://prod4.seace.gob.pe:8086/api/oportunidades"
     prod4_poll_interval_minutes: int = 30
     prod4_detail_limit: int = 100

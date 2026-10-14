@@ -336,7 +336,22 @@ export async function deleteCompanyDocument(
   return result.rows[0] ?? null;
 }
 
-export async function agentCompanyLibraryContext(tenantId: string) {
+const AGENT_DOCUMENT_LIMIT = 100;
+
+function agentDocumentMetadata(value: unknown) {
+  // Full page text/OCR is retained in PG for local verification. The agent uses
+  // the reusable structured extraction, citations and auxiliary metadata.
+  const { document_text: _documentText, ...metadata } = object(value);
+  return metadata;
+}
+
+export async function agentCompanyLibraryContext(
+  tenantId: string,
+  options: { documentLimit?: number } = {},
+) {
+  const documentLimit = Number.isFinite(options.documentLimit)
+    ? Math.max(1, Math.min(AGENT_DOCUMENT_LIMIT, Math.floor(options.documentLimit!)))
+    : AGENT_DOCUMENT_LIMIT;
   const [knowledge, documents] = await Promise.all([
     query(
       `SELECT kind,title,description,value_text,tags,metadata_json,updated_at
@@ -347,11 +362,12 @@ export async function agentCompanyLibraryContext(tenantId: string) {
     ),
     query(
       `SELECT id,title,filename,mime_type,size_bytes,document_type,description,tags,
-              valid_until,amount,entity_name,metadata_json,updated_at
+              valid_until,amount,entity_name,
+              COALESCE(metadata_json,'{}'::jsonb) - 'document_text' AS metadata_json,updated_at
        FROM company_documents
        WHERE tenant_id=$1 AND usable_for_applications=true
-       ORDER BY updated_at DESC LIMIT 40`,
-      [tenantId],
+       ORDER BY updated_at DESC,id DESC LIMIT $2`,
+      [tenantId, documentLimit],
     ),
   ]);
   return {
@@ -376,7 +392,7 @@ export async function agentCompanyLibraryContext(tenantId: string) {
       validUntil: row.valid_until,
       amount: row.amount == null ? null : Number(row.amount),
       entityName: row.entity_name,
-      metadata: row.metadata_json ?? {},
+      metadata: agentDocumentMetadata(row.metadata_json),
       updatedAt: row.updated_at,
     })),
   };

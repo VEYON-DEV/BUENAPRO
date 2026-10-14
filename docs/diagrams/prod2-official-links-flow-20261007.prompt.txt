@@ -1,0 +1,17 @@
+Use case: infographic-diagram. Crear una sola infografía de arquitectura técnica en español, muy clara y legible, horizontal amplia, fondo blanco cálido, tipografía sans serif grande, acentos violeta, azul y verde, flechas numeradas inequívocas. No HTML. Título exacto: "BuenaPro · Flujo PROD2". Subtítulo: "Analizar temporalmente, guardar datos y descargar desde SEACE". Diseñar dos filas conectadas de bloques con iconos discretos y una banda inferior de permanencia, sin saturación y sin texto diminuto.
+Contenido y lógica exactos:
+Primera fila izquierda a derecha:
+1 "Buscar por keywords" / "HTTP · SEACE PROD2" / "Bienes + servicios · últimos 6 meses".
+2 "Deduplicar" / "Redis: cola y reservas" / "PostgreSQL: historial y recibos" / "No repetir llamadas ya pagadas".
+3 rombo "Jev ≥ 60" con rama corta "< 60: descartar" / "Sólo trazabilidad compacta"; rama principal "≥ 60: continuar".
+4 "Ficha oficial" / "Guardar cronograma, estado y referencias" / "Vigente, adjudicado o revisión".
+La flecha continúa a segunda fila de izquierda a derecha:
+5 "Documentos temporales" / "PDF · Word · ZIP/RAR" / "Extraer archivos; Word → PDF con LibreOffice".
+6 "Elegir documentos" / "Jev + nombres + muestras locales" / "Bases / TDR / EETT; anexos según relevancia".
+7 "Preparar entrada" / "pypdf: compactación sin pérdida" / "Poppler + pdfplumber: detectar texto" / bifurcación visual de dos rutas "Texto completo fiable" y "Escaneado / mixto → PDF completo" que convergen en8. Nota pequeña clara "PDF grande: dividir en partes conservando todas las páginas".
+8 "LLM1 · Gemini Flash-Lite" / "≤ 20 páginas: 3.1" / "> 20 páginas: 2.5" / "Requisitos, experiencia, personal, consorcio y subcontratación".
+Salida del 8 a tres bloques en banda inferior:
+"PostgreSQL" / "Resultado + evidencia + cronograma + enlaces + UUID + SHA-256 + recibos".
+"Limpiar al confirmar" / "Eliminar temporales propios tras verificar el guardado" / "Si falla: conservar para recuperar".
+"Usuario descarga" / "Botón → ticket fresco de SEACE → documento original".
+Sello a pie exacto: "Nuevas ingestas: sin copias permanentes de documentos en R2". Otra nota: "Los respaldos históricos se conservan. LLM1 puede requerir revisión humana." Mostrar flujo técnico descriptivo y preciso, ninguna afirmación de despliegue o ejecución real, ningún costo inventado, sin logos comerciales ni marcas de agua. Imagen de alta resolución y texto español correcto.

@@ -49,12 +49,28 @@ Una tarea solo puede marcarse como completa si:
 - se actualizo documentacion si aplica
 - no quedan secretos hardcodeados
 
+## Limpieza al finalizar
+
+- Al terminar cada tarea, revisar y retirar los temporales propios que ya no sean necesarios: descargas de trabajo, conversiones, texto extraido, renders y copias duplicadas.
+- Antes de retirar archivos de una ingesta, confirmar la persistencia necesaria en PostgreSQL/R2 y conservar enlaces, hashes y recibos compactos para trazabilidad.
+- Conservar los archivos unicos necesarios para reanudar trabajos pendientes o fallidos sin repetir llamadas pagadas; limpiar esos archivos cuando se cierre o descarte su trabajo.
+- Limitar la limpieza a archivos identificados de la tarea; no borrar carpetas compartidas, archivos del usuario, codigo, credenciales ni caches de pagos mediante un barrido general.
+- Indicar al cerrar cuanto espacio se libero, o que archivos se conservaron por estar pendientes. Esta regla exige limpieza de cierre; no implica que el script ya tenga una purga automatica.
+
 ## Seguridad
 
 - No guardar API keys en el repo.
 - Usar `.env.local` para secretos.
 - No loggear datos personales innecesarios.
 - No indexar DNIs salvo que sea estrictamente necesario para un requisito.
+
+## Código local y publicación
+
+- Implementar y validar primero en el checkout local. Git es la fuente de verdad del código publicado.
+- Commit y push antes de desplegar; producción debe obtener ese commit del remoto y construir desde un checkout Git limpio.
+- No publicar nuevas superposiciones de archivos que no tengan commit. Conservar configuración privada, entradas pendientes y recibos fuera de Git y del contexto Docker.
+- Desplegar únicamente los servicios autorizados; actualizar el código no autoriza migraciones, reiniciar workers, reactivar colas ni nuevas llamadas pagadas.
+- Registrar el commit de código y la etiqueta de imagen. Una actualización posterior solo de documentación debe conservar los hashes del código runtime.
 
 ## Arquitectura
 
@@ -66,7 +82,7 @@ Reglas para comparar.
 LLM opcional para explicar.
 ```
 
-PostgreSQL es la fuente de verdad. R2 guarda previews/documentos auxiliares. SEACE conserva el PDF original descargable por URL.
+PostgreSQL es la fuente de verdad. Para nuevas ingestas seleccionadas PROD2, conservar resultados, cronogramas, referencias oficiales, UUID, hashes y recibos; descargar documentos solo como temporales de análisis y limpiarlos tras verificar el guardado. No crear copias permanentes nuevas de PDF/ZIP/RAR/Word en R2. Los pendientes o pagos inciertos conservan sus entradas necesarias. SEACE conserva los originales: resolver un ticket fresco al descargar, sin persistirlo. R2 mantiene únicamente usos auxiliares de otros flujos y respaldos históricos existentes; no borrarlos como parte de esta política nueva.
 
 ## Alcance MVP de ingesta
 

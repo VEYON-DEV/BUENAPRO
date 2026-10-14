@@ -1,8 +1,10 @@
 import { AppShell } from "@/features/shell";
 import { Pagination } from "@/components/ui/Pagination";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { getTenantOpportunityContext, listContractsForTenant } from "@/server/services/contracts";
 import { listProd4OpportunitiesForTenant, parseProd4ListParams } from "@/server/services/prod4Opportunities";
+import { listProd2OpportunitiesForTenant, parseProd2ListParams } from "@/server/services/prod2Opportunities";
 import { OpportunityList } from "../../components/OpportunityList";
 import { OpportunitySourceTabs } from "../../components/OpportunitySourceTabs";
 import { OpportunityToolbar } from "../../components/OpportunityToolbar";
@@ -56,6 +58,27 @@ function resultLabel(deadline: string, savedOnly: boolean) {
 }
 
 export async function OpportunitiesPage({ tenantId, params }: { tenantId: string; params: URLSearchParams }) {
+  if (params.get("source") === "prod2") {
+    try {
+      const result = await listProd2OpportunitiesForTenant(tenantId, parseProd2ListParams(params));
+      const totalPages = Math.max(Math.ceil(result.total / result.page_size), 1);
+      return <AppShell title="Oportunidades">
+        <PageHeader title="Oportunidades" meta={`${result.total} procedimientos consultados en SEACE`}
+          description="Afinidad comercial y requisitos con evidencia. Confirma la modalidad y las fechas oficiales antes de participar." />
+        <OpportunitySourceTabs source="prod2" />
+        <Prod4OpportunityToolbar source="prod2" defaults={{ ...Object.fromEntries(params.entries()), ...(result.profile ? { profile_id: result.profile.id } : {}) }} />
+        <Prod4OpportunityList source="prod2" profileId={result.profile?.id} rows={result.data as unknown as Prod4OpportunitySummary[]} />
+        <div className={styles.pagination}><Pagination page={result.page} totalPages={totalPages}
+          prevHref={result.page > 1 ? pageHref(params, result.page - 1) : undefined}
+          nextHref={result.page < totalPages ? pageHref(params, result.page + 1) : undefined} /></div>
+      </AppShell>;
+    } catch {
+      return <AppShell title="Oportunidades"><OpportunitySourceTabs source="prod2" />
+        <EmptyState title="No se pudieron cargar las oportunidades" action={{ label: "Volver a intentar", href: "/feed?source=prod2" }}>
+          Revisa el perfil seleccionado y vuelve a intentar la consulta.
+        </EmptyState></AppShell>;
+    }
+  }
   if (params.get("source") === "prod4") {
     const [result, context] = await Promise.all([
       listProd4OpportunitiesForTenant(tenantId, parseProd4ListParams(params)),

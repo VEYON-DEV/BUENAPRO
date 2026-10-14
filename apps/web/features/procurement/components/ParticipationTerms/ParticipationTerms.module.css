@@ -1,0 +1,18 @@
+.section { min-width: 0; padding-block: 16px; }
+.section h2 { color: var(--bp-color-ink); font-size: 15px; line-height: 1.4; margin: 0 0 5px; text-wrap: balance; }
+.intro { color: var(--bp-color-text-2); font-size: 12px; line-height: 1.5; margin: 0 0 16px; }
+.terms { display: grid; gap: 18px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.term { min-width: 0; }
+.term h3 { color: var(--bp-color-ink); font-size: 13px; margin: 0 0 8px; }
+.evidence { margin-top: 8px; }
+.evidence summary { align-items: center; color: var(--bp-color-brand); cursor: pointer; display: list-item; font-size: 12px; font-weight: 650; min-height: 44px; padding-block: 12px; }
+.evidence summary:hover { color: var(--bp-color-ink); }
+.evidence summary:focus-visible { border-radius: var(--bp-radius-control); outline: 2px solid var(--bp-color-brand); outline-offset: 3px; }
+.evidence p, .evidence li, .evidence blockquote { color: var(--bp-color-text); font-size: 12px; line-height: 1.65; overflow-wrap: anywhere; }
+.evidence p { margin: 8px 0; }
+.evidence blockquote { background: var(--bp-color-subtle); border-radius: var(--bp-radius-control); margin: 8px 0; padding: 12px; }
+.evidence h4 { color: var(--bp-color-ink); font-size: 12px; margin: 14px 0 6px; }
+.evidence ul { margin: 6px 0; padding-left: 18px; }
+.evidence .page { color: var(--bp-color-text-2); }
+.compact { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 700px) { .terms { grid-template-columns: minmax(0, 1fr); } }

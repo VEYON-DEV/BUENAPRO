@@ -1,0 +1,219 @@
+{
+  "schema_version": "prod2_embedding_reading_runtime_v1",
+  "status": "runtime_pilot",
+  "source": "prod2",
+  "end_stage": "llm1",
+  "embedding": {
+    "model": "text-embedding-3-small",
+    "dimensions": 1536,
+    "tokenizer": "cl100k_base",
+    "price_per_million_usd": 0.02,
+    "maximum_input_tokens": 8192,
+    "batch_inputs_maximum": 64,
+    "price_source": "https://developers.openai.com/api/docs/pricing",
+    "price_verified_on": "2026-10-08"
+  },
+  "corpus": {
+    "policy_version": "prod2_complete_embedding_corpus_v1",
+    "tokenizer": "cl100k_base",
+    "chunk_target_tokens": 1000,
+    "overlap_tokens": 128,
+    "maximum_input_tokens": 8192,
+    "max_pages": 1000,
+    "max_text_bytes": 33554432,
+    "max_manifest_bytes": 100663296,
+    "native_timeout_seconds": 300,
+    "ocr_timeout_seconds": 90,
+    "ocr_lock_timeout_seconds": 300,
+    "max_ocr_pages": 1000,
+    "ocr_languages": "spa+eng",
+    "ocr_dpi": 180,
+    "ocr_max_dimension": 2600,
+    "relevant_image_area_ratio": 0.08,
+    "minimum_ocr_confidence": 65.0,
+    "minimum_ocr_confident_word_ratio": 0.85,
+    "minimum_ocr_words": 30,
+    "textual_scan_minimum_image_area_ratio": 0.65,
+    "maximum_ocr_column_gap_rows": 2,
+    "ocr_textual_scan_policy": "prod2_confident_text_layout_review_v3",
+    "page_failure_policy": "prod2_skip_failed_ocr_pages_v5"
+  },
+  "retrieval": {
+    "policy_version": "prod2_qualification_retrieval_v1",
+    "semantic_seed_top_k_per_query": 2,
+    "context_target_tokens": 15000,
+    "context_maximum_tokens": 30000,
+    "neighbor_pages": 1,
+    "expand_complete_sections": true,
+    "include_complete_tables": true,
+    "include_literal_matches": true,
+    "queries": [
+      {
+        "id": "contract",
+        "fields": [
+          "contract",
+          "summary"
+        ],
+        "query": "Objeto y alcance específico de la contratación, entidad, lugar, plazo, valor estimado, moneda, modalidad y condiciones de inicio.",
+        "literal_anchors": [
+          "objeto de la contratación",
+          "objeto de contratación",
+          "alcance del servicio",
+          "valor estimado",
+          "valor referencial",
+          "plazo de ejecución",
+          "lugar de ejecución"
+        ]
+      },
+      {
+        "id": "provider_requirements",
+        "fields": [
+          "requirements.provider"
+        ],
+        "query": "Requisitos de calificación y habilitación del postor: capacidad legal, RNP, licencias, certificaciones, giro y documentos para acreditar cada requisito.",
+        "literal_anchors": [
+          "requisitos de calificación",
+          "capacidad legal",
+          "habilitación",
+          "RNP",
+          "certificaciones requeridas"
+        ]
+      },
+      {
+        "id": "provider_experience",
+        "fields": [
+          "requirements.provider"
+        ],
+        "query": "Experiencia general, específica y económica del postor: monto facturado, moneda, periodo computable, contratos similares, acreditación, MYPE, alternativas y excepciones.",
+        "literal_anchors": [
+          "experiencia del postor",
+          "facturación",
+          "monto facturado",
+          "similares",
+          "MYPE",
+          "acreditación"
+        ]
+      },
+      {
+        "id": "personnel",
+        "fields": [
+          "requirements.key_personnel"
+        ],
+        "query": "Personal clave y profesionales exigidos por perfil: cantidad, formación, títulos, colegiatura, habilitación, experiencia, cursos y acreditación.",
+        "literal_anchors": [
+          "personal clave",
+          "personal mínimo",
+          "formación académica",
+          "colegiatura",
+          "experiencia del personal",
+          "perfil del personal",
+          "requisitos del personal"
+        ]
+      },
+      {
+        "id": "equipment_insurance",
+        "fields": [
+          "requirements.equipment",
+          "requirements.insurance"
+        ],
+        "query": "Equipos, vehículos, infraestructura y seguros que el proveedor debe acreditar: cantidades, características, coberturas, disponibilidad y condiciones.",
+        "literal_anchors": [
+          "equipamiento",
+          "infraestructura",
+          "vehículos",
+          "seguro",
+          "póliza",
+          "cobertura"
+        ]
+      },
+      {
+        "id": "consortium",
+        "fields": [
+          "participation.consorcio"
+        ],
+        "query": "Cláusulas aplicables de consorcio: autorización o prohibición, integrantes, porcentajes de participación y ejecución, experiencia acreditable, límites, condiciones y excepciones.",
+        "literal_anchors": [
+          "consorcio",
+          "consorcios",
+          "consorciado",
+          "consorciados",
+          "participación mínima"
+        ]
+      },
+      {
+        "id": "subcontracting",
+        "fields": [
+          "participation.subcontratacion"
+        ],
+        "query": "Cláusulas aplicables de subcontratación: permiso o prohibición, porcentaje máximo, autorización previa, actividades permitidas, condiciones y excepciones.",
+        "literal_anchors": [
+          "subcontratación",
+          "subcontratacion",
+          "subcontratar",
+          "subcontratista",
+          "subcontratistas"
+        ]
+      },
+      {
+        "id": "execution",
+        "fields": [
+          "execution"
+        ],
+        "query": "Actividades y entregables específicos, resultados, productos, lugares y plazos de ejecución por item, etapas y condiciones de entrega.",
+        "literal_anchors": [
+          "actividades a realizar",
+          "actividades del servicio",
+          "entregables",
+          "plazo de ejecución",
+          "cronograma de entrega",
+          "lugar de entrega"
+        ]
+      },
+      {
+        "id": "goods",
+        "fields": [
+          "goods"
+        ],
+        "query": "Bienes e items por adquirir: cantidades, unidades, especificaciones técnicas completas, entrega, garantía, cobertura y condiciones por item.",
+        "literal_anchors": [
+          "especificaciones técnicas",
+          "cantidades",
+          "ítem",
+          "cantidad y unidad",
+          "garantía del fabricante"
+        ]
+      },
+      {
+        "id": "penalties_management",
+        "fields": [
+          "penalties",
+          "contract_management"
+        ],
+        "query": "Penalidades aplicables con fórmula, tope y base; conformidad, confidencialidad, vicios ocultos y controversias con sus condiciones.",
+        "literal_anchors": [
+          "otras penalidades",
+          "penalidad por mora",
+          "conformidad del servicio",
+          "confidencialidad",
+          "vicios ocultos",
+          "controversias"
+        ]
+      }
+    ]
+  },
+  "storage": {
+    "text_and_vectors": "postgresql",
+    "new_source_originals_in_r2": false
+  },
+  "automatic_full_pdf_fallback": false,
+  "canonical_projection": "preserved_pending_validation",
+  "claims_quality_equality": false,
+  "text_coverage_semantics": "available_confident_pages_only; skipped pages recorded explicitly; partial source reading requires human review",
+  "configuration_revision": "runtime_v5_partial_local_ocr",
+  "reading": {
+    "transport_policy": "prod2_retrieved_compact_metadata_v4",
+    "evidence_text": "unchanged_verified_context_once",
+    "full_metadata": "postgresql_immutable_proof",
+    "source_coverage_policy": "prod2_partial_source_text_v5"
+  }
+}

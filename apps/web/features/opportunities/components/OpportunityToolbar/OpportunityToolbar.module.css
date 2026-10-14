@@ -19,7 +19,10 @@
 .typeChoices a:hover { color: var(--bp-color-brand); }
 .typeChoices a:focus-visible { outline: 2px solid var(--bp-color-brand); outline-offset: 2px; }
 .typeChoices .typeActive { background: var(--bp-color-brand-soft); color: var(--bp-color-brand); }
+.quick a:focus-visible,
+.filterToggle:focus-visible { outline: 2px solid var(--bp-color-brand); outline-offset: 2px; }
+.quick { flex-wrap: wrap; }
 @media (max-width: 1280px) { .filters { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 1100px) { .main { grid-template-columns: 1fr; }.quick { grid-row: 2; } }
 @media (max-width: 900px) { .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }.filters button { grid-column: auto; } }
-@media (max-width: 700px) { .toolbar { border-radius: 20px; margin-top: 18px; }.main { grid-template-columns: 1fr; padding: 12px 70px 12px 12px; }.quick { gap: 7px; grid-column: 1 / -1; overflow-x: auto; padding-bottom: 2px; }.quick a { min-height: 42px; padding: 0 12px; }.filterToggle { font-size: 0; min-height: 48px; padding: 0; right: 12px; top: 12px; width: 48px; }.filterToggle svg { height: 18px; width: 18px; }.filters { grid-template-columns: 1fr; } }
+@media (max-width: 700px) { .toolbar { border-radius: 20px; margin-top: 18px; }.main { grid-template-columns: 1fr; padding: 12px 70px 12px 12px; }.quick { gap: 7px; grid-column: 1 / -1; overflow-x: auto; padding-bottom: 2px; }.quick a { min-height: 44px; padding: 0 12px; }.filterToggle { font-size: 0; min-height: 48px; padding: 0; right: 12px; top: 12px; width: 48px; }.filterToggle svg { height: 18px; width: 18px; }.filters { grid-template-columns: 1fr; } }

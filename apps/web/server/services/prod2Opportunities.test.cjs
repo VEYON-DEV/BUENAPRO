@@ -1,0 +1,560 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const ts = require('typescript');
+
+function load(file, mocks = {}, environment = {}) {
+  const exports = {};
+  const compiled = ts.transpileModule(fs.readFileSync(path.join(__dirname, file), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  vm.runInNewContext(compiled, { exports, URL, URLSearchParams, Response, Buffer, Date, AbortSignal, TextDecoder,
+    fetch: async () => { throw new Error('Unexpected network call in offline test'); }, process: { env: environment },
+    require(name) { return name in mocks ? mocks[name] : name === './prod2OfficialDocument' ? official
+      : name === './prod2DocumentStorage' ? defaultStorage
+      : name === './keywordTextScoring' ? load('keywordTextScoring.ts') : require(name); } });
+  return exports;
+}
+const schedule = load('../../lib/procurementSchedule.ts');
+const analysis = load('../../lib/prod2Analysis.ts', { '@/lib/procurementSchedule': schedule });
+const official = load('prod2OfficialDocument.ts');
+const defaultStorage = load('prod2DocumentStorage.ts');
+const profileId = '00000000-0000-0000-0000-000000000001';
+const documentHash = 'a'.repeat(64), profileHash = 'b'.repeat(64);
+const documentCode = '00000000-0000-0000-0000-000000000010';
+
+test('PROD2 chronology preserves date-only precision and unknown dates', () => {
+  const stages = analysis.normalizeProd2Schedule([{ stage: 'Presentación de ofertas', starts_at_text: '05/10/2026', ends_at_text: '10/10/2026' },
+    { stage: 'Absolución de consultas', starts_at_text: '', ends_at_text: 'No informado' }]);
+  assert.equal(stages[0].endsAt, '2026-10-10');
+  assert.equal(stages[0].endPrecision, 'day');
+  assert.equal(stages[0].kind, 'proposals');
+  assert.equal(stages[1].kind, 'answers');
+  assert.equal(stages[1].endsAt, null);
+  assert.equal(schedule.scheduleTemporalState(stages[0], new Date('2026-10-10T15:00:00Z')), 'unknown');
+});
+
+test('same numeric extraction ID from a different source or revision never exposes a match', () => {
+  const input = { idConvocatoria: '123', profileHash, extraction: { id: '7', quality: 'auto', sha256_original: documentHash }, facets: [],
+    match: { breakdown_json: { meta: { source_key: 'seace_prod2', id_convocatoria: '123', extraction_id: '7', document_sha256: documentHash, profile_hash: profileHash } } } };
+  assert.equal(analysis.buildProd2Analysis(input).status, 'matched');
+  for (const [key, value] of Object.entries({ source_key: 'seace_prod4', id_convocatoria: '456', extraction_id: '8', document_sha256: 'c'.repeat(64), profile_hash: 'd'.repeat(64) })) {
+    const changed = structuredClone(input);
+    changed.match.breakdown_json.meta[key] = value;
+    assert.equal(analysis.buildProd2Analysis(changed).match, null, key);
+  }
+  const failed = structuredClone(input); failed.extraction.quality = 'failed';
+  assert.equal(analysis.buildProd2Analysis(failed).match, null);
+});
+
+test('affinity index and confidence remain independent', () => {
+  const affinity = analysis.prod2Affinity({ affinity_index: 65, affinity_confidence: 0.92, domain: 'informatica', information: 'insuficiente', needs_detail: true });
+  assert.equal(affinity.index, 65); assert.equal(affinity.confidence, 0.92); assert.equal(affinity.needsDetail, true);
+  assert.equal(analysis.prod2Affinity({ affinity_index: 105, affinity_confidence: 92 }).index, null);
+  assert.equal(analysis.prod2Affinity({ affinity_confidence: 0.9 }).index, null);
+});
+
+test('profile selection verifies tenant ownership before reading evaluations', async () => {
+  const statements = [];
+  const service = load('prod2Opportunities.ts', { '@/server/db/client': { query: async (sql, values) => { statements.push({ sql, values }); return { rows: [] }; } },
+    '@/lib/prod2Analysis': analysis, './prod2DocumentStorage': { prod2StorageAvailable: () => false } });
+  await assert.rejects(service.listProd2OpportunitiesForTenant('tenant', { object: null, q: '', page: 1, pageSize: 10, profileId }), error => error.status === 404);
+  assert.equal(statements.length, 1);
+  assert.match(statements[0].sql, /tenant_id = \$1/);
+  assert.deepEqual(Array.from(statements[0].values), ['tenant', profileId]);
+});
+
+test('analysis list parser accepts only an explicit done filter without changing default browsing', () => {
+  const service = load('prod2Opportunities.ts', { '@/server/db/client': { query: async () => { throw new Error('Parser must not query'); } }, '@/lib/prod2Analysis': analysis });
+  assert.equal(service.parseProd2ListParams(new URLSearchParams()).analysis, null);
+  assert.equal(service.parseProd2ListParams(new URLSearchParams('analysis=')).analysis, null);
+  assert.equal(service.parseProd2ListParams(new URLSearchParams('analysis=done')).analysis, 'done');
+  for (const invalid of ['pending', 'false', 'all', 'done OR true']) {
+    assert.throws(() => service.parseProd2ListParams(new URLSearchParams({ analysis: invalid })), error => error.status === 400);
+  }
+});
+
+test('pagination uses convocatoria identity and preserves source provenance without legacy queries', async () => {
+  const statements = [];
+  const service = load('prod2Opportunities.ts', { '@/server/db/client': { query: async (sql, values) => {
+    statements.push({ sql, values });
+    return { rows: sql.includes('FROM company_profiles') ? [{ id: profileId, razon_social: 'Empresa QA' }] : sql.includes('count(*)::int AS total') ? [{ total: 21 }] : [] };
+  } }, '@/lib/prod2Analysis': analysis, './prod2DocumentStorage': { prod2StorageAvailable: () => false } });
+  const result = await service.listProd2OpportunitiesForTenant('tenant', { object: 'service', q: 'software', page: 2, pageSize: 10, profileId: null });
+  assert.equal(result.total, 21); assert.equal(result.page, 2);
+  const selection = statements.at(-1);
+  assert.deepEqual(Array.from(selection.values.slice(-2)), [10, 10]);
+  assert.match(selection.sql, /'seace_prod2'::text AS source_key/);
+  assert.match(selection.sql, /prod2_match_provenance/);
+  assert.match(selection.sql, /document_sha256/);
+  assert.match(selection.sql, /ORDER BY fit\.keyword_points DESC NULLS LAST, CASE WHEN matched\.breakdown_json->'meta'->>'score_validated' = 'false' THEN NULL ELSE matched\.score END DESC NULLS LAST/);
+  assert.ok(selection.sql.indexOf('ORDER BY fit.keyword_points') < selection.sql.lastIndexOf('LIMIT $'));
+  assert.doesNotMatch(selection.sql, /prod4_processes|seace_contracts|worker_jobs/);
+  const count = statements.find(statement => statement.sql.includes('count(*)::int AS total FROM prod2_discoveries'));
+  assert.doesNotMatch(count.sql, /matched\.id IS NOT NULL|prod2_match_provenance/, 'default totals retain every enriched opportunity');
+  assert.throws(() => service.parseProd2ListParams(new URLSearchParams('page_size=101')));
+  assert.throws(() => service.parseProd2ListParams(new URLSearchParams('profile_id=not-a-uuid')));
+});
+
+function scoreProjectionService({ storedScore = 95, scoreValidated, sourceReviewRequired = false, publishedScore, publishedVerdict = 'gris',
+  suppliedProvisionalScore, matchId = '99' } = {}) {
+  const statements = [];
+  const meta = { source_key: 'seace_prod2', id_convocatoria: '123', extraction_id: '7', document_sha256: documentHash, profile_hash: profileHash,
+    ...(scoreValidated === undefined ? {} : { score_validated: scoreValidated, raw_model_score: storedScore }) };
+  const breakdown = { meta, resumen: 'Verificar respaldo compatible.', requisitos: [{ requisito: 'Experiencia compatible', estado: 'requiere_revision' }],
+    administrative_checklist: [{ tipo: 'rnp', requisito: 'RNP Vigente', estado: 'preparar', score_impact: false }] };
+  const row = { id_convocatoria: '123', schedule_json: [], jev_result: null, documents_count: 0, match_id: matchId, match_profile_id: profileId,
+    match_review_required: scoreValidated === false || sourceReviewRequired,
+    provisional_score: suppliedProvisionalScore === undefined ? (scoreValidated === false || sourceReviewRequired ? storedScore : null) : suppliedProvisionalScore,
+    match_score: publishedScore, match_verdict: publishedVerdict, breakdown_json: breakdown, missing_actions_json: [{ accion: 'Validar experiencia.' }],
+    evaluated_profile_hash: profileHash, matched_at: '2026-10-13T15:00:00Z', match_updated_at: '2026-10-13T15:00:00Z' };
+  const source = { id: '7', quality: 'auto', sha256_original: documentHash, summary_json: {}, raw_extraction_json: {}, created_at: '2026-10-13T14:00:00Z' };
+  const facet = { id: '17', facet: 'specific_experience', label: 'Experiencia compatible', required: true, details_json: {}, evidence_json: [] };
+  const service = load('prod2Opportunities.ts', { '@/server/db/client': { query: async (sql, values) => {
+    statements.push({ sql, values });
+    return { rows: sql.startsWith('SELECT id::text, razon_social FROM company_profiles') ? [{ id: profileId, razon_social: 'Empresa QA' }]
+      : sql.includes('count(*)::int AS total FROM prod2_discoveries') ? [{ total: 1 }]
+      : sql.includes('FROM prod2_discoveries') ? [row]
+      : sql.includes('FROM prod2_document_extractions WHERE') ? [source]
+      : sql.includes('FROM prod2_requirement_facets f') ? [facet] : [] };
+  } }, '@/lib/prod2Analysis': analysis });
+  return { service, statements, breakdown, facet };
+}
+
+test('PROD2 list and detail hide explicitly unvalidated scores including raw zero, while retaining documentary explanations', async () => {
+  for (const storedScore of [0, 95]) {
+    const { service, statements, breakdown, facet } = scoreProjectionService({ storedScore, scoreValidated: false, publishedScore: null });
+    const list = await service.listProd2OpportunitiesForTenant('tenant', { object: null, q: '', page: 1, pageSize: 10, profileId });
+    const detail = await service.getProd2OpportunityForTenant('tenant', '123', profileId);
+    assert.equal(list.total, 1, 'an evaluation under review does not remove its opportunity from the feed');
+    assert.equal(list.data[0].match_score, null); assert.equal(list.data[0].match_verdict, 'gris');
+    assert.equal(detail.process.match_score, null); assert.equal(detail.process.match_verdict, 'gris');
+    assert.equal(detail.analysis.status, 'matched');
+    assert.equal(detail.analysis.match.id, '99'); assert.equal(detail.analysis.match.score, null);
+    assert.equal(list.data[0].provisional_score, storedScore);
+    assert.equal(detail.process.provisional_score, storedScore);
+    assert.equal(detail.analysis.match.provisional_score, storedScore);
+    assert.equal(detail.analysis.match.breakdown_json.meta.score_validated, false);
+    assert.equal(detail.analysis.match.breakdown_json, breakdown);
+    assert.equal(detail.analysis.match.missing_actions_json[0].accion, 'Validar experiencia.');
+    assert.equal(detail.analysis.facets[0], facet);
+    const selections = statements.filter(row => row.sql.includes('FROM prod2_discoveries') && !row.sql.includes('count(*)::int AS total FROM prod2_discoveries'));
+    for (const { sql } of selections) {
+      assert.match(sql, /CASE WHEN matched\.breakdown_json->'meta'->>'score_validated' = 'false' THEN NULL ELSE matched\.score END AS match_score/);
+      assert.match(sql, /CASE WHEN matched\.breakdown_json->'meta'->>'score_validated' = 'false' THEN 'gris' ELSE matched\.verdict END AS match_verdict/);
+      assert.doesNotMatch(sql, /COALESCE\([^\n]*matched\.score[^\n]*,\s*0\)/, 'an unpublished score is never fabricated as zero');
+    }
+    const facets = statements.find(row => row.sql.includes('FROM prod2_requirement_facets f'));
+    assert.match(facets.sql, /f\.extraction_id = \$2::bigint/);
+    assert.deepEqual(Array.from(facets.values), ['123', '7']);
+    assert.doesNotMatch(statements.map(row => row.sql).join('\n'), /\b(?:INSERT|UPDATE|DELETE)\b/);
+  }
+});
+
+test('provisional score is a separate range-checked stored number and cannot create a score for absent or invalid values', async () => {
+  for (const value of [null, -1, 101, NaN, Infinity, '95']) {
+    const { service, statements } = scoreProjectionService({ scoreValidated: false, publishedScore: null, suppliedProvisionalScore: value });
+    const list = await service.listProd2OpportunitiesForTenant('tenant', { object: null, q: '', page: 1, pageSize: 10, profileId });
+    const detail = await service.getProd2OpportunityForTenant('tenant', '123', profileId);
+    assert.equal(list.data[0].provisional_score, null, String(value));
+    assert.equal(detail.process.provisional_score, null, String(value));
+    assert.equal(detail.analysis.match.provisional_score, null, String(value));
+    const sql = statements.find(statement => statement.sql.includes('AS provisional_score')).sql;
+    assert.match(sql, /AND matched\.score >= 0 AND matched\.score <= 100 THEN matched\.score ELSE NULL END AS provisional_score/);
+    assert.doesNotMatch(sql, /COALESCE\(matched\.score|raw_model_score.*AS provisional_score/);
+  }
+  const { service } = scoreProjectionService({ scoreValidated: false, publishedScore: null, suppliedProvisionalScore: 90, matchId: null });
+  const list = await service.listProd2OpportunitiesForTenant('tenant', { object: null, q: '', page: 1, pageSize: 10, profileId });
+  const detail = await service.getProd2OpportunityForTenant('tenant', '123', profileId);
+  assert.equal(list.data[0].provisional_score, null);
+  assert.equal(detail.process.provisional_score, null);
+  assert.equal(detail.analysis.match, null);
+});
+
+test('a provisional number never bypasses source, extraction revision or profile provenance in the documentary analysis', () => {
+  const input = { idConvocatoria: '123', profileHash, extraction: { id: '7', quality: 'auto', sha256_original: documentHash }, facets: [],
+    match: { score: null, provisional_score: 95, breakdown_json: { meta: { score_validated: false, source_key: 'seace_prod2', id_convocatoria: '123',
+      extraction_id: '7', document_sha256: documentHash, profile_hash: profileHash } } } };
+  assert.equal(analysis.buildProd2Analysis(input).match.provisional_score, 95);
+  for (const [key, value] of Object.entries({ source_key: 'seace_prod4', id_convocatoria: '456', extraction_id: '8', document_sha256: 'c'.repeat(64), profile_hash: 'd'.repeat(64) })) {
+    const changed = structuredClone(input); changed.match.breakdown_json.meta[key] = value;
+    assert.equal(analysis.buildProd2Analysis(changed).match, null, key);
+  }
+  const failed = structuredClone(input); failed.extraction.quality = 'failed';
+  assert.equal(analysis.buildProd2Analysis(failed).match, null);
+});
+
+test('done analysis filter uses the same current source and tenant-owned profile in count and page, even with an unpublished score', async () => {
+  const { service, statements } = scoreProjectionService({ scoreValidated: false, publishedScore: null });
+  const params = service.parseProd2ListParams(new URLSearchParams({ analysis: 'done', object: 'service', q: 'software', profile_id: profileId, page: '2', page_size: '1' }));
+  const list = await service.listProd2OpportunitiesForTenant('tenant', params);
+  assert.equal(list.total, 1);
+  assert.equal(list.data[0].match_id, '99', 'an unpublished score remains an available analysis');
+  assert.equal(list.data[0].match_score, null);
+  assert.equal(list.data[0].match_review_required, true);
+  const selections = statements.filter(statement => statement.sql.includes('FROM prod2_discoveries'));
+  assert.equal(selections.length, 2);
+  for (const { sql, values } of selections) {
+    assert.match(sql, /matched\.id IS NOT NULL/);
+    assert.match(sql, /m\.profile_id = \$1::uuid/);
+    assert.match(sql, /provenance\.id_convocatoria = p\.id_convocatoria/);
+    assert.match(sql, /ex\.id = provenance\.extraction_id AND ex\.is_current = true AND ex\.quality <> 'failed'/);
+    assert.match(sql, /ev\.id = provenance\.evaluation_id AND ev\.status = 'done' AND ev\.kind = 'gemini_match'/);
+    assert.match(sql, /document_sha256.*ex\.sha256_original/);
+    assert.match(sql, /profile_hash.*provenance\.profile_hash/);
+    assert.match(sql, /p\.object_type = \$2/);
+    assert.match(sql, /p\.description ILIKE \$3/);
+    assert.deepEqual(Array.from(values.slice(0, 3)), [profileId, 'service', '%software%']);
+    assert.doesNotMatch(sql, /matched\.score (?:>\s|IS NOT NULL)|match_score IS NOT NULL/);
+  }
+  const page = selections[1];
+  assert.ok(page.sql.indexOf('matched.id IS NOT NULL') < page.sql.lastIndexOf('LIMIT $4 OFFSET $5'));
+  assert.deepEqual(Array.from(page.values), [profileId, 'service', '%software%', 1, 1]);
+  assert.match(page.sql, /matched\.id::text AS match_id/);
+  assert.match(page.sql, /COALESCE\(matched\.breakdown_json->'meta'->>'score_validated' = 'false', false\)/);
+  assert.match(page.sql, /COALESCE\(matched\.evaluated_source_review_required, false\)/);
+  assert.doesNotMatch(statements.map(statement => statement.sql).join('\n'), /\b(?:INSERT|UPDATE|DELETE)\b/);
+});
+
+test('done analysis never falls back to another profile or foreign tenant when profile resolution fails', async () => {
+  for (const explicit of [null, profileId]) {
+    const statements = [];
+    const service = load('prod2Opportunities.ts', { '@/server/db/client': { query: async (sql, values) => {
+      statements.push({ sql, values });
+      return { rows: sql.includes('count(*)::int AS total') ? [{ total: 0 }] : [] };
+    } }, '@/lib/prod2Analysis': analysis });
+    const params = { object: null, q: '', page: 1, pageSize: 20, profileId: explicit, analysis: 'done' };
+    if (explicit) {
+      await assert.rejects(service.listProd2OpportunitiesForTenant('foreign-tenant', params), error => error.status === 404);
+      assert.equal(statements.length, 1);
+    } else {
+      const list = await service.listProd2OpportunitiesForTenant('empty-tenant', params);
+      assert.equal(list.total, 0);
+      assert.equal(list.data.length, 0);
+      for (const statement of statements.slice(1)) {
+        assert.equal(statement.values[0], null);
+        assert.match(statement.sql, /m\.profile_id = \$1::uuid/);
+        assert.match(statement.sql, /matched\.id IS NOT NULL/);
+      }
+    }
+    assert.match(statements[0].sql, /tenant_id = \$1 AND is_active = true/);
+  }
+});
+
+test('source review retains an analysis signal even when a numeric legacy score exists; validated zero remains valid', async () => {
+  for (const scenario of [{ publishedScore: 70, publishedVerdict: 'ambar', sourceReviewRequired: true },
+    { storedScore: 0, scoreValidated: true, publishedScore: 0, publishedVerdict: 'rojo', sourceReviewRequired: false }]) {
+    const { service } = scoreProjectionService(scenario);
+    const list = await service.listProd2OpportunitiesForTenant('tenant', { object: null, q: '', page: 1, pageSize: 10, profileId, analysis: 'done' });
+    const detail = await service.getProd2OpportunityForTenant('tenant', '123', profileId);
+    assert.equal(list.data[0].match_id, '99');
+    assert.equal(detail.process.match_id, '99');
+    assert.equal(list.data[0].match_review_required, scenario.sourceReviewRequired);
+    assert.equal(detail.process.match_review_required, scenario.sourceReviewRequired);
+    assert.equal(list.data[0].match_score, scenario.publishedScore);
+  }
+});
+
+test('legacy PROD2 scores and explicitly validated zero keep their score, verdict and match', async () => {
+  for (const scenario of [{ storedScore: 84, publishedScore: 84, publishedVerdict: 'ambar' },
+    { storedScore: 0, scoreValidated: true, publishedScore: 0, publishedVerdict: 'rojo' }]) {
+    const { service, statements } = scoreProjectionService(scenario);
+    const list = await service.listProd2OpportunitiesForTenant('tenant', { object: null, q: '', page: 1, pageSize: 10, profileId });
+    const detail = await service.getProd2OpportunityForTenant('tenant', '123', profileId);
+    assert.equal(list.data[0].match_score, scenario.storedScore);
+    assert.equal(list.data[0].match_verdict, scenario.publishedVerdict);
+    assert.equal(detail.analysis.match.score, scenario.storedScore);
+    assert.equal(detail.analysis.match.verdict, scenario.publishedVerdict);
+    assert.equal(list.data[0].provisional_score, null);
+    assert.equal(detail.process.provisional_score, null);
+    assert.equal(detail.analysis.match.provisional_score, null);
+    for (const { sql } of statements) assert.doesNotMatch(sql, /COALESCE\(matched\.breakdown_json->'meta'->>'score_validated', 'false'\)/);
+  }
+});
+
+test('list and detail use current profile keyword fit while preserving historical Jev and documentary provenance', async () => {
+  const statements = [];
+  const row = { id_convocatoria: '123', schedule_json: [], jev_result: { affinity_index: 98 },
+    keyword_points: 35, fit_points: 35, fit_level: 3, business_line_name: 'Software e integración',
+    keyword_hits: [{ keyword: 'software', match: 'strong_term', points: 10 }], documents_count: 0 };
+  const service = load('prod2Opportunities.ts', { '@/server/db/client': { query: async (sql, values) => {
+    statements.push({ sql, values });
+    return { rows: sql.startsWith('SELECT id::text, razon_social FROM company_profiles') ? [{ id: profileId, razon_social: 'Empresa QA' }]
+      : sql.includes('count(*)::int AS total FROM prod2_discoveries') ? [{ total: 1 }]
+      : sql.includes('FROM prod2_discoveries') ? [row] : [] };
+  } }, '@/lib/prod2Analysis': analysis });
+  const list = await service.listProd2OpportunitiesForTenant('tenant', { object: null, q: '', page: 1, pageSize: 10, profileId });
+  const detail = await service.getProd2OpportunityForTenant('tenant', '123', profileId);
+  for (const result of [list.data[0], detail.process]) {
+    assert.equal(result.fit_points, 35); assert.equal(result.fit_level, 3);
+    assert.equal(result.keyword_points, 35); assert.equal(result.fit_score, null);
+    assert.equal(result.business_line_name, 'Software e integración');
+    assert.equal(result.keyword_hits, row.keyword_hits); assert.equal(result.fit_basis, 'profile_keywords');
+    assert.equal(result.affinity.index, 98);
+  }
+  for (const query of statements.filter(s => s.sql.includes('FROM prod2_discoveries') && !s.sql.includes('count(*)::int AS total FROM prod2_discoveries'))) {
+    assert.match(query.sql, /WHERE cp\.id = \$1::uuid AND cp\.is_active/);
+    assert.match(query.sql, /COALESCE\(p\.description, ''\)/);
+    assert.match(query.sql, /bl\.is_active/);
+    assert.match(query.sql, /prod2_match_provenance/);
+    assert.equal(query.values[0], profileId);
+  }
+  assert.doesNotMatch(statements.map(s => s.sql).join('\n'), /worker_jobs|\b(?:INSERT|UPDATE|DELETE)\b/);
+});
+
+test('participation in PROD2 list and detail comes only from the current convocatoria reading', async () => {
+  const statements = [];
+  const reading = { id: '72', quality: 'partial', requires_human_review: true, page_scope: 'combined',
+    participation: { subcontratacion: { status: 'prohibited', clause: 'No se podrá subcontratar.', page: 12, conditions: [] } } };
+  const row = { id_convocatoria: '123', schedule_json: [], jev_result: null, documents_count: 0, participation_extraction: reading };
+  const service = load('prod2Opportunities.ts', { '@/server/db/client': { query: async (sql) => {
+    statements.push(sql);
+    return { rows: sql.includes('count(*)::int AS total') ? [{ total: 1 }] : sql.includes('FROM prod2_discoveries') ? [row] : [] };
+  } }, '@/lib/prod2Analysis': analysis, './prod2DocumentStorage': { prod2StorageAvailable: () => false } });
+  const list = await service.listProd2OpportunitiesForTenant('tenant', { object: null, q: '', page: 1, pageSize: 10, profileId: null });
+  const detail = await service.getProd2OpportunityForTenant('tenant', '123');
+  assert.equal(list.data[0].participation_extraction, reading);
+  assert.equal(detail.process.participation_extraction, reading);
+  const selections = statements.filter(sql => sql.includes('AS participation_extraction'));
+  assert.equal(selections.length, 2);
+  for (const sql of selections) {
+    assert.match(sql, /WHERE ex\.id_convocatoria = p\.id_convocatoria AND ex\.is_current/);
+    assert.match(sql, /ORDER BY ex\.created_at DESC, ex\.id DESC LIMIT 1/);
+    assert.match(sql, /'requires_human_review', ex\.requires_human_review/);
+    assert.match(sql, /ex\.summary_json->'participation'.*ex\.raw_extraction_json->'participation'/);
+    assert.match(sql, /'page_scope', 'combined'/);
+    assert.doesNotMatch(sql, /subcontracting_status|consortium_status|ex\.raw_extraction_json\s*[,)]/);
+  }
+  assert.doesNotMatch(statements.join('\n'), /\b(?:INSERT|UPDATE|DELETE)\b/);
+});
+
+test('document signatures are short-lived GETs restricted to canonical verified storage keys', () => {
+  const storage = load('prod2DocumentStorage.ts', {}, { R2_ENDPOINT: 'https://qaaccount.r2.cloudflarestorage.com', R2_BUCKET: 'qa-documents', R2_ACCESS_KEY_ID: 'test-access-id', R2_SECRET_ACCESS_KEY: 'test-secret' });
+  const url = new URL(storage.signedProd2DocumentUrl(`prod2/123/${documentCode}/${documentHash}.pdf`, '123', documentCode, new Date('2026-10-05T12:00:00Z')));
+  assert.equal(url.searchParams.get('X-Amz-Expires'), '60');
+  assert.equal(url.searchParams.get('X-Amz-Date'), '20261005T120000Z');
+  assert.match(url.searchParams.get('X-Amz-Signature'), /^[0-9a-f]{64}$/);
+  assert.equal(storage.signedProd2DocumentUrl(`prod2/456/${documentCode}/${documentHash}.pdf`, '123', documentCode), null);
+  assert.equal(storage.signedProd2DocumentUrl('../private.pdf', '123', documentCode), null);
+  assert.equal(storage.signedProd2DocumentUrl(`prod2/123/${documentCode}/${documentHash}.pdf`, '.*', documentCode), null);
+  assert.equal(storage.signedProd2DocumentUrl(`prod2/123/${profileId}/${documentHash}.pdf`, '123', documentCode), null);
+});
+
+test('converted ZIP preview keeps original hash distinct and verifies convocatoria and document identity', async () => {
+  const previewHash = 'c'.repeat(64), statements = [];
+  const service = load('prod2Opportunities.ts', { '@/server/db/client': { query: async (sql, values) => {
+    statements.push(sql); return { rows: values[0] === '123' && values[1] === documentCode
+      ? [{ storage_key: `prod2/123/${documentCode}/${previewHash}.pdf`, sha256_original: documentHash }] : [] };
+  } }, '@/lib/prod2Analysis': analysis, './prod2DocumentStorage': {
+    validProd2PreviewKey: (key, conv, code) => key === `prod2/${conv}/${code}/${previewHash}.pdf`,
+    signedProd2DocumentUrl: (key) => `https://private.example/${key}`,
+  } });
+  assert.equal(await service.getProd2DocumentUrl('123', documentCode), `https://private.example/prod2/123/${documentCode}/${previewHash}.pdf`);
+  assert.doesNotMatch(statements[0], /format = 'pdf'/);
+  assert.equal(await service.getProd2DocumentUrl('124', documentCode), null);
+  assert.equal(await service.getProd2DocumentUrl('123', profileId), null);
+});
+
+function documentDetailService(events, publicationsCount = events?.length ?? 1, options = {}) {
+  const statements = [];
+  const officialUrl = `https://alfprod.seace.gob.pe/alfresco/service/osce/downloadDoc?id=${documentCode}`;
+  const row = { id_convocatoria: '123', schedule_json: [], jev_result: null, documents_count: 1,
+    document_inventory_total: publicationsCount, document_inventory_complete: true,
+    document_publication_events: events, document_publication_events_count: publicationsCount };
+  const document = { codigo_alfresco: documentCode, name: 'bases.pdf', document_type: 'Bases Administrativas',
+    stage_name: 'Convocatoria', published_at_text: '06/10/2026 12:00', published_at: '2026-10-06T12:00:00-05:00',
+    official_download_url: officialUrl, storage_key: null, sha256_original: null, bytes: null, extension: null,
+    ...(options.document ?? {}) };
+  const service = load('prod2Opportunities.ts', { '@/server/db/client': { query: async (sql) => {
+    statements.push(sql);
+    return { rows: sql.includes('FROM prod2_discoveries') ? [row] : sql.includes('FROM prod2_documents pd LEFT JOIN') ? [document] : [] };
+  } }, '@/lib/prod2Analysis': analysis, './prod2DocumentStorage': {
+    prod2StorageAvailable: () => false, validProd2PreviewKey: defaultStorage.validProd2PreviewKey,
+    ...(options.storage ?? {}),
+  } }, options.environment ?? {});
+  return { service, statements, document, officialUrl };
+}
+
+test('one downloadable resource exposes both official publications without exposing raw history or storage internals', async () => {
+  const first = { uuid: documentCode, filename: 'bases.pdf', stage: 'Convocatoria', type: 'Bases Administrativas',
+    published_at_text: '06/10/2026 12:00', published_at: '2026-10-06T12:00:00-05:00' };
+  const second = { ...first, stage: 'Integración de las Bases', type: 'Bases Integradas',
+    published_at_text: '06/10/2026 12:15', published_at: '2026-10-06T12:15:00-05:00' };
+  const { service, statements, officialUrl } = documentDetailService([first, second], 2, {
+    environment: { PROD2_OFFICIAL_DOCUMENTS_ENABLED: 'true' },
+  });
+  const result = await service.getProd2OpportunityForTenant('tenant', '123');
+  assert.equal(result.process.documents_count, 1);
+  assert.equal(result.process.document_inventory_total, 2);
+  assert.equal(result.process.document_publication_events_count, 2);
+  assert.equal(result.documents.length, 1);
+  assert.equal(result.documents[0].publication_events_count, 2);
+  assert.deepEqual(Array.from(result.documents[0].publication_events, event => event.stage_name), ['Convocatoria', 'Integración de las Bases']);
+  assert.equal(result.documents[0].publication_events[1].published_at_text, '06/10/2026 12:15');
+  assert.equal(result.documents[0].official_download_url, officialUrl);
+  assert.equal(result.documents[0].download_url, `/api/prod2/opportunities/123/documents/${documentCode}`); // Original access needs no R2 copy.
+  assert.equal('storage_key' in result.documents[0], false);
+  assert.equal('document_publication_events' in result.process, false);
+  assert.match(statements.find(sql => sql.includes('FROM prod2_discoveries')), /jsonb_array_length/);
+  assert.doesNotMatch(statements.join('\n'), /prod2_document_events/); // Compatible read before the event-table migration.
+});
+
+test('listed original resolves on demand without a downloaded row or R2 configuration', async () => {
+  const statements = [], resolved = [];
+  const source = 'https://alfprod.seace.gob.pe/alfresco/service/api/node/content/workspace/SpacesStore/file?ticket=fresh';
+  const service = load('prod2Opportunities.ts', { '@/server/db/client': { query: async (sql, values) => {
+    statements.push({ sql, values }); return { rows: [{ storage_key: null }] };
+  } }, '@/lib/prod2Analysis': analysis,
+    './prod2OfficialDocument': { resolveProd2OfficialDocument: async code => { resolved.push(code); return source; } },
+    './prod2DocumentStorage': { validProd2PreviewKey: () => { throw new Error('R2 is not needed'); } } },
+  { PROD2_OFFICIAL_DOCUMENTS_ENABLED: 'true' });
+  assert.equal(await service.getProd2DocumentUrl('123', documentCode), source);
+  assert.deepEqual(resolved, [documentCode]);
+  assert.match(statements[0].sql, /FROM prod2_documents pd LEFT JOIN LATERAL/);
+  assert.match(statements[0].sql, /pd\.is_listed/);
+  assert.deepEqual(Array.from(statements[0].values), ['123', documentCode]);
+  assert.doesNotMatch(statements[0].sql, /INSERT|UPDATE|DELETE/);
+});
+
+test('unknown or invalid identity does not call the official resolver and outages expose no provider details', async () => {
+  let queries = 0, resolves = 0;
+  const resolver = { resolveProd2OfficialDocument: async () => { resolves++; throw new Error('secret-ticket-or-upstream-body'); } };
+  const empty = load('prod2Opportunities.ts', { '@/server/db/client': { query: async () => { queries++; return { rows: [] }; } },
+    '@/lib/prod2Analysis': analysis, './prod2OfficialDocument': resolver }, { PROD2_OFFICIAL_DOCUMENTS_ENABLED: 'true' });
+  assert.equal(await empty.getProd2DocumentUrl('123', documentCode), null);
+  assert.equal(resolves, 0);
+  await assert.rejects(empty.getProd2DocumentUrl('123', '../private'), error => error.status === 400);
+  await assert.rejects(empty.getProd2DocumentUrl('0', documentCode), error => error.status === 400);
+  assert.equal(queries, 1);
+  const unavailable = load('prod2Opportunities.ts', { '@/server/db/client': { query: async () => ({ rows: [{ storage_key: null }] }) },
+    '@/lib/prod2Analysis': analysis, './prod2OfficialDocument': resolver }, { PROD2_OFFICIAL_DOCUMENTS_ENABLED: 'true' });
+  await assert.rejects(unavailable.getProd2DocumentUrl('123', documentCode), error => error.status === 503
+    && !error.message.includes('secret-ticket-or-upstream-body'));
+});
+
+test('official original is preferred even when a historical converted PDF exists', async () => {
+  const service = load('prod2Opportunities.ts', { '@/server/db/client': { query: async () => ({ rows: [{ storage_key: 'historical' }] }) },
+    '@/lib/prod2Analysis': analysis,
+    './prod2OfficialDocument': { resolveProd2OfficialDocument: async () => 'https://alfprod.seace.gob.pe/original.zip?ticket=fresh' },
+    './prod2DocumentStorage': { validProd2PreviewKey: () => { throw new Error('No historical read needed'); } } },
+  { PROD2_OFFICIAL_DOCUMENTS_ENABLED: 'true' });
+  assert.equal(await service.getProd2DocumentUrl('123', documentCode), 'https://alfprod.seace.gob.pe/original.zip?ticket=fresh');
+});
+
+test('default and nonliteral flags preserve the deployed historical signing path without resolving official tickets', async () => {
+  const key = `prod2/123/${documentCode}/${documentHash}.pdf`;
+  for (const environment of [{}, { PROD2_OFFICIAL_DOCUMENTS_ENABLED: 'false' },
+    { PROD2_OFFICIAL_DOCUMENTS_ENABLED: 'TRUE' }, { PROD2_OFFICIAL_DOCUMENTS_ENABLED: '1' }]) {
+    const statements = [], signed = [];
+    let resolves = 0;
+    const service = load('prod2Opportunities.ts', {
+      '@/server/db/client': { query: async (sql, values) => { statements.push({ sql, values }); return { rows: [{ storage_key: key, sha256_original: documentHash }] }; } },
+      '@/lib/prod2Analysis': analysis,
+      './prod2OfficialDocument': { resolveProd2OfficialDocument: async () => { resolves++; throw new Error('Unexpected official request'); } },
+      './prod2DocumentStorage': { validProd2PreviewKey: defaultStorage.validProd2PreviewKey,
+        signedProd2DocumentUrl: (storageKey, id, code) => { signed.push({ storageKey, id, code }); return 'https://private.example/historical.pdf'; } },
+    }, environment);
+    assert.equal(await service.getProd2DocumentUrl('123', documentCode), 'https://private.example/historical.pdf');
+    assert.equal(resolves, 0);
+    assert.deepEqual(signed, [{ storageKey: key, id: '123', code: documentCode }]);
+    assert.match(statements[0].sql, /FROM prod2_document_downloads dl JOIN prod2_documents pd USING\(id_convocatoria, codigo_alfresco\)/);
+    assert.match(statements[0].sql, /pd\.is_listed[\s\S]*dl\.storage_key IS NOT NULL ORDER BY dl\.downloaded_at DESC LIMIT 1/);
+    assert.deepEqual(Array.from(statements[0].values), ['123', documentCode]);
+    assert.doesNotMatch(statements[0].sql, /INSERT|UPDATE|DELETE|LEFT JOIN LATERAL/);
+  }
+});
+
+test('default detail publishes downloads only for available R2 and a verified identity-bound preview key', async () => {
+  const validKey = `prod2/123/${documentCode}/${documentHash}.pdf`;
+  for (const [available, storageKey, expected] of [[true, validKey, true], [false, validKey, false],
+    [true, null, false], [true, `prod2/999/${documentCode}/${documentHash}.pdf`, false]]) {
+    const { service } = documentDetailService(null, 1, { storage: { prod2StorageAvailable: () => available }, document: { storage_key: storageKey } });
+    const result = await service.getProd2OpportunityForTenant('tenant', '123');
+    assert.equal(result.documents[0].download_url, expected ? `/api/prod2/opportunities/123/documents/${documentCode}` : null);
+  }
+});
+
+test('default missing or invalid previews remain unavailable without an official request', async () => {
+  let resolves = 0;
+  for (const rows of [[], [{ storage_key: null }], [{ storage_key: `prod2/999/${documentCode}/${documentHash}.pdf` }]]) {
+    const service = load('prod2Opportunities.ts', { '@/server/db/client': { query: async () => ({ rows }) }, '@/lib/prod2Analysis': analysis,
+      './prod2OfficialDocument': { resolveProd2OfficialDocument: async () => { resolves++; throw new Error('Unexpected official request'); } } });
+    assert.equal(await service.getProd2DocumentUrl('123', documentCode), null);
+  }
+  assert.equal(resolves, 0);
+});
+
+test('explicit official opt-in preserves a verified historical fallback on provider outage', async () => {
+  const key = `prod2/123/${documentCode}/${documentHash}.pdf`;
+  let resolves = 0;
+  const service = load('prod2Opportunities.ts', { '@/server/db/client': { query: async () => ({ rows: [{ storage_key: key }] }) }, '@/lib/prod2Analysis': analysis,
+    './prod2OfficialDocument': { resolveProd2OfficialDocument: async () => { resolves++; throw new Error('provider-unavailable'); } },
+    './prod2DocumentStorage': { validProd2PreviewKey: defaultStorage.validProd2PreviewKey, signedProd2DocumentUrl: () => 'https://private.example/historical.pdf' },
+  }, { PROD2_OFFICIAL_DOCUMENTS_ENABLED: 'true' });
+  assert.equal(await service.getProd2DocumentUrl('123', documentCode), 'https://private.example/historical.pdf');
+  assert.equal(resolves, 1);
+});
+
+test('document route returns an uncacheable redirect or a safe source outage response', async () => {
+  const ServiceError = class extends Error { constructor(message, status) { super(message); this.status = status; } };
+  const routeMocks = {
+    'next/server': { NextResponse: { json: (data, options) => new Response(JSON.stringify(data), options),
+      redirect: (url, options) => new Response(null, { status: 307, headers: { ...options.headers, Location: url } }) } },
+    '@/server/auth/tenant': { requireTenantId: async () => 'tenant' },
+    '@/server/services/prod2Opportunities': { Prod2RequestError: ServiceError,
+      getProd2DocumentUrl: async () => 'https://alfprod.seace.gob.pe/original.pdf?ticket=fresh' },
+  };
+  const filename = '../../app/api/prod2/opportunities/[id]/documents/[code]/route.ts';
+  const context = { params: Promise.resolve({ id: '123', code: documentCode }) };
+  const response = await load(filename, routeMocks).GET(new Request('https://local.example'), context);
+  assert.equal(response.status, 307);
+  assert.equal(response.headers.get('Cache-Control'), 'private, no-store');
+  assert.equal(response.headers.get('Referrer-Policy'), 'no-referrer');
+  assert.match(response.headers.get('Location'), /alfprod\.seace\.gob\.pe/);
+  routeMocks['@/server/services/prod2Opportunities'].getProd2DocumentUrl = async () => { throw new ServiceError('SEACE no disponible.', 503); };
+  const unavailable = await load(filename, routeMocks).GET(new Request('https://local.example'), context);
+  assert.equal(unavailable.status, 503);
+  assert.equal(unavailable.headers.get('Cache-Control'), 'private, no-store');
+  assert.deepEqual(await unavailable.json(), { error: 'SEACE no disponible.' });
+});
+
+test('legacy capture without publication array preserves one event per resource', async () => {
+  const { service, document } = documentDetailService(null);
+  const result = await service.getProd2OpportunityForTenant('tenant', '123');
+  assert.equal(result.documents[0].publication_events_count, 1);
+  assert.equal(result.documents[0].publication_events[0].stage_name, document.stage_name);
+  assert.equal(result.documents[0].publication_events[0].published_at_text, document.published_at_text);
+  assert.equal(result.process.documents_count, 1);
+  assert.equal(result.process.document_publication_events_count, 1);
+});
+
+test('publication history never attaches a foreign resource or contradictory filename', async () => {
+  const first = { uuid: documentCode, filename: 'bases.pdf', stage: 'Convocatoria', type: 'Bases',
+    published_at_text: '06/10/2026', published_at: null };
+  const { service } = documentDetailService([first, { ...first, uuid: profileId }, { ...first, filename: 'otro.pdf' },
+    { ...first, published_at: 1 }, { ...first, stage: null }]);
+  const result = await service.getProd2OpportunityForTenant('tenant', '123');
+  assert.equal(result.documents[0].publication_events_count, 1);
+  assert.equal(result.documents[0].publication_events[0].published_at, null);
+});
+
+test('all PROD2 read routes preserve a missing-session 401 response', async () => {
+  for (const filename of ['../../app/api/prod2/opportunities/route.ts', '../../app/api/prod2/opportunities/[id]/route.ts', '../../app/api/prod2/opportunities/[id]/documents/[code]/route.ts']) {
+    let reads = 0;
+    const route = load(filename, {
+      'next/server': { NextResponse: { json: (data, options) => new Response(JSON.stringify(data), options) } },
+      '@/server/auth/tenant': { requireTenantId: async () => { throw new Response('Missing tenant context', { status: 401 }); } },
+      '@/server/services/prod2Opportunities': {
+        Prod2RequestError: class extends Error {},
+        getProd2OpportunityForTenant: () => { reads++; },
+        listProd2OpportunitiesForTenant: () => { reads++; },
+        getProd2DocumentUrl: () => { reads++; },
+      },
+    });
+    const result = await route.GET({ nextUrl: { searchParams: new URLSearchParams() } }, { params: Promise.resolve({ id: '123', code: documentCode }) });
+    assert.equal(result.status, 401, filename);
+    assert.equal(reads, 0, filename);
+  }
+});

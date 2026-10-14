@@ -1,0 +1,110 @@
+{
+  "origin": "Synthetic documentary examples for public transport tests. Local-only golden checks bind separately to existing receipt hashes; no company portfolio is published.",
+  "cases": [
+    {
+      "id": 101436,
+      "receipt_sha256": "adb44196a7873cb0a7e9729cd38896c2ce426fa68d49cb41a0dd436cc77925e1",
+      "recorded_score": 45,
+      "requirements": [
+        {
+          "source_index": 4,
+          "tipo": "specific_experience",
+          "requisito": "Acreditar experiencia en el objeto de la contratación",
+          "obligatorio": true,
+          "detalle": {
+            "monto": null,
+            "evidencia": "Acreditar mediante una factura y/o constancia y/o contrato experiencia en el objeto de la contratación."
+          }
+        }
+      ],
+      "performance": {
+        "licenses": 6,
+        "term_months": 12,
+        "activation_days": 5,
+        "support": "24x7"
+      },
+      "evidence": [
+        {
+          "document_id": "00000000-0000-4000-8000-000001000001",
+          "contract": "SYNTHETIC-1-1",
+          "quote": "Mantenimiento de licencias de software",
+          "page": 1,
+          "activity": "Mantenimiento de licencias de software",
+          "conformity": "not_identified"
+        },
+        {
+          "document_id": "00000000-0000-4000-8000-000001000002",
+          "contract": "SYNTHETIC-1-2",
+          "quote": "Actualización de licencias de software industrial",
+          "page": 1,
+          "activity": "Actualización de licencias de software industrial",
+          "conformity": "explicit_documentary_evidence"
+        }
+      ],
+      "recorded_errors": [
+        "Same-brand prior experience inferred without clause",
+        "Sparx partner recommended without clause"
+      ]
+    },
+    {
+      "id": 100094,
+      "receipt_sha256": "eb1f9351c56d5fdcf2e7846626027d865d711b98f3c4f1dc12054ccb3c34f4ac",
+      "recorded_score": 20,
+      "requirements": [
+        {
+          "source_index": 1,
+          "tipo": "economic_experience",
+          "requisito": "Experiencia del postor por servicios iguales o similares",
+          "obligatorio": true,
+          "detalle": {
+            "monto": 80000,
+            "descripcion": "Experiencia del postor: Monto facturado acumulado mínimo de S/ 80,000.00 por servicios iguales o similares."
+          }
+        },
+        {
+          "source_index": 4,
+          "tipo": "other",
+          "requisito": "Capacidad de adquirir y acreditar créditos IA a nombre del SERFOR",
+          "obligatorio": true,
+          "detalle": {
+            "evidencia": "i) Declaración jurada del proveedor indicando la viabilidad operativa y contractual, o ii) Certificado de partner, o iii) Por el proveedor de nube que lo ofrece oficialmente."
+          }
+        },
+        {
+          "source_index": 7,
+          "tipo": "proposal_document",
+          "requisito": "Documentación técnica oficial de la plataforma",
+          "obligatorio": true,
+          "detalle": {
+            "value": "Documentación técnica oficial de la plataforma (API, términos de uso, SLA, certificaciones de seguridad)."
+          }
+        }
+      ],
+      "evidence": [
+        {
+          "document_id": "00000000-0000-4000-8000-000002000001",
+          "contract": "SYNTHETIC-2-1",
+          "quote": "Mantenimiento de instrumentos de medición de tanques",
+          "page": 1,
+          "activity": "Mantenimiento de instrumentos de medición de tanques",
+          "amount_decimal": "120000.00",
+          "currency": "PEN"
+        },
+        {
+          "document_id": "00000000-0000-4000-8000-000002000002",
+          "contract": "SYNTHETIC-2-2",
+          "quote": "Tendido de cableado de señales industriales",
+          "page": 1,
+          "activity": "Tendido de cableado de señales industriales",
+          "amount_decimal": "95000.00",
+          "currency": "PEN"
+        }
+      ],
+      "recorded_errors": [
+        "Industrial totals approved against IA minimum",
+        "No previous tokens supply treated as confirmed no_cumple",
+        "Missing technical proposal treated as confirmed no_cumple"
+      ]
+    }
+  ]
+}

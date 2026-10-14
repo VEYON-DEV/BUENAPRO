@@ -35,6 +35,11 @@ poll_seace
   -> upsert_filter_index
 ```
 
+## Evolucion multi-fuente
+
+- [Plan integral de ingesta universal](./docs/universal-ingestion-plan.md)
+- [Guias tecnicas por plataforma](./docs/sources/README.md)
+
 ## Setup local
 
 ```bash

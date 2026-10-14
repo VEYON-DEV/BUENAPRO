@@ -19,10 +19,13 @@ from buenapro_worker.prod4.client import Prod4Client
 
 
 def settings(**overrides: object) -> Settings:
+    # Exercise retained parsers/snapshot logic with an injected offline client.
+    overrides = {"prod4_enabled": True, **overrides}
     return Settings(
         database_url="postgresql://unused:unused@localhost/unused",
         gemini_api_key="unused",
         prod4_technology_segments="43,81",
+        _env_file=None,
         **overrides,
     )
 

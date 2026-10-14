@@ -18,3 +18,6 @@ RUN touch .env.local && npm run build
 
 EXPOSE 3000
 CMD ["npm", "run", "start"]
+
+ARG VCS_REF=unknown
+LABEL org.opencontainers.image.revision=$VCS_REF

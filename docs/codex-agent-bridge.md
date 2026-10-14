@@ -76,6 +76,12 @@ Despues de confirmar el commit en PostgreSQL, el backend elimina los entregables
 
 ## Documentos SEACE
 
+El contexto de empresa utiliza una proyección documental para decidir, independiente de lo que se conserva en PostgreSQL. Cada documento sigue presente con su UUID/sourceId, SHA, nombre, resumen completo, clasificación, todos los montos con moneda/naturaleza/página/cita, monto principal identificado, conformidad documental, advertencias y datos desconocidos. La extracción corregida `documentary_validation` tiene prioridad sobre el recibo original. Las filas posicionales tienen columnas explícitas en `contextRepresentation`; los defaults de estado/version y referencias a documentos evitan repetir datos. Experiencia y áreas económicas conservan sus referencias y diferencias monetarias, sin sumar comprobantes como experiencia nueva ni declarar acreditación legal.
+
+El texto íntegro por página, los demás hechos extraídos, actividades, participación, declaraciones anteriores y recibos de lectura permanecen en la biblioteca/perfil de PostgreSQL. El frontend permite consultar el texto del documento. Estos campos extensos y la auditoría no se duplican en el prompt de decisión del copiloto.
+
+El límite de contexto estructurado es de 128.000 caracteres. El anterior límite de 82.000 cortaba la evidencia de los 43 documentos antes de incorporar la licitación; la proyección seleccionada necesita margen contractual. Si el JSON completo aún excede el límite, el backend rechaza la preparación antes de llamar al modelo y explica el exceso: nunca envía un JSON cortado. Las pruebas offline verifican las 43 fuentes y cada cita monetaria íntegra, además del rechazo al superar el presupuesto.
+
 El contexto incluye `downloadUrl` publico para cada fila de `contract_documents`. Codex puede intentar consultar esos links cuando el usuario pide leer o verificar un PDF/DOCX original; si el acceso falla, debe decirlo y usar `summary_json`, `raw_extraction_json` y facets como fallback.
 
 Validacion local 2026-08-08 con contrato `85409`:

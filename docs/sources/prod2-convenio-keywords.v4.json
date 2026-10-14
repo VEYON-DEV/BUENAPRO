@@ -1,0 +1,18 @@
+{
+  "plan_version": "prod2-six-calendar-months-metadata-v1",
+  "source": "seace_prod2",
+  "keyword_inventory_file": "prod2-convenio-keywords.v3.json",
+  "keyword_count": 166,
+  "publication_window_calendar_months": 6,
+  "procedure_years": "all_native_available",
+  "object_types": ["good", "service"],
+  "seace_version": "3",
+  "save_all_matches_before_jev": true,
+  "save_all_jev_results": true,
+  "ficha_and_schedule_for_all_unique_records": true,
+  "download_pdf": false,
+  "gemini": false,
+  "preflight_empty_scopes": true,
+  "affinity_threshold_for_second_phase": null,
+  "scope_note": "Cobertura de las keywords configuradas, no censo nacional ni filtro nativo de vigencia. La vigencia temporal se evalúa después con la ficha y conserva desconocidos."
+}

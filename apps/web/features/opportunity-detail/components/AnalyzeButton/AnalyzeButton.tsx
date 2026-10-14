@@ -8,10 +8,12 @@ type Status = "idle" | "queued" | "error" | "no_profile";
 
 export function AnalyzeButton({
   idContrato,
+  profileId,
   analyzedAt,
   children = "Evaluar con mi perfil",
 }: {
   idContrato: string | number;
+  profileId?: string | null;
   analyzedAt?: string | null;
   children?: React.ReactNode;
 }) {
@@ -23,7 +25,7 @@ export function AnalyzeButton({
       const response = await fetch(`/api/contracts/${idContrato}/analyze`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ force: Boolean(analyzedAt) }),
+        body: JSON.stringify({ force: Boolean(analyzedAt), ...(profileId ? { profile_id: profileId } : {}) }),
       });
       if (response.status === 409) {
         setStatus("no_profile");

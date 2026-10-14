@@ -1,0 +1,25 @@
+# Run explicitly with the main Compose file and --profile prod6-only.
+# PROD6_RUNTIME_ENV is a private file containing only required worker credentials.
+services:
+  prod6-ingest:
+    profiles: ["prod6-only"]
+    image: ${PROD6_IMAGE:?Set the verified PROD6 release image}
+    restart: "no"
+    init: true
+    env_file:
+      - ${PROD6_RUNTIME_ENV:?Set a private scoped env file}
+    command:
+      - python
+      - -m
+      - buenapro_worker.prod6.runtime
+      - --profile-id
+      - ${PROD6_PROFILE_ID:?Set the authorized company profile}
+      - --receipt-dir
+      - /var/lib/buenapro/prod6
+      - --interval-seconds
+      - "1800"
+    volumes:
+      - ${PROD6_RECEIPT_DIR:?Set the durable private receipt directory}:/var/lib/buenapro/prod6
+    depends_on:
+      postgres:
+        condition: service_healthy

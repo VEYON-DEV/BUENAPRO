@@ -71,6 +71,7 @@ La marca de BuenaPro usa una orbita abierta como radar de oportunidades: trazo t
 - Violeta indica seleccion, navegacion activa, foco e inteligencia.
 - Negro corresponde a la accion primaria de una superficie.
 - Verde, ambar y rojo comunican estados, nunca identidad.
+- En un puntaje numérico de 0 a 100, rojo corresponde a menos de 30; amarillo a 30–80 inclusive; verde a más de 80. Lista, inspector y detalle usan la misma regla, independiente del veredicto documental. Un puntaje en revisión conserva «Provisional / Por validar» incluso en verde; el color no acredita cumplimiento. Sin puntaje válido no se inventa cero ni un estado cromático de evaluación.
 - El fondo ambiental puede usar una transicion tonal muy suave. No agregar orbes decorativos independientes.
 
 ## Materiales

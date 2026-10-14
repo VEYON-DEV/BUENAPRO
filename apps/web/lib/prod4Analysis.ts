@@ -24,7 +24,8 @@ export type Prod4RequirementFacet = {
 export type Prod4DocumentMatch = {
   id: string;
   profile_id: string;
-  score: number;
+  score: number | null;
+  provisional_score?: number | null;
   verdict: string;
   breakdown_json: Record<string, unknown>;
   missing_actions_json: unknown[];

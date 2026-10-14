@@ -1,0 +1,44 @@
+{
+  "policy": "prod2-keyword-presets-v1",
+  "source_inventory_hash": "32c7ce187a93ff8b919d09e92abc44c6d53a25519944125d257fdd99e05106fe",
+  "business_config_hash": "b14e48b3eb3c972a0a687ac7b3208c0b92909e050c6d3aef37ce1045b2149019",
+  "presets": {
+    "digitales30": {
+      "label": "Primeras 30 keywords digitales del convenio",
+      "business_scope": "digitales",
+      "keywords": [
+        "software",
+        "desarrollo de software",
+        "desarrollo de aplicaciones",
+        "sistemas de información",
+        "sistema de información",
+        "aplicaciones web",
+        "aplicación web",
+        "plataformas digitales",
+        "aplicativo",
+        "integración de sistemas",
+        "mantenimiento de software",
+        "erp",
+        "licencias de software",
+        "suscripción de software",
+        "licencias informáticas",
+        "microsoft",
+        "licencias microsoft",
+        "soluciones cloud",
+        "seguridad informática",
+        "herramientas colaborativas",
+        "inteligencia artificial",
+        "agentes de ia",
+        "agentes ia",
+        "chatbot",
+        "analítica de datos",
+        "automatización de procesos",
+        "soporte técnico",
+        "mantenimiento de sistemas",
+        "aws",
+        "ciberseguridad"
+      ],
+      "notes": "Selección exacta de 30 señales, sin IA suelta/sistema/soporte genérico. Fuente: seis meses, Bien/Servicio; estados desde ficha, sin filtro nativo de vigencia."
+    }
+  }
+}

@@ -1,6 +1,27 @@
 # Tareas - Database
 
+- [x] Crear, validar y aplicar0043 para corpus/chunks/vectores/retrieval y reservas embeddings PROD2 (08/10/2026): tablas aditivas sin extensión ni originalesR2; cuatro contratos PostgreSQL reales en schema aislado bajo executor, preparación exclusiva idempotente, columnas/PK/FK/status y recibos/pagos exactos verificados. Smoke integrado real confirma texto reducido durable y replay sin nueva llamada con API simulada. Cero proveedores/fuente durante migración; guía `docs/prod2-embeddings-runtime-20261008.md`.
+
+- [ ] Validar en PostgreSQL aislado y aplicar migración 0042 para referencias de originales 7z de PROD2: ampliar únicamente el CHECK de formato de `prod2_document_downloads`, verificar contrato/ledger idempotente bajo coordinador y conservar revisiones existentes. Implementación preparada para recuperación opt-in de 1043284; todavía sin aplicar a producción.
+
+- [x] Modelar recursos/publicaciones PROD2 con migración0041 aplicada en producción (06/10/2026): prod2_documents mantieneUUID único; prod2_document_events conserva etapa/tipo/fecha/identidad e historial listado. Backfill solo del evento previamente conocido, ledger/contrato verificados y hashes/revisiones anteriores intactos. Parser/paginación/repositorio/LLM1 cubren reutilización y conflictos de nombre/versión. Principal valida prueba PostgreSQL real nueva con rollback y readback productivo; cinco contratos PG existentes aprobados por agente de BD. Recuperadas1006060/1025179/1031165 sin modelos/descargas. Evidencia docs/prod2-document-events-recovery-20261006.md.
+
+- [x] Crear y validar migración0040 para seguimiento de barridos/consultas PROD2: época con ventana fija, identidad keyword/objeto/ejercicio/fechas, estado/owner/claim/intentos/evidencia completa y último timestamp fuente. No guarda candidatos ni infiere vigencia. Modo de preparación exclusivo0040, ledger idempotente y contrato PostgreSQL real en schema propio/rollback: cuatro pruebas del principal aprobadas, sin cambios públicos (06/10/2026).
+- [x] Aplicar 0040 al destino productivo para el primer lote de 30 keywords autorizado (06/10/2026): preparación exclusiva, contrato y ledger verificados; ambas tablas comenzaron vacías. Cero llamadas fuente/proveedores durante la migración. La ejecución y sus datos se validan por separado.
+
+- [x] Crear y validar0039/`prod2_document_selection_cache` con hash textual global, FK solo tras aceptación, owner/lease/status/recibo y bloqueo de pagos inciertos. El nuevo script incluye `--prepare-selector-cache`, que aplica solo0039 y registra su versión tras verificar el contrato, sin reejecutar DDL legacy. PostgreSQL shadow real verifica preparación idempotente, claims/reuso/replay/raíz archivada/cambio no ancla y rollback sin tablas públicas/modelos (06/10/2026).
+- [x] Aplicar 0039 al destino del nuevo script seleccionado y verificar versión/tabla vacía antes de la primera carga (06/10/2026): preparación exclusiva completada y ledger/tabla confirmados en producción, sin reejecutar DDL legacy ni llamar fuente/proveedores. Primer lote de 30 autorizado por el usuario.
+
+- [x] Validar y aplicar0038 para caché/reserva Jev previa a discovery y miembros de corrida aceptada/rechazada (06/10/2026): sin FK del caché hacia oportunidad, hash semántico con reuso legacy, bloqueo de facturación incierta y promoción exacta>=60.29tests focalizados y contrato PostgreSQL shadow/rollback aprobados; producción registra10aceptadas/1rechazo sin promoción y10 participaciones canónicas vinculadas a extracción/SHA. Pilotos históricos preservados; evidencia `docs/prod2-accepted10-20261006.md`.
+
+- [x] Validar y aplicar migración aditiva 0037 para manifest/checkpoints/leases/observaciones PROD2 y evaluaciones temporales versionadas vinculadas a ficha. Contrato PG aislado de16 candidatos/two keywords con rollback y secuencias públicas invariantes; migración por SHA exacto y transaction/version, preservando10 discoveries/50evaluations previos. Smoke productivo tres cronogramas/evaluaciones temporales, repetición sin duplicados; `docs/prod2-six-months-ingestion.md` (2026-10-06).
+
+- [x] Aplicar migraciones aditivas 0035/0036 para piloto PROD2: discovery canónico, lote limitado a 10, inventarios/versiones de documentos, reservas antes del pago, extracciones/facets y procedencia de matches. Integración PostgreSQL en schema temporal con rollback validada; producción lectura posterior de 10 registros, 10 extracciones, 9 matches y una revisión y repetición sin duplicados. Perfiles originales preservados; evidencia `docs/prod2-pilot10-20261005.md` (2026-10-05). No completa el modelado/planificador general del convenio.
+
 - [x] Aplicar migración0033 de consorcio/subcontratación en opportunities con cuatro estados y evidencia JSON, defaults no identificados sin inferencia histórica; PostgreSQL16 valida constraints/idempotencia y smoke productivo revertido conserva datos (2026-10-02).
+
+- [x] Agregar migración0032 con `schedule_fetched_at` para ambas fuentes, diferenciando refresco parcial de cronograma de frescura del detalle completo; aplicada en QA y producción con respaldo previo de tablas (2026-10-01).
+- [x] Ejecutar actualización productiva acotada de cronogramas guardados (2026-10-01): 69 concursos PROD4/556 etapas y 206 menores PROD6 segmentos43/81/412 etapas, dry-run y apply sin fallos, conteos SQL confirmados. Sin históricos adicionales ni PDFs/Gemini; respaldo `schedule-before-20261001.dump` preservado.
 
 ## Base del proyecto
 
@@ -120,3 +141,21 @@
 - [x] Definir canales iniciales: `email`, `telegram`, `in_app`.
 - [x] Agregar preferencias de digest y max alertas por dia.
 - [x] Añadir `chat_artifacts` tenant-scoped para persistir entregables generados por Codex junto al mensaje y run, con contenido durable en PostgreSQL y limite de 15 MB (2026-08-09).
+
+## Modelo universal multi-fuente
+
+- [x] Añadir `objeto_codigo` al histórico y checkpoint compuesto por objeto/segmento; preservar las 5 636 filas de Servicios como objeto 2. Migraciones 0025 y 0026 probadas y aplicadas en producción; 147 años del feed corregidos desde `fec_publica` (2026-09-29).
+
+- [ ] Crear `sources`, capacidades, politicas de acceso y cuentas tenant-scoped cifradas.
+- [ ] Crear `ingestion_runs`, particiones, checkpoints y observaciones append-only por fuente.
+- [ ] Modelar perfil comercial conjunto del convenio, registro mínimo de discovery PROD2, decisiones Jev y catálogo de candidatos con versiones únicas; conservar procedencia de evidencia por integrante y reutilizar identidad/checkpoints existentes. Diseño `docs/shared-technology-ingestion-architecture.md`.
+- [ ] Crear organizaciones universales con identificadores, aliases y roles.
+- [x] Crear `opportunities` con UUID canonico y `opportunity_sources` unico por fuente, clase de ID e ID externo; separar tipo de registro, objeto, metodo, etapa, acceso y accionabilidad (`0027`, PostgreSQL aislado y produccion el 2026-09-29).
+- [x] Migrar los contratos PROD6 existentes a identidad canonica con referencia por fuente y comprobar integridad e idempotencia del backfill (`0027`; respaldo previo, 1 963 contratos / oportunidades / fuentes, 0 sin UUID en produccion el 2026-09-29).
+- [x] Vincular todos los resultados historicos PROD6 a la misma identidad canonica, sin duplicar los IDs que coinciden con contratos activos (`0028`; respaldo previo y prueba con rollback, 6 938 resultados / 0 sin UUID / 0 divergentes, 2026-09-29).
+- [ ] Modelar releases, eventos, fechas, lotes, items, adjudicaciones y contratos 1:N.
+- [x] Crear tablas aditivas de PROD4 por procedimiento, ítem CUBSO, metadatos de documentos y cronograma; preservar identidad canónica, objeto bien/servicio y salida de ventana sin inferir adjudicación (`0029`, PostgreSQL 16 aislado y producción tras respaldo verificado, 2026-09-29).
+- [x] Separar afinidad preliminar PROD4 y evaluación documental final por perfil (`0030`/`0031`), con extracción, facets y `opportunity_matches`; migraciones probadas desde cero y aplicadas en producción tras respaldo (2026-09-29).
+- [ ] Crear documentos y extracciones universales con version, procedencia, licencia y visibilidad.
+- [ ] Crear esquemas, terminos y mapeos de taxonomias CUBSO, UNSPSC, CPV y privadas.
+- [ ] Migrar referencias de `id_contrato` a `opportunity_id` mediante backfill, dual-write y compatibilidad temporal.

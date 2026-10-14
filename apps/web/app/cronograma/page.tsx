@@ -8,6 +8,10 @@ export default async function Page({ searchParams }: { searchParams?: Promise<Re
   const tenantId = await currentTenantId();
   if (!tenantId) redirect("/login");
   const params = await toUrlSearchParams(searchParams);
+  if (params.get("source") === "prod4") {
+    params.set("source", "prod6");
+    redirect(`/cronograma?${params.toString()}`);
+  }
   const initial = await getProcurementTimeline(tenantId, parseTimelineParams(params));
   return <TimelinePage initial={initial} params={params} />;
 }

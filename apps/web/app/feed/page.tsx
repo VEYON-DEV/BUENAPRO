@@ -11,5 +11,6 @@ export default async function FeedPage({
   const tenantId = await currentTenantId();
   if (!tenantId) redirect("/login");
   const params = await toUrlSearchParams(searchParams);
+  if (params.get("source") === "prod4") redirect("/feed?source=prod2");
   return <OpportunitiesPage tenantId={tenantId} params={params} />;
 }

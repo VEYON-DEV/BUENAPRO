@@ -11,8 +11,17 @@ import subprocess
 import tempfile
 import time
 import zipfile
+import hashlib
 from pathlib import Path, PurePosixPath
 from xml.etree import ElementTree
+
+WORD_FOOTNOTES_AT_END_POLICY = "word_footnotes_at_end_v1"
+
+
+def _word_policy(value):
+    if value is not None and value != WORD_FOOTNOTES_AT_END_POLICY:
+        raise ValueError("Unsupported explicit Word conversion policy")
+    return value
 
 
 def safe_member(name: str) -> None:
@@ -73,11 +82,13 @@ def select_bases_member(names: list[str]) -> str:
         if Path(name).suffix.lower() in executable:
             raise ValueError("Archive contains executable members")
     documents = [name for name in names if Path(name).suffix.lower() in {".pdf", ".docx"}]
-    bases = [name for name in documents if re.search(r"base|t[eé]rminos|\btdr\b|eett|especificacion", name, re.I)]
+    # A directory called "BASES" does not turn every attachment into bases.
+    bases = [name for name in documents if re.search(r"base|t[eé]rminos|\btdr\b|eett|especificacion", PurePosixPath(name).name, re.I)]
     # Prefer explicitly named integrated bases, never combine unrelated members.
-    integrated = [name for name in bases if "integrad" in name.casefold()]
-    named_bases = [name for name in bases if re.search(r"\bbases?\b", name, re.I)]
-    selected = integrated or named_bases or bases or documents
+    integrated = [name for name in bases if "integrad" in PurePosixPath(name).name.casefold()]
+    visadas = [name for name in bases if Path(name).suffix.lower() == ".pdf" and "visad" in PurePosixPath(name).name.casefold()]
+    named_bases = [name for name in bases if re.search(r"\bbases?\b", PurePosixPath(name).name, re.I)]
+    selected = integrated or visadas or named_bases or bases or documents
     if len(selected) != 1:
         raise ValueError("Archive has no unambiguous official requirements document")
     return selected[0]
@@ -89,7 +100,7 @@ def select_requirements_members(names: list[str]) -> list[str]:
         return [primary]
     companions = [name for name in names if name != primary
                   and Path(name).suffix.lower() in {".pdf", ".docx"}
-                  and re.search(r"\btdr\b|t[eé]rminos|eett|especificacion", name, re.I)]
+                  and re.search(r"\btdr\b|t[eé]rminos|eett|especificacion", PurePosixPath(name).name, re.I)]
     if len(companions) > 1:
         raise ValueError("Archive has ambiguous companion requirements")
     return [primary, *companions]
@@ -131,6 +142,8 @@ def extract_archive(path: Path, kind: str, *, max_bytes: int) -> Path:
         target.write_bytes(content)
         targets.append(target)
     if len(targets) == 1:
+        (path.parent / "local-document-manifest.json").write_text(
+            json.dumps([{"member": contents[0][0], "start_page": 1}], ensure_ascii=False), encoding="utf-8")
         return targets[0]
     from pypdf import PdfReader, PdfWriter
     writer = PdfWriter()
@@ -157,7 +170,8 @@ def extract_archive(path: Path, kind: str, *, max_bytes: int) -> Path:
     return target
 
 
-def convert_docx(path: Path, *, max_bytes: int) -> Path:
+def convert_docx(path: Path, *, max_bytes: int, word_conversion_policy=None) -> Path:
+    _word_policy(word_conversion_policy)
     path = path.resolve()
     replacements = {}
     with zipfile.ZipFile(path) as archive:
@@ -205,9 +219,57 @@ def convert_docx(path: Path, *, max_bytes: int) -> Path:
                 for member in members:
                     output.writestr(member.filename, replacements.get(member.filename, archive.read(member.filename)))
             path = sanitized
+    return _convert_word_pdf(path, max_bytes=max_bytes,
+        **({"word_conversion_policy": word_conversion_policy} if word_conversion_policy is not None else {}))
+
+
+def convert_doc(path: Path, *, max_bytes: int, word_conversion_policy=None) -> Path:
+    """Convert legacy binary Word locally; never treat a ZIP/RTF as a DOC."""
+    _word_policy(word_conversion_policy)
+    path = path.resolve()
+    if path.stat().st_size > max_bytes:
+        raise ValueError("Word document exceeds size policy")
+    with path.open("rb") as source:
+        if source.read(8) != b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":
+            raise ValueError("Not a supported binary Word document")
+    return _convert_word_pdf(path, max_bytes=max_bytes,
+        **({"word_conversion_policy": word_conversion_policy} if word_conversion_policy is not None else {}))
+
+
+def _footnotes_at_end(content: bytes) -> tuple[bytes, dict]:
+    """Change one native FODT placement attribute; retain every other byte."""
+    if b"<!DOCTYPE" in content.upper() or b"<!ENTITY" in content.upper():
+        raise ValueError("Native Word intermediary contains unsafe XML")
+    root = ElementTree.fromstring(content)
+    office = "{urn:oasis:names:tc:opendocument:xmlns:office:1.0}"
+    text = "{urn:oasis:names:tc:opendocument:xmlns:text:1.0}"
+    configs = [e for e in root.iter(text + "notes-configuration") if e.get(text + "note-class") == "footnote"]
+    if root.tag != office + "document" or len(configs) != 1:
+        raise ValueError("Native Word intermediary has ambiguous footnote configuration")
+    position = configs[0].get(text + "footnotes-position")
+    if position not in {"page", "document"}:
+        raise ValueError("Native Word intermediary has unsupported footnote placement")
+    pattern = rb'(<text:notes-configuration\b(?=[^>]*\btext:note-class="footnote")[^>]*\btext:footnotes-position=")(page|document)(")'
+    matches = list(re.finditer(pattern, content))
+    if len(matches) != 1 or matches[0].group(2).decode() != position:
+        raise ValueError("Native Word intermediary footnote attribute is not exact")
+    match = matches[0]
+    # Splicing only this verified attribute preserves text, media and namespaces.
+    derived = content[:match.start(2)] + b"document" + content[match.end(2):]
+    return derived, {"policy": WORD_FOOTNOTES_AT_END_POLICY, "original_placement": position,
+        "derived_placement": "document", "only_placement_attribute_changed": True,
+        "footnote_count": sum(e.get(text + "note-class") == "footnote" for e in root.iter(text + "note")),
+        "native_fodt_sha256": hashlib.sha256(content).hexdigest(),
+        "derived_fodt_sha256": hashlib.sha256(derived).hexdigest()}
+
+
+def _convert_word_pdf(path: Path, *, max_bytes: int, word_conversion_policy=None) -> Path:
+    """Shared isolated LibreOffice export after format-specific validation."""
+    _word_policy(word_conversion_policy)
+    source_sha = hashlib.sha256(path.read_bytes()).hexdigest() if word_conversion_policy is not None else None
     soffice = shutil.which("soffice")
     if not soffice:
-        raise RuntimeError("LibreOffice is unavailable for local DOCX conversion")
+        raise RuntimeError(f"LibreOffice is unavailable for local {path.suffix.lstrip('.').upper()} conversion")
     profile = Path(tempfile.mkdtemp(prefix="libreoffice-profile-", dir=path.parent))
     # Isolated profile: very high macro security and no automatic link updates.
     (profile / "user").mkdir(exist_ok=True)
@@ -225,6 +287,26 @@ def convert_docx(path: Path, *, max_bytes: int) -> Path:
         environment["FONTCONFIG_FILE"] = str(bundled_fonts)
     output_directory = profile / "converted"
     output_directory.mkdir()
+    conversion_receipt = None
+    if word_conversion_policy is not None:
+        subprocess.run([soffice, "--headless", "--nologo", "--nodefault", "--norestore", "--nolockcheck",
+                        f"-env:UserInstallation={profile.as_uri()}", "--convert-to", "fodt",
+                        "--outdir", str(output_directory), str(path)],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, timeout=120,
+                       env=environment)
+        native = output_directory / path.with_suffix(".fodt").name
+        if native.is_symlink() or not native.is_file() or not 0 < native.stat().st_size <= max_bytes * 2:
+            raise ValueError("Native Word intermediary is missing or exceeds size policy")
+        derived, conversion_receipt = _footnotes_at_end(native.read_bytes())
+        derivative = output_directory / (path.stem + ".footnotes-at-end.fodt")
+        with os.fdopen(os.open(derivative, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as stream:
+            stream.write(derived)
+            stream.flush()
+            os.fsync(stream.fileno())
+        conversion_receipt["conversion_source_sha256"] = source_sha
+        if hashlib.sha256(path.read_bytes()).hexdigest() != source_sha:
+            raise ValueError("Word conversion source changed")
+        path = derivative
     subprocess.run([soffice, "--headless", "--nologo", "--nodefault", "--norestore", "--nolockcheck",
                     f"-env:UserInstallation={profile.as_uri()}", "--convert-to", "pdf:writer_pdf_Export",
                     "--outdir", str(output_directory), str(path)],
@@ -233,15 +315,28 @@ def convert_docx(path: Path, *, max_bytes: int) -> Path:
     output = output_directory / path.with_suffix(".pdf").name
     if not output.exists() or output.stat().st_size > max_bytes:
         raise ValueError("Word PDF conversion failed or exceeds size policy")
+    if conversion_receipt is not None:
+        conversion_receipt.update(pdf_sha256=hashlib.sha256(output.read_bytes()).hexdigest(),
+                                  pdf_bytes=output.stat().st_size)
+        receipt = profile / "word-conversion.private.json"
+        with os.fdopen(os.open(receipt, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as stream:
+            json.dump(conversion_receipt, stream, ensure_ascii=False, allow_nan=False)
+            stream.flush()
+            os.fsync(stream.fileno())
     return output
 
 
-def prepare_pdf(path: Path, extension: str, *, max_bytes: int) -> Path:
+def prepare_pdf(path: Path, extension: str, *, max_bytes: int, word_conversion_policy=None) -> Path:
+    _word_policy(word_conversion_policy)
     if extension in {"rar", "zip"}:
         path = extract_archive(path, extension, max_bytes=max_bytes)
         extension = path.suffix.lstrip(".").lower()
     if extension == "docx":
-        path = convert_docx(path, max_bytes=max_bytes)
+        path = convert_docx(path, max_bytes=max_bytes,
+            **({"word_conversion_policy": word_conversion_policy} if word_conversion_policy is not None else {}))
+    elif extension == "doc":
+        path = convert_doc(path, max_bytes=max_bytes,
+            **({"word_conversion_policy": word_conversion_policy} if word_conversion_policy is not None else {}))
     if not path.read_bytes().startswith(b"%PDF-"):
         raise ValueError("Official document is not a valid PDF")
     subprocess.run(["pdfinfo", str(path)], capture_output=True, check=True, timeout=30)

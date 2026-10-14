@@ -30,6 +30,7 @@ from buenapro_worker.jobs.prod4_documents import (
 )
 from buenapro_worker.queue.repository import JobRepository
 from buenapro_worker.prod4.client import DocumentTooLargeError
+from buenapro_worker.prod4.retirement import PROD4_WORKER_RETIRED_REASON, reject_prod4_execution
 from buenapro_worker.settings import Settings
 from buenapro_worker.jobs.prod4_match import route_prod4_profiles_job
 from google.genai import types
@@ -50,6 +51,7 @@ def tunnel_url(original: str, port: int) -> str:
 
 @contextmanager
 def production_settings(args):
+    reject_prod4_execution()
     ssh = ["ssh", "-i", str(Path(args.ssh_key).resolve()), "-o", "BatchMode=yes", "-o", "ConnectTimeout=10"]
     # Keep secret values in memory, over encrypted SSH; never print subprocess output.
     result = subprocess.run(ssh + [args.ssh_host, "docker inspect --format '{{json .Config.Env}}' docker-worker-llm-1"],
@@ -208,6 +210,7 @@ class BudgetedExtractor:
 
 
 def run(settings: Settings, args) -> dict:
+    reject_prod4_execution()
     from playwright.sync_api import sync_playwright
 
     report = {"eligible": 0, "processed": 0, "verified": 0, "failed": 0, "cost_usd": 0.0, "items": []}
@@ -309,6 +312,7 @@ def run(settings: Settings, args) -> dict:
 
 def route_matches(settings: Settings, args) -> dict:
     """Enqueue normal production jobs; no local scoring or tenant-policy changes."""
+    reject_prod4_execution()
     totals = {"documents": 0, "enqueued": 0, "limited": 0, "failed": 0}
     with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
         rows = conn.execute("""SELECT e.id, e.id_procedimiento FROM prod4_document_extractions e
@@ -348,6 +352,7 @@ def main():
     parser.add_argument("--stop-on-error", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--work-dir", type=Path, default=Path("tmp/prod4-local"))
     args = parser.parse_args()
+    parser.error(PROD4_WORKER_RETIRED_REASON)
     if args.limit < 1 or args.max_cost_usd <= 0:
         parser.error("Positive limit and budget required")
     if args.daily_limit is not None and not 1 <= args.daily_limit <= 100:

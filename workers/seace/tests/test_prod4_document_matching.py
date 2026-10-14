@@ -256,6 +256,39 @@ def test_final_match_requires_current_validated_document() -> None:
     analyzer.analyze.assert_not_called()
 
 
+@pytest.mark.parametrize("force", [False, True])
+def test_manual_force_bypasses_unchanged_cache_without_bypassing_bases(force: bool) -> None:
+    from buenapro_worker.jobs.analyze_match import PROFILE_FIELDS
+    from buenapro_worker.jobs.prod4_match import PROD4_MATCH_PROMPT_VERSION
+    from buenapro_worker.matching.profile_evidence import EVIDENCE_POLICY_VERSION
+    from buenapro_worker.normalization.facets import canonical_hash
+
+    repo = MagicMock()
+    profile = {field: None for field in PROFILE_FIELDS}
+    profile.update(profile_hash="profile")
+    facet = {"facet": "specific_experience", "required": True, "label": "Experiencia", "details_json": {}, "facet_hash": "facet"}
+    repo.conn.execute.return_value.fetchall.return_value = [facet]
+    repo.conn.execute.return_value.fetchone.side_effect = [
+        profile,
+        {"opportunity_id": uuid4(), "nomenclatura": "Prueba", "description": "Objeto", "buyer_name": "Entidad", "summary_json": {}},
+        {"id": 9, "breakdown_json": {"meta": {
+            "prompt_version": PROD4_MATCH_PROMPT_VERSION,
+            "profile_hash": "profile", "facets_hash": canonical_hash(["facet"]),
+            "extraction_id": 10, "evidence_policy_version": EVIDENCE_POLICY_VERSION,
+        }}},
+    ]
+    analyzer = MagicMock()
+    analyzer.analyze.side_effect = RuntimeError("reached_llm")
+    if force:
+        with pytest.raises(RuntimeError, match="reached_llm"):
+            analyze_prod4_match_job(settings(), repo, id_procedimiento=123, extraction_id=10, profile_id=str(uuid4()), force=True, analyzer=analyzer)
+        analyzer.analyze.assert_called_once()
+    else:
+        result = analyze_prod4_match_job(settings(), repo, id_procedimiento=123, extraction_id=10, profile_id=str(uuid4()), analyzer=analyzer)
+        assert result == {"skipped": "unchanged", "match_id": 9}
+        analyzer.analyze.assert_not_called()
+
+
 def test_default_per_profile_daily_cap_prevents_final_llm_fanout() -> None:
     repo = MagicMock()
     repo.conn.execute.return_value.fetchall.return_value = [{

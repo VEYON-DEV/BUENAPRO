@@ -88,7 +88,7 @@ def test_failure_keeps_previous_schedule_and_continues_bounded_run():
 
 def test_cli_defaults_read_only():
     args = build_parser().parse_args(["schedule-refresh"])
-    assert args.apply is False and args.source == "both" and args.limit == 100
+    assert args.apply is False and args.source == "prod6" and args.limit == 100
 
 
 def test_rejects_unbounded_or_ambiguous_scope():

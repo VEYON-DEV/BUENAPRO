@@ -24,6 +24,20 @@
 .itemTitle { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
 .itemTitle strong { color: var(--bp-color-ink); font-size: 13px; line-height: 18px; overflow-wrap: anywhere; }
 .item p { color: var(--bp-color-text-2); font-size: 11px; line-height: 16px; margin: 3px 0 0; overflow-wrap: anywhere; }
+.item .descriptionText, .documentDescription { margin-top: 7px; }
+.descriptionText, .documentDescription > p { white-space: pre-wrap; }
+.documentDescription summary { border-radius: 6px; cursor: pointer; display: grid; gap: 4px; list-style: none; }
+.documentDescription summary::-webkit-details-marker { display: none; }
+.descriptionPreview { color: var(--bp-color-text-2); font-size: 11px; line-height: 17px; overflow-wrap: anywhere; }
+.descriptionToggle { align-items: center; color: var(--bp-color-brand); display: flex; font-size: 11px; font-weight: 650; gap: 5px; min-height: 36px; width: fit-content; }
+.descriptionToggle svg { flex: 0 0 auto; }
+.documentDescription summary:hover .descriptionToggle { text-decoration: underline; text-underline-offset: 3px; }
+.documentDescription[open] .descriptionPreview { display: none; }
+.documentDescription[open] .descriptionToggle svg { transform: rotate(180deg); }
+.documentDescription summary:focus-visible { outline: 2px solid var(--bp-color-brand); outline-offset: 3px; }
+.documentTextBody { background: var(--bp-color-surface-soft); border-radius: 12px; color: var(--bp-color-text); font: inherit; font-size: 12px; line-height: 19px; margin: 8px 0 0; max-height: 360px; overflow: auto; overflow-wrap: anywhere; padding: 12px; tab-size: 4; white-space: pre-wrap; }
+.documentTextBody:focus-visible { outline: 2px solid var(--bp-color-brand); outline-offset: 3px; }
+.item .textReview { color: var(--bp-color-text); font-weight: 650; margin-top: 6px; }
 .tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
 .tags span { background: var(--bp-color-brand-soft); border-radius: 999px; color: var(--bp-color-brand); font-size: 10px; font-weight: 700; padding: 3px 8px; }
 .item a, .item button { align-items: center; background: transparent; border: 0; border-radius: 999px; color: var(--bp-color-text-2); cursor: pointer; display: flex; height: 32px; justify-content: center; width: 32px; }
@@ -51,4 +65,5 @@
   .segmented { width: max-content; }
   .item { grid-template-columns: auto minmax(0, 1fr) auto; }
   .item a { grid-column: 2; justify-self: start; }
+  .descriptionToggle { min-height: 44px; }
 }

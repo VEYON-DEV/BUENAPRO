@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { Building2, ExternalLink, FileText, MapPin, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
-import { ProcurementSchedule } from "@/features/procurement";
+import { ParticipationTerms, ProcurementSchedule } from "@/features/procurement";
+import { participationReading } from "@/lib/participationTerms";
 import { formatDateTime } from "@/lib/format/date";
 import { opportunityFacts, verdictShortLabels } from "@/lib/extraction/opportunity";
 import type { ProcurementScheduleStage } from "@/lib/procurementSchedule";
@@ -43,7 +44,7 @@ export function Prod4DetailContent({ detail }: { detail: Detail }) {
   const deliverables = records(raw.execution?.deliverables);
   const actions = Array.isArray(breakdown.acciones_recomendadas) ? breakdown.acciones_recomendadas.filter((v: unknown) => typeof v === "string") as string[] : [];
   return <>
-    <nav className={styles.breadcrumb} aria-label="Ruta"><Link href="/feed?source=prod4">Oportunidades</Link><span>/</span><span>Concurso SEACE</span></nav>
+    <nav className={styles.breadcrumb} aria-label="Ruta"><Link href="/feed?source=prod2">Oportunidades</Link><span>/</span><span>Concurso SEACE</span></nav>
     <header className={styles.header}>
       <span className={styles.eyebrow}>Procedimiento de selección · {p.object_type === "good" ? "Bienes" : "Servicios"}</span>
       <div className={styles.code}><h1 translate="no">{p.nomenclatura || p.id_procedimiento}</h1><Badge tone="brand">{p.source_window_status === "current" ? "En radar oficial" : "Fuera del radar"}</Badge></div>
@@ -65,6 +66,7 @@ export function Prod4DetailContent({ detail }: { detail: Detail }) {
             </div>
             {evaluated.length && analysis?.facets.length ? <details className={styles.requirement}><summary><span>Ver los {analysis.facets.length} requisitos originales y su evidencia</span></summary>{analysis.facets.map((f, i) => <details className={styles.requirement} key={f.id ?? i}><summary><span>{f.label || "Requisito extraído"}</span></summary>{evidence(f.evidence_json) ? <blockquote>{evidence(f.evidence_json)}</blockquote> : <p className={styles.muted}>Sin cita de página disponible; revisa las bases oficiales.</p>}</details>)}</details> : null}
           </section>
+          <section className={styles.panel}><ParticipationTerms reading={participationReading(p.participation_extraction)} /></section>
           <section className={styles.panel}><h2>Requisitos y evidencia</h2><p className={styles.muted}>Requisitos extraídos del documento; la evaluación usa el perfil registrado, no una verificación externa.</p>
             {evaluated.length ? evaluated.map((r, i) => <details className={styles.requirement} key={i}><summary><span>{text(r.requisito) || text(r.label) || `Requisito ${i + 1}`}</span><Badge tone={tone(r.estado)}>{labels[r.estado] ?? "Revisar"}</Badge></summary><p>{text(r.gap) || "Sin brecha indicada"}</p>{r.accion ? <p><strong>Acción:</strong> {text(r.accion)}</p> : null}</details>) : analysis?.facets.length ? analysis.facets.map((f, i) => <details className={styles.requirement} key={f.id ?? i}><summary><span>{f.label || "Requisito"}</span><Badge>Sin evaluar</Badge></summary>{f.details_json ? <p>{text(f.details_json.value) || text(f.details_json.description) || text(f.details_json.texto) || "Consulta la evidencia del requisito."}</p> : null}{evidence(f.evidence_json) ? <blockquote>{evidence(f.evidence_json)}</blockquote> : <p className={styles.muted}>Sin cita de página disponible.</p>}</details>) : <p className={styles.empty}>Los requisitos aparecerán cuando el worker procese las bases.</p>}
           </section>

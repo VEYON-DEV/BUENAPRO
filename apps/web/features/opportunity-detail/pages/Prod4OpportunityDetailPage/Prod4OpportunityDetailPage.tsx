@@ -6,5 +6,5 @@ import styles from "./Prod4OpportunityDetailPage.module.css";
 
 export async function Prod4OpportunityDetailPage({ tenantId, idProcedimiento }: { tenantId:string; idProcedimiento:string }) {
   const detail = await getProd4OpportunityForTenant(tenantId, idProcedimiento);
-  return <AppShell title="Detalle"><div className={styles.page}>{detail ? <Prod4DetailContent detail={detail} /> : <EmptyState title="Concurso no encontrado" action={{ label:"Volver a concursos SEACE", href:"/feed?source=prod4" }}>El concurso no está disponible en el alcance de tecnología.</EmptyState>}</div></AppShell>;
+  return <AppShell title="Detalle"><div className={styles.page}>{detail ? <Prod4DetailContent detail={detail} /> : <EmptyState title="Concurso no encontrado" action={{ label:"Volver a oportunidades", href:"/feed?source=prod2" }}>El concurso no está disponible en el alcance de tecnología.</EmptyState>}</div></AppShell>;
 }

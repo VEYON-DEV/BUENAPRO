@@ -20,14 +20,17 @@ import { getHistoricalComparables } from "@/server/services/historicalComparable
 import { refreshContractDetailIfStale } from "@/server/services/seaceDetail";
 import { MatchEvents } from "@/features/tracking";
 import { AnalyzeButton } from "../../components/AnalyzeButton";
+import { AdministrativeChecklist } from "../../components/AdministrativeChecklist";
 import { DecisionOverview } from "../../components/DecisionOverview";
 import { DetailSectionNavigator } from "../../components/DetailSectionNavigator";
 import { PdfPreview } from "../../components/PdfPreview/PdfPreview";
 import { SeaceWorkspace } from "../../components/SeaceWorkspace";
 import { StartApplicationButton } from "../../components/StartApplicationButton";
 import { HistoricalComparables } from "../../components/HistoricalComparables";
-import { ProcurementSchedule } from "@/features/procurement";
+import { ParticipationTerms, ProcurementSchedule } from "@/features/procurement";
+import { participationReading } from "@/lib/participationTerms";
 import { CopilotPanel } from "@/features/copilot";
+import { evaluationPresentation } from "../../model/evaluationPresentation";
 import styles from "./OpportunityDetailPage.module.css";
 
 type AnyRecord = Record<string, any>;
@@ -252,7 +255,8 @@ export async function OpportunityDetailPage({
       ? contract.breakdown_json
       : null;
   const analyzedAt: string | null = analysis?.meta?.analyzed_at ?? null;
-  const missingActions = groupItems(contract.missing_actions_json ?? []).filter(
+  const evaluation = evaluationPresentation(analysis, contract.missing_actions_json, facets);
+  const missingActions = groupItems(evaluation.gaps).filter(
     (item: AnyRecord) => item.label || item.accion,
   );
   const mainGap =
@@ -280,7 +284,7 @@ export async function OpportunityDetailPage({
     .join(", ");
 
   const groupedFacets = new Map<string, AnyRecord[]>();
-  for (const facet of groupItems(facets)) {
+  for (const facet of groupItems(evaluation.substantiveFacets)) {
     const key = facetGroupLabels[facet.facet] ? facet.facet : "other";
     const bucket = groupedFacets.get(key) ?? [];
     bucket.push(facet);
@@ -346,14 +350,18 @@ export async function OpportunityDetailPage({
       </header>
 
       <DecisionOverview
-        analyzed={Boolean(contract.verdict && contract.score != null)}
+        analyzed={evaluation.hasEvaluation}
+        scoreUnderReview={evaluation.scoreUnderReview || Boolean(contract.match_review_required)}
         score={contract.score}
+        provisionalScore={contract.provisional_score}
         verdict={contract.verdict ? (verdictShortLabels[contract.verdict] ?? contract.verdict) : "Evaluación pendiente"}
         verdictTone={tone(contract.verdict)}
         fit={fitLabel(contract.fit_points)}
         deadline={formatDeadline(contract.fec_fin_cotizacion)}
         deadlineDate={formatDateTime(contract.fec_fin_cotizacion)}
-        requirementsTotal={facets.length}
+        requirementsTotal={evaluation.substantive.length}
+        coveredCount={evaluation.coveredCount}
+        requirementsLabel="Requisitos clave cubiertos"
         missingCount={missingActions.length}
         marketMedian={history?.metrics?.precio_median != null ? formatMoney(history.metrics.precio_median) : null}
         marketRange={history?.metrics?.rango_frecuente ? `${formatMoney(history.metrics.rango_frecuente.min)} – ${formatMoney(history.metrics.rango_frecuente.max)}` : null}
@@ -384,6 +392,7 @@ export async function OpportunityDetailPage({
           </div>
           <AnalyzeButton
             idContrato={contract.id_contrato}
+            profileId={contract.profile_id}
             analyzedAt={analyzedAt}
           />
         </div>
@@ -395,7 +404,7 @@ export async function OpportunityDetailPage({
             {
               id: "decision",
               label: "Decisión y requisitos",
-              count: facets.length,
+              count: evaluation.substantiveFacets.length,
             },
             { id: "documents", label: "Documentos", count: documents.length },
             { id: "history", label: "Histórico", count: history?.metrics?.total_count },
@@ -416,6 +425,7 @@ export async function OpportunityDetailPage({
                 {analysis?.resumen ? (
                   <AnalyzeButton
                     idContrato={contract.id_contrato}
+                    profileId={contract.profile_id}
                     analyzedAt={analyzedAt}
                   >
                     Re-evaluar
@@ -458,14 +468,12 @@ export async function OpportunityDetailPage({
             </section>
           ) : null}
           <section className={styles.panel} id="requisitos">
+            <ParticipationTerms reading={participationReading(contract.participation_extraction)} />
             <div className={styles.sectionTitle}>
               <div>
-                <span className={styles.sectionKicker}>
-                  Validación documental
-                </span>
-                <h2>Requisitos para postular</h2>
+                <h2>Experiencia y capacidades requeridas</h2>
               </div>
-              <span>{facets.length} detectados</span>
+              <span>{evaluation.substantiveFacets.length} detectados</span>
             </div>
             {orderedFacetGroups.length ? (
               <div className={styles.facetGroups}>
@@ -503,10 +511,11 @@ export async function OpportunityDetailPage({
                 })}
               </div>
             ) : (
-              <EmptyState title="Sin requisitos extraídos">
-                La extracción IA aún no procesa este TDR.
+              <EmptyState title={facets.length ? "Sin requisitos de capacidad detectados" : "Sin requisitos extraídos"}>
+                {facets.length ? "Revisa las condiciones del TDR antes de preparar la oferta." : "La extracción IA aún no procesa este TDR."}
               </EmptyState>
             )}
+            <AdministrativeChecklist items={evaluation.administrativeChecklist} />
           </section>
           </div>
 
@@ -644,7 +653,7 @@ export async function OpportunityDetailPage({
           {missingActions.length ? (
             <section className={styles.panel}>
               <div className={styles.sectionTitle}>
-                <h2>Qué te falta</h2>
+                <h2>Brechas de capacidad</h2>
                 <span>{missingActions.length}</span>
               </div>
               <ul className={styles.actionList}>

@@ -1,0 +1,1264 @@
+{
+  "plan_version": "prod2-convenio-completo-v2",
+  "status": "proposal_not_deployed",
+  "keyword_snapshot_date": "2026-10-05",
+  "source": "seace_prod2",
+  "surface": "Procedimientos de Selección",
+  "members": [
+    "VEYON SAC (perfil principal)",
+    "DIN AUTOMATIZACION S.A.C."
+  ],
+  "scope": "todas las líneas activas de Dinaut y VEYON principal; bienes y servicios; vuelta completa diaria",
+  "object_labels": [
+    "Bien",
+    "Servicio"
+  ],
+  "native_object_values": "resolver desde opciones observadas del formulario PROD2; no reutilizar códigos PROD4/PROD6",
+  "counts": {
+    "dinaut_lines": 11,
+    "dinaut_unique_keywords": 146,
+    "veyon_unique_keywords": 36,
+    "shared_keywords": 16,
+    "veyon_additional_keywords": 20,
+    "joint_unique_keywords": 166,
+    "digital_signals": 73,
+    "industrial_signals": 93,
+    "remote_queries": 166,
+    "local_only_signals": 0,
+    "base_queries_per_daily_round": 332
+  },
+  "lanes": [
+    {
+      "name": "prioritarias",
+      "target_interval_minutes": 1440,
+      "publication_overlap_hours": 168,
+      "keywords": [
+        "software",
+        "licencia",
+        "suscripción",
+        "aplicativo",
+        "plataforma",
+        "informática",
+        "nube",
+        "cloud",
+        "microsoft",
+        "inteligencia artificial",
+        "chatbot",
+        "ciberseguridad",
+        "sistema de información",
+        "sistemas de información"
+      ]
+    },
+    {
+      "name": "complementarias",
+      "target_interval_minutes": 1440,
+      "publication_overlap_hours": 168,
+      "keywords": [
+        "desarrollo de aplicaciones",
+        "desarrollo de sistema",
+        "aplicación",
+        "aplicación web",
+        "aplicaciones web",
+        "página web",
+        "portal web",
+        "base de datos",
+        "mantenimiento de sistemas",
+        "implementación de sistemas",
+        "integración de sistemas",
+        "servidor",
+        "antivirus",
+        "vmware",
+        "workspace",
+        "aws",
+        "erp",
+        "saas",
+        "herramientas colaborativas",
+        "agentes de ia",
+        "agentes ia",
+        "analítica de datos",
+        "ciencia de datos",
+        "aprendizaje automático",
+        "asistentes virtuales",
+        "automatización de procesos",
+        "modelos predictivos",
+        "powerbi"
+      ]
+    },
+    {
+      "name": "exploracion",
+      "target_interval_minutes": 1440,
+      "publication_overlap_hours": 168,
+      "keywords": [
+        "automatización",
+        "soporte técnico",
+        "integración",
+        "implementación",
+        "analítica",
+        "whatsapp",
+        "tecnología"
+      ]
+    },
+    {
+      "name": "digitales_adicionales",
+      "target_interval_minutes": 1440,
+      "publication_overlap_hours": 168,
+      "keywords": [
+        "api",
+        "app",
+        "backend",
+        "datos",
+        "desarrollo de software",
+        "digital",
+        "frontend",
+        "ia",
+        "licencias de software",
+        "licencias informáticas",
+        "licencias microsoft",
+        "llm",
+        "machinelearning",
+        "mantenimiento de software",
+        "plataformas digitales",
+        "predictivo",
+        "python",
+        "rpa",
+        "seguridad informática",
+        "software empresarial",
+        "soluciones cloud",
+        "soporte",
+        "suscripción de software",
+        "web"
+      ]
+    },
+    {
+      "name": "industriales",
+      "target_interval_minutes": 1440,
+      "publication_overlap_hours": 168,
+      "keywords": [
+        "actuadores",
+        "analítica industrial",
+        "aprendizaje automático industrial",
+        "arquitectura de comunicación industrial",
+        "arrancadores",
+        "automatización de procesos industriales",
+        "automatización industrial",
+        "braumat",
+        "cámaras industriales",
+        "capacitación en automatización industrial",
+        "capacitación redes industriales",
+        "capacitación scada",
+        "caudalímetros",
+        "ccm",
+        "cemat",
+        "centros de control de motores",
+        "cobots",
+        "comisionamiento",
+        "comisionamiento de equipos industriales",
+        "commissioning",
+        "comunicación industrial",
+        "configuración de redes industriales",
+        "configuración de sistemas industriales",
+        "contactores",
+        "control de nivel industrial",
+        "control de procesos industriales",
+        "cursos de plc",
+        "dcs",
+        "devicenet",
+        "diseño eléctrico industrial",
+        "electromecánica",
+        "electromecánico",
+        "entrenamiento industrial",
+        "ethernet industrial",
+        "flujometro",
+        "gemelos digitales industriales",
+        "hmi",
+        "iiot",
+        "ingeniería eléctrica",
+        "inspección visual industrial",
+        "instrumentación industrial",
+        "integración de sensores industriales",
+        "integración erp industrial",
+        "internet industrial",
+        "lazos de control industrial",
+        "macromedidores",
+        "mantenimiento de tableros eléctricos",
+        "mantenimiento electromecánico",
+        "mantenimiento industrial",
+        "mantenimiento predictivo",
+        "manufactura",
+        "medición de caudal",
+        "medición de temperatura industrial",
+        "modbus",
+        "monitoreo de condiciones industriales",
+        "montaje eléctrico industrial",
+        "operación de equipos industriales",
+        "optimización de procesos industriales",
+        "pcs7",
+        "planos unifilares",
+        "plc",
+        "profibus",
+        "profinet",
+        "programación de plc",
+        "pruebas fat",
+        "pruebas sat",
+        "puesta en marcha industrial",
+        "realidad aumentada industrial",
+        "redes industriales",
+        "redes profibus",
+        "redes profinet",
+        "robótica",
+        "robótica colaborativa",
+        "robots colaborativos",
+        "salas eléctricas",
+        "scada",
+        "sensores industriales",
+        "servomotores",
+        "sistemas de control distribuido",
+        "sistemas de control industrial",
+        "sistemas mes",
+        "sistemas scada",
+        "soporte remoto industrial",
+        "supervisión industrial",
+        "switch industrial",
+        "tableros de control industrial",
+        "tableros eléctricos",
+        "telemetría",
+        "transmisores de presión",
+        "unifilar",
+        "variadores",
+        "variadores de velocidad",
+        "visión artificial industrial"
+      ]
+    }
+  ],
+  "bootstrap": {
+    "years_first": [
+      2026,
+      2025
+    ],
+    "later_years": "cobertura histórica pendiente; continuar a años previos con presupuesto hasta el alcance aprobado",
+    "partition": "comenzar por año/objeto/keyword; subdividir fechas si límite o truncamiento sospechado",
+    "pagination": "recorrer todas las páginas; guardar checkpoint después de persistir cada página",
+    "does_not_guarantee_national_coverage": true
+  },
+  "broad_reconciliation": {
+    "enabled_in_plan": true,
+    "description_keyword": null,
+    "target_interval_hours": 24,
+    "publication_overlap_days": 7,
+    "objects": [
+      "Bien",
+      "Servicio"
+    ],
+    "partition": "fechas; subdividir y medir completitud; mantener backfill y seguimiento de IDs abiertos"
+  },
+  "cadence_note": "metas de diseño sujetas a medir páginas, tiempo, fallos y ventanas truncadas; una sesión JSF secuencial; no crear otra copia de un trabajo activo ni declarar vuelta completa si queda una partición pendiente",
+  "persistence": {
+    "database": "PostgreSQL",
+    "redis_required": false,
+    "ingestion_before_jev": true,
+    "identity": "ID oficial de procedimiento + convocatoria; ítem cuando la evaluación sea por ítem",
+    "evaluation_key": [
+      "candidate_identity",
+      "semantic_input_hash",
+      "joint_commercial_profile_hash",
+      "rubric_version",
+      "model_version",
+      "schema_version",
+      "request_format_version"
+    ],
+    "discovery_keyword_in_evaluation_key": false,
+    "score_threshold_in_evaluation_key": false,
+    "states": [
+      "pending",
+      "running",
+      "done",
+      "uncertain"
+    ],
+    "durable_rejected_results": true
+  },
+  "screening": {
+    "affinity_threshold": 50,
+    "high_priority_threshold": 60,
+    "threshold_status": "provisional_until_joint_profile_golden_set",
+    "ambiguous_action": "ampliar ficha/ítems; conservar pendiente si sigue insuficiente"
+  },
+  "downstream": [
+    "ficha_cronograma",
+    "LLM1",
+    "reglas_puntos",
+    "LLM2"
+  ],
+  "safety_of_scope": "documentación/configuración de propuesta; no crear perfiles o jobs ni cambiar pausas productivas",
+  "member_keyword_inventory": [
+    {
+      "member": "DIN AUTOMATIZACION S.A.C.",
+      "line": "Automatización y control industrial",
+      "keywords": [
+        "automatización industrial",
+        "programación de plc",
+        "sistemas scada",
+        "sistemas de control industrial",
+        "control de procesos industriales",
+        "sistemas de control distribuido",
+        "tableros de control industrial",
+        "supervisión industrial",
+        "plc",
+        "scada",
+        "hmi",
+        "dcs",
+        "pcs7",
+        "cemat",
+        "braumat",
+        "servomotores"
+      ],
+      "keyword_phrases": [
+        "automatización industrial",
+        "programación de plc",
+        "sistemas scada",
+        "sistemas de control industrial",
+        "control de procesos industriales",
+        "sistemas de control distribuido",
+        "tableros de control industrial",
+        "supervisión industrial"
+      ],
+      "keyword_terms": [
+        "plc",
+        "scada",
+        "hmi",
+        "dcs",
+        "pcs7",
+        "cemat",
+        "braumat",
+        "servomotores"
+      ]
+    },
+    {
+      "member": "DIN AUTOMATIZACION S.A.C.",
+      "line": "Capacitación en automatización industrial",
+      "keywords": [
+        "capacitación en automatización industrial",
+        "cursos de plc",
+        "capacitación scada",
+        "control de procesos industriales",
+        "entrenamiento industrial",
+        "configuración de sistemas industriales",
+        "capacitación redes industriales",
+        "operación de equipos industriales",
+        "plc",
+        "scada",
+        "hmi",
+        "dcs",
+        "profinet",
+        "profibus",
+        "cemat",
+        "pcs7"
+      ],
+      "keyword_phrases": [
+        "capacitación en automatización industrial",
+        "cursos de plc",
+        "capacitación scada",
+        "control de procesos industriales",
+        "entrenamiento industrial",
+        "configuración de sistemas industriales",
+        "capacitación redes industriales",
+        "operación de equipos industriales"
+      ],
+      "keyword_terms": [
+        "plc",
+        "scada",
+        "hmi",
+        "dcs",
+        "profinet",
+        "profibus",
+        "cemat",
+        "pcs7"
+      ]
+    },
+    {
+      "member": "DIN AUTOMATIZACION S.A.C.",
+      "line": "Comisionamiento y puesta en marcha",
+      "keywords": [
+        "puesta en marcha industrial",
+        "pruebas fat",
+        "pruebas sat",
+        "comisionamiento de equipos industriales",
+        "mantenimiento industrial",
+        "mantenimiento electromecánico",
+        "soporte remoto industrial",
+        "mantenimiento de tableros eléctricos",
+        "comisionamiento",
+        "commissioning",
+        "electromecánica"
+      ],
+      "keyword_phrases": [
+        "puesta en marcha industrial",
+        "pruebas fat",
+        "pruebas sat",
+        "comisionamiento de equipos industriales",
+        "mantenimiento industrial",
+        "mantenimiento electromecánico",
+        "soporte remoto industrial",
+        "mantenimiento de tableros eléctricos"
+      ],
+      "keyword_terms": [
+        "comisionamiento",
+        "commissioning",
+        "electromecánica"
+      ]
+    },
+    {
+      "member": "DIN AUTOMATIZACION S.A.C.",
+      "line": "Desarrollo e integración de software",
+      "keywords": [
+        "desarrollo de software",
+        "sistemas de información",
+        "desarrollo de aplicaciones",
+        "aplicaciones web",
+        "implementación de sistemas",
+        "integración de sistemas",
+        "mantenimiento de software",
+        "plataformas digitales",
+        "software",
+        "aplicativo",
+        "aplicación",
+        "plataforma",
+        "erp",
+        "api",
+        "backend",
+        "frontend",
+        "web",
+        "informática"
+      ],
+      "keyword_phrases": [
+        "desarrollo de software",
+        "sistemas de información",
+        "desarrollo de aplicaciones",
+        "aplicaciones web",
+        "implementación de sistemas",
+        "integración de sistemas",
+        "mantenimiento de software",
+        "plataformas digitales"
+      ],
+      "keyword_terms": [
+        "software",
+        "aplicativo",
+        "aplicación",
+        "plataforma",
+        "erp",
+        "api",
+        "backend",
+        "frontend",
+        "web",
+        "informática"
+      ]
+    },
+    {
+      "member": "DIN AUTOMATIZACION S.A.C.",
+      "line": "Digitalización industrial, IIoT y MES",
+      "keywords": [
+        "internet industrial",
+        "mantenimiento predictivo",
+        "gemelos digitales industriales",
+        "visión artificial industrial",
+        "sistemas mes",
+        "analítica industrial",
+        "integración erp industrial",
+        "monitoreo de condiciones industriales",
+        "iiot",
+        "telemetría",
+        "manufactura"
+      ],
+      "keyword_phrases": [
+        "internet industrial",
+        "mantenimiento predictivo",
+        "gemelos digitales industriales",
+        "visión artificial industrial",
+        "sistemas mes",
+        "analítica industrial",
+        "integración erp industrial",
+        "monitoreo de condiciones industriales"
+      ],
+      "keyword_terms": [
+        "iiot",
+        "telemetría",
+        "manufactura"
+      ]
+    },
+    {
+      "member": "DIN AUTOMATIZACION S.A.C.",
+      "line": "Ingeniería eléctrica y fabricación de tableros",
+      "keywords": [
+        "ingeniería eléctrica",
+        "tableros eléctricos",
+        "centros de control de motores",
+        "salas eléctricas",
+        "planos unifilares",
+        "montaje eléctrico industrial",
+        "variadores de velocidad",
+        "diseño eléctrico industrial",
+        "ccm",
+        "variadores",
+        "electromecánico",
+        "unifilar",
+        "arrancadores",
+        "contactores"
+      ],
+      "keyword_phrases": [
+        "ingeniería eléctrica",
+        "tableros eléctricos",
+        "centros de control de motores",
+        "salas eléctricas",
+        "planos unifilares",
+        "montaje eléctrico industrial",
+        "variadores de velocidad",
+        "diseño eléctrico industrial"
+      ],
+      "keyword_terms": [
+        "ccm",
+        "variadores",
+        "electromecánico",
+        "unifilar",
+        "arrancadores",
+        "contactores"
+      ]
+    },
+    {
+      "member": "DIN AUTOMATIZACION S.A.C.",
+      "line": "Instrumentación y medición industrial",
+      "keywords": [
+        "instrumentación industrial",
+        "lazos de control industrial",
+        "sensores industriales",
+        "transmisores de presión",
+        "medición de caudal",
+        "control de nivel industrial",
+        "medición de temperatura industrial",
+        "integración de sensores industriales",
+        "caudalímetros",
+        "actuadores",
+        "macromedidores",
+        "flujometro"
+      ],
+      "keyword_phrases": [
+        "instrumentación industrial",
+        "lazos de control industrial",
+        "sensores industriales",
+        "transmisores de presión",
+        "medición de caudal",
+        "control de nivel industrial",
+        "medición de temperatura industrial",
+        "integración de sensores industriales"
+      ],
+      "keyword_terms": [
+        "caudalímetros",
+        "actuadores",
+        "macromedidores",
+        "flujometro"
+      ]
+    },
+    {
+      "member": "DIN AUTOMATIZACION S.A.C.",
+      "line": "Inteligencia artificial y automatización digital",
+      "keywords": [
+        "inteligencia artificial",
+        "agentes de ia",
+        "aprendizaje automático",
+        "analítica de datos",
+        "ciencia de datos",
+        "automatización de procesos",
+        "asistentes virtuales",
+        "modelos predictivos",
+        "chatbot",
+        "llm",
+        "machinelearning",
+        "python",
+        "rpa",
+        "ia",
+        "datos",
+        "analítica",
+        "predictivo",
+        "automatización"
+      ],
+      "keyword_phrases": [
+        "inteligencia artificial",
+        "agentes de ia",
+        "aprendizaje automático",
+        "analítica de datos",
+        "ciencia de datos",
+        "automatización de procesos",
+        "asistentes virtuales",
+        "modelos predictivos"
+      ],
+      "keyword_terms": [
+        "chatbot",
+        "llm",
+        "machinelearning",
+        "python",
+        "rpa",
+        "ia",
+        "datos",
+        "analítica",
+        "predictivo",
+        "automatización"
+      ]
+    },
+    {
+      "member": "DIN AUTOMATIZACION S.A.C.",
+      "line": "Licencias y suscripciones de software",
+      "keywords": [
+        "licencias de software",
+        "suscripción de software",
+        "licencias informáticas",
+        "software empresarial",
+        "licencias microsoft",
+        "soluciones cloud",
+        "herramientas colaborativas",
+        "seguridad informática",
+        "licencia",
+        "suscripción",
+        "microsoft",
+        "powerbi",
+        "antivirus",
+        "vmware",
+        "workspace",
+        "cloud",
+        "saas",
+        "software"
+      ],
+      "keyword_phrases": [
+        "licencias de software",
+        "suscripción de software",
+        "licencias informáticas",
+        "software empresarial",
+        "licencias microsoft",
+        "soluciones cloud",
+        "herramientas colaborativas",
+        "seguridad informática"
+      ],
+      "keyword_terms": [
+        "licencia",
+        "suscripción",
+        "microsoft",
+        "powerbi",
+        "antivirus",
+        "vmware",
+        "workspace",
+        "cloud",
+        "saas",
+        "software"
+      ]
+    },
+    {
+      "member": "DIN AUTOMATIZACION S.A.C.",
+      "line": "Redes de comunicación industrial",
+      "keywords": [
+        "redes industriales",
+        "comunicación industrial",
+        "ethernet industrial",
+        "arquitectura de comunicación industrial",
+        "configuración de redes industriales",
+        "redes profibus",
+        "redes profinet",
+        "switch industrial",
+        "profinet",
+        "profibus",
+        "devicenet",
+        "modbus"
+      ],
+      "keyword_phrases": [
+        "redes industriales",
+        "comunicación industrial",
+        "ethernet industrial",
+        "arquitectura de comunicación industrial",
+        "configuración de redes industriales",
+        "redes profibus",
+        "redes profinet",
+        "switch industrial"
+      ],
+      "keyword_terms": [
+        "profinet",
+        "profibus",
+        "devicenet",
+        "modbus"
+      ]
+    },
+    {
+      "member": "DIN AUTOMATIZACION S.A.C.",
+      "line": "Robótica y optimización de procesos",
+      "keywords": [
+        "robótica colaborativa",
+        "robots colaborativos",
+        "automatización de procesos industriales",
+        "inspección visual industrial",
+        "cámaras industriales",
+        "optimización de procesos industriales",
+        "aprendizaje automático industrial",
+        "realidad aumentada industrial",
+        "cobots",
+        "robótica"
+      ],
+      "keyword_phrases": [
+        "robótica colaborativa",
+        "robots colaborativos",
+        "automatización de procesos industriales",
+        "inspección visual industrial",
+        "cámaras industriales",
+        "optimización de procesos industriales",
+        "aprendizaje automático industrial",
+        "realidad aumentada industrial"
+      ],
+      "keyword_terms": [
+        "cobots",
+        "robótica"
+      ]
+    },
+    {
+      "member": "VEYON SAC",
+      "line": "Agentes IA y automatizacion",
+      "keywords": [
+        "inteligencia artificial",
+        "agentes ia",
+        "analítica de datos",
+        "ciencia de datos",
+        "automatización",
+        "chatbot",
+        "datos",
+        "whatsapp",
+        "informática",
+        "software",
+        "aws"
+      ],
+      "keyword_phrases": [
+        "inteligencia artificial",
+        "agentes ia",
+        "analítica de datos",
+        "ciencia de datos"
+      ],
+      "keyword_terms": [
+        "automatización",
+        "chatbot",
+        "datos",
+        "whatsapp",
+        "informática",
+        "software",
+        "aws"
+      ]
+    },
+    {
+      "member": "VEYON SAC",
+      "line": "Desarrollo de software",
+      "keywords": [
+        "desarrollo de software",
+        "sistema de información",
+        "desarrollo de sistema",
+        "aplicación web",
+        "página web",
+        "portal web",
+        "base de datos",
+        "software",
+        "aplicativo",
+        "plataforma",
+        "app",
+        "web"
+      ],
+      "keyword_phrases": [
+        "desarrollo de software",
+        "sistema de información",
+        "desarrollo de sistema",
+        "aplicación web",
+        "página web",
+        "portal web",
+        "base de datos"
+      ],
+      "keyword_terms": [
+        "software",
+        "aplicativo",
+        "plataforma",
+        "app",
+        "web"
+      ]
+    },
+    {
+      "member": "VEYON SAC",
+      "line": "Soporte e integraciones tecnologicas",
+      "keywords": [
+        "soporte técnico",
+        "soporte",
+        "mantenimiento de sistemas",
+        "implementación",
+        "integración",
+        "nube",
+        "cloud",
+        "servidor",
+        "licencia",
+        "suscripción",
+        "microsoft",
+        "informática",
+        "tecnología",
+        "ciberseguridad",
+        "digital"
+      ],
+      "keyword_phrases": [
+        "soporte técnico",
+        "mantenimiento de sistemas"
+      ],
+      "keyword_terms": [
+        "soporte",
+        "implementación",
+        "integración",
+        "nube",
+        "cloud",
+        "servidor",
+        "licencia",
+        "suscripción",
+        "microsoft",
+        "informática",
+        "tecnología",
+        "ciberseguridad",
+        "digital"
+      ]
+    }
+  ],
+  "daily_round": {
+    "target_complete_within_hours": 24,
+    "timezone": "America/Lima",
+    "window": "últimos siete días de publicación; congelar el extremo final por recorrido; particionar cuando sea necesario",
+    "hourly_blocks_are_dispatch_budget_not_capacity_proof": true,
+    "hourly_blocks": [
+      {
+        "hour_offset": 0,
+        "keywords": [
+          "software",
+          "desarrollo de aplicaciones",
+          "automatización",
+          "api",
+          "actuadores",
+          "licencia",
+          "desarrollo de sistema"
+        ],
+        "object_labels": [
+          "Bien",
+          "Servicio"
+        ]
+      },
+      {
+        "hour_offset": 1,
+        "keywords": [
+          "soporte técnico",
+          "app",
+          "analítica industrial",
+          "suscripción",
+          "aplicación",
+          "integración",
+          "backend"
+        ],
+        "object_labels": [
+          "Bien",
+          "Servicio"
+        ]
+      },
+      {
+        "hour_offset": 2,
+        "keywords": [
+          "aprendizaje automático industrial",
+          "aplicativo",
+          "aplicación web",
+          "implementación",
+          "datos",
+          "arquitectura de comunicación industrial",
+          "plataforma"
+        ],
+        "object_labels": [
+          "Bien",
+          "Servicio"
+        ]
+      },
+      {
+        "hour_offset": 3,
+        "keywords": [
+          "aplicaciones web",
+          "analítica",
+          "desarrollo de software",
+          "arrancadores",
+          "informática",
+          "página web",
+          "whatsapp"
+        ],
+        "object_labels": [
+          "Bien",
+          "Servicio"
+        ]
+      },
+      {
+        "hour_offset": 4,
+        "keywords": [
+          "digital",
+          "automatización de procesos industriales",
+          "nube",
+          "portal web",
+          "tecnología",
+          "frontend",
+          "automatización industrial"
+        ],
+        "object_labels": [
+          "Bien",
+          "Servicio"
+        ]
+      },
+      {
+        "hour_offset": 5,
+        "keywords": [
+          "cloud",
+          "base de datos",
+          "ia",
+          "braumat",
+          "microsoft",
+          "mantenimiento de sistemas",
+          "licencias de software"
+        ],
+        "object_labels": [
+          "Bien",
+          "Servicio"
+        ]
+      },
+      {
+        "hour_offset": 6,
+        "keywords": [
+          "cámaras industriales",
+          "inteligencia artificial",
+          "implementación de sistemas",
+          "licencias informáticas",
+          "capacitación en automatización industrial",
+          "chatbot",
+          "integración de sistemas"
+        ],
+        "object_labels": [
+          "Bien",
+          "Servicio"
+        ]
+      },
+      {
+        "hour_offset": 7,
+        "keywords": [
+          "licencias microsoft",
+          "capacitación redes industriales",
+          "ciberseguridad",
+          "servidor",
+          "llm",
+          "capacitación scada",
+          "sistema de información"
+        ],
+        "object_labels": [
+          "Bien",
+          "Servicio"
+        ]
+      },
+      {
+        "hour_offset": 8,
+        "keywords": [
+          "antivirus",
+          "machinelearning",
+          "caudalímetros",
+          "sistemas de información",
+          "vmware",
+          "mantenimiento de software",
+          "ccm"
+        ],
+        "object_labels": [
+          "Bien",
+          "Servicio"
+        ]
+      },
+      {
+        "hour_offset": 9,
+        "keywords": [
+          "workspace",
+          "plataformas digitales",
+          "cemat",
+          "aws",
+          "predictivo",
+          "centros de control de motores",
+          "erp"
+        ],
+        "object_labels": [
+          "Bien",
+          "Servicio"
+        ]
+      },
+      {
+        "hour_offset": 10,
+        "keywords": [
+          "python",
+          "cobots",
+          "saas",
+          "rpa",
+          "comisionamiento",
+          "herramientas colaborativas",
+          "seguridad informática"
+        ],
+        "object_labels": [
+          "Bien",
+          "Servicio"
+        ]
+      },
+      {
+        "hour_offset": 11,
+        "keywords": [
+          "comisionamiento de equipos industriales",
+          "agentes de ia",
+          "software empresarial",
+          "commissioning",
+          "agentes ia",
+          "soluciones cloud",
+          "comunicación industrial"
+        ],
+        "object_labels": [
+          "Bien",
+          "Servicio"
+        ]
+      },
+      {
+        "hour_offset": 12,
+        "keywords": [
+          "analítica de datos",
+          "soporte",
+          "configuración de redes industriales",
+          "ciencia de datos",
+          "suscripción de software",
+          "configuración de sistemas industriales",
+          "aprendizaje automático"
+        ],
+        "object_labels": [
+          "Bien",
+          "Servicio"
+        ]
+      },
+      {
+        "hour_offset": 13,
+        "keywords": [
+          "web",
+          "contactores",
+          "asistentes virtuales",
+          "control de nivel industrial",
+          "automatización de procesos",
+          "control de procesos industriales",
+          "modelos predictivos"
+        ],
+        "object_labels": [
+          "Bien",
+          "Servicio"
+        ]
+      },
+      {
+        "hour_offset": 14,
+        "keywords": [
+          "cursos de plc",
+          "powerbi",
+          "dcs",
+          "devicenet",
+          "diseño eléctrico industrial",
+          "electromecánica",
+          "electromecánico"
+        ],
+        "object_labels": [
+          "Bien",
+          "Servicio"
+        ]
+      },
+      {
+        "hour_offset": 15,
+        "keywords": [
+          "entrenamiento industrial",
+          "ethernet industrial",
+          "flujometro",
+          "gemelos digitales industriales",
+          "hmi",
+          "iiot",
+          "ingeniería eléctrica"
+        ],
+        "object_labels": [
+          "Bien",
+          "Servicio"
+        ]
+      },
+      {
+        "hour_offset": 16,
+        "keywords": [
+          "inspección visual industrial",
+          "instrumentación industrial",
+          "integración de sensores industriales",
+          "integración erp industrial",
+          "internet industrial",
+          "lazos de control industrial",
+          "macromedidores"
+        ],
+        "object_labels": [
+          "Bien",
+          "Servicio"
+        ]
+      },
+      {
+        "hour_offset": 17,
+        "keywords": [
+          "mantenimiento de tableros eléctricos",
+          "mantenimiento electromecánico",
+          "mantenimiento industrial",
+          "mantenimiento predictivo",
+          "manufactura",
+          "medición de caudal",
+          "medición de temperatura industrial"
+        ],
+        "object_labels": [
+          "Bien",
+          "Servicio"
+        ]
+      },
+      {
+        "hour_offset": 18,
+        "keywords": [
+          "modbus",
+          "monitoreo de condiciones industriales",
+          "montaje eléctrico industrial",
+          "operación de equipos industriales",
+          "optimización de procesos industriales",
+          "pcs7",
+          "planos unifilares"
+        ],
+        "object_labels": [
+          "Bien",
+          "Servicio"
+        ]
+      },
+      {
+        "hour_offset": 19,
+        "keywords": [
+          "plc",
+          "profibus",
+          "profinet",
+          "programación de plc",
+          "pruebas fat",
+          "pruebas sat",
+          "puesta en marcha industrial"
+        ],
+        "object_labels": [
+          "Bien",
+          "Servicio"
+        ]
+      },
+      {
+        "hour_offset": 20,
+        "keywords": [
+          "realidad aumentada industrial",
+          "redes industriales",
+          "redes profibus",
+          "redes profinet",
+          "robótica",
+          "robótica colaborativa",
+          "robots colaborativos"
+        ],
+        "object_labels": [
+          "Bien",
+          "Servicio"
+        ]
+      },
+      {
+        "hour_offset": 21,
+        "keywords": [
+          "salas eléctricas",
+          "scada",
+          "sensores industriales",
+          "servomotores",
+          "sistemas de control distribuido",
+          "sistemas de control industrial",
+          "sistemas mes"
+        ],
+        "object_labels": [
+          "Bien",
+          "Servicio"
+        ]
+      },
+      {
+        "hour_offset": 22,
+        "keywords": [
+          "sistemas scada",
+          "soporte remoto industrial",
+          "supervisión industrial",
+          "switch industrial",
+          "tableros de control industrial",
+          "tableros eléctricos"
+        ],
+        "object_labels": [
+          "Bien",
+          "Servicio"
+        ]
+      },
+      {
+        "hour_offset": 23,
+        "keywords": [
+          "telemetría",
+          "transmisores de presión",
+          "unifilar",
+          "variadores",
+          "variadores de velocidad",
+          "visión artificial industrial"
+        ],
+        "object_labels": [
+          "Bien",
+          "Servicio"
+        ]
+      }
+    ],
+    "completion": "contar keyword/objeto como completo solo tras todas sus páginas y subventanas; la cuota diaria vence después de la última terminación completa, no al encolar",
+    "priority": "reanudar pendientes y completar cuota diaria antes de pasadas adicionales; repartir entre familias; registrar retraso si supera 24h",
+    "short_terms": "incluir IA/API/APP y todas las frases; medir ruido y truncamiento, sin sustituciones silenciosas",
+    "no_silent_truncation": true
+  },
+  "additional_priority_pass": {
+    "enabled_in_plan": true,
+    "keywords": [
+      "software",
+      "licencia",
+      "suscripción",
+      "aplicativo",
+      "plataforma",
+      "informática",
+      "nube",
+      "cloud",
+      "microsoft",
+      "inteligencia artificial",
+      "chatbot",
+      "ciberseguridad",
+      "sistema de información",
+      "sistemas de información"
+    ],
+    "target_interval_minutes": 120,
+    "publication_overlap_hours": 72,
+    "condition": "solo con margen tras reservar capacidad y plazos de la cuota diaria; nunca sustituye la vuelta de siete días",
+    "objects": [
+      "Bien",
+      "Servicio"
+    ]
+  },
+  "wide_reconciliation": {
+    "target_interval_days": 7,
+    "years": [
+      2026,
+      2025
+    ],
+    "keyword_set": "todas las keywords",
+    "objects": [
+      "Bien",
+      "Servicio"
+    ],
+    "partition": "año/objeto/keyword/fechas; persistir progreso entre jornadas",
+    "priority": "cuota diaria y fichas abiertas antes del recorrido amplio; plazo semanal sujeto a capacidad medida",
+    "older_years": "ampliar mediante backfill según alcance; sin garantía de detectar todos los antiguos abiertos"
+  },
+  "known_open_refresh": {
+    "target_interval_hours": 4,
+    "near_deadline": "priorizar cierres próximos",
+    "llm_required": false,
+    "does_not_discover_unknown_reopenings": true
+  },
+  "commercial_scope_versioning": "incluir industria cambia los inputs del perfil conjunto: actualizar su hash y evaluar con esa versión; agregar solo una keyword o cambiar el umbral no invalida el score"
+}

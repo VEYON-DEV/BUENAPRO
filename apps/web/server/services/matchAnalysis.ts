@@ -3,12 +3,16 @@ import fs from "node:fs";
 import path from "node:path";
 import { pool } from "@/server/db/client";
 import { ensureServerEnv } from "@/server/env";
+import {
+  buildCompactMatchProfile, COMPACT_PROFILE_VERSION, guardEconomicComparisons, guardParticipationActions,
+  isAdministrativeRequirement, MATCH_POLICY_VERSION, SEMANTIC_GUARD_VERSION, SOURCE_CATEGORIES, splitMatchRequirements,
+} from "./matchAnalysisPolicy";
 
-const PROMPT_VERSION = "match_analysis_v2";
+const PROMPT_VERSION = MATCH_POLICY_VERSION;
 const SCORE_BANDS = {
   verde: [85, 100],
   ambar: [50, 84],
-  gris: [30, 49],
+  gris: [0, 100],
   rojo: [0, 29],
 } as const;
 const STATES = new Set([
@@ -34,6 +38,12 @@ const CATEGORIES = new Set([
 type JsonRecord = Record<string, unknown>;
 type Verdict = keyof typeof SCORE_BANDS;
 type Requirement = {
+  source_index: number;
+  source_facet: string;
+  evidence_refs: string[];
+  evidence_explanation: string;
+  economic_comparison: JsonRecord[];
+  economic_validation_reasons?: string[];
   requisito: string;
   categoria: string;
   estado: string;
@@ -44,7 +54,7 @@ type Requirement = {
 
 export type DirectMatchAnalysisResult =
   | { skipped: "unchanged"; match_id: number }
-  | { match_id: number; verdict: Verdict; score: number };
+  | { match_id: number; verdict: Verdict; score: number | null };
 
 function record(value: unknown): JsonRecord {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -82,49 +92,6 @@ function clampScore(verdict: Verdict, score: number): number {
   return Math.max(low, Math.min(high, Math.trunc(score)));
 }
 
-function economicCapacity(profile: JsonRecord): number {
-  return Math.max(
-    0,
-    ...Object.values(record(profile.econ_experience_json))
-      .map(Number)
-      .filter(Number.isFinite),
-  );
-}
-
-function requiredEconomicAmount(facets: JsonRecord[]): number | null {
-  const amounts = facets
-    .filter((facet) => facet.facet === "economic_experience")
-    .map((facet) => Number(record(facet.details_json).monto))
-    .filter(Number.isFinite);
-  return amounts.length ? Math.max(...amounts) : null;
-}
-
-function applyEconomicRule(
-  requirements: Requirement[],
-  required: number | null,
-  capacity: number,
-) {
-  if (!required || required <= 0) return;
-  const ratio = capacity / required;
-  for (const requirement of requirements) {
-    if (requirement.categoria !== "experiencia_economica") continue;
-    if (ratio >= 1) {
-      requirement.estado = "cumple";
-      requirement.gap = null;
-      requirement.accion = null;
-    } else if (ratio >= 0.3) {
-      requirement.estado = "cumple_con_accion";
-      requirement.gap = `Acreditas S/ ${capacity.toLocaleString("en-US", { maximumFractionDigits: 0 })} de S/ ${required.toLocaleString("en-US", { maximumFractionDigits: 0 })} exigidos.`;
-      requirement.accion = `Formar consorcio para cubrir S/ ${(required - capacity).toLocaleString("en-US", { maximumFractionDigits: 0 })}.`;
-    } else {
-      requirement.estado = "no_cumple";
-      requirement.gap = `Acreditas S/ ${capacity.toLocaleString("en-US", { maximumFractionDigits: 0 })} de S/ ${required.toLocaleString("en-US", { maximumFractionDigits: 0 })} exigidos (menos del 30%).`;
-      requirement.accion =
-        "Formar consorcio con un socio que cubra la mayor parte.";
-    }
-  }
-}
-
 function deriveVerdict(requirements: Requirement[]): Verdict {
   if (!requirements.length) return "gris";
   if (requirements.some((r) => r.estado === "no_cumple" && r.critico))
@@ -135,39 +102,22 @@ function deriveVerdict(requirements: Requirement[]): Verdict {
   return "verde";
 }
 
-function stateSet(
-  requirements: Array<Record<string, unknown> | Partial<Requirement>>,
-): Set<string> {
-  return new Set(
-    requirements
-      .map(
-        (r) =>
-          `${String(r.requisito ?? "")
-            .trim()
-            .toLowerCase()}\0${String(r.estado ?? "")}`,
-      )
-      .filter((entry) => !entry.startsWith("\0")),
-  );
-}
-
-function sameSet(left: Set<string>, right: Set<string>) {
-  return (
-    left.size === right.size && [...left].every((value) => right.has(value))
-  );
-}
-
 function prompt(): string {
   const candidates = [
     path.resolve(
       process.cwd(),
-      "../../workers/seace/prompts/match_analysis_v2.txt",
+      "../../workers/seace/prompts/match_analysis_v5.txt",
     ),
-    path.resolve(process.cwd(), "workers/seace/prompts/match_analysis_v2.txt"),
-    "/app/workers/seace/prompts/match_analysis_v2.txt",
+    path.resolve(process.cwd(), "workers/seace/prompts/match_analysis_v5.txt"),
+    "/app/workers/seace/prompts/match_analysis_v5.txt",
   ];
   const found = candidates.find((candidate) => fs.existsSync(candidate));
-  if (!found) throw new Error("No se encontró el prompt match_analysis_v2.");
+  if (!found) throw new Error("No se encontró el prompt match_analysis_v5.");
   return fs.readFileSync(found, "utf8");
+}
+
+function analysisPrompt(): string {
+  return `${prompt()}\nConserva source_index exacto y el orden de cada requisito recibido. source_facet copia su tipo. evidence_refs solo contiene document_id de fuentes del perfil pertinentes; [] si no existe respaldo. evidence_explanation explica esa evidencia y sus límites. Para aprobar experiencia con monto mínimo, economic_comparison identifica cada document_id incluido en evidence_refs, amount_index desde cero en extraction.amounts, moneda exigida (PEN si las bases no especifican otra), monto literal computable y cita compatible; full_amount_comparable y period_supported deben estar documentados. No cuentes contratos mixtos completos ni conviertas moneda. [] si no puedes acreditar la comparación. La entrada ya excluye trámites administrativos; no los agregues ni uses para el score.`;
 }
 
 const responseSchema = {
@@ -188,6 +138,11 @@ const responseSchema = {
       items: {
         type: "OBJECT",
         required: [
+          "source_index",
+          "source_facet",
+          "evidence_refs",
+          "evidence_explanation",
+          "economic_comparison",
           "requisito",
           "categoria",
           "estado",
@@ -196,6 +151,26 @@ const responseSchema = {
           "accion",
         ],
         properties: {
+          source_index: { type: "INTEGER", minimum: 1 },
+          source_facet: { type: "STRING" },
+          evidence_refs: { type: "ARRAY", items: { type: "STRING" } },
+          evidence_explanation: { type: "STRING" },
+          economic_comparison: {
+            type: "ARRAY",
+            items: {
+              type: "OBJECT",
+              required: ["document_id", "amount_index", "currency", "eligible_amount_decimal", "compatible_scope_quote", "full_amount_comparable", "period_supported"],
+              properties: {
+                document_id: { type: "STRING" },
+                amount_index: { type: "INTEGER", minimum: 0 },
+                currency: { type: "STRING" },
+                eligible_amount_decimal: { type: "STRING" },
+                compatible_scope_quote: { type: "STRING" },
+                full_amount_comparable: { type: "BOOLEAN" },
+                period_supported: { type: "BOOLEAN" },
+              },
+            },
+          },
           requisito: { type: "STRING" },
           categoria: { type: "STRING", enum: [...CATEGORIES] },
           estado: { type: "STRING", enum: [...STATES] },
@@ -213,71 +188,63 @@ const responseSchema = {
   },
 };
 
-async function callGemini(body: JsonRecord) {
+async function callGemini(body: JsonRecord, systemPrompt: string) {
   ensureServerEnv();
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("Gemini no está configurado.");
   const primary = process.env.GEMINI_MODEL ?? "gemini-3.1-flash-lite";
-  const fallback = process.env.GEMINI_FALLBACK_MODEL ?? "gemini-2.5-flash";
-  let lastError: unknown;
-  for (const model of [...new Set([primary, fallback])]) {
-    try {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: prompt() }] },
-            contents: [
-              { role: "user", parts: [{ text: JSON.stringify(body) }] },
-            ],
-            generationConfig: {
-              responseMimeType: "application/json",
-              responseSchema,
-              temperature: 0,
-              maxOutputTokens: 8192,
-            },
-          }),
-          signal: AbortSignal.timeout(60_000),
+  const model = primary;
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        contents: [
+          { role: "user", parts: [{ text: JSON.stringify(body) }] },
+        ],
+        generationConfig: {
+          responseMimeType: "application/json",
+          responseSchema,
+          temperature: 0,
+          maxOutputTokens: 8192,
         },
-      );
-      if (!response.ok)
-        throw new Error(`Gemini respondió HTTP ${response.status}.`);
-      const payload = record(await response.json());
-      const candidate = record(list(payload.candidates)[0]);
-      if (String(candidate.finishReason ?? "").includes("MAX_TOKENS")) {
-        throw new Error("El análisis de Gemini fue truncado.");
-      }
-      const content = record(candidate.content);
-      const text = String(record(list(content.parts)[0]).text ?? "");
-      if (!text) throw new Error("Gemini devolvió una respuesta vacía.");
-      const parsed = record(JSON.parse(text));
-      const usage = record(payload.usageMetadata);
-      const inputTokens = Number(usage.promptTokenCount ?? 0) || 0;
-      const outputTokens = Number(usage.candidatesTokenCount ?? 0) || 0;
-      const prices =
-        model === "gemini-3.1-flash-lite"
-          ? { input: 0.25, output: 1.5 }
-          : model === "gemini-2.5-flash-lite"
-            ? { input: 0.1, output: 0.4 }
-            : { input: 0.3, output: 2.5 };
-      return {
-        parsed,
-        model,
-        inputTokens,
-        outputTokens,
-        costUsd:
-          (inputTokens * prices.input + outputTokens * prices.output) /
-          1_000_000,
-      };
-    } catch (error) {
-      lastError = error;
-    }
+      }),
+      signal: AbortSignal.timeout(60_000),
+    },
+  );
+  if (!response.ok)
+    throw new Error(`Gemini respondió HTTP ${response.status}.`);
+  const payload = record(await response.json());
+  const candidate = record(list(payload.candidates)[0]);
+  if (String(candidate.finishReason ?? "").includes("MAX_TOKENS")) {
+    throw new Error("El análisis de Gemini fue truncado.");
   }
-  throw lastError instanceof Error
-    ? lastError
-    : new Error("No se pudo ejecutar el análisis.");
+  const content = record(candidate.content);
+  const text = String(record(list(content.parts)[0]).text ?? "");
+  if (!text) throw new Error("Gemini devolvió una respuesta vacía.");
+  const parsed = record(JSON.parse(text));
+  const usage = record(payload.usageMetadata);
+  const inputTokens = typeof usage.promptTokenCount === "number" && Number.isFinite(usage.promptTokenCount) ? usage.promptTokenCount : null;
+  const outputTokens = typeof usage.candidatesTokenCount === "number" && Number.isFinite(usage.candidatesTokenCount) ? usage.candidatesTokenCount + (Number(usage.thoughtsTokenCount ?? 0) || 0) : null;
+  const prices =
+    model === "gemini-3.1-flash-lite"
+      ? { input: 0.25, output: 1.5 }
+      : model === "gemini-2.5-flash-lite"
+        ? { input: 0.1, output: 0.4 }
+        : model === "gemini-2.5-flash"
+          ? { input: 0.3, output: 2.5 }
+          : null;
+  return {
+    parsed,
+    model,
+    inputTokens,
+    outputTokens,
+    costUsd: prices && inputTokens != null && outputTokens != null ?
+      (inputTokens * prices.input + outputTokens * prices.output) /
+      1_000_000 : null,
+  };
 }
 
 /** Analiza perfil vs. licitación en el backend web, sin crear jobs del worker. */
@@ -299,22 +266,26 @@ export async function analyzeMatchDirect(input: {
     throw new Error("No se encontró un perfil activo para esta empresa.");
 
   const contractResult = await pool.query(
-    `SELECT c.codigo, c.descripcion, c.entidad_nombre, te.summary_json
+    `SELECT c.codigo, c.descripcion, c.entidad_nombre, te.id AS extraction_id,
+       te.summary_json, te.quality, te.requires_human_review
      FROM seace_contracts c
      LEFT JOIN LATERAL (
-       SELECT tx.summary_json FROM contract_documents d
+       SELECT tx.id, tx.summary_json, tx.quality, tx.requires_human_review FROM contract_documents d
        JOIN tdr_extractions tx ON tx.contract_document_id=d.id AND tx.is_current=true
-       WHERE d.id_contrato=c.id_contrato ORDER BY tx.created_at DESC LIMIT 1
+       WHERE d.id_contrato=c.id_contrato ORDER BY tx.created_at DESC, tx.id DESC LIMIT 1
      ) te ON true WHERE c.id_contrato=$1`,
     [input.idContrato],
   );
   const contract = contractResult.rows[0] as JsonRecord | undefined;
   if (!contract) throw new Error("No se encontró la licitación.");
+  if (!contract.extraction_id || contract.quality === "failed" || contract.requires_human_review) {
+    throw new Error("La licitación necesita una lectura documental válida antes de analizar su afinidad.");
+  }
 
   const facetsResult = await pool.query(
     `SELECT facet, label, required, details_json, facet_hash
-     FROM requirement_facets WHERE id_contrato=$1 AND is_current=true ORDER BY facet,id`,
-    [input.idContrato],
+     FROM requirement_facets WHERE id_contrato=$1 AND extraction_id=$2 AND is_current=true ORDER BY facet,id`,
+    [input.idContrato, contract.extraction_id],
   );
   const facets = facetsResult.rows as JsonRecord[];
   const facetsHash = canonicalHash(
@@ -329,98 +300,107 @@ export async function analyzeMatchDirect(input: {
   const existing = existingResult.rows[0] as JsonRecord | undefined;
   const existingBreakdown = record(existing?.breakdown_json);
   const meta = record(existingBreakdown.meta);
+  const systemPrompt = analysisPrompt();
+  const promptSha256 = crypto.createHash("sha256").update(systemPrompt).digest("hex");
   if (
     existing &&
     !input.force &&
+    meta.prompt_version === PROMPT_VERSION &&
+    meta.prompt_sha256 === promptSha256 &&
+    meta.semantic_guard_version === SEMANTIC_GUARD_VERSION &&
+    meta.context_version === COMPACT_PROFILE_VERSION &&
+    String(meta.extraction_id) === String(contract.extraction_id) &&
     meta.facets_hash === facetsHash &&
     meta.profile_hash === profileHash
   ) {
     return { skipped: "unchanged", match_id: Number(existing.id) };
   }
 
-  const previousRequirements = list(existingBreakdown.requisitos).map(record);
-  const previous =
-    existing && previousRequirements.length
-      ? {
-          veredicto: existing.verdict,
-          score: existing.score,
-          requisitos: previousRequirements.map((item) => ({
-            requisito: item.requisito,
-            categoria: item.categoria,
-            estado: item.estado,
-            critico: item.critico,
-          })),
-        }
-      : null;
+  const { substantive, administrativeChecklist } = splitMatchRequirements(facets);
+  if (!substantive.length) throw new Error("La lectura no contiene requisitos sustantivos para evaluar capacidad.");
+  const compactProfile = buildCompactMatchProfile(profile);
   const result = await callGemini({
-    perfil: {
-      razon_social: profile.razon_social,
-      ruc: profile.ruc,
-      identity_json: profile.identity_json,
-      team_json: profile.team_json,
-      experience_json: profile.experience_json,
-      econ_experience_json: profile.econ_experience_json,
-      equipment_json: profile.equipment_json,
-      certifications_json: profile.certifications_json,
-      hireable_roles_json: profile.hireable_roles_json,
-    },
+    perfil: compactProfile,
     oportunidad: {
       codigo: contract.codigo,
       descripcion: contract.descripcion,
       entidad: contract.entidad_nombre,
       resumen: contract.summary_json,
     },
-    requisitos: facets
-      .filter((facet) => facet.facet !== "penalty_condition")
-      .map((facet) => ({
-        tipo: facet.facet,
-        requisito: facet.label,
-        obligatorio: facet.required,
-        detalle: facet.details_json,
-      })),
-    ...(previous ? { analisis_previo: previous } : {}),
-  });
+    requisitos: substantive,
+  }, systemPrompt);
   const rawRequirements = list(result.parsed.requisitos).map(record);
-  const requirements: Requirement[] = rawRequirements.map((item) => ({
+  if (rawRequirements.length !== substantive.length || rawRequirements.some((item, index) => item.source_index !== substantive[index].source_index || isAdministrativeRequirement(item))) {
+    throw new Error("La respuesta no cubre exactamente los requisitos sustantivos; no se guardó un puntaje ni se reintentó automáticamente.");
+  }
+  const evidenceIds = new Set(list(compactProfile.experience_json).flatMap(experience => list(record(record(experience).documentary_summary).sources).map(source => String(record(source).document_id))));
+  if (rawRequirements.some(item => !Array.isArray(item.evidence_refs) || list(item.evidence_refs).some(ref => typeof ref !== "string" || !evidenceIds.has(ref)) || typeof item.evidence_explanation !== "string")) {
+    throw new Error("La respuesta contiene referencias documentales desconocidas; no se guardó un puntaje ni se reintentó automáticamente.");
+  }
+  const requirements: Requirement[] = rawRequirements.map((item, index) => ({
+    source_index: Number(item.source_index),
+    source_facet: String(substantive[index].tipo),
+    evidence_refs: Array.from(new Set(list(item.evidence_refs).map(String))),
+    evidence_explanation: String(item.evidence_explanation),
+    economic_comparison: list(item.economic_comparison).map(record),
     requisito: clip(item.requisito, 90) ?? "Requisito",
-    categoria: CATEGORIES.has(String(item.categoria))
-      ? String(item.categoria)
-      : "otro",
+    categoria: SOURCE_CATEGORIES[String(substantive[index].tipo)] ?? "otro",
     estado: STATES.has(String(item.estado))
       ? String(item.estado)
       : "requiere_revision",
-    critico: Boolean(item.critico),
+    critico: Boolean(substantive[index].obligatorio && item.critico),
     gap: clip(item.gap, 140),
     accion: clip(item.accion, 110),
   }));
-  applyEconomicRule(
-    requirements,
-    requiredEconomicAmount(facets),
-    economicCapacity(profile),
-  );
-  let verdict = deriveVerdict(requirements);
-  let score = clampScore(verdict, Number(result.parsed.score ?? 0));
-  if (
-    existing &&
-    previous &&
-    sameSet(stateSet(requirements), stateSet(previous.requisitos))
-  ) {
-    verdict = String(existing.verdict) as Verdict;
-    score = clampScore(verdict, Number(existing.score));
+  const economicValidation = guardEconomicComparisons(requirements, compactProfile, substantive);
+  const unsupportedConclusions: number[] = [];
+  for (const requirement of requirements) {
+    const experience = ["economic_experience", "general_experience", "specific_experience"].includes(requirement.source_facet);
+    const unsupportedExperience = experience && ["cumple", "no_cumple"].includes(requirement.estado) && !requirement.evidence_refs.length;
+    const evidenceAbsent = requirement.estado === "no_cumple" && /sin (?:evidencia|respaldo)|ausencia|no (?:se (?:ha )?(?:identific|acredit)|consta|hay (?:evidencia|respaldo)|existe (?:evidencia|respaldo)|acredita|presenta|documentad)|falta (?:acreditar|evidencia|respaldo)|(?:evidencia|respaldo|documentacion).*(?:ausente|no adjuntad)/i.test(`${requirement.gap ?? ""} ${requirement.evidence_explanation}`);
+    if (unsupportedExperience || evidenceAbsent) {
+      unsupportedConclusions.push(requirement.source_index);
+      requirement.estado = "requiere_revision";
+      if (unsupportedExperience) {
+        requirement.gap = "No se atribuyó una fuente documental pertinente que respalde esta conclusión.";
+        requirement.accion = "Verificar objeto, moneda, monto y respaldo compatibles con las bases.";
+      }
+    }
   }
+  // Economic compatibility is judged against documentary object/currency and
+  // evidence. A generic total, or a set of areas, cannot override that judgment.
+  const actions = guardParticipationActions(requirements, list(result.parsed.acciones_recomendadas), contract.summary_json);
+  const verdict = deriveVerdict(requirements);
+  const rawModelScore = Number(result.parsed.score ?? 0);
+  const scoreValidated = economicValidation.scoreValidated && unsupportedConclusions.length === 0;
+  const score = scoreValidated ? clampScore(verdict, rawModelScore) : Math.max(0, Math.min(100, Math.trunc(rawModelScore)));
   const analyzedAt = new Date().toISOString();
   const breakdown = {
-    resumen: clip(result.parsed.resumen, 320),
+    resumen: scoreValidated ? clip(result.parsed.resumen, 320) : "La evidencia del modelo necesita validar compatibilidad, montos y respaldos. El puntaje no se publica hasta completar esa comprobación.",
     requisitos: requirements,
-    acciones_recomendadas: list(result.parsed.acciones_recomendadas)
+    administrative_checklist: administrativeChecklist,
+    acciones_recomendadas: actions
       .slice(0, 4)
       .map((item) => clip(item, 110))
       .filter(Boolean),
     meta: {
       model: result.model,
       prompt_version: PROMPT_VERSION,
+      prompt_sha256: promptSha256,
+      semantic_guard_version: SEMANTIC_GUARD_VERSION,
       profile_hash: profileHash,
       facets_hash: facetsHash,
+      extraction_id: contract.extraction_id,
+      context_version: COMPACT_PROFILE_VERSION,
+      score_basis: "substantive_requirements_only",
+      administrative_score_impact: false,
+      single_request_no_fallback: true,
+      raw_model_score: rawModelScore,
+      raw_model_summary: result.parsed.resumen,
+      score_validated: scoreValidated,
+      economic_validation_policy: SEMANTIC_GUARD_VERSION,
+      invalid_economic_comparisons: economicValidation.invalidEconomicComparisons,
+      unsupported_conclusions: unsupportedConclusions,
       input_tokens: result.inputTokens,
       output_tokens: result.outputTokens,
       cost_usd: result.costUsd,
@@ -492,14 +472,12 @@ export async function analyzeMatchDirect(input: {
     await client.query(
       `UPDATE worker_jobs SET status='done',finished_at=now(),last_error=NULL
        WHERE job_type='analyze_match' AND status='pending'
-         AND payload->>'profile_id' IN (
-           SELECT id::text FROM company_profiles WHERE tenant_id=$1
-         )
+         AND payload->>'profile_id'=$1
          AND (payload->>'id_contrato')::bigint=$2`,
-      [input.tenantId, input.idContrato],
+      [profile.id, input.idContrato],
     );
     await client.query("COMMIT");
-    return { match_id: matchId, verdict, score };
+    return { match_id: matchId, verdict: scoreValidated ? verdict : "gris", score: scoreValidated ? score : null };
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;

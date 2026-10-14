@@ -1,24 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, FileCheck2 } from "lucide-react";
 import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { AppIcon } from "@/components/ui/AppIcon";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ParticipationStatus, ParticipationTerms } from "@/features/procurement";
+import { participationReading } from "@/lib/participationTerms";
 import { formatDeadline, formatDateTime, formatShortDateTime } from "@/lib/format/date";
 import { formatMoney } from "@/lib/format/money";
+import { scoreTone } from "@/lib/scorePresentation";
 import { FIT_EXACTO, FIT_RELACIONADO, cotizacionStatus, fitLabel, fitScore, fitShortLabel, opportunityFacts, plazoLabel, verdictShortLabels } from "@/lib/extraction/opportunity";
 import { SaveButton } from "../SaveButton";
+import { analysisPresentation, provisionalAnalysisScore } from "../../model/analysisPresentation";
 import styles from "./OpportunityList.module.css";
-
-function verdictTone(verdict?: string | null) {
-  if (verdict === "verde") return "green";
-  if (verdict === "ambar") return "amber";
-  if (verdict === "rojo") return "red";
-  if (verdict === "gris") return "review";
-  return "none";
-}
 
 function deadlineUrgency(value?: string | null) {
   if (!value) return "calm";
@@ -52,20 +48,39 @@ function FitMark({ hits, compact = false }: { hits?: number | null; compact?: bo
 }
 
 function ScoreMark({ verdict, score }: { verdict?: string | null; score?: number | string | null }) {
-  if (!verdict || score == null) {
+  if (!verdict || score == null || (typeof score === "string" && score.trim() === "")) {
     return <span className={styles.noMatch}>—</span>;
   }
-  const numericScore = Math.max(0, Math.min(100, Number(score) || 0));
-  const tone = verdictTone(verdict);
+  const numericScore = Number(score);
+  if (!Number.isFinite(numericScore) || numericScore < 0 || numericScore > 100) return <span className={styles.noMatch}>—</span>;
+  const tone = scoreTone(numericScore);
   return (
     <span
-      className={[styles.scoreMark, styles[tone]].join(" ")}
+      className={[styles.scoreMark, styles[`score_${tone}`]].join(" ")}
+      data-score-tone={tone}
+      title="<30 rojo · 30–80 amarillo · >80 verde"
       style={{ "--score": `${numericScore * 3.6}deg` } as CSSProperties}
     >
       <span className={styles.scoreRing}>{numericScore}</span>
       <strong>{verdictShortLabels[verdict] ?? verdict}</strong>
     </span>
   );
+}
+
+function PendingAnalysisMark({ provisionalScore }: { provisionalScore: number | null }) {
+  if (provisionalScore != null) return <span
+    aria-label={`Puntaje provisional: ${provisionalScore} de 100. Por validar.`}
+    className={[styles.provisionalScore, styles[`score_${scoreTone(provisionalScore)}`]].join(" ")}
+    data-score-tone={scoreTone(provisionalScore)}
+    title="<30 rojo · 30–80 amarillo · >80 verde"
+    style={{ "--score": `${provisionalScore * 3.6}deg` } as CSSProperties}>
+    <span className={styles.scoreRing}>{provisionalScore}</span>
+    <span><strong>Provisional</strong><small>Por validar</small></span>
+  </span>;
+  return <span className={styles.analysisReview}>
+    <strong><FileCheck2 aria-hidden="true" size={14} />Analizado</strong>
+    <span>Puntaje por validar</span>
+  </span>;
 }
 
 function FactRow({ icon, label, children }: { icon: Parameters<typeof AppIcon>[0]["name"]; label: string; children: React.ReactNode }) {
@@ -82,12 +97,14 @@ function FactRow({ icon, label, children }: { icon: Parameters<typeof AppIcon>[0
 
 export function OpportunityList({ rows }: { rows: any[] }) {
   const [selectedId, setSelectedId] = useState<string | number | null>(rows[0]?.id_contrato ?? null);
-  const [detail, setDetail] = useState<any | null>(null);
+  const [storedDetail, setDetail] = useState<any | null>(null);
   const [detailStatus, setDetailStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const primary = useMemo(
     () => (selectedId == null ? null : rows.find((row) => row.id_contrato === selectedId) ?? null),
     [rows, selectedId],
   );
+  const detail = primary && storedDetail?.contract
+    && String(storedDetail.contract.id_contrato) === String(primary.id_contrato) ? storedDetail : null;
 
   useEffect(() => {
     if (!selectedId) {
@@ -132,24 +149,26 @@ export function OpportunityList({ rows }: { rows: any[] }) {
   const ubicacion = primary
     ? [primary.departamento, primary.provincia].filter(Boolean).join(", ") || "Perú"
     : "";
+  const previewAnalysis = primary ? analysisPresentation({ matchId: primary.match_id, score: primary.score, verdict: primary.verdict, reviewRequired: primary.match_review_required }) : "none";
+  const previewProvisionalScore = primary ? provisionalAnalysisScore({ matchId: primary.match_id, score: primary.score, verdict: primary.verdict, reviewRequired: primary.match_review_required }, primary.provisional_score) : null;
 
   return (
     <section className={[styles.board, !primary ? styles.noPreview : ""].join(" ")}>
       <div className={styles.list}>
         <div className={styles.listHead}>
-          <span>Código</span>
-          <span>Objeto</span>
+          <span>Código / objeto</span>
           <span>Entidad</span>
-          <span>Plazo</span>
+          <span>Subcontratación</span>
+          <span>Consorcio</span>
           <span>Cierre</span>
-          <span>Afinidad</span>
+          <span>Análisis / afinidad</span>
           <span className={styles.saveHeading} aria-label="Guardar" />
         </div>
         <div className={styles.rows}>
           {rows.map((row) => {
-            const rowFacts = opportunityFacts(row);
-            const rowMeta = [rowFacts.tipoPago, rowFacts.roles[0]].filter(Boolean).join(" · ");
             const urgency = deadlineUrgency(row.fec_fin_cotizacion);
+            const analysis = analysisPresentation({ matchId: row.match_id, score: row.score, verdict: row.verdict, reviewRequired: row.match_review_required });
+            const provisionalScore = provisionalAnalysisScore({ matchId: row.match_id, score: row.score, verdict: row.verdict, reviewRequired: row.match_review_required }, row.provisional_score);
             return (
               <article
                 className={[styles.row, row.id_contrato === primary?.id_contrato ? styles.active : ""].join(" ")}
@@ -158,10 +177,12 @@ export function OpportunityList({ rows }: { rows: any[] }) {
                 <button
                   className={styles.rowMain}
                   type="button"
+                  aria-expanded={row.id_contrato === selectedId}
                   onClick={() => setSelectedId(row.id_contrato === selectedId ? null : row.id_contrato)}
                 >
                   <div className={styles.codeCell}>
                     <strong className={styles.code}>{row.codigo}</strong>
+                    <span className={styles.title}>{row.descripcion}</span>
                     {(() => {
                       const cotizacion = cotizacionStatus(row);
                       return (
@@ -171,30 +192,20 @@ export function OpportunityList({ rows }: { rows: any[] }) {
                       );
                     })()}
                   </div>
-                  <div>
-                    <span className={styles.title}>{row.descripcion}</span>
-                    {rowMeta ? <span className={styles.meta}>{rowMeta}</span> : null}
-                  </div>
                   <div className={styles.entity}>
                     <span>{row.entidad_nombre ?? "Entidad no informada"}</span>
                     <span className={styles.meta}>
                       {[row.departamento, row.provincia].filter(Boolean).join(", ") || "Perú"}
                     </span>
                   </div>
-                  <div className={styles.plazoCell}>
-                    <strong>{plazoLabel(rowFacts.plazoDias) ?? "—"}</strong>
-                    {rowFacts.entregables ? (
-                      <span className={styles.meta}>
-                        {rowFacts.entregables} {rowFacts.entregables === 1 ? "entregable" : "entregables"}
-                      </span>
-                    ) : null}
-                  </div>
+                  <div className={styles.participationCell}><ParticipationStatus label="Subcontratación" term={participationReading(row.participation_extraction).subcontratacion} /></div>
+                  <div className={styles.participationCell}><ParticipationStatus label="Consorcio" kind="consorcio" term={participationReading(row.participation_extraction).consorcio} /></div>
                   <div className={styles.deadlineCell}>
                     <strong className={styles[urgency]}>{formatDeadline(row.fec_fin_cotizacion)}</strong>
                     <span className={styles.meta}>{formatShortDateTime(row.fec_fin_cotizacion)}</span>
                   </div>
                   <div className={styles.matchCell}>
-                    {row.verdict && row.score != null ? (
+                    {analysis === "review" ? <PendingAnalysisMark provisionalScore={provisionalScore} /> : analysis === "evaluated" ? (
                       <ScoreMark verdict={row.verdict} score={row.score} />
                     ) : (
                       <FitMark compact hits={row.fit_points} />
@@ -232,7 +243,9 @@ export function OpportunityList({ rows }: { rows: any[] }) {
           {(() => { const cotizacion = cotizacionStatus(primary); return <span className={[styles.stateChip, styles[`cotdot_${cotizacion.key}`]].join(" ")}><i />{cotizacion.label}</span>; })()}
 
           <div className={styles.previewScore}>
-            {primary.verdict && primary.score != null ? (
+            {previewAnalysis === "review" ? (
+              <><PendingAnalysisMark provisionalScore={previewProvisionalScore} /><span>Revisa el análisis en el detalle</span></>
+            ) : previewAnalysis === "evaluated" ? (
               <>
                 <ScoreMark verdict={primary.verdict} score={primary.score} />
                 <span>Evaluado con tu perfil</span>
@@ -240,7 +253,7 @@ export function OpportunityList({ rows }: { rows: any[] }) {
             ) : (
               <>
                 <FitMark hits={primary.fit_points} />
-                <span>Match preview · evalúa con IA en el detalle</span>
+                <span>Afinidad preliminar · análisis pendiente</span>
               </>
             )}
           </div>
@@ -267,6 +280,7 @@ export function OpportunityList({ rows }: { rows: any[] }) {
                 : "No exigida en el TDR"}
             </FactRow>
           </dl>
+          <ParticipationTerms compact reading={participationReading((detail?.contract ?? primary).participation_extraction)} />
 
           <details className={styles.moreInfo}>
             <summary>

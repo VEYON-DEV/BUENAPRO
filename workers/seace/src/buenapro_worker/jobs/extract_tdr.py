@@ -21,6 +21,7 @@ def extract_tdr_job(
     batch_id: str | None = None,
     bucket: str | None = None,
     segment: int | str | None = None,
+    extractor: object | None = None,
 ) -> int:
     document = repo.conn.execute(
         """
@@ -68,7 +69,7 @@ def extract_tdr_job(
     with SeaceClient(settings) as client:
         pdf_bytes = client.download_file(id_contrato_archivo)
 
-    result = GeminiExtractor(settings).extract(
+    result = (extractor or GeminiExtractor(settings)).extract(
         pdf_bytes, mime=document["mime"] or "application/pdf", doc_class=doc_class
     )
 

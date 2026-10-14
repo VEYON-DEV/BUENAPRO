@@ -19,15 +19,18 @@ def test_extraction_only_rejects_matching_route_before_connecting():
 
 
 @pytest.mark.parametrize("extraction_only", [True, False])
-def test_cli_passes_extraction_mode_to_runner(extraction_only):
+def test_retired_cli_cannot_execute_either_extraction_mode(extraction_only):
     arguments = ["local_prod4", "--ssh-host", "unused", "--ssh-key", "unused"]
     if extraction_only:
         arguments.append("--extraction-only")
     with patch("sys.argv", arguments), \
-         patch("buenapro_worker.local_prod4.production_settings"), \
+         patch("buenapro_worker.local_prod4.production_settings") as connect, \
          patch("buenapro_worker.local_prod4.run", return_value={"failed": 0}) as run:
-        main()
-        assert run.call_args.args[1].extraction_only is extraction_only
+        with pytest.raises(SystemExit) as error:
+            main()
+        assert error.value.code == 2
+        connect.assert_not_called()
+        run.assert_not_called()
 
 
 def test_tunnel_rewrites_only_host_without_losing_encoded_credentials():

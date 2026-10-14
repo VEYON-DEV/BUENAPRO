@@ -21,7 +21,7 @@ from buenapro_worker.settings import Settings
 
 
 logger = logging.getLogger(__name__)
-PROD4_MATCH_PROMPT_VERSION = "match_analysis_prod4_v1"
+PROD4_MATCH_PROMPT_VERSION = "match_analysis_prod4_v2"
 
 
 def _daily_prod4_evaluations(repo: JobRepository, profile_id: str) -> int:
@@ -144,6 +144,7 @@ def analyze_prod4_match_job(
     fit_score: int | None = None,
     fit_level: int | None = None,
     keyword_hits: list[dict] | None = None,
+    force: bool = False,
     analyzer: MatchAnalyzer | None = None,
 ) -> dict[str, Any]:
     profile = repo.conn.execute(
@@ -193,7 +194,9 @@ def analyze_prod4_match_job(
     previous = existing["breakdown_json"] if existing and isinstance(existing["breakdown_json"], dict) else {}
     previous_meta = previous.get("meta") or {}
     if (
-        previous_meta.get("profile_hash") == profile_hash
+        not force
+        and previous_meta.get("prompt_version") == PROD4_MATCH_PROMPT_VERSION
+        and previous_meta.get("profile_hash") == profile_hash
         and previous_meta.get("facets_hash") == facets_hash
         and previous_meta.get("extraction_id") == extraction_id
         and previous_meta.get("evidence_policy_version") == EVIDENCE_POLICY_VERSION
@@ -206,7 +209,10 @@ def analyze_prod4_match_job(
         for row in facets if row["facet"] != "penalty_condition"
     ]
     analisis_previo = None
-    if (existing and previous.get("requisitos")
+    if (not force and existing and previous.get("requisitos")
+            and previous_meta.get("prompt_version") == PROD4_MATCH_PROMPT_VERSION
+            and previous_meta.get("profile_hash") == profile_hash
+            and previous_meta.get("facets_hash") == facets_hash
             and previous_meta.get("evidence_policy_version") == EVIDENCE_POLICY_VERSION):
         analisis_previo = {
             "veredicto": existing["verdict"], "score": existing["score"],

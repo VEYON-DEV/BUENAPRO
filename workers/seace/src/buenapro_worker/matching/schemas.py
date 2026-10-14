@@ -38,6 +38,10 @@ class RequisitoEvaluado(AnalysisModel):
     critico: bool = False
     gap: str | None = None
     accion: str | None = None
+    source_index: int | None = None
+    source_facet: str | None = None
+    evidence_refs: list[str] = Field(default_factory=list)
+    evidence_explanation: str | None = None
 
 
 class MatchAnalysisV1(AnalysisModel):
@@ -46,3 +50,23 @@ class MatchAnalysisV1(AnalysisModel):
     resumen: str
     requisitos: list[RequisitoEvaluado]
     acciones_recomendadas: list[str] = Field(default_factory=list)
+
+
+class EconomicEvidence(AnalysisModel):
+    document_id: str
+    amount_index: int
+    currency: str
+    eligible_amount_decimal: str
+    compatible_scope_quote: str
+    full_amount_comparable: bool
+    period_supported: bool
+
+
+class SubstantiveRequirement(RequisitoEvaluado):
+    source_index: int
+    evidence_explanation: str
+    economic_comparison: list[EconomicEvidence] = Field(default_factory=list)
+
+
+class SubstantiveMatchAnalysis(MatchAnalysisV1):
+    requisitos: list[SubstantiveRequirement]

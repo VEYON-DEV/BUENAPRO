@@ -1,0 +1,388 @@
+"""PROD6 discovery and document ingestion without legacy schedulers or LLM2.
+
+The existing queues are retained, but claims require this runtime's namespace,
+explicit profile and four allowed job types. A session advisory lock prevents
+two instances. Provider responses are durably cached before database writes.
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import signal
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from buenapro_worker.db.connection import connect
+from buenapro_worker.jobs.derive_summary import derive_summary_job
+from buenapro_worker.jobs.download_file import download_file_job
+from buenapro_worker.jobs.extract_tdr import enqueue_derive_summary, extract_tdr_job
+from buenapro_worker.jobs.poll_prod6_profile import poll_prod6_profile
+from buenapro_worker.jobs.process_contract import process_contract
+from buenapro_worker.queue.repository import Job, JobRepository
+from buenapro_worker.settings import Settings
+
+
+NAMESPACE = "prod6-only-v1"
+JOB_TYPES = ("process_contract", "download_file", "extract_tdr", "derive_summary")
+IO_TYPES = ("process_contract", "download_file")
+LOCK = (2061013, 6)
+
+
+def write_state(path: Path, value: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    temporary = path.with_suffix(".tmp")
+    with temporary.open("w", encoding="utf-8") as stream:
+        os.chmod(temporary, 0o600)
+        json.dump(value, stream, ensure_ascii=False, default=str)
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, path)
+
+
+class ScopedRepository(JobRepository):
+    def __init__(self, conn, *, profile_id: str, batch_id: str):
+        super().__init__(conn)
+        self.profile_id, self.batch_id = profile_id, batch_id
+        self.suppressed: dict[str, int] = {}
+
+    def enqueue(self, job_type, payload=None, **kwargs):
+        if job_type not in JOB_TYPES:
+            # Ingestion does not authorize historical LLM2 or notifications.
+            self.suppressed[job_type] = self.suppressed.get(job_type, 0) + 1
+            return None
+        payload = dict(payload or {}) | {
+            "source_runtime": NAMESPACE, "scope_profile_id": self.profile_id,
+            "batch_id": self.batch_id,
+        }
+        kwargs["dedup_key"] = f"{NAMESPACE}:{self.profile_id}:{kwargs.get('dedup_key') or job_type}"
+        kwargs["max_attempts"] = 1
+        return super().enqueue(job_type, payload, **kwargs)
+
+    def claim_scoped(self, worker_id: str, job_types: tuple[str, ...] = JOB_TYPES) -> Job | None:
+        if not job_types or not set(job_types).issubset(JOB_TYPES):
+            raise ValueError("Claims must stay inside the ingestion whitelist")
+        row = self.conn.execute(
+            """UPDATE worker_jobs SET status='claimed', claimed_by=%s,
+                 claimed_at=now(), attempts=attempts+1
+               WHERE id=(SELECT id FROM worker_jobs WHERE status='pending'
+                 AND run_after<=now() AND payload->>'source_runtime'=%s
+                 AND payload->>'scope_profile_id'=%s AND job_type=ANY(%s)
+                 ORDER BY priority, run_after, id FOR UPDATE SKIP LOCKED LIMIT 1)
+               RETURNING id, job_type, queue_name, payload, attempts""",
+            (worker_id, NAMESPACE, self.profile_id, list(job_types)),
+        ).fetchone()
+        if not row:
+            return None
+        return Job(int(row["id"]), row["job_type"], row["queue_name"],
+                   dict(row["payload"]), int(row["attempts"]))
+
+
+def profile_enabled(repo: ScopedRepository) -> bool:
+    row = repo.conn.execute(
+        """SELECT is_active, identity_json->>'profile_ingestion_enabled' AS enabled
+           FROM company_profiles WHERE id=%s""", (repo.profile_id,),
+    ).fetchone()
+    return bool(row and row["is_active"] and row["enabled"] != "false")
+
+
+def current_extraction(repo: ScopedRepository, contract_id: int, archive_id: int):
+    return repo.conn.execute(
+        """SELECT e.id FROM tdr_extractions e JOIN contract_documents d
+           ON d.id=e.contract_document_id WHERE d.id_contrato=%s
+           AND d.id_contrato_archivo=%s AND e.is_current AND e.quality<>'failed'
+           LIMIT 1""", (contract_id, archive_id),
+    ).fetchone()
+
+
+def eligible_contract(repo: ScopedRepository, contract_id: int) -> bool:
+    return bool(repo.conn.execute(
+        """SELECT 1 FROM seace_contracts WHERE id_contrato=%s
+           AND estado_codigo=2 AND objeto_codigo IN (1,2)
+           AND (fec_fin_cotizacion IS NULL OR fec_fin_cotizacion>now())""",
+        (contract_id,),
+    ).fetchone())
+
+
+def enqueue_unread_documents(repo: ScopedRepository, contract_id: int) -> int:
+    # process_contract historically skipped these when the file list was unchanged.
+    rows = repo.conn.execute(
+        """SELECT d.id_contrato_archivo FROM contract_documents d
+           WHERE d.id_contrato=%s AND d.categoria=1
+           AND NOT EXISTS(SELECT 1 FROM tdr_extractions e
+             WHERE e.contract_document_id=d.id AND e.is_current AND e.quality<>'failed')""",
+        (contract_id,),
+    ).fetchall()
+    count = 0
+    for row in rows:
+        archive_id = int(row["id_contrato_archivo"])
+        count += int(repo.enqueue("download_file", {
+            "id_contrato": contract_id, "id_contrato_archivo": archive_id,
+        }, queue_name="io", priority=2,
+            dedup_key=f"download_file:{repo.batch_id}:{archive_id}") is not None)
+    return count
+
+
+class HashBoundExtractor:
+    def __init__(self, extractor, expected_sha256: str):
+        self.extractor, self.expected = extractor, expected_sha256
+
+    def extract(self, content: bytes, **kwargs):
+        if hashlib.sha256(content).hexdigest() != self.expected:
+            raise ValueError("Document changed between identification and reading")
+        return self.extractor.extract(content, **kwargs)
+
+
+def dispatch(settings: Settings, repo: ScopedRepository, job: Job, receipt_dir: Path):
+    payload = job.payload
+    contract_id = int(payload["id_contrato"])
+    common = {"batch_id": repo.batch_id, "segment": payload.get("segment")}
+    if not eligible_contract(repo, contract_id):
+        return {"outcome": "closed_preserved"}
+    if job.job_type == "process_contract":
+        before = repo.conn.execute("SELECT pipeline_state FROM seace_contracts WHERE id_contrato=%s",
+                                   (contract_id,)).fetchone()
+        result = process_contract(settings, repo, contract_id, force_detail=True, **common)
+        if eligible_contract(repo, contract_id):
+            result["unread_enqueued"] = enqueue_unread_documents(repo, contract_id)
+            # Metadata refresh must not leave an already-read contract looking
+            # unfinished merely because upsert_files recorded a fresh inventory.
+            previous = before["pipeline_state"] if before else None
+            restored = previous if previous in {"validated", "normalized", "matched"} else "validated"
+            repo.conn.execute("""UPDATE seace_contracts c SET pipeline_state=%s
+               WHERE c.id_contrato=%s AND c.pipeline_state='files_listed'
+               AND EXISTS(SELECT 1 FROM contract_documents d JOIN tdr_extractions e
+                   ON e.contract_document_id=d.id WHERE d.id_contrato=c.id_contrato
+                   AND e.is_current AND e.quality<>'failed')
+               AND NOT EXISTS(SELECT 1 FROM contract_documents d
+                   WHERE d.id_contrato=c.id_contrato AND d.categoria=1 AND NOT EXISTS(
+                     SELECT 1 FROM tdr_extractions e WHERE e.contract_document_id=d.id
+                     AND e.is_current AND e.quality<>'failed'))""", (restored, contract_id))
+        return result
+    if job.job_type == "download_file":
+        archive_id = int(payload["id_contrato_archivo"])
+        before = repo.conn.execute(
+            "SELECT id, sha256_original FROM contract_documents WHERE id_contrato=%s AND id_contrato_archivo=%s",
+            (contract_id, archive_id),
+        ).fetchone()
+        result = download_file_job(settings, repo, id_contrato=contract_id,
+                                   id_contrato_archivo=archive_id, **common)
+        if (before and not str(before["sha256_original"]).startswith("pending:")
+                and before["sha256_original"] != result["sha256_original"]):
+            # A changed PDF cannot continue to advertise the old extraction as current.
+            repo.conn.execute("UPDATE tdr_extractions SET is_current=false WHERE contract_document_id=%s AND is_current",
+                              (before["id"],))
+            result["previous_reading_invalidated"] = True
+        return result
+    if job.job_type == "extract_tdr":
+        archive_id = int(payload["id_contrato_archivo"])
+        existing = current_extraction(repo, contract_id, archive_id)
+        if existing:
+            enqueue_derive_summary(repo, id_contrato=contract_id,
+                                   extraction_id=int(existing["id"]), **common)
+            return {"outcome": "current_reading_preserved", "extraction_id": int(existing["id"])}
+        historical_error = repo.conn.execute(
+            """SELECT id FROM worker_jobs WHERE job_type='extract_tdr' AND attempts>0
+               AND status IN ('dead','failed','claimed')
+               AND payload->>'id_contrato'=%s AND payload->>'id_contrato_archivo'=%s
+               AND payload->>'source_runtime' IS DISTINCT FROM %s LIMIT 1""",
+            (str(contract_id), str(archive_id), NAMESPACE),
+        ).fetchone()
+        if historical_error:
+            return {"outcome": "historical_attempt_preserved", "review_required": True,
+                    "historical_job_id": int(historical_error["id"])}
+        from buenapro_worker.prod6.reading import GuardedGeminiExtractor
+        document = repo.conn.execute(
+            "SELECT sha256_original FROM contract_documents WHERE id_contrato=%s AND id_contrato_archivo=%s",
+            (contract_id, archive_id),
+        ).fetchone()
+        extractor = HashBoundExtractor(GuardedGeminiExtractor(settings, receipt_dir / "readings"),
+                                      document["sha256_original"])
+        extraction_id = extract_tdr_job(settings, repo, id_contrato=contract_id,
+                                       id_contrato_archivo=archive_id, extractor=extractor, **common)
+        return {"outcome": "read_or_reused", "extraction_id": extraction_id}
+    if job.job_type == "derive_summary":
+        return derive_summary_job(repo, id_contrato=contract_id,
+                                  extraction_id=int(payload["extraction_id"]), **common)
+    raise ValueError("Job outside PROD6 runtime scope")
+
+
+def execute_io_job(settings: Settings, profile_id: str, job: Job, receipt_dir: Path):
+    """Each free HTTP job owns a DB connection; paid reading stays on the coordinator."""
+    if job.job_type not in IO_TYPES:
+        raise ValueError("Parallel executor accepts only free HTTP jobs")
+    with connect(settings) as conn:
+        conn.commit()
+        conn.autocommit = True
+        repo = ScopedRepository(conn, profile_id=profile_id, batch_id=job.payload["batch_id"])
+        with conn.transaction():
+            if not profile_enabled(repo):
+                raise RuntimeError("Profile was paused")
+            outcome = dispatch(settings, repo, job, receipt_dir)
+            conn.execute("UPDATE worker_jobs SET payload=payload || %s::jsonb WHERE id=%s",
+                         (json.dumps({"runtime_result": outcome}), job.id))
+            repo.complete(job.id)
+        return outcome
+
+
+def run(settings: Settings, *, profile_id: str, receipt_dir: Path, once: bool = False,
+        interval_seconds: int = 1800, max_pages: int = 100, max_candidates: int = 200,
+        http_workers: int = 3, io_workers: int = 2) -> int:
+    if interval_seconds < 60 or max_pages < 1 or max_candidates < 1:
+        raise ValueError("Positive bounded limits required; minimum poll interval is 60 seconds")
+    if not 1 <= http_workers <= 4 or not 1 <= io_workers <= 4:
+        raise ValueError("HTTP/IO parallelism must stay between one and four")
+    stopping = False
+
+    def stop(*_args):
+        nonlocal stopping
+        stopping = True
+
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
+    worker_id = f"{NAMESPACE}:{profile_id}"
+    with connect(settings) as conn:
+        conn.commit()
+        conn.autocommit = True
+        locked = conn.execute("SELECT pg_try_advisory_lock(%s,%s) AS locked", LOCK).fetchone()
+        if not locked["locked"]:
+            raise RuntimeError("Another PROD6 coordinator holds the lock")
+        # Recovery owns only this namespace, after exclusive ownership is established.
+        with conn.transaction():
+            conn.execute("""UPDATE worker_jobs SET status='pending',claimed_by=NULL,claimed_at=NULL
+              WHERE status='claimed' AND claimed_by=%s AND payload->>'source_runtime'=%s
+              AND payload->>'scope_profile_id'=%s""", (worker_id, NAMESPACE, profile_id))
+        while not stopping:
+            batch_id = f"prod6-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}-{os.getpid()}"
+            repo = ScopedRepository(conn, profile_id=profile_id, batch_id=batch_id)
+            state: dict[str, Any] = {"runtime": NAMESPACE, "profile_id": profile_id,
+                "batch_id": batch_id, "started_at": datetime.now(timezone.utc).isoformat(),
+                "status": "sweeping", "done": {}, "suppressed": {},
+                "parallelism": {"http": http_workers, "io": io_workers, "paid_reading": 1}}
+            write_state(receipt_dir / "state.json", state)
+            if not profile_enabled(repo):
+                state["status"] = "profile_paused"
+                write_state(receipt_dir / "state.json", state)
+                return 2
+            try:
+                source_started = time.monotonic()
+                with conn.transaction():
+                    state["source"] = poll_prod6_profile(settings, repo, profile_id=profile_id,
+                        max_pages_per_segment=max_pages, max_candidates=max_candidates,
+                        batch_id=batch_id, search_parallelism=http_workers)
+                state["source_seconds"] = round(time.monotonic() - source_started, 3)
+                state["status"] = "processing"
+                write_state(receipt_dir / "state.json", state)
+                while not stopping:
+                    if not profile_enabled(repo):
+                        state["status"] = "profile_paused"
+                        write_state(receipt_dir / "state.json", state)
+                        return 2
+                    io_batch = []
+                    with conn.transaction():
+                        for _ in range(io_workers):
+                            io_job = repo.claim_scoped(worker_id, IO_TYPES)
+                            if not io_job:
+                                break
+                            io_batch.append(io_job)
+                    if io_batch:
+                        errors = []
+                        # Wait for every reserved job to settle before stopping on an error.
+                        with ThreadPoolExecutor(max_workers=io_workers) as pool:
+                            futures = {pool.submit(execute_io_job, settings, profile_id, io_job,
+                                                   receipt_dir): io_job for io_job in io_batch}
+                            for future in as_completed(futures):
+                                io_job = futures[future]
+                                try:
+                                    outcome = future.result()
+                                except Exception as error:
+                                    with conn.transaction():
+                                        conn.execute("""UPDATE worker_jobs SET status='pending',claimed_by=NULL,
+                                           claimed_at=NULL,last_error=%s WHERE id=%s AND status='claimed'""",
+                                           (f"PROD6 attention required: {type(error).__name__}; no automatic retry",
+                                            io_job.id))
+                                    errors.append({"job_id": io_job.id, "error_type": type(error).__name__})
+                                    continue
+                                state["done"][io_job.job_type] = state["done"].get(io_job.job_type, 0) + 1
+                                state["last_outcome"] = {"job_id": io_job.id,
+                                    "contract_id": io_job.payload["id_contrato"],
+                                    "type": io_job.job_type, "result": outcome}
+                                state["updated_at"] = datetime.now(timezone.utc).isoformat()
+                                write_state(receipt_dir / "state.json", state)
+                        if errors:
+                            state.update(status="attention_required", io_errors=errors)
+                            write_state(receipt_dir / "state.json", state)
+                            print(json.dumps(state), flush=True)
+                            return 2
+                        continue
+                    with conn.transaction():
+                        job = repo.claim_scoped(worker_id)
+                    if not job:
+                        break
+                    # Preserve the actual batch provenance of any resumed pending job.
+                    repo.batch_id = job.payload["batch_id"]
+                    try:
+                        with conn.transaction():
+                            outcome = dispatch(settings, repo, job, receipt_dir)
+                            conn.execute("UPDATE worker_jobs SET payload=payload || %s::jsonb WHERE id=%s",
+                                (json.dumps({"runtime_result": outcome}), job.id))
+                            repo.complete(job.id)
+                    except Exception as error:
+                        # No automatic retry, and no raw provider/PII exception in logs.
+                        with conn.transaction():
+                            conn.execute("""UPDATE worker_jobs SET status='pending',claimed_by=NULL,
+                               claimed_at=NULL,last_error=%s WHERE id=%s""",
+                               (f"PROD6 attention required: {type(error).__name__}; see private receipt", job.id))
+                        state.update(status="attention_required", job_id=job.id,
+                                     job_type=job.job_type, error_type=type(error).__name__)
+                        write_state(receipt_dir / "state.json", state)
+                        print(json.dumps(state), flush=True)
+                        return 2
+                    state["done"][job.job_type] = state["done"].get(job.job_type, 0) + 1
+                    state["last_outcome"] = {"job_id": job.id, "contract_id": job.payload["id_contrato"],
+                                              "type": job.job_type, "result": outcome}
+                    state["suppressed"] = repo.suppressed
+                    state["updated_at"] = datetime.now(timezone.utc).isoformat()
+                    write_state(receipt_dir / "state.json", state)
+                state["status"] = "stopped" if stopping else "sweep_drained"
+                if state["source"]["capped_segments"] or state["source"]["limit_reached"]:
+                    state["source_coverage"] = "bounded_partial"
+                else:
+                    state["source_coverage"] = "configured_scope_complete"
+                state["finished_at"] = datetime.now(timezone.utc).isoformat()
+                write_state(receipt_dir / f"{batch_id}.json", state)
+                write_state(receipt_dir / "state.json", state)
+                print(json.dumps(state), flush=True)
+            except Exception as error:
+                state.update(status="attention_required", error_type=type(error).__name__)
+                write_state(receipt_dir / "state.json", state)
+                print(json.dumps(state), flush=True)
+                return 2
+            if once or stopping:
+                return 0
+            deadline = time.monotonic() + interval_seconds
+            while time.monotonic() < deadline and not stopping:
+                time.sleep(min(2, max(0, deadline - time.monotonic())))
+    return 0
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--profile-id", required=True)
+    parser.add_argument("--receipt-dir", type=Path, required=True)
+    parser.add_argument("--once", action="store_true")
+    parser.add_argument("--interval-seconds", type=int, default=1800)
+    parser.add_argument("--max-pages", type=int, default=100)
+    parser.add_argument("--max-candidates", type=int, default=200)
+    parser.add_argument("--http-workers", type=int, default=3)
+    parser.add_argument("--io-workers", type=int, default=2)
+    args = parser.parse_args()
+    raise SystemExit(run(Settings(), **vars(args)))
+
+
+if __name__ == "__main__":
+    main()

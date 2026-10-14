@@ -59,6 +59,18 @@ const BASE_SELECT = `
   o.lifecycle_stage,
   o.participation_access,
   o.actionability,
+  (SELECT jsonb_build_object(
+    'id', ex.id::text,
+    'quality', ex.quality,
+    'requires_human_review', ex.requires_human_review,
+    'participation', COALESCE(NULLIF(ex.summary_json->'participation', 'null'::jsonb), ex.raw_extraction_json->'participation'),
+    'page_scope', CASE WHEN jsonb_array_length(CASE
+      WHEN jsonb_typeof(ex.raw_extraction_json->'source_document_manifest') = 'array'
+      THEN ex.raw_extraction_json->'source_document_manifest' ELSE '[]'::jsonb END) > 1
+      THEN 'combined' ELSE 'document' END
+  ) FROM prod4_document_extractions ex
+    WHERE ex.id_procedimiento = p.id_procedimiento AND ex.is_current = true
+    ORDER BY ex.created_at DESC, ex.id DESC LIMIT 1) AS participation_extraction,
   (SELECT count(*)::int FROM prod4_items i WHERE i.id_procedimiento = p.id_procedimiento) AS items_count,
   (SELECT count(*)::int FROM prod4_documents d WHERE d.id_procedimiento = p.id_procedimiento) AS documents_count,
   COALESCE((

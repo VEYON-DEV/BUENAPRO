@@ -1,0 +1,4 @@
+.status { align-items: flex-start; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.status small, .label { color: var(--bp-color-text-2); font-size: 11px; line-height: 1.35; }
+.label { font-weight: 650; }
+.status > span:last-of-type { color: var(--bp-color-ink); }

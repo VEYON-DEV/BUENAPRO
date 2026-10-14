@@ -148,6 +148,21 @@ class GeminiExtractor:
             types.Part.from_bytes(data=pdf_bytes, mime_type=mime),
         ]
 
+    def _validate_raw_json(self, raw_json: dict, doc_class: str) -> None:
+        """Provider-independent default; versioned readers can enforce scope."""
+
+    def _response_schema(self, doc_class: str):
+        return (BasesGoodsExtractionV2 if doc_class == "bases_good"
+                else EettExtractionV1 if doc_class == "eett" else TdrExtractionV2)
+
+    def _prompt_version(self, doc_class: str) -> str:
+        return prompt_version_for_doc_class(doc_class)
+
+    def _schema_version(self, doc_class: str) -> str:
+        return (BASES_GOODS_SCHEMA_VERSION if doc_class == "bases_good"
+                else BASES_SCHEMA_VERSION if doc_class == "bases_service"
+                else EETT_SCHEMA_VERSION if doc_class == "eett" else SCHEMA_VERSION)
+
     def _extract_with_model(
         self,
         model: str,
@@ -158,10 +173,7 @@ class GeminiExtractor:
         max_output_tokens: int,
         requires_human_review: bool = False,
     ) -> ExtractionResult:
-        schema = (
-            BasesGoodsExtractionV2 if doc_class == "bases_good"
-            else EettExtractionV1 if doc_class == "eett" else TdrExtractionV2
-        )
+        schema = self._response_schema(doc_class)
         response = self.client.models.generate_content(
             model=model,
             contents=self._contents(pdf_bytes, mime=mime),
@@ -180,8 +192,9 @@ class GeminiExtractor:
             # PDF probablemente escaneado/ilegible: forzar el fallback (flash),
             # que lee mejor documentos dificiles, y marcar para revision humana.
             raise EmptyExtractionError("Gemini returned an empty extraction")
+        self._validate_raw_json(raw_json, doc_class)
         extraction = schema.model_validate(raw_json)
-        if isinstance(extraction, EettExtractionV1) and not extraction.goods.items:
+        if hasattr(extraction, "goods") and not extraction.goods.items:
             requires_human_review = True
         usage = response.usage_metadata
         input_tokens = int(getattr(usage, "prompt_token_count", 0) or 0)
@@ -190,12 +203,8 @@ class GeminiExtractor:
             extraction=extraction,
             raw_json=raw_json,
             model=model,
-            prompt_version=prompt_version_for_doc_class(doc_class),
-            schema_version=(
-                BASES_GOODS_SCHEMA_VERSION if doc_class == "bases_good"
-                else BASES_SCHEMA_VERSION if doc_class == "bases_service"
-                else EETT_SCHEMA_VERSION if doc_class == "eett" else SCHEMA_VERSION
-            ),
+            prompt_version=self._prompt_version(doc_class),
+            schema_version=self._schema_version(doc_class),
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cost_usd=estimate_cost(model, input_tokens, output_tokens),

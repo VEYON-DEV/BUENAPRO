@@ -15,11 +15,18 @@ from buenapro_worker.extraction.gemini import (
     parse_json_response,
 )
 from buenapro_worker.matching.schemas import MatchAnalysisV1
+from buenapro_worker.matching.schemas import SubstantiveMatchAnalysis
+from buenapro_worker.matching.compact_context import build_compact_match_profile, compact_json
+from buenapro_worker.matching.substantive_policy import MATCH_POLICY_VERSION
 from buenapro_worker.settings import Settings
 
 
-ANALYSIS_PROMPT_VERSION = "match_analysis_v2"
-ANALYSIS_PROMPT_FILENAME = "match_analysis_v2.txt"
+ANALYSIS_PROMPT_VERSION = MATCH_POLICY_VERSION
+ANALYSIS_PROMPT_FILENAME = "match_analysis_v5.txt"
+SUBSTANTIVE_PROMPT_FILES = {
+    "match_analysis_v4_substantive": "match_analysis_v2.txt",
+    MATCH_POLICY_VERSION: ANALYSIS_PROMPT_FILENAME,
+}
 
 
 @dataclass(frozen=True)
@@ -38,12 +45,16 @@ class MatchAnalyzer:
         self,
         settings: Settings,
         *,
-        prompt_filename: str = ANALYSIS_PROMPT_FILENAME,
+        prompt_filename: str | None = None,
         prompt_version: str = ANALYSIS_PROMPT_VERSION,
     ) -> None:
         self.settings = settings
-        self.client = genai.Client(api_key=settings.gemini_api_key)
-        self.prompt = read_analysis_prompt(prompt_filename)
+        self.client = genai.Client(api_key=settings.gemini_api_key,
+                                  http_options=types.HttpOptions(retry_options=types.HttpRetryOptions(attempts=1)))
+        # An explicitly recovered v4 request retains its text, compact payload
+        # and substantive schema even after the default moves to v5.
+        selected_prompt = prompt_filename or SUBSTANTIVE_PROMPT_FILES.get(prompt_version, ANALYSIS_PROMPT_FILENAME)
+        self.prompt = read_analysis_prompt(selected_prompt)
         self.prompt_version = prompt_version
 
     def analyze(
@@ -54,14 +65,13 @@ class MatchAnalyzer:
         requisitos: list[dict[str, Any]],
         analisis_previo: dict[str, Any] | None = None,
     ) -> MatchAnalysisResult:
-        body: dict[str, Any] = {"perfil": perfil, "oportunidad": oportunidad, "requisitos": requisitos}
-        if analisis_previo:
-            body["analisis_previo"] = analisis_previo
-        payload = json.dumps(body, ensure_ascii=False)
-        try:
-            return self._analyze_with_model(self.settings.gemini_model, payload)
-        except Exception:
-            return self._analyze_with_model(self.settings.gemini_fallback_model, payload)
+        current_profile = build_compact_match_profile(perfil) if self.prompt_version in SUBSTANTIVE_PROMPT_FILES else perfil
+        body: dict[str, Any] = {"perfil": current_profile, "oportunidad": oportunidad, "requisitos": requisitos}
+        # Previous scores are not evidence and must not anchor fresh evaluations.
+        payload = compact_json(body)
+        # A sent request with no valid response has uncertain cost. Never create
+        # an additional paid call merely to hide an error or malformed response.
+        return self._analyze_with_model(self.settings.gemini_model, payload)
 
     def _analyze_with_model(self, model: str, payload: str) -> MatchAnalysisResult:
         response = self.client.models.generate_content(
@@ -70,7 +80,7 @@ class MatchAnalyzer:
             config=types.GenerateContentConfig(
                 system_instruction=self.prompt,
                 response_mime_type="application/json",
-                response_schema=MatchAnalysisV1,
+                response_schema=SubstantiveMatchAnalysis if self.prompt_version in SUBSTANTIVE_PROMPT_FILES else MatchAnalysisV1,
                 temperature=0,
                 max_output_tokens=8192,
             ),
@@ -78,7 +88,8 @@ class MatchAnalyzer:
         if is_truncated(response):
             raise TruncatedResponseError("Match analysis truncated by max output tokens")
         raw_json = parse_json_response(response.text or "{}")
-        analysis = MatchAnalysisV1.model_validate(raw_json)
+        schema = SubstantiveMatchAnalysis if self.prompt_version in SUBSTANTIVE_PROMPT_FILES else MatchAnalysisV1
+        analysis = schema.model_validate(raw_json)
         usage = response.usage_metadata
         input_tokens = int(getattr(usage, "prompt_token_count", 0) or 0)
         output_tokens = int(getattr(usage, "candidates_token_count", 0) or 0)

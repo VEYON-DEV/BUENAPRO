@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import json
 import logging
+from hashlib import sha256
 from datetime import datetime, timezone
 
 from buenapro_worker.jobs.send_notification import enqueue_match_notifications
-from buenapro_worker.matching.analyzer import MatchAnalyzer
+from buenapro_worker.matching.analyzer import ANALYSIS_PROMPT_VERSION, MatchAnalyzer, read_analysis_prompt
 from buenapro_worker.matching.profile_evidence import EVIDENCE_POLICY_VERSION, evidence_only_profile, guard_participation_actions
+from buenapro_worker.matching.compact_context import COMPACT_PROFILE_VERSION, build_compact_match_profile
+from buenapro_worker.matching.substantive_policy import split_match_requirements, bind_substantive_requirements, guard_economic_comparisons
 from buenapro_worker.normalization.facets import canonical_hash
 from buenapro_worker.queue.repository import JobRepository
 from buenapro_worker.settings import Settings
@@ -14,12 +17,11 @@ from buenapro_worker.settings import Settings
 
 logger = logging.getLogger(__name__)
 
-# El score debe vivir dentro de la banda de su veredicto; el prompt lo pide,
-# pero el clamp lo garantiza (un "rojo 35" contradice al semaforo).
+# Evidence uncertainty does not itself cap capability at 49 points.
 VERDICT_SCORE_BANDS = {
     "verde": (85, 100),
     "ambar": (50, 84),
-    "gris": (30, 49),
+    "gris": (0, 100),
     "rojo": (0, 29),
 }
 
@@ -33,6 +35,8 @@ def _econ_capacity(profile: dict) -> float | None:
     values = []
     econ = profile.get("econ_experience_json") or {}
     if isinstance(econ, dict):
+        if econ.get("no_global_sum") or any(e.get("documentary_summary", {}).get("sources") for e in profile.get("experience_json", []) if isinstance(e, dict)):
+            return None
         # Area declarations are not interchangeable or additive capacity. A
         # specialty/currency/evidence comparison is required before arithmetic.
         if isinstance(econ.get("areas"), list) and econ["areas"]:
@@ -154,10 +158,11 @@ def analyze_match_job(
 
     contract = repo.conn.execute(
         """
-        SELECT c.codigo, c.descripcion, c.entidad_nombre, te.summary_json
+        SELECT c.codigo, c.descripcion, c.entidad_nombre, te.summary_json,
+               te.id AS extraction_id, te.quality, te.requires_human_review
         FROM seace_contracts c
         LEFT JOIN LATERAL (
-          SELECT tx.summary_json
+          SELECT tx.id, tx.summary_json, tx.quality, tx.requires_human_review
           FROM contract_documents d
           JOIN tdr_extractions tx ON tx.contract_document_id = d.id AND tx.is_current = true
           WHERE d.id_contrato = c.id_contrato
@@ -170,19 +175,22 @@ def analyze_match_job(
     ).fetchone()
     if contract is None:
         raise ValueError(f"Contract not found: {id_contrato}")
+    if not contract["extraction_id"] or contract["quality"] == "failed" or contract["requires_human_review"]:
+        raise ValueError("Current valid documentary extraction required before LLM2")
 
     facet_rows = repo.conn.execute(
         """
         SELECT facet, label, required, details_json, facet_hash
         FROM requirement_facets
-        WHERE id_contrato = %s AND is_current = true
+        WHERE id_contrato = %s AND extraction_id = %s AND is_current = true
         ORDER BY facet, id
         """,
-        (id_contrato,),
+        (id_contrato, contract["extraction_id"]),
     ).fetchall()
 
     facets_hash = canonical_hash(sorted(str(row["facet_hash"]) for row in facet_rows))
     profile_hash = str(profile["profile_hash"] or "")
+    prompt_sha256 = sha256(read_analysis_prompt().encode()).hexdigest()
 
     existing = repo.conn.execute(
         "SELECT id, verdict, score, breakdown_json FROM matches WHERE profile_id = %s AND id_contrato = %s",
@@ -191,7 +199,12 @@ def analyze_match_job(
     if existing is not None and not force:
         meta = (existing["breakdown_json"] or {}).get("meta") if isinstance(existing["breakdown_json"], dict) else None
         if (meta and meta.get("facets_hash") == facets_hash and meta.get("profile_hash") == profile_hash
-                and meta.get("evidence_policy_version") == EVIDENCE_POLICY_VERSION):
+                and meta.get("prompt_version") == ANALYSIS_PROMPT_VERSION
+                and meta.get("prompt_sha256") == prompt_sha256
+                and meta.get("evidence_policy_version") == EVIDENCE_POLICY_VERSION
+                and meta.get("context_version") == COMPACT_PROFILE_VERSION
+                and meta.get("semantic_guard_version") == "economic_comparison_guard_v1"
+                and meta.get("extraction_id") == contract["extraction_id"]):
             if source == "automatic":
                 enqueue_match_notifications(
                     repo,
@@ -201,39 +214,13 @@ def analyze_match_job(
             logger.info("analyze_match_skipped_unchanged", extra={"id_contrato": id_contrato, "profile_id": profile_id})
             return {"skipped": "unchanged", "match_id": int(existing["id"])}
 
-    requisitos = [
-        {
-            "tipo": row["facet"],
-            "requisito": row["label"],
-            "obligatorio": row["required"],
-            "detalle": row["details_json"],
-        }
-        for row in facet_rows
-        # Las penalidades no son requisitos del postor; el prompt tampoco las evalua.
-        if row["facet"] != "penalty_condition"
-    ]
+    requisitos, administrative_checklist = split_match_requirements(facet_rows)
 
     def _clip(text: object, limit: int) -> str | None:
         value = str(text).strip() if text else None
         if not value:
             return None
         return value if len(value) <= limit else f"{value[:limit].rsplit(' ', 1)[0]}…"
-
-    # Re-analisis incremental: el analisis previo va como base para que el
-    # modelo mantenga estados/score estables y solo ajuste lo que cambio.
-    analisis_previo = None
-    if existing is not None and isinstance(existing["breakdown_json"], dict):
-        previous_reqs = existing["breakdown_json"].get("requisitos")
-        if previous_reqs and (existing["breakdown_json"].get("meta") or {}).get("evidence_policy_version") == EVIDENCE_POLICY_VERSION:
-            analisis_previo = {
-                "veredicto": existing["verdict"],
-                "score": existing["score"],
-                "requisitos": [
-                    {key: item.get(key) for key in ("requisito", "categoria", "estado", "critico")}
-                    for item in previous_reqs
-                    if isinstance(item, dict)
-                ],
-            }
 
     profile_evidence = evidence_only_profile({field: profile[field] for field in PROFILE_FIELDS})
     result = MatchAnalyzer(settings).analyze(
@@ -245,18 +232,20 @@ def analyze_match_job(
             "resumen": contract["summary_json"],
         },
         requisitos=requisitos,
-        analisis_previo=analisis_previo,
     )
     analysis = result.analysis
-    requisitos_final = [item.model_dump() for item in analysis.requisitos]
-
-    # La comparación económica es aritmética: se corrige por regla, no por LLM.
-    _apply_econ_rule(
-        requisitos_final,
-        exigido=_econ_exigido(facet_rows),
-        capacidad=_econ_capacity(profile_evidence),
-        consorcio_status=((contract["summary_json"] or {}).get("participation") or {}).get("consorcio", {}).get("status", "not_identified"),
+    requisitos_final = bind_substantive_requirements(
+        [item.model_dump() for item in analysis.requisitos], requisitos, build_compact_match_profile(profile_evidence),
     )
+    validation_issues = guard_economic_comparisons(requisitos_final, requisitos, build_compact_match_profile(profile_evidence))
+    validation_issues += [
+        {"source_index": final["source_index"], "code": "unsupported_model_judgement"}
+        for raw, final in zip(analysis.requisitos, requisitos_final, strict=True)
+        if raw.estado != final["estado"] and not any(issue["source_index"] == final["source_index"] for issue in validation_issues)
+    ]
+    # A global/per-area amount is not compatible capacity. Keep grounded
+    # comparisons and their limits; never substitute a max/sum or force every
+    # documentary judgement back to review merely because areas exist.
     guarded_actions = guard_participation_actions(
         requisitos_final, list(analysis.acciones_recomendadas), contract["summary_json"],
     )
@@ -266,27 +255,11 @@ def analyze_match_job(
     final_verdict = _derive_verdict(requisitos_final)
     final_score = clamp_score(final_verdict, analysis.score)
 
-    # Ancla determinista: si ningun requisito cambio de estado respecto al
-    # analisis previo, el veredicto y score anteriores se mantienen tal cual
-    # (la variabilidad del modelo no debe mover el numero sin causa).
-    if analisis_previo is not None:
-        def _states(items: list[dict]) -> set[tuple[str, str]]:
-            result_set: set[tuple[str, str]] = set()
-            for data in items:
-                requisito = str(data.get("requisito") or "").strip().lower()
-                estado = str(data.get("estado") or "")
-                if requisito:
-                    result_set.add((requisito, estado))
-            return result_set
-
-        if _states(requisitos_final) == _states(analisis_previo["requisitos"]):
-            final_verdict = str(existing["verdict"])
-            final_score = clamp_score(final_verdict, int(existing["score"]))
-
     # Truncado defensivo: el prompt exige brevedad, pero un modelo verboso no
     # debe romper la UI con parrafos.
     breakdown = {
-        "resumen": _clip(analysis.resumen, 320),
+        "resumen": ("La evaluación requiere contrastar experiencia y respaldos antes de publicar el puntaje. Revisa las condiciones pendientes indicadas abajo." if validation_issues else _clip(analysis.resumen, 320)),
+        "administrative_checklist": administrative_checklist,
         "requisitos": [
             {
                 **item,
@@ -303,6 +276,15 @@ def analyze_match_job(
             "model": result.model,
             "evidence_policy_version": EVIDENCE_POLICY_VERSION,
             "prompt_version": result.prompt_version,
+            "prompt_sha256": prompt_sha256,
+            "context_version": COMPACT_PROFILE_VERSION,
+            "extraction_id": contract["extraction_id"],
+            "score_validated": not bool(validation_issues),
+            "raw_model_score": analysis.score,
+            "raw_model_verdict": analysis.veredicto,
+            "raw_model_summary": analysis.resumen,
+            "semantic_guard_version": "economic_comparison_guard_v1",
+            "validation_issues": validation_issues,
             "profile_hash": profile_hash,
             "facets_hash": facets_hash,
             "input_tokens": result.input_tokens,

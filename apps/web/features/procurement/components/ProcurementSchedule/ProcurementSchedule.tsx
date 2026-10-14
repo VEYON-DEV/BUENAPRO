@@ -37,7 +37,7 @@ function ScheduleDate({ value, precision }: {
 /** Shared official platform stages. No document extraction or inferred deadlines. */
 export function ProcurementSchedule({ stages, source, fetchedAt, compact = false }: {
   stages: ProcurementScheduleStage[];
-  source: "prod4" | "prod6";
+  source: "prod2" | "prod4" | "prod6";
   fetchedAt?: string | null;
   compact?: boolean;
 }) {
@@ -92,7 +92,7 @@ export function ProcurementSchedule({ stages, source, fetchedAt, compact = false
       ) : <p className={styles.empty}>SEACE no informó etapas para este proceso. Verifica el cronograma en el portal oficial.</p>}
       {remaining.length ? <details className={styles.otherStages}><summary>Ver las {remaining.length} etapas siguientes</summary><ol className={styles.stages}>{remaining.map(renderStage)}</ol></details> : null}
       <footer className={styles.footer}>
-        <span>Fuente: SEACE {source === "prod4" ? "Oportunidades" : "Contratos menores"}</span>
+        <span>Fuente: SEACE {source === "prod2" ? "Buscador público · PROD2" : source === "prod4" ? "Oportunidades" : "Contratos menores"}</span>
         {fetchedAt ? <span>Consultado: {formatDateTime(fetchedAt)}</span> : null}
         <p>La línea indica plazos, no acredita que una etapa se ejecutó ni que puedes postular. Preguntas, respuestas y ofertas tienen fechas distintas.</p>
       </footer>

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { Building2, Radio, ChevronLeft, ChevronRight, RefreshCw, Clock3, ArrowUpRight, X, CalendarDays } from "lucide-react";
+import { Radio, ChevronLeft, ChevronRight, RefreshCw, Clock3, ArrowUpRight, X, CalendarDays } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -85,7 +85,6 @@ export function TimelineBoard({ initial, initialParams }: { initial: TimelineRes
     <div className={styles.topline}>
       <nav className={styles.sources} aria-label="Fuente del cronograma">
         <Link href={sourceHref("prod6")} className={source === "prod6" ? styles.sourceActive : ""} aria-current={source === "prod6" ? "page" : undefined}><Radio size={18} aria-hidden="true" />Contratos menores</Link>
-        <Link href={sourceHref("prod4")} className={source === "prod4" ? styles.sourceActive : ""} aria-current={source === "prod4" ? "page" : undefined}><Building2 size={18} aria-hidden="true" />Concursos SEACE</Link>
       </nav>
       <p className={styles.urgency}><Clock3 size={17} aria-hidden="true" /><strong>{urgent}</strong> cierran en las próximas 72 h{urgentDays ? <span> · {urgentDays} próximos con hora no informada</span> : null}</p>
     </div>

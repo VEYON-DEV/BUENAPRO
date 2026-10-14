@@ -1,18 +1,24 @@
 "use client";
 
-import { ExternalLink, FileText, X } from "lucide-react";
+import { ExternalLink, FileCheck2, FileText, X } from "lucide-react";
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { ProcurementSchedule } from "@/features/procurement";
+import { ParticipationStatus, ParticipationTerms, ProcurementSchedule } from "@/features/procurement";
+import { participationReading } from "@/lib/participationTerms";
+import { keywordAffinitySummary } from "@/lib/keywordAffinity";
+import { scoreTone } from "@/lib/scorePresentation";
 import type { ProcurementScheduleStage } from "@/lib/procurementSchedule";
 import { verdictShortLabels } from "@/lib/extraction/opportunity";
 import { formatShortDateTime } from "@/lib/format/date";
+import { seaceDetailRequest } from "../../api/seaceDetail";
+import { analysisPresentation, provisionalAnalysisScore } from "../../model/analysisPresentation";
 import styles from "./Prod4OpportunityList.module.css";
 
 export type Prod4OpportunitySummary = {
   id_procedimiento: string;
+  id_convocatoria?: string;
   opportunity_id: string;
   nomenclatura: string | null;
   title: string | null;
@@ -34,21 +40,29 @@ export type Prod4OpportunitySummary = {
   technology_segments: string[];
   items_count: number;
   documents_count: number;
-  source_window_status: "current" | "exited";
+  source_window_status: "current" | "exited" | "observed";
+  official_schedule?: ProcurementScheduleStage[];
+  affinity?: { index: number | null; label: string };
   actionability: string;
   fit_points: number | null;
+  keyword_points?: number | null;
+  fit_basis?: "profile_keywords";
   fit_score: number | null;
   fit_level: number | null;
   business_line_name: string | null;
-  keyword_hits: Array<{ keyword: string }> | null;
+  keyword_hits: Array<{ keyword: string; match?: string; points?: number }> | null;
   match_score: number | null;
   match_verdict: string | null;
+  match_id?: string | null;
+  match_review_required?: boolean;
+  provisional_score?: number | null;
+  participation_extraction?: unknown;
 };
 
 type Prod4Detail = {
   process: Prod4OpportunitySummary;
   items: Array<{ nro_item: number; cubso_code: string | null; description: string | null; quantity: number | null; unit: string | null }>;
-  documents: Array<{ codigo_alfresco: string; name: string | null; document_type: string | null; extension: string | null; published_at: string | null; source_url: string | null }>;
+  documents: Array<{ codigo_alfresco: string; name: string | null; document_type: string | null; extension: string | null; published_at: string | null; source_url: string | null; download_url?: string | null }>;
   schedule: Array<{ position: number; stage_key: string | null; stage_name: string | null; starts_at: string | null; ends_at: string | null }>;
   official_schedule: ProcurementScheduleStage[];
 };
@@ -62,6 +76,13 @@ function deadlineFor(row: Prod4OpportunitySummary) {
 }
 
 function deadlineLabel(row: Prod4OpportunitySummary) {
+  const official = row.official_schedule?.find(stage => stage.kind === "proposals")
+    ?? row.official_schedule?.find(stage => stage.kind === "registration");
+  if (official?.endsAt && official.endPrecision === "day") {
+    const date = new Intl.DateTimeFormat("es-PE", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" })
+      .format(new Date(`${official.endsAt}T12:00:00Z`));
+    return `${official.kind === "proposals" ? "Propuestas" : "Registro"} · ${date} · Sin hora`;
+  }
   const deadline = deadlineFor(row);
   if (!deadline) return "Cronograma por confirmar";
   const prefix = row.proposals_closes_at ? "Propuestas" : "Registro";
@@ -74,15 +95,42 @@ function affinityLabel(level: number) {
   return "Rubro general";
 }
 
-function AffinityMark({ row }: { row: Prod4OpportunitySummary }) {
-  if (row.match_score != null && row.match_verdict) {
-    const score = Math.max(0, Math.min(100, Number(row.match_score) || 0));
+function AffinityMark({ row, source }: { row: Prod4OpportunitySummary; source: "prod2" | "prod4" }) {
+  const analysisInput = { matchId: row.match_id, score: row.match_score, verdict: row.match_verdict, reviewRequired: row.match_review_required };
+  const analysis = analysisPresentation(analysisInput);
+  const provisionalScore = provisionalAnalysisScore(analysisInput, row.provisional_score);
+  if (analysis === "review" && provisionalScore != null) return <span
+    aria-label={`Puntaje provisional: ${provisionalScore} de 100. Por validar.`}
+    className={[styles.provisionalAffinity, styles[`score_${scoreTone(provisionalScore)}`]].join(" ")}
+    data-score-tone={scoreTone(provisionalScore)} title="<30 rojo · 30–80 amarillo · >80 verde">
+    <span className={styles.scoreRing} style={{ "--score": `${provisionalScore * 3.6}deg` } as CSSProperties}>{provisionalScore}</span>
+    <span><strong>Provisional</strong><small>Por validar</small></span>
+  </span>;
+  if (analysis === "review") return <span className={styles.analysisReview}>
+    <strong><FileCheck2 aria-hidden="true" size={14} />Analizado</strong>
+    <span>Puntaje por validar</span>
+  </span>;
+  if (analysis === "evaluated" && row.match_verdict) {
+    const score = Number(row.match_score);
     return (
-      <span aria-label={`Evaluación de requisitos: ${score} de 100, ${verdictShortLabels[row.match_verdict] ?? row.match_verdict}`} className={[styles.finalAffinity, styles[`verdict_${row.match_verdict}`] ?? ""].join(" ")}>
+      <span aria-label={`Evaluación de requisitos: ${score} de 100, ${verdictShortLabels[row.match_verdict] ?? row.match_verdict}`} className={[styles.finalAffinity, styles[`score_${scoreTone(score)}`]].join(" ")} data-score-tone={scoreTone(score)} title="<30 rojo · 30–80 amarillo · >80 verde">
         <span className={styles.scoreRing} style={{ "--score": `${score * 3.6}deg` } as CSSProperties}>{score}</span>
         <strong>{verdictShortLabels[row.match_verdict] ?? row.match_verdict}</strong>
       </span>
     );
+  }
+  if (source === "prod2") {
+    const affinity = keywordAffinitySummary(row);
+    if (!affinity) return <span className={styles.noAffinity}>Sin afinidad calculada</span>;
+    return <span aria-label={affinity.description} className={[styles.preliminaryAffinity, styles.keywordAffinity].join(" ")} title={affinity.description}>
+      <span aria-hidden="true" className={styles.fitDots}>{[1, 2, 3].map(dot => <i className={dot <= affinity.level ? styles.fitDotOn : styles.fitDotOff} key={dot} />)}</span>
+      <strong>{affinity.label}</strong>
+    </span>;
+  }
+  if (row.affinity?.index != null) {
+    return <span className={styles.preliminaryAffinity} title="Índice de afinidad comercial. No es porcentaje de cumplimiento ni probabilidad de adjudicación.">
+      <strong>{Math.round(row.affinity.index)} / 100</strong><span>{row.affinity.label}</span>
+    </span>;
   }
   const level = Number(row.fit_level);
   if (!Number.isInteger(level) || level < 1 || level > 3) {
@@ -98,16 +146,21 @@ function AffinityMark({ row }: { row: Prod4OpportunitySummary }) {
   );
 }
 
-export function Prod4OpportunityList({ rows }: { rows: Prod4OpportunitySummary[] }) {
+export function Prod4OpportunityList({ rows, source = "prod4", profileId }: { rows: Prod4OpportunitySummary[]; source?: "prod2" | "prod4"; profileId?: string }) {
+  const rowId = (row: Prod4OpportunitySummary) => source === "prod2" ? row.id_convocatoria ?? row.id_procedimiento : row.id_procedimiento;
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [detail, setDetail] = useState<Prod4Detail | null>(null);
+  const [storedDetail, setDetail] = useState<Prod4Detail | null>(null);
   const [detailStatus, setDetailStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const primary = useMemo(
-    () => rows.find((row) => row.id_procedimiento === selectedId) ?? null,
-    [rows, selectedId],
+    () => rows.find((row) => rowId(row) === selectedId) ?? null,
+    [rows, selectedId, source],
   );
+  const detail = primary && storedDetail && rowId(storedDetail.process) === rowId(primary) ? storedDetail : null;
+  const previewRow = detail?.process ?? primary;
+  const previewAffinity = source === "prod2" && previewRow ? keywordAffinitySummary(previewRow) : null;
+  const previewAnalysis = previewRow ? analysisPresentation({ matchId: previewRow.match_id, score: previewRow.match_score, verdict: previewRow.match_verdict, reviewRequired: previewRow.match_review_required }) : "none";
 
-  const firstId = rows[0]?.id_procedimiento ?? null;
+  const firstId = rows[0] ? rowId(rows[0]) : null;
   useEffect(() => {
     if (window.matchMedia("(min-width: 1401px)").matches) {
       setSelectedId((current) => current ?? firstId);
@@ -115,10 +168,10 @@ export function Prod4OpportunityList({ rows }: { rows: Prod4OpportunitySummary[]
   }, [firstId]);
 
   useEffect(() => {
-    if (selectedId && !rows.some((row) => row.id_procedimiento === selectedId)) {
-      setSelectedId(window.matchMedia("(min-width: 1401px)").matches ? rows[0]?.id_procedimiento ?? null : null);
+    if (selectedId && !rows.some((row) => rowId(row) === selectedId)) {
+      setSelectedId(window.matchMedia("(min-width: 1401px)").matches ? firstId : null);
     }
-  }, [rows, selectedId]);
+  }, [rows, selectedId, source, firstId]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -129,11 +182,7 @@ export function Prod4OpportunityList({ rows }: { rows: Prod4OpportunitySummary[]
     let cancelled = false;
     setDetail(null);
     setDetailStatus("loading");
-    fetch(`/api/prod4/opportunities/${encodeURIComponent(selectedId)}`)
-      .then((response) => {
-        if (!response.ok) throw new Error("No se pudo cargar la ficha");
-        return response.json();
-      })
+    seaceDetailRequest<Prod4Detail>(source, selectedId, profileId)
       .then((payload: Prod4Detail) => {
         if (cancelled) return;
         setDetail(payload);
@@ -145,11 +194,11 @@ export function Prod4OpportunityList({ rows }: { rows: Prod4OpportunitySummary[]
         setDetailStatus("error");
       });
     return () => { cancelled = true; };
-  }, [selectedId]);
+  }, [selectedId, source, profileId]);
 
   if (!rows.length) {
     return (
-      <EmptyState title="No hay concursos de tecnología con esos filtros" action={{ label: "Limpiar filtros", href: "/feed?source=prod4" }}>
+      <EmptyState title="No hay concursos con esos filtros" action={{ label: "Limpiar filtros", href: `/feed?source=${source}${profileId ? `&profile_id=${encodeURIComponent(profileId)}` : ""}` }}>
         Prueba con bienes y servicios juntos o cambia el término de búsqueda.
       </EmptyState>
     );
@@ -159,30 +208,28 @@ export function Prod4OpportunityList({ rows }: { rows: Prod4OpportunitySummary[]
     <section className={[styles.board, primary ? "" : styles.noPreview].join(" ")}>
       <div className={styles.list}>
         <div className={styles.listHead}>
-          <span>Procedimiento</span><span>Objeto</span><span>Entidad</span><span>Tipo</span><span>Próxima fecha</span><span>Afinidad</span>
+          <span>Procedimiento / objeto</span><span>Entidad</span><span>Subcontratación</span><span>Consorcio</span><span>Próxima fecha</span><span>Análisis / afinidad</span>
         </div>
         <div className={styles.rows}>
           {rows.map((row) => (
-            <article className={[styles.row, row.id_procedimiento === selectedId ? styles.active : ""].join(" ")} key={row.id_procedimiento}>
-              <button className={styles.rowMain} onClick={() => setSelectedId(row.id_procedimiento === selectedId ? null : row.id_procedimiento)} type="button">
-                <div className={styles.codeCell}>
-                  <strong>{row.nomenclatura ?? row.id_procedimiento}</strong>
-                  <span className={styles.sourceTag}>Concurso SEACE</span>
-                </div>
+            <article className={[styles.row, rowId(row) === selectedId ? styles.active : ""].join(" ")} key={rowId(row)}>
+              <button className={styles.rowMain} onClick={() => setSelectedId(rowId(row) === selectedId ? null : rowId(row))} type="button" aria-expanded={rowId(row) === selectedId}>
                 <div className={styles.objectCell}>
+                  <span className={styles.code} translate="no">{row.nomenclatura ?? rowId(row)}</span>
                   <strong>{row.title || row.description || "Objeto sin descripción"}</strong>
-                  <span className={styles.meta}>{row.technology_segments?.length ? `CUBSO ${row.technology_segments.join(", ")}` : "Tecnología"} · {row.documents_count ?? 0} documentos</span>
+                  <span className={styles.meta}>{objectLabel(row.object_type)} · {row.documents_count ?? 0} documentos</span>
                 </div>
                 <div className={styles.buyerCell}>
                   <span>{row.buyer_name || "Entidad no informada"}</span>
                   <span className={styles.meta}>{row.region || "Perú"}</span>
                 </div>
-                <span className={styles.objectTag}>{objectLabel(row.object_type)}</span>
+                <div className={styles.participationCell}><ParticipationStatus label="Subcontratación" term={participationReading(row.participation_extraction).subcontratacion} /></div>
+                <div className={styles.participationCell}><ParticipationStatus label="Consorcio" kind="consorcio" term={participationReading(row.participation_extraction).consorcio} /></div>
                 <div className={styles.dateCell}>
                   <strong>{deadlineLabel(row)}</strong>
-                  <span className={styles.meta}>{row.source_window_status === "current" ? "En radar oficial" : "Fuera del radar"}</span>
+                  <span className={styles.meta}>{source === "prod2" ? "Cronograma consultado" : row.source_window_status === "current" ? "En radar oficial" : "Fuera del radar"}</span>
                 </div>
-                <AffinityMark row={row} />
+                <AffinityMark row={row} source={source} />
               </button>
             </article>
           ))}
@@ -198,21 +245,29 @@ export function Prod4OpportunityList({ rows }: { rows: Prod4OpportunitySummary[]
           <span className={styles.previewCode}>{primary.nomenclatura ?? primary.id_procedimiento}</span>
           <h2>{primary.title || primary.description || "Objeto sin descripción"}</h2>
           <div className={styles.pills}><span>{objectLabel(primary.object_type)}</span><span>Procedimiento de selección</span></div>
-          <div className={styles.previewAffinity}><span>Afinidad con tu empresa</span><AffinityMark row={detail?.process ?? primary} /></div>
-          <Link className={styles.openOfficial} href={`/oportunidad/seace/${primary.id_procedimiento}`}>Ver detalle completo →</Link>
-          <p className={styles.eligibility}>La presencia en PROD4 no confirma que aún puedas presentar una oferta. Revisa el cronograma y los requisitos oficiales.</p>
+          <div className={styles.previewAffinityGroup}>
+            <div className={styles.previewAffinity}><span>{previewAnalysis !== "none" ? "Análisis de requisitos" : "Afinidad con tu empresa"}</span><AffinityMark row={detail?.process ?? primary} source={source} /></div>
+            {previewAnalysis === "review" ? <p className={styles.analysisContext}>El análisis está disponible en el detalle. El puntaje sigue por validar.</p> : null}
+            {previewAffinity ? <p className={styles.keywordContext} title={previewAffinity.description}>
+              <strong>{previewAffinity.lineName}</strong><span>{previewAffinity.pointLabel} de 45 puntos por palabras clave</span>
+              <span>{previewAffinity.hits.length ? `Coincidencias: ${previewAffinity.hits.join(", ")}` : "Sin coincidencias de palabras clave"}</span>
+            </p> : null}
+          </div>
+          <Link className={styles.openOfficial} href={`${source === "prod2" ? "/oportunidad/prod2" : "/oportunidad/seace"}/${rowId(primary)}${source === "prod2" && profileId ? `?profile_id=${encodeURIComponent(profileId)}` : ""}`}>Ver detalle completo →</Link>
+          <p className={styles.eligibility}>Revisa el cronograma y la modalidad antes de participar. La afinidad comercial no confirma que puedas presentar una oferta.</p>
           <dl className={styles.facts}>
             <div><dt>Entidad</dt><dd>{primary.buyer_name || "No informada"}</dd></div>
             <div><dt>Tipo de proceso</dt><dd>{primary.procedure_type || "Por confirmar"}</dd></div>
           </dl>
+          <ParticipationTerms compact reading={participationReading((detail?.process ?? primary).participation_extraction)} />
           {detailStatus === "loading" ? <p className={styles.loading} role="status">Cargando cronograma y documentos…</p> : null}
           {detailStatus === "error" ? <p className={styles.error} role="alert">No se pudo cargar la ficha. Selecciona el concurso otra vez para reintentar.</p> : null}
           {detail ? (
             <>
-            <ProcurementSchedule stages={detail.official_schedule ?? []} source="prod4" fetchedAt={detail.process.schedule_fetched_at ?? detail.process.detail_fetched_at} compact />
+            <ProcurementSchedule stages={detail.official_schedule ?? []} source={source} fetchedAt={detail.process.schedule_fetched_at ?? detail.process.detail_fetched_at} compact />
             <div className={styles.detailSections}>
               {detail.items.length ? <details><summary>Ítems ({detail.items.length})</summary><ul>{detail.items.slice(0, 6).map((item, index) => <li key={`${item.nro_item}-${index}`}><strong>{item.description || `Ítem ${item.nro_item}`}</strong><span>{item.cubso_code ? `CUBSO ${item.cubso_code}` : "Sin código CUBSO"}</span></li>)}</ul></details> : null}
-              {detail.documents.length ? <details open><summary>Documentos ({detail.documents.length})</summary><ul>{detail.documents.slice(0, 6).map((document, index) => <li key={`${document.codigo_alfresco}-${index}`}><FileText aria-hidden="true" size={15} /><span>{document.name || document.document_type || "Documento"}</span>{document.extension?.toLowerCase().replace(/^\./, "") === "pdf" ? <a aria-label={`Abrir ${document.name || "documento"}`} href={`/api/prod4/opportunities/${primary.id_procedimiento}/documents/${encodeURIComponent(document.codigo_alfresco)}`} rel="noopener noreferrer" target="_blank">Abrir PDF <ExternalLink aria-hidden="true" size={13} /></a> : <small>Disponible en SEACE</small>}</li>)}</ul></details> : null}
+              {detail.documents.length ? <details open><summary>Documentos ({detail.documents.length})</summary><ul>{detail.documents.slice(0, 6).map((document, index) => <li key={`${document.codigo_alfresco}-${index}`}><FileText aria-hidden="true" size={15} /><span>{document.name || document.document_type || "Documento"}</span>{source === "prod2" ? document.download_url ? <a aria-label={`Abrir ${document.name || "documento"}`} href={document.download_url} rel="noopener noreferrer" target="_blank">Abrir PDF <ExternalLink aria-hidden="true" size={13} /></a> : <small>Consulta el portal oficial</small> : document.extension?.toLowerCase().replace(/^\./, "") === "pdf" ? <a aria-label={`Abrir ${document.name || "documento"}`} href={`/api/prod4/opportunities/${primary.id_procedimiento}/documents/${encodeURIComponent(document.codigo_alfresco)}`} rel="noopener noreferrer" target="_blank">Abrir PDF <ExternalLink aria-hidden="true" size={13} /></a> : <small>Disponible en SEACE</small>}</li>)}</ul></details> : null}
             </div>
             </>
           ) : null}
