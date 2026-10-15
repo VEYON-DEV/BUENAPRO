@@ -893,6 +893,7 @@ def validate_recommendations(value: dict, payload: dict) -> dict:
     if [r["source_index"] for r in result["requisitos"]] != expected:
         raise ValueError("Recommendation requirement coverage/order changed")
     refs = {d["ref"] for d in payload["state"]["profile"]["documents"]}
-    if any(not set(r["evidence_refs"]) <= refs for r in result["requisitos"]):
+    profile_refs = {p["ref"] for p in payload["state"]["profile"].get("professionals", [])}
+    if any(not set(r["evidence_refs"]) <= refs | profile_refs for r in result["requisitos"]):
         raise ValueError("Recommendation cites an unknown documentary reference")
     return result

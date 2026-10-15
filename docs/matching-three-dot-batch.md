@@ -114,3 +114,9 @@ case_key y requisitos rN, convertidos sin alterar texto a arrays canónicos tras
 recibirlos. Máximo dos casos y16 requisitos combinados por petición (un caso con
 más requisitos se conserva completo), sin cambiar modelo ni JEV. La validación
 local exige de nuevo todas las identidades y aliases; no publica omisiones.
+
+Las referencias profesionales Pn presentes en el perfil congelado se conservan
+como `profile_evidence_refs` con `source_path` y SHA del snapshot. No se convierten
+en referencias D ni CV acreditados. El guard rechaza cualquier alias que no exista
+en esos dos namespaces; una cita profesional legítima puede conciliarse desde la
+respuesta ya guardada, sin pagar otra generación ni modificar el puntaje.

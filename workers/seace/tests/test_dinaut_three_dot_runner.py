@@ -245,3 +245,24 @@ def test_old_pg_claim_never_authorizes_a_fresh_dispatch(tmp_path,mutate):
     with pytest.raises(runner.ProviderBlocked):
         runner.verify_owned_claim(Connection(),{'id':4,'claim_token':'owner'},case,
                                    {'pipeline_request_hash':'expected'},tmp_path)
+
+
+def test_professional_refs_keep_profile_provenance_without_inventing_document_ids():
+    case=sample_case()
+    scoring={'score':71,'requisitos':[{'source_index':1,'requisito':'Especialista',
+        'categoria':'perfiles','estado':'requiere_revision','critico':True,'evidence_refs':[]}],
+        'coverage':{'partial_score':False},'administrative_checklist':[],'source_review_required':True}
+    recommendations={'resumen':'Falta acreditar experiencia del especialista.','requisitos':[{
+        'source_index':1,'evidencia':'Perfil P1 en la ficha.','brecha':'Falta experiencia específica.',
+        'accion':'Aportar certificados.','evidence_refs':['P1']}],'acciones_recomendadas':[]}
+    cards={'reference_map':{},'professionals':[{'ref':'P1','source_path':'team_json/0'}]}
+    item={'pipeline_request_hash':'pipeline','binding':{'profile':'profile-sha'}}
+    usage={'input_tokens':100,'output_tokens':40,'cost_usd':'0.000001','providers':{}}
+    result,_=runner.compose(case,{},scoring,recommendations,cards,item,usage)
+    row=result['requisitos'][0]
+    assert row['evidence_refs']==[]
+    assert row['profile_evidence_refs']==[{'ref':'P1','source_path':'team_json/0',
+        'profile_snapshot_sha256':'profile-sha','documentary_accreditation':False}]
+    assert result['capacity_scoring']['score']==71
+    recommendations['requisitos'][0]['evidence_refs']=['P99']
+    with pytest.raises(ValueError):runner.compose(case,{},scoring,recommendations,cards,item,usage)

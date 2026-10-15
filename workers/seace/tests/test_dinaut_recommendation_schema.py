@@ -106,3 +106,16 @@ def test_established_schema_uses_required_named_rows_and_exact_lossless_conversi
     broken=deepcopy(mapped);broken['seace_prod2-19']['requisitos']['r2']['score']=100
     with pytest.raises(ValueError):normalize_map_output({'evaluations':broken},list(original))
     with pytest.raises(ValueError):normalize_map_output({'evaluations':mapped},['other'])
+
+
+def test_existing_professional_reference_is_not_fabricated_documentary_evidence():
+    sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'src'))
+    from buenapro_worker.matching.jev_recommendations import validate_recommendations
+    payload={'state':{'requirements':[{'source_index':1}],
+        'profile':{'documents':[{'ref':'D1'}],'professionals':[{'ref':'P1','source_path':'team_json/0'}]}}}
+    value={'resumen':'Experiencia profesional pendiente.', 'requisitos':[{'source_index':1,
+        'evidencia':'Perfil P1 de la ficha de empresa.','brecha':'Falta experiencia específica.',
+        'accion':'Acreditar experiencia compatible.','evidence_refs':['P1']}], 'acciones_recomendadas':[]}
+    assert validate_recommendations(value,payload)['requisitos'][0]['evidence_refs']==['P1']
+    payload['state']['profile']['professionals']=[]
+    with pytest.raises(ValueError):validate_recommendations(value,payload)

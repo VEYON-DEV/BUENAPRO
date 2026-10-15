@@ -371,12 +371,20 @@ def compose(case,payload,scoring,recommendations,cards,item,usage):
     explained={r['source_index']:r for r in recommendations['requisitos']}
     rows=[]
     refs=cards['reference_map']
+    professional_refs={p['ref']:p for p in cards.get('professionals',[])}
     for original in scoring['requisitos']:
         explanation=explained[original['source_index']]
+        if any(ref not in refs and ref not in professional_refs for ref in
+               [*original.get('evidence_refs',[]),*explanation['evidence_refs']]):
+            raise PublicationConflict('Unknown documentary or professional evidence reference')
         row={**original,'evidence_explanation':explanation['evidencia'],
             'gap':explanation['brecha'] or None,'accion':explanation['accion'] or None,
             'evidence_refs':list(dict.fromkeys([refs[ref]['document_id'] for ref in
-                [*original.get('evidence_refs',[]),*explanation['evidence_refs']]]))}
+                [*original.get('evidence_refs',[]),*explanation['evidence_refs']] if ref in refs]))}
+        profile_evidence=[{'ref':ref,'source_path':professional_refs[ref]['source_path'],
+            'profile_snapshot_sha256':item['binding']['profile'],'documentary_accreditation':False}
+            for ref in dict.fromkeys(explanation['evidence_refs']) if ref in professional_refs]
+        if profile_evidence:row['profile_evidence_refs']=profile_evidence
         if row['estado']=='cumple':
             row['gap']=None
             row['accion']=None
