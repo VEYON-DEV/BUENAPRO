@@ -87,3 +87,22 @@ def test_draft202012_rejects_lost_coverage_wrong_order_scalar_actions_and_fabric
     validator.validate(output())
     invalid = output(); mutation(invalid)
     assert list(validator.iter_errors(invalid))
+
+
+def test_established_schema_uses_required_named_rows_and_exact_lossless_conversion():
+    from dinaut_recommendation_schema import legacy_map_schema_from_contexts,normalize_map_output
+    original=contexts();schema=legacy_map_schema_from_contexts(original)
+    cases=schema['properties']['evaluations']
+    assert cases['type']=='OBJECT' and cases['required']==list(original)
+    first=cases['properties']['seace_prod2-19']['properties']['requisitos']
+    assert first['required']==['r2','r7','r11']
+    assert cases['properties']['seace_prod2-19']['properties']['acciones_recomendadas']['type']=='ARRAY'
+    expected=output();mapped={}
+    for case in expected['evaluations']:
+        mapped[case['case_key']]={k:v for k,v in case.items() if k not in {'case_key','requisitos'}}
+        mapped[case['case_key']]['requisitos']={'r'+str(r['source_index']):{k:v for k,v in r.items() if k!='source_index'} for r in reversed(case['requisitos'])}
+    assert normalize_map_output({'evaluations':mapped},list(original))==expected
+    assert normalize_map_output(expected)==expected
+    broken=deepcopy(mapped);broken['seace_prod2-19']['requisitos']['r2']['score']=100
+    with pytest.raises(ValueError):normalize_map_output({'evaluations':broken},list(original))
+    with pytest.raises(ValueError):normalize_map_output({'evaluations':mapped},['other'])

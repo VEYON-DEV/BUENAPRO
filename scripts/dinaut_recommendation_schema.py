@@ -92,3 +92,65 @@ def schema_from_contexts(contexts: dict[str, dict]) -> dict:
             "acciones_recomendadas": {"type": "array", "items": {"type": "string"}},
         }))
     return _strict_object({"evaluations": _exact_array(case_schemas)})
+
+
+def legacy_map_schema_from_contexts(contexts: dict[str,dict]) -> dict:
+    """GenerateContent responseSchema using only established OBJECT/ARRAY fields.
+
+    Required named properties enforce coverage without tuple-schema support.
+    Numeric source indices are represented by stable r-prefixed keys on the wire.
+    """
+    schema_from_contexts(contexts)  # Validate the same frozen scope and references.
+    def obj(properties):
+        return {'type':'OBJECT','properties':properties,'required':list(properties),
+                'propertyOrdering':list(properties)}
+    cases={}
+    for key,context in contexts.items():
+        rows={}
+        for requirement in context['evaluation']['requirements']:
+            rows['r'+str(requirement['source_index'])]=obj({
+                'evidencia':{'type':'STRING'},'brecha':{'type':'STRING'},'accion':{'type':'STRING'},
+                'evidence_refs':{'type':'ARRAY','items':{'type':'STRING'}}})
+        cases[key]=obj({'resumen':{'type':'STRING'},'requisitos':obj(rows),
+                       'acciones_recomendadas':{'type':'ARRAY','items':{'type':'STRING'}}})
+    return obj({'evaluations':obj(cases)})
+
+
+MAP_WIRE_PROMPT='''
+Para ESTE envío prevalece el esquema de objetos requerido por la API:
+{"evaluations": {"<case_key>": {"resumen":"...", "requisitos": {
+"r<source_index>": {"evidencia":"...", "brecha":"...", "accion":"...", "evidence_refs":[]}},
+"acciones_recomendadas":[]}}}. Incluye TODAS las claves de caso y requisito del
+esquema, incluso los perfiles profesionales y requisitos sin evidencia. No añadas
+source_index dentro del objeto: la clave rN conserva su identidad. Las acciones
+son siempre una lista. No omitas requisitos ni cambies ningún puntaje o estado.
+'''
+
+
+def normalize_map_output(value:dict,case_keys:list[str]|None=None)->dict:
+    """Lossless shape conversion; values remain exact model text, never invented."""
+    if not isinstance(value,dict) or set(value)!={'evaluations'}:
+        raise ValueError('Invalid recommendation envelope')
+    evaluations=value['evaluations']
+    if isinstance(evaluations,list):return value  # Existing successful pilot.
+    if not isinstance(evaluations,dict):raise ValueError('Invalid wire case map')
+    order=case_keys if case_keys is not None else list(evaluations)
+    if len(order)!=len(set(order)) or set(order)!=set(evaluations):
+        raise ValueError('Wire case coverage changed')
+    rows=[]
+    for key in order:
+        case=evaluations[key]
+        if not isinstance(case,dict) or set(case)!={'resumen','requisitos','acciones_recomendadas'}:
+            raise ValueError('Invalid wire case properties')
+        requirements=case['requisitos']
+        if not isinstance(requirements,dict) or not all(re.fullmatch(r'r[1-9][0-9]*',k) for k in requirements):
+            raise ValueError('Invalid wire requirement map')
+        ordered=[]
+        for index in sorted(requirements,key=lambda k:int(k[1:])):
+            row=requirements[index]
+            if not isinstance(row,dict) or set(row)!={'evidencia','brecha','accion','evidence_refs'}:
+                raise ValueError('Invalid wire requirement fields')
+            ordered.append({'source_index':int(index[1:]),**row})
+        rows.append({'case_key':key,'resumen':case['resumen'],'requisitos':ordered,
+                     'acciones_recomendadas':case['acciones_recomendadas']})
+    return {'evaluations':rows}

@@ -73,7 +73,7 @@ def test_gemini_json_request_and_no_gemma_rate_sleep(monkeypatch):
         "profile":{"document_columns":["ref"],"documents":[["D1"]]},
         "evaluation":{"requirements":[{"source_index":1}]}}})
     assert request["generationConfig"]["responseMimeType"] == "application/json"
-    assert request["generationConfig"]["responseJsonSchema"]["properties"]["evaluations"]["minItems"] == 1
+    assert request["generationConfig"]["responseSchema"]["properties"]["evaluations"]["required"] == ['seace_prod2-19']
     monkeypatch.setattr(subject.time, "sleep", lambda *_: pytest.fail("Gemma pacing must not delay explicitly selected Gemini"))
     subject.paced_wait(Path("/nonexistent-not-read"), 29000)
 
@@ -194,3 +194,20 @@ def test_other_response_failures_cannot_be_waived_as_missing_output(tmp_path,mon
     run.private_json(folder/'gemma-response.private.json',receipt)
     with pytest.raises(run.ProviderBlocked):subject.incomplete_response_diagnosis(folder,items)
     assert not (folder/'incomplete-output-diagnosis.private.json').exists()
+
+
+def test_schema_validation_rejection_requires_explicit_diagnosis_without_bill_invention(tmp_path,monkeypatch):
+    folder,items,plan,request,receipt=saved_batch(tmp_path,monkeypatch)
+    request['generationConfig']={'responseJsonSchema':{'type':'object'}}
+    receipt={'http_status':400,'request_sha256':run.fingerprint(request),'body':{
+        'error':{'code':400,'message':'Request contains an invalid argument.','status':'INVALID_ARGUMENT'}}}
+    run.private_json(folder/'gemma-request.private.json',request)
+    run.private_json(folder/'gemma-response.private.json',receipt)
+    assert not subject.explicitly_superseded_schema_rejection(folder)
+    diagnosis=subject.schema_rejection_diagnosis(folder)
+    assert diagnosis['cost_usd'] is None and diagnosis['automatic_retry'] is False
+    run.private_json(folder/'schema-rejection-diagnosis.private.json',diagnosis)
+    assert subject.explicitly_superseded_schema_rejection(folder)
+    receipt['http_status']=429
+    run.private_json(folder/'gemma-response.private.json',receipt)
+    with pytest.raises(run.ProviderBlocked):subject.explicitly_superseded_schema_rejection(folder)

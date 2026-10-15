@@ -25,7 +25,7 @@ import requests
 from dotenv import dotenv_values
 
 import run_dinaut_three_dot_matches as run
-from dinaut_recommendation_schema import schema_from_contexts
+from dinaut_recommendation_schema import legacy_map_schema_from_contexts,normalize_map_output,MAP_WIRE_PROMPT
 from buenapro_worker.matching.jev_recommendations import (
     build_small_recommendation_context,build_recommendation_batch,
     RECOMMENDATION_BATCH_PROMPT,validate_recommendation_batch,
@@ -81,6 +81,28 @@ def explicitly_superseded_incomplete(batch_folder,items):
     return True
 
 
+def schema_rejection_diagnosis(batch_folder):
+    request=json.loads((batch_folder/'gemma-request.private.json').read_text())
+    receipt=json.loads((batch_folder/'gemma-response.private.json').read_text())
+    expected={'error':{'code':400,'message':'Request contains an invalid argument.','status':'INVALID_ARGUMENT'}}
+    if (receipt.get('http_status')!=400 or receipt.get('body')!=expected
+            or receipt.get('request_sha256')!=run.fingerprint(request)
+            or 'responseJsonSchema' not in request.get('generationConfig',{})):
+        raise run.ProviderBlocked('Not the diagnosed rejected JSON-schema request')
+    return {'diagnosis':'HTTP400 INVALID_ARGUMENT for the new responseJsonSchema configuration; exact unsupported feature is unreported',
+        'request_sha256':receipt['request_sha256'],'response_sha256':run.fingerprint(receipt),
+        'correction':'Use established responseSchema OBJECT properties and required keys; no tuple-schema feature',
+        'cost_usd':None,'no_answer_or_usage_returned':True,'jev_replay':False,'automatic_retry':False}
+
+
+def explicitly_superseded_schema_rejection(batch_folder):
+    marker=batch_folder/'schema-rejection-diagnosis.private.json'
+    if not marker.exists():return False
+    if json.loads(marker.read_text())!=schema_rejection_diagnosis(batch_folder):
+        raise run.ProviderBlocked('Explicit schema rejection diagnosis changed')
+    return True
+
+
 def key(item):
     return f"{item['case']['source_key']}-{item['case']['source_id']}"
 
@@ -92,7 +114,8 @@ def batch_request(contexts):
                             'thinkingConfig':{'thinkingLevel':'minimal'}}}
     if run.GEMMA_MODEL=='gemini-3.1-flash-lite':
         result['generationConfig']['responseMimeType']='application/json'
-        result['generationConfig']['responseJsonSchema']=schema_from_contexts(contexts)
+        result['generationConfig']['responseSchema']=legacy_map_schema_from_contexts(contexts)
+        result['systemInstruction']['parts'][0]['text']+=MAP_WIRE_PROMPT
     return result
 
 
@@ -139,7 +162,7 @@ def recommendations_from_receipt(receipt,payloads):
     if len(candidates)!=1 or candidates[0].get('finishReason')!='STOP':
         raise run.ProviderBlocked('Incomplete Gemma batch response; no retry')
     text=''.join(p.get('text','') for p in candidates[0]['content']['parts'] if not p.get('thought'))
-    result=validate_recommendation_batch(run.parse_json_response(text),payloads)
+    result=validate_recommendation_batch(normalize_map_output(run.parse_json_response(text),list(payloads)),payloads)
     usage=receipt['body'].get('usageMetadata') or {}
     if any(type(usage.get(k))is not int or usage[k]<0 for k in ('promptTokenCount','candidatesTokenCount')):
         raise run.ProviderBlocked('Gemma batch usage missing; preserve response')
@@ -245,6 +268,7 @@ def main():
                     plan=json.loads(p.with_name('plan.private.json').read_text())
                     if set(plan['case_keys'])<=set(items):
                         if explicitly_superseded_incomplete(p.parent,items):continue
+                        if explicitly_superseded_schema_rejection(p.parent):continue
                         bind_saved_batch(p.parent,items)
                 contexts={};results=[]
                 for item in cases:
@@ -259,7 +283,9 @@ def main():
                               'score':scoring['score']})
                 pending=list(contexts)
                 while pending:
-                    size=min(5,len(pending))
+                    size=min(2,len(pending))
+                    while size>1 and sum(len(contexts[k]['evaluation']['requirements']) for k in pending[:size])>16:
+                        size-=1
                     while True:
                         group=pending[:size]
                         digest=run.fingerprint(batch_request({k:contexts[k] for k in group}))

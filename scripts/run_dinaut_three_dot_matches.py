@@ -43,6 +43,7 @@ from dinaut_three_dot_persistence import (
 )
 from match_provider_journal import ProviderBlocked, canonical, fingerprint, private_json, dispatch_once
 from dinaut_jev_transport import dispatch_jev_transport, get_cached_jev_receipt, prepare_jev_transport
+from dinaut_recommendation_schema import normalize_map_output
 
 GEMMA_MODEL = 'gemma-4-31b-it'
 MODEL = JEV_MODEL + '+' + GEMMA_MODEL
@@ -265,7 +266,7 @@ def saved_batch_recommendation(case_folder,item):
     if len(candidates)!=1 or candidates[0].get('finishReason')!='STOP':
         raise ProviderBlocked('Incomplete shared Gemma response')
     text=''.join(p.get('text','') for p in candidates[0]['content']['parts'] if not p.get('thought'))
-    result=parse_json_response(text)
+    result=normalize_map_output(parse_json_response(text))
     matches=[r for r in result['evaluations'] if r['case_key']==binding['case_key']]
     if len(matches)!=1:
         raise PublicationConflict('Shared Gemma output coverage changed')

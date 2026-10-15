@@ -105,3 +105,12 @@ raw, uso y costo conocido USD0.0092455 se conservan fuera de las publicaciones.
 Un diagnóstico local explícito ligado a sus SHA permite sustituir solo esa salida
 con el esquema corregido. No habilita reintentos ante envíos inciertos, fallos de
 acceso, cuotas o errores sin diagnóstico. Los 33 JEV completos se reutilizan.
+
+La variante `responseJsonSchema` con tuplas recibió HTTP400 INVALID_ARGUMENT sin
+uso ni respuesta generada; el proveedor no indicó qué característica rechazó.
+Se conserva ese recibo y diagnóstico explícito, sin atribuir costo cero. El formato
+activo usa `responseSchema` establecido en la aplicación: objetos requeridos por
+case_key y requisitos rN, convertidos sin alterar texto a arrays canónicos tras
+recibirlos. Máximo dos casos y16 requisitos combinados por petición (un caso con
+más requisitos se conserva completo), sin cambiar modelo ni JEV. La validación
+local exige de nuevo todas las identidades y aliases; no publica omisiones.
