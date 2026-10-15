@@ -1,0 +1,87 @@
+{
+  "date": "2026-10-15",
+  "status": "operational_batch_complete_provisional",
+  "execution_code_commit": "39574e29a0ad0228f4b97d5ae3e07f20f521722a",
+  "branch": "codex/dinaut-three-dot-matching",
+  "service_image_change": "none_local_committed_operator_only",
+  "score_model": "jev-1.13.0",
+  "recommendation_model": "gemini-3.1-flash-lite",
+  "scope": {
+    "audited": 33,
+    "audited_by_source": {
+      "seace_prod2": 16,
+      "seace_prod6": 17
+    },
+    "closed_at_selection_count": 30,
+    "excluded_por_leer": 22,
+    "frozen_three_dots": 55,
+    "replacement_backups": 3,
+    "source_review_preserved_count": 16,
+    "targeted": 33,
+    "new_matches": 30,
+    "replaced_matches_with_full_backups": 3
+  },
+  "score": {
+    "minimum": 33,
+    "maximum": 72,
+    "partial": 30,
+    "all_provisional": true,
+    "administrative_requirements_affect_score": false,
+    "not_award_probability": true
+  },
+  "cost": {
+    "current_chain_allocated_usd": "0.170100302",
+    "diagnosed_schema_rejections_without_usage": 1,
+    "discarded_output_cost_usd": "0.0092455",
+    "discarded_output_unique_requests": 1,
+    "flash_lite_unique_requests": 20,
+    "flash_lite_used_output_usd": "0.12249200",
+    "historical_gemma_rejections": 1,
+    "historical_paid_jev_reused_usd": "0.001734558",
+    "jev_unique_requests": 33,
+    "jev_usd": "0.049342860",
+    "known_published_rate_total_usd": "0.181080360",
+    "other_rejections": 0,
+    "provider_bill_verified": false,
+    "rejected_without_usage_cost_status": "unknown_not_zero_no_provider_bill_reconciliation",
+    "rejected_without_usage_or_cost": 2,
+    "unresolved_sent_requests": 0
+  },
+  "untargeted_tables": {
+    "matches": {
+      "unchanged": true,
+      "untargeted_count": 11,
+      "untargeted_sha256": "c31cb60cc23e2cdb19730a11d772b03bd7496af0ba2a00150c76eb1e518f03f3"
+    },
+    "opportunity_matches": {
+      "unchanged": true,
+      "untargeted_count": 3,
+      "untargeted_sha256": "c031c8941b2f631017488f9893cdc69a32bf41db63260fbe6232168a6b22ec5f"
+    }
+  },
+  "audit": {
+    "fresh_pg_read_only": true,
+    "issues": [],
+    "company_documents_verified": 43,
+    "receipt": "tmp/dinaut-three-dot-20261015/final-readback-20261015T211809.private.json",
+    "receipt_sha256": "09fae32dbbc0fd9e9c2a9b50485c8acc8b2a575ae3b12730b70327acbf40e25c",
+    "cutoff_utc": "2026-10-15T21:17:42.397168+00:00",
+    "semantic_or_legal_approval": false
+  },
+  "pending": {
+    "not_ready_excluded": 22,
+    "company_and_source_evidence_human_review_preserved": true,
+    "provider_invoice_not_reconciled": true,
+    "validation_rejections_without_usage_or_cost": 2
+  },
+  "cleanup": {
+    "bytes_freed": 0,
+    "downloaded_originals": 0,
+    "new_r2_original_uploads": 0,
+    "retained": "Frozen inputs, exact paid/rejected responses, manifests and backups for evidence review and invoice/replay safety"
+  },
+  "references": [
+    "https://docs.typesafe.ai/models",
+    "https://ai.google.dev/gemini-api/docs/pricing"
+  ]
+}
