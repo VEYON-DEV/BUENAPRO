@@ -172,6 +172,7 @@ def main():
         run.emit({'status':'prepared_shared_batches','ready':len(cases),'inference_calls':0});return
     for path in ('scripts/run_dinaut_three_dot_gemma_batches.py','scripts/run_dinaut_three_dot_matches.py',
                  'scripts/dinaut_three_dot_persistence.py','scripts/dinaut_three_dot_selector.py','scripts/match_provider_journal.py',
+                 'scripts/dinaut_jev_transport.py',
                  'workers/seace/src/buenapro_worker/matching/jev_recommendations.py'):
         if subprocess.run(['git','diff','--quiet','HEAD','--',path],cwd=ROOT).returncode or subprocess.run(
                 ['git','ls-files','--error-unmatch',path],cwd=ROOT,capture_output=True).returncode:

@@ -227,5 +227,48 @@ def test_run_case_claims_new_model_before_recommendations_without_new_jev(bundle
     with pytest.raises(ReachedRecommendations):
         runner.run_case(bundle["conn"], SimpleNamespace(gemini_api_key="not-a-real-key"),
             frozen, {}, bundle["item"], case_folder.parent, "not-a-real-key")
-    assert seen == ["jev", "gemma"]  # JEV is the existing response, no provider POST.
+    assert seen == ["gemma"]  # JEV is reused directly from the existing response, no provider POST.
     assert len(bundle["reservations"]) == 1
+
+
+def validation_rejection(bundle, monkeypatch):
+    bundle['case']['source_id'] = 1046842
+    bundle['claim']['id'] = 2144
+    bundle['conn'].row.update(id=2144,id_convocatoria=1046842,model=runner.MODEL,
+        request_hash=bundle['item']['pipeline_request_hash'],status='uncertain')
+    receipt={'http_status':400,'request_sha256':runner.fingerprint(bundle['item']['jev_payload']),
+             'body':{'detail':{'error_type':'max_tokens_exceeded'}}}
+    (bundle['folder']/'jev-response.private.json').write_text(json.dumps(receipt))
+    monkeypatch.setattr(runner,'prepare_jev_transport',lambda folder,payload:
+        {'payload':{**payload,'state':runner.canonical(payload['state'])}},raising=False)
+    return receipt
+
+
+def test_only_diagnosed_validation_rejection_can_renew_owned_composition(bundle, monkeypatch):
+    receipt=validation_rejection(bundle,monkeypatch)
+    before=(bundle['folder']/'jev-response.private.json').read_bytes()
+    assert runner.recover_rejected_jev_claim(bundle['conn'],bundle['case'],bundle['item'],
+        bundle['folder'],bundle['claim'])==bundle['claim']
+    updates=[sql for sql,args in bundle['conn'].calls if sql.lstrip().startswith('UPDATE')]
+    assert len(updates)==1 and "status='running'" in updates[0]
+    for field in ('claim_token','id_convocatoria','profile_id','kind','model','policy_version','request_hash'):
+        assert field in updates[0]
+    assert (bundle['folder']/'jev-response.private.json').read_bytes()==before
+    proof=json.loads((bundle['folder']/'jev-transport-recovery.private.json').read_text())
+    assert proof['cost_of_rejected_request_usd'] is None
+    assert proof['same_semantic_input'] is True and proof['no_long_context'] is True
+    assert not bundle['reservations']
+
+
+@pytest.mark.parametrize('mutation',[
+    {'http_status':429}, {'body':{'detail':{'error_type':'quota_exceeded'}}},
+    {'body':{'detail':{'error_type':'max_tokens_exceeded'},'usage':{'input_tokens':100}}},
+    {'request_sha256':'different-input'},
+])
+def test_other_sent_errors_never_authorize_transport_recovery(bundle,monkeypatch,mutation):
+    receipt=validation_rejection(bundle,monkeypatch);receipt.update(mutation)
+    (bundle['folder']/'jev-response.private.json').write_text(json.dumps(receipt))
+    with pytest.raises(runner.ProviderBlocked):
+        runner.recover_rejected_jev_claim(bundle['conn'],bundle['case'],bundle['item'],
+            bundle['folder'],bundle['claim'])
+    assert not any(sql.lstrip().startswith('UPDATE') for sql,args in bundle['conn'].calls)

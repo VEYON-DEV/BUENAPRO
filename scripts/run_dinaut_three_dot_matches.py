@@ -42,6 +42,7 @@ from dinaut_three_dot_persistence import (
     create_evaluation_before_dispatch, publish_case,
 )
 from match_provider_journal import ProviderBlocked, canonical, fingerprint, private_json, dispatch_once
+from dinaut_jev_transport import dispatch_jev_transport, get_cached_jev_receipt, prepare_jev_transport
 
 GEMMA_MODEL = 'gemma-4-31b-it'
 MODEL = JEV_MODEL + '+' + GEMMA_MODEL
@@ -204,12 +205,20 @@ def verify_owned_claim(conn,claim,case,item,case_folder,stage=None):
             row['policy_version'],row['request_hash']) if row else None
     if actual!=expected or str(row.get('claim_token'))!=claim.get('claim_token'):
         raise ProviderBlocked('Stored PG claim ownership or frozen request binding changed')
-    receipts_ready=all((case_folder/f'{stage}-response.private.json').exists() and
-        json.loads((case_folder/f'{stage}-response.private.json').read_text()).get('http_status')==200
-        for stage in ('jev','gemma'))
+    if 'jev_payload' not in item:
+        raise ProviderBlocked('Frozen semantic input is required to verify cached provider evidence')
+    jev_cached=get_cached_jev_receipt(case_folder,item['jev_payload'])
+    recommendations_cached=False
+    if (case_folder/'gemma-batch-binding.private.json').exists():
+        saved_batch_recommendation(case_folder,item)
+        recommendations_cached=True
+    elif (case_folder/'gemma-response.private.json').exists():
+        recommendations_cached=json.loads((case_folder/'gemma-response.private.json').read_text()).get('http_status')==200
+    receipts_ready=jev_cached is not None and recommendations_cached
     if row['status']=='running' and row['lease_live'] is True:
         return
     if row['status']=='uncertain' and stage is not None:
+        if stage=='jev' and jev_cached is not None:return
         response_path=case_folder/f'{stage}-response.private.json'
         if response_path.exists() and json.loads(response_path.read_text()).get('http_status')==200:
             return  # This exact stage is cached; journal cannot send it again.
@@ -317,6 +326,46 @@ def transition_rejected_gemma_claim(conn,case,item,case_folder,claim):
     return new_claim
 
 
+def recover_rejected_jev_claim(conn,case,item,case_folder,claim):
+    """Continue one diagnosed validation rejection with a lossless wire format.
+
+    This is not a retry of a completed/uncertain inference. The exact HTTP400
+    request and response remain in the original journal and failed stage ledger.
+    """
+    if not claim or (case['source_key'],case['source_id'],claim['id'])!=('seace_prod2',1046842,2144):
+        return claim
+    row=conn.execute('SELECT * FROM prod2_evaluations WHERE id=%s',(claim['id'],)).fetchone()
+    if row and row['status']!='uncertain':return claim
+    expected=(case['source_id'],PROFILE_ID,'gemini_match',MODEL,POLICY_VERSION,item['pipeline_request_hash'])
+    actual=(row['id_convocatoria'],str(row['profile_id']),row['kind'],row['model'],row['policy_version'],row['request_hash']) if row else None
+    rejection=json.loads((case_folder/'jev-response.private.json').read_text())
+    original=json.loads((case_folder/'jev-request.private.json').read_text())
+    if (actual!=expected or str(row['claim_token'])!=claim.get('claim_token')
+            or fingerprint(original)!=fingerprint(item['jev_payload'])
+            or rejection.get('request_sha256')!=fingerprint(original)
+            or rejection.get('http_status')!=400
+            or rejection.get('body')!={'detail':{'error_type':'max_tokens_exceeded'}}):
+        raise ProviderBlocked('JEV validation rejection or reservation ownership changed')
+    # This validates round-trip equivalence and rejects any sent child without
+    # its response before renewing permission to dispatch the corrected input.
+    transport=prepare_jev_transport(case_folder,item['jev_payload'])
+    proof={'diagnosis':'HTTP400 max_tokens_exceeded; no answer/usage returned',
+        'old_response_sha256':fingerprint(rejection),'source_payload_sha256':fingerprint(original),
+        'wire_payload_sha256':fingerprint(transport['payload']),'cost_of_rejected_request_usd':None,
+        'same_semantic_input':True,'same_model':JEV_MODEL,'no_long_context':True}
+    once_json(case_folder/'jev-transport-recovery.private.json',proof)
+    with conn.transaction():
+        changed=conn.execute("""UPDATE prod2_evaluations SET status='running',
+            lease_until=now()+interval '1 hour',result_json=%s::jsonb,updated_at=now()
+            WHERE id=%s AND claim_token=%s AND status='uncertain' AND id_convocatoria=%s
+              AND profile_id=%s AND kind='gemini_match' AND model=%s
+              AND policy_version=%s AND request_hash=%s RETURNING id""",
+            (canonical({'transport_recovery':proof}),claim['id'],claim['claim_token'],case['source_id'],
+             PROFILE_ID,MODEL,POLICY_VERSION,item['pipeline_request_hash'])).fetchone()
+        if not changed:raise PublicationConflict('JEV rejected reservation changed during recovery')
+    return claim
+
+
 def compose(case,payload,scoring,recommendations,cards,item,usage):
     explained={r['source_index']:r for r in recommendations['requisitos']}
     rows=[]
@@ -371,6 +420,7 @@ def run_case(conn,settings,frozen,cards,item,folder,jev_key,*,jev_only=False):
     if claim_path.exists():
         claim=json.loads(claim_path.read_text())
         claim=transition_rejected_gemma_claim(conn,case,item,case_folder,claim)
+        claim=recover_rejected_jev_claim(conn,case,item,case_folder,claim)
     else:
         claim=create_evaluation_before_dispatch(conn,case,profile_id=PROFILE_ID,
             request_hash=item['pipeline_request_hash'],model=MODEL,policy_version=POLICY_VERSION)
@@ -379,8 +429,9 @@ def run_case(conn,settings,frozen,cards,item,folder,jev_key,*,jev_only=False):
         private_json(claim_path,claim,exclusive=True)
     try:
         verify_owned_claim(conn,claim,case,item,case_folder,stage='jev')
-        jev=reserved_dispatch(conn,case,case_folder,'jev',item['jev_payload'],url='https://api.typesafe.ai/v1/systemone',
-            api_key=jev_key,header_name='Authorization')['body']
+        jev=dispatch_jev_transport(case_folder,item['jev_payload'],
+            reserved_dispatch=lambda folder,stage,payload,**kwargs:reserved_dispatch(conn,case,folder,stage,payload,**kwargs),
+            url='https://api.typesafe.ai/v1/systemone',api_key=jev_key,header_name='Authorization')['body']
         scoring=score_match(item['jev_payload'],jev,at=datetime.fromisoformat(frozen['receipt']['cutoff_utc']),profile_cards=cards)
         once_json(case_folder/'scoring.private.json',scoring)
         if scoring['score'] is None:
@@ -468,6 +519,7 @@ def main():
     commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
     tracked=['scripts/run_dinaut_three_dot_matches.py','scripts/dinaut_three_dot_selector.py',
         'scripts/dinaut_three_dot_persistence.py','scripts/match_provider_journal.py',
+        'scripts/dinaut_jev_transport.py',
         'workers/seace/src/buenapro_worker/matching/jev_recommendations.py']
     if subprocess.run(['git','diff','--quiet','HEAD','--',*tracked],cwd=ROOT).returncode:
         raise ValueError('Commit the verified operational code before production execution')

@@ -80,3 +80,17 @@ El costo se calcula desde usage real único de JEV (USD0.042/M entrada) y Flash-
 consultada el 15/10/2026. El reparto por caso de un batch es informativo: no se
 suma otra vez el usage completo compartido ni el JEV reutilizado de la cadena
 anterior. Se guardan uso y estimación sin afirmar factura verificada.
+
+## Diagnóstico de tamaño JEV
+
+El segundo caso recibió HTTP400 `max_tokens_exceeded`; el proxy local había
+subestimado la representación del proveedor. El rechazo exacto y su reserva2144
+se conservan, sin inventar uso/costo cero. `dinaut_jev_transport.py` envía el mismo
+`state` como cadena JSON compacta: expansión idéntica, mismas preguntas/modelo,
+sin truncar documentos, cambiar manifiestos congelados o usar contexto extendido.
+Los éxitos anteriores se reutilizan. Solo un rechazo exacto de validación permite
+esta representación alternativa única; cualquier envío sin respuesta u otro
+rechazo bloquea. Cada alternativa tiene manifiesto con SHA semántico y de wire.
+La recuperación PG acotada a2144 exige propiedad y CAS completos. Una equivalencia
+de serialización no acredita QA semántica ni un conteo del tokenizer del proveedor.
+Referencia: https://docs.typesafe.ai/models y https://docs.typesafe.ai/api.
