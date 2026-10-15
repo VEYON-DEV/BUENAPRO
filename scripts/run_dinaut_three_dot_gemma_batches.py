@@ -7,6 +7,7 @@ HTTP rejection is never retried. Original JEV responses and quota receipts stay.
 from __future__ import annotations
 
 import argparse
+from copy import deepcopy
 from datetime import datetime,timezone
 import fcntl
 import json
@@ -24,13 +25,60 @@ import requests
 from dotenv import dotenv_values
 
 import run_dinaut_three_dot_matches as run
+from dinaut_recommendation_schema import schema_from_contexts
 from buenapro_worker.matching.jev_recommendations import (
     build_small_recommendation_context,build_recommendation_batch,
     RECOMMENDATION_BATCH_PROMPT,validate_recommendation_batch,
+    validate_recommendations,
 )
 
 FOLDER=ROOT/'tmp/dinaut-three-dot-20261015'
 INPUT_BUDGET=14500
+
+
+def incomplete_response_diagnosis(batch_folder,items):
+    """Offline diagnosis only; never repairs, publishes or retries an output."""
+    plan=json.loads((batch_folder/'plan.private.json').read_text())
+    request=json.loads((batch_folder/'gemma-request.private.json').read_text())
+    receipt=json.loads((batch_folder/'gemma-response.private.json').read_text())
+    if (receipt.get('http_status')!=200 or receipt.get('request_sha256')!=run.fingerprint(request)
+            or plan.get('request_sha256')!=receipt['request_sha256']
+            or plan.get('jev_requests')!={k:run.fingerprint(items[k]['jev_payload']) for k in plan['case_keys']}):
+        raise run.ProviderBlocked('Incomplete-output diagnosis lacks exact request bindings')
+    candidates=receipt['body'].get('candidates') or []
+    if len(candidates)!=1 or candidates[0].get('finishReason')!='STOP':
+        raise run.ProviderBlocked('Only a complete HTTP200 output can be diagnosed locally')
+    raw=run.parse_json_response(''.join(p.get('text','') for p in candidates[0]['content']['parts'] if not p.get('thought')))
+    if set(raw)!={'evaluations'} or [x.get('case_key') for x in raw['evaluations']]!=plan['case_keys']:
+        raise run.ProviderBlocked('Incomplete batch has unexpected case coverage')
+    missing={};strings=[]
+    for value in raw['evaluations']:
+        k=value['case_key'];payload=items[k]['jev_payload'];value=deepcopy(value)
+        del value['case_key']
+        if isinstance(value.get('acciones_recomendadas'),str):
+            strings.append(k);value['acciones_recomendadas']=[value['acciones_recomendadas']]
+        expected=[r['source_index'] for r in payload['state']['requirements']]
+        got=[r['source_index'] for r in value['requisitos']]
+        if not got or len(got)!=len(set(got)) or [x for x in expected if x in got]!=got:
+            raise run.ProviderBlocked('Returned requirements cannot be safely attributed to the frozen case')
+        subset=deepcopy(payload)
+        subset['state']['requirements']=[r for r in payload['state']['requirements'] if r['source_index'] in got]
+        validate_recommendations(value,subset)
+        missing[k]=[x for x in expected if x not in got]
+    if not any(missing.values()):raise run.ProviderBlocked('The saved output is not a missing-requirement diagnosis')
+    return {'diagnosis':'Completed output omitted required rows and used text instead of action arrays',
+        'request_sha256':receipt['request_sha256'],'response_sha256':run.fingerprint(receipt),
+        'case_keys':plan['case_keys'],'missing_source_indices':missing,'action_string_cases':strings,
+        'paid_output_preserved':True,'jev_replay':False,'automatic_retry':False,
+        'replacement_basis':'Corrected enforced output schema for the same authorized explanations; no score recalculation'}
+
+
+def explicitly_superseded_incomplete(batch_folder,items):
+    marker=batch_folder/'incomplete-output-diagnosis.private.json'
+    if not marker.exists():return False
+    if json.loads(marker.read_text())!=incomplete_response_diagnosis(batch_folder,items):
+        raise run.ProviderBlocked('Explicit incomplete-output diagnosis changed')
+    return True
 
 
 def key(item):
@@ -44,6 +92,7 @@ def batch_request(contexts):
                             'thinkingConfig':{'thinkingLevel':'minimal'}}}
     if run.GEMMA_MODEL=='gemini-3.1-flash-lite':
         result['generationConfig']['responseMimeType']='application/json'
+        result['generationConfig']['responseJsonSchema']=schema_from_contexts(contexts)
     return result
 
 
@@ -173,6 +222,7 @@ def main():
     for path in ('scripts/run_dinaut_three_dot_gemma_batches.py','scripts/run_dinaut_three_dot_matches.py',
                  'scripts/dinaut_three_dot_persistence.py','scripts/dinaut_three_dot_selector.py','scripts/match_provider_journal.py',
                  'scripts/dinaut_jev_transport.py',
+                 'scripts/dinaut_recommendation_schema.py',
                  'workers/seace/src/buenapro_worker/matching/jev_recommendations.py'):
         if subprocess.run(['git','diff','--quiet','HEAD','--',path],cwd=ROOT).returncode or subprocess.run(
                 ['git','ls-files','--error-unmatch',path],cwd=ROOT,capture_output=True).returncode:
@@ -193,7 +243,9 @@ def main():
                 # Recover successful shared responses before packing any remaining cases.
                 for p in sorted((FOLDER/'gemma-batches').glob('*/gemma-response.private.json')):
                     plan=json.loads(p.with_name('plan.private.json').read_text())
-                    if set(plan['case_keys'])<=set(items):bind_saved_batch(p.parent,items)
+                    if set(plan['case_keys'])<=set(items):
+                        if explicitly_superseded_incomplete(p.parent,items):continue
+                        bind_saved_batch(p.parent,items)
                 contexts={};results=[]
                 for item in cases:
                     k=key(item);case_folder=FOLDER/k

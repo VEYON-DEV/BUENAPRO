@@ -69,8 +69,11 @@ def test_prepare_shared_batches_is_offline_and_does_not_start_a_stage(tmp_path, 
 
 def test_gemini_json_request_and_no_gemma_rate_sleep(monkeypatch):
     monkeypatch.setattr(subject, "build_recommendation_batch", lambda contexts: {"profile": {"documents": []}, "evaluations": list(contexts)})
-    request = subject.batch_request({"seace_prod2-19": {}})
+    request = subject.batch_request({"seace_prod2-19": {
+        "profile":{"document_columns":["ref"],"documents":[["D1"]]},
+        "evaluation":{"requirements":[{"source_index":1}]}}})
     assert request["generationConfig"]["responseMimeType"] == "application/json"
+    assert request["generationConfig"]["responseJsonSchema"]["properties"]["evaluations"]["minItems"] == 1
     monkeypatch.setattr(subject.time, "sleep", lambda *_: pytest.fail("Gemma pacing must not delay explicitly selected Gemini"))
     subject.paced_wait(Path("/nonexistent-not-read"), 29000)
 
@@ -159,3 +162,35 @@ def test_recommendation_batch_coverage_cannot_mix_sources_or_inject_scores(tmp_p
     receipt["body"]["candidates"][0]["content"]["parts"][0]["text"] = json.dumps(body)
     with pytest.raises(ValueError, match="coverage/order"):
         subject.recommendations_from_receipt(receipt, {k: v["jev_payload"] for k, v in items.items()})
+
+
+def test_completed_incomplete_output_requires_an_explicit_bound_diagnosis(tmp_path,monkeypatch):
+    folder,items,plan,request,receipt=saved_batch(tmp_path,monkeypatch)
+    first=plan['case_keys'][0]
+    items[first]['jev_payload']['state']['requirements'].append({'source_index':2})
+    plan['jev_requests'][first]=run.fingerprint(items[first]['jev_payload'])
+    raw=json.loads(receipt['body']['candidates'][0]['content']['parts'][0]['text'])
+    raw['evaluations'][0]['acciones_recomendadas']='Conservar este texto exacto.'
+    receipt['body']['candidates'][0]['content']['parts'][0]['text']=json.dumps(raw)
+    run.private_json(folder/'plan.private.json',plan)
+    run.private_json(folder/'gemma-response.private.json',receipt)
+    original=(folder/'gemma-response.private.json').read_bytes()
+    assert not subject.explicitly_superseded_incomplete(folder,items)
+    diagnosis=subject.incomplete_response_diagnosis(folder,items)
+    assert diagnosis['missing_source_indices'][first]==[2]
+    assert diagnosis['action_string_cases']==[first]
+    assert diagnosis['automatic_retry'] is False and diagnosis['jev_replay'] is False
+    run.private_json(folder/'incomplete-output-diagnosis.private.json',diagnosis)
+    assert subject.explicitly_superseded_incomplete(folder,items)
+    assert (folder/'gemma-response.private.json').read_bytes()==original
+    diagnosis['response_sha256']='changed'
+    run.private_json(folder/'incomplete-output-diagnosis.private.json',diagnosis)
+    with pytest.raises(run.ProviderBlocked):subject.explicitly_superseded_incomplete(folder,items)
+
+
+def test_other_response_failures_cannot_be_waived_as_missing_output(tmp_path,monkeypatch):
+    folder,items,plan,request,receipt=saved_batch(tmp_path,monkeypatch)
+    receipt['http_status']=429
+    run.private_json(folder/'gemma-response.private.json',receipt)
+    with pytest.raises(run.ProviderBlocked):subject.incomplete_response_diagnosis(folder,items)
+    assert not (folder/'incomplete-output-diagnosis.private.json').exists()

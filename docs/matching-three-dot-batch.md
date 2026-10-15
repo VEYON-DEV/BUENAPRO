@@ -94,3 +94,14 @@ rechazo bloquea. Cada alternativa tiene manifiesto con SHA semántico y de wire.
 La recuperación PG acotada a2144 exige propiedad y CAS completos. Una equivalencia
 de serialización no acredita QA semántica ni un conteo del tokenizer del proveedor.
 Referencia: https://docs.typesafe.ai/models y https://docs.typesafe.ai/api.
+
+## Cobertura del explicador
+
+Flash-Lite recibe ahora `responseJsonSchema` con casos y requisitos en posiciones
+exactas (`prefixItems`, `minItems/maxItems`, enum de IDs), acciones como lista y
+aliases documentales permitidos. La validación local sigue siendo obligatoria.
+Un HTTP200 previo con cuatro casos omitió34 requisitos; no fue publicado. Su
+raw, uso y costo conocido USD0.0092455 se conservan fuera de las publicaciones.
+Un diagnóstico local explícito ligado a sus SHA permite sustituir solo esa salida
+con el esquema corregido. No habilita reintentos ante envíos inciertos, fallos de
+acceso, cuotas o errores sin diagnóstico. Los 33 JEV completos se reutilizan.
