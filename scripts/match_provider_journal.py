@@ -56,9 +56,10 @@ def dispatch_once(folder: Path, stage: str, payload: dict, *, url: str,
                   api_key: str, header_name: str, post=None) -> dict:
     if stage not in {"jev", "gemma"}:
         raise ValueError("Unsupported batch provider stage")
-    expected_url = ("https://api.typesafe.ai/v1/systemone" if stage == "jev" else
-                    "https://generativelanguage.googleapis.com/v1beta/models/gemma-4-31b-it:generateContent")
-    if url != expected_url or not api_key or header_name != ("Authorization" if stage == "jev" else "x-goog-api-key"):
+    expected_urls = ({"https://api.typesafe.ai/v1/systemone"} if stage == "jev" else {
+        "https://generativelanguage.googleapis.com/v1beta/models/gemma-4-31b-it:generateContent",
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent"})
+    if url not in expected_urls or not api_key or header_name != ("Authorization" if stage == "jev" else "x-goog-api-key"):
         raise ValueError("Unexpected provider endpoint or credential binding")
     request_hash = fingerprint(payload)
     response_path = folder / f"{stage}-response.private.json"

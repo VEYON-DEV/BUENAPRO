@@ -9,6 +9,8 @@ from pydantic import ValidationError
 from buenapro_worker.matching.jev_recommendations import (
     JEV_MODEL, build_jev_payload, build_profile_cards, build_recommendation_context,
     economic_comparison, expand_model_projection, model_projection, parse_jev_answers, score_match as _score_match, token_budget,
+    build_small_recommendation_context, build_recommendation_batch, validate_recommendation_batch,
+    expand_small_document_cards,
     validate_recommendations,
 )
 
@@ -379,3 +381,70 @@ def test_local_facts_retained_and_frozen_projection_bound_before_scoring():
     altered["documents"][0]["summary"] = "Other source"
     with pytest.raises(ValueError, match="frozen model projection"):
         _score_match(request, response(request), at=AT, profile_cards=altered)
+
+
+def test_small_gemma_context_preserves_summaries_sources_amounts_alternatives_and_warnings():
+    from buenapro_worker.matching.jev_recommendations import _merge_defaults
+    p = profile()
+    for index in range(1, 4):
+        contract = copy.deepcopy(p["experience_json"][0])
+        contract["numero_contrato"] = f"N{index}"
+        source = contract["documentary_summary"]["sources"][0]
+        source["document_id"] = f"id{index}"; source["sha256"] = f"sha{index}"
+        contract["documentary_summary"]["amount_basis"]["document_id"] = f"id{index}"
+        source["extraction"]["warnings"] = [f"Unique warning {index}"]
+        source["extraction"]["unknowns"] = [f"Unknown {index}"]
+        p["experience_json"].append(contract)
+    request = payload(p=p); before = copy.deepcopy(request)
+    score = score_match(request, response(request), at=AT)
+    context = build_small_recommendation_context(request, score, request.full_cards)
+    docs = expand_small_document_cards(context["profile"])
+    assert len(docs) == 4
+    for original, short in zip(request.full_cards["documents"], docs, strict=True):
+        assert short["summary"] == original["summary"]
+        assert short.get("warning_count", 0) == len(original["warnings"])
+        assert short["unknowns"] == original["unknowns"]
+        if original["warnings"]:
+            assert short["warning_codes"] and short["warning_text_retained_locally"]
+        assert short["ref"] == original["ref"]
+        assert short["amount_basis"]["amount_decimal"] == "95000"
+        assert short["principal_alternative"]["amount_decimal"] == "120000"
+        assert short["dates"][0]["date"] == "2025-01-01"
+    assert context["score_is_immutable"]
+    assert context["evaluation"]["rules_result"]["score"] == score["score"]
+    assert "economic_comparison" not in context["evaluation"]["rules_result"]["requisitos"][0]
+    assert request == before  #No mutation to the frozen paid JEV request.
+
+
+def test_economic_grouping_preserves_each_unresolved_contract_and_reason():
+    from buenapro_worker.matching.jev_recommendations import _small_economic
+    original = {"minimum": "100000", "subtotal": None, "shortfall": None, "uncertain": True,
+                "unresolved": [{"contract_ref": "C1", "reasons": ["scope_not_confirmed", "currency_not_comparable"]},
+                               {"contract_ref": "C2", "reasons": ["currency_not_comparable", "scope_not_confirmed"]},
+                               {"contract_ref": "C3", "reasons": ["scope_not_confirmed"]}]}
+    compact = _small_economic(original)
+    restored = {ref: set(group["reasons"]) for group in compact["unresolved_groups"] for ref in group["contract_refs"]}
+    assert restored == {row["contract_ref"]: set(row["reasons"]) for row in original["unresolved"]}
+    assert len(compact["unresolved_groups"]) == 2
+    assert compact["subtotal"] is None and compact["shortfall"] is None
+
+
+def test_gemma_batch_shares_profile_and_strictly_binds_case_and_requirement_results():
+    request = payload(); scoring = score_match(request, response(request), at=AT)
+    small = build_small_recommendation_context(request, scoring, request.full_cards)
+    batch = build_recommendation_batch({"one": small, "two": small})
+    assert [row["case_key"] for row in batch["evaluations"]] == ["one", "two"]
+    assert "profile" not in batch["evaluations"][0]
+    results = {"evaluations": [{"case_key": "one", **recommendation()}, {"case_key": "two", **recommendation()}]}
+    validated = validate_recommendation_batch(results, {"one": request, "two": request})
+    assert list(validated) == ["one", "two"]
+    results["evaluations"][1]["case_key"] = "one"
+    with pytest.raises(ValueError, match="case coverage/order"):
+        validate_recommendation_batch(results, {"one": request, "two": request})
+    results["evaluations"][1]["case_key"] = "two"
+    results["evaluations"][1]["score"] = 100
+    with pytest.raises(ValidationError):
+        validate_recommendation_batch(results, {"one": request, "two": request})
+    altered = copy.deepcopy(small); altered["profile"]["company"]["razon_social"] = "Other"
+    with pytest.raises(ValueError, match="profiles"):
+        build_recommendation_batch({"one": small, "other": altered})

@@ -656,6 +656,237 @@ def build_recommendation_context(payload: dict, scoring: dict) -> dict:
             "rules_result": copy.deepcopy(scoring), "score_is_immutable": True}
 
 
+SMALL_RECOMMENDATION_CONTEXT_VERSION = "document_summary_recommendations_v2"
+_MISSING_CELL = "~"
+_SMALL_TUPLE_COLUMNS = {
+    "amount_basis": ("amount_decimal", "currency", "tax_basis", "source_type", "label", "page"),
+    "principal_alternative": ("amount_decimal", "currency", "tax_basis", "source_type", "label", "page"),
+    "classification": ("rubro", "specialty", "inferred", "page"),
+    "dates": ("field", "date", "page"),
+}
+
+
+def _pack_small_documents(documents: list[dict]) -> tuple[list[str], list[list]]:
+    columns = ["ref", "summary", *sorted(set().union(*(set(d) for d in documents)) - {"ref", "summary"})]
+    def cell(value):
+        return {"literal": _MISSING_CELL} if value == _MISSING_CELL else copy.deepcopy(value)
+    def row(value, fields):
+        return [cell(value[key]) if key in value else _MISSING_CELL for key in fields]
+    packed = []
+    for document in documents:
+        item = []
+        for key in columns:
+            if key not in document:
+                item.append(_MISSING_CELL)
+            elif key == "dates":
+                item.append([row(date, _SMALL_TUPLE_COLUMNS[key]) for date in document[key]])
+            elif key in _SMALL_TUPLE_COLUMNS:
+                item.append(row(document[key], _SMALL_TUPLE_COLUMNS[key]))
+            else:
+                item.append(cell(document[key]))
+        packed.append(item)
+    return columns, packed
+
+
+def expand_small_document_cards(profile: dict) -> list[dict]:
+    """Expand columnar Gemma cards for source-coverage QA, without inventing nulls."""
+    def restore(value):
+        return _MISSING_CELL if isinstance(value, dict) and value == {"literal": _MISSING_CELL} else copy.deepcopy(value)
+    def row(values, columns):
+        return {key: restore(value) for key, value in zip(columns, values, strict=True) if value != _MISSING_CELL}
+    documents = []
+    for values in profile["documents"]:
+        document = row(values, profile["document_columns"])
+        for key, columns in _SMALL_TUPLE_COLUMNS.items():
+            if key not in document:
+                continue
+            document[key] = ([row(date, columns) for date in document[key]] if key == "dates"
+                             else row(document[key], columns))
+        documents.append(_merge_defaults(profile.get("document_defaults", {}), document))
+    return documents
+
+
+def _small_economic(value: dict) -> dict:
+    """Group repeated unresolved reasons without dropping a candidate or reason."""
+    result = _pick(value, (
+        "source_index", "applicability", "minimum", "currency", "score", "subtotal", "shortfall",
+        "coverage_ratio", "uncertain", "subtotal_is_lower_bound", "near_threshold",
+        "minimum_met_documentarily", "legal_accreditation", "reasons", "source_review", "items",
+    ))
+    groups = {}
+    for item in value.get("unresolved", []):
+        reasons = tuple(sorted(set(item["reasons"])))
+        groups.setdefault(reasons, []).append(item["contract_ref"])
+    if groups:
+        result["unresolved_groups"] = [
+            {"reasons": list(reasons), "contract_refs": refs} for reasons, refs in groups.items()
+        ]
+    return result
+
+
+def build_small_recommendation_context(payload: dict, scoring: dict, profile_cards: dict) -> dict:
+    """Gemma-only context: full document summaries plus exact comparison results.
+
+    This does not change the frozen JEV request or paid answers. Detailed local
+    facts, literal warnings/classifications and candidate monetary quotes remain
+    recoverable in the caller's frozen profile. Every documentary summary,
+    principal alternative and relevant monetary/date basis is preserved. Warning
+    flags/counts replace repeated warning prose; this is not a lossless raw profile.
+    """
+    if model_projection(profile_cards) != payload["state"]["profile"]:
+        raise ValueError("Small recommendation context does not match frozen JEV profile")
+    expected = [r["source_index"] for r in payload["state"]["requirements"]]
+    if [r["source_index"] for r in scoring["requisitos"]] != expected:
+        raise ValueError("Small recommendation requirement coverage changed")
+    by_doc = {document["ref"]: [] for document in profile_cards["documents"]}
+    for contract in profile_cards["contracts"]:
+        for alias in contract["documents"]:
+            if alias not in by_doc:
+                raise ValueError("Contract references an unknown source")
+            by_doc[alias].append(contract)
+    documents = []
+    for document in profile_cards["documents"]:
+        item = _pick(document, ("ref", "summary", "conformity", "status", "unknowns"))
+        warnings = document.get("warnings") or []
+        warning_text = normalized(" ".join(str(warning) for warning in warnings))
+        codes = []
+        for code, pattern in (
+            ("amount_review", r"monto|importe|subtotal|impuesto|moneda|precio|factur"),
+            ("period_review", r"fecha|period|plazo|vigencia|duracion"),
+            ("conformity_review", r"conform|acept|recepcion|pago|ejecuc"),
+            ("participation_review", r"participacion|consorc|subcontr"),
+            ("source_quality_review", r"ocr|ilegible|incomplet|pagina|ausen|falta"),
+            ("scope_review", r"objeto|rubro|alcance|especialidad|clasific|mixto"),
+        ):
+            if re.search(pattern, warning_text):
+                codes.append(code)
+        if warnings:
+            item["warning_count"] = len(warnings)
+            item["warning_codes"] = codes or ["documentary_warning"]
+            item["warning_text_retained_locally"] = True
+        dates = []
+        for fact in document.get("facts", []):
+            date = _documentary_date(fact.get("value"))
+            if date is not None:
+                dates.append({"field": fact.get("field"), "date": date.date().isoformat(), "page": fact.get("page")})
+        if dates:
+            item["dates"] = dates
+        origins = []
+        for contract in by_doc[document["ref"]]:
+            origin = _pick(contract, (
+                "ref", "numero_contrato", "entidad", "fecha_inicio", "fecha_fin", "fecha_conformidad", "anio",
+                "modalidad_participacion", "porcentaje_participacion", "source_status", "amount_basis_supported",
+                "amount_review_required", "no_legal_accreditation", "missing_document_ids",
+            ))
+            basis = _dict(contract.get("amount_basis"))
+            if basis.get("ref") == document["ref"]:
+                origin["amount_basis"] = _pick(basis, (
+                    "amount_decimal", "currency", "tax_basis", "source_type", "label", "page",
+                ))
+                # Preserve a mismatch with the declared amount without a second
+                # copy when it equals the documentary amount/currency.
+                if (_decimal(contract.get("monto")) != _decimal(basis.get("amount_decimal"))
+                        or contract.get("moneda") != basis.get("currency")):
+                    origin["declared_amount"] = _pick(contract, ("monto", "moneda"))
+            elif contract.get("monto") is not None:
+                origin["declared_amount"] = _pick(contract, ("monto", "moneda"))
+            origins.append(origin)
+        if len(origins) == 1:
+            # Flat per-document card. Contract reference stays separate from D.
+            origin = origins[0]
+            item["contract_ref"] = origin.pop("ref")
+            item.update(origin)
+        elif origins:
+            item["contracts"] = origins
+        principal = _dict(document.get("principal_amount"))
+        bases = [c.get("amount_basis") or {} for c in by_doc[document["ref"]]]
+        if principal and not any(_decimal(b.get("amount_decimal")) == _decimal(principal.get("amount_decimal"))
+                                 and b.get("currency") == principal.get("currency") for b in bases):
+            item["principal_alternative"] = _pick(principal, (
+                "amount_decimal", "currency", "tax_basis", "source_type", "label", "page",
+            ))
+        documents.append(item)
+    # Factor only explicit repeated metadata. Expansion is identical and summaries
+    # remain readable on their own cards; the source/ref count never changes.
+    defaults = _factor_rows(documents)
+    columns, packed_documents = _pack_small_documents(documents)
+    company = _pick(profile_cards["company"], (
+        "razon_social", "commercial_name", "capabilities_source", "services_declared_by_user",
+    ))
+    if profile_cards["company"].get("business_lines"):
+        company["business_lines"] = [line.get("nombre") if isinstance(line, dict) else line
+                                      for line in profile_cards["company"]["business_lines"]]
+    profile = {
+        "company": company, "document_columns": columns, "documents": packed_documents,
+        "tuple_columns": {key: list(value) for key, value in _SMALL_TUPLE_COLUMNS.items()},
+        "columns_policy": "Each documents row follows document_columns. Nested tuple fields follow tuple_columns; dates is a list of date tuples. Cell ~ means field absent: inherit document_defaults if present, otherwise not recorded. An actual literal ~ is escaped as {literal:~}.",
+        "professionals": copy.deepcopy(profile_cards["professionals"]),
+        "other_evidence": copy.deepcopy(profile_cards["other_evidence"]),
+        "coverage": {"documents": len(documents), "summaries_truncated": False,
+                     "source_evidence_retained_by_caller": True, "legal_accreditation": False,
+                     "projection": "full_summaries_essential_amounts_dates_review_flags",
+                     "omitted_recoverable_fields": ["literal_warnings", "classification", "fact_quotes", "unselected_amount_candidates"]},
+    }
+    if defaults:
+        profile["document_defaults"] = defaults
+        profile["defaults_policy"] = "Apply document_defaults recursively to every document; explicit values override defaults."
+    rules = _pick(scoring, (
+        "score", "breakdown", "coverage", "technical_required_gaps", "uncertain", "source_review_required",
+        "provisional", "score_validated", "semantic_validated", "legal_accreditation", "not_qualification_or_win_probability",
+    ))
+    rules["requisitos"] = [_pick(row, (
+        "source_index", "estado", "critico", "dimension", "evidence_refs", "judgement_confidence",
+    )) for row in scoring["requisitos"]]
+    rules["economic"] = [_small_economic(value) for value in scoring.get("economic", [])]
+    return {
+        "context_version": SMALL_RECOMMENDATION_CONTEXT_VERSION, "profile": profile,
+        "evaluation": {"opportunity": copy.deepcopy(payload["state"]["opportunity"]),
+                       "requirements": copy.deepcopy(payload["state"]["requirements"]), "rules_result": rules},
+        "score_is_immutable": True,
+    }
+
+
+def build_recommendation_batch(contexts: dict[str, dict]) -> dict:
+    """Share the same frozen 43-document profile across a small Gemma batch."""
+    if not contexts or len(contexts) > 5:
+        raise ValueError("Recommendation batch requires one to five explicit cases")
+    first = next(iter(contexts.values()))
+    if any(not isinstance(key, str) or not key for key in contexts):
+        raise ValueError("A stable nonempty case_key is required")
+    if any(context.get("context_version") != SMALL_RECOMMENDATION_CONTEXT_VERSION
+           or context.get("score_is_immutable") is not True or context["profile"] != first["profile"]
+           for context in contexts.values()):
+        raise ValueError("Recommendation batch profiles or context versions differ")
+    return {"context_version": SMALL_RECOMMENDATION_CONTEXT_VERSION,
+            "profile": copy.deepcopy(first["profile"]), "score_is_immutable": True,
+            "evaluations": [{"case_key": key, **copy.deepcopy(context["evaluation"])}
+                            for key, context in contexts.items()]}
+
+
+RECOMMENDATION_BATCH_PROMPT = RECOMMENDATION_PROMPT + """
+Este es un lote con un único perfil documental compartido y evaluations separadas.
+Decodifica profile.documents con document_columns y tuple_columns según columns_policy.
+Aplica profile.document_defaults recursivamente a cada documento; las excepciones
+explícitas prevalecen. No mezcles requisitos, puntajes ni evidencia admitida entre casos.
+Para ESTE LOTE la forma de respuesta es exclusivamente {"evaluations":[...]}; cada
+elemento contiene case_key exacto, resumen, requisitos y acciones_recomendadas.
+Incluye todos los case_key exactamente una vez y en el orden recibido; dentro de cada
+caso conserva todos sus source_index en orden. No incluyas puntajes ni estados nuevos.
+"""
+
+
+def validate_recommendation_batch(value: dict, payloads: dict[str, dict]) -> dict[str, dict]:
+    if not isinstance(value, dict) or set(value) != {"evaluations"} or not isinstance(value["evaluations"], list):
+        raise ValueError("Invalid recommendation batch envelope")
+    evaluations = value["evaluations"]
+    if (any(not isinstance(item, dict) for item in evaluations)
+            or [item.get("case_key") for item in evaluations] != list(payloads)):
+        raise ValueError("Recommendation batch case coverage/order changed")
+    return {item["case_key"]: validate_recommendations(
+        {key: copy.deepcopy(v) for key, v in item.items() if key != "case_key"}, payloads[item["case_key"]]
+    ) for item in evaluations}
+
+
 def validate_recommendations(value: dict, payload: dict) -> dict:
     result = RecommendationOutput.model_validate(value).model_dump()
     expected = [r["source_index"] for r in payload["state"]["requirements"]]

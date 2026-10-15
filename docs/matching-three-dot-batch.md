@@ -21,12 +21,16 @@ allowlist y respaldo completo con CAS. Los demás matches no se modifican.
 - La comparación económica usa Decimal, alcance, moneda, período, participación,
   conformidad y deduplicación; no presume que un monto global sea experiencia
   compatible. Cercanía al mínimo se expresa como brecha numérica, sin dispensarlo.
-- Gemma `gemma-4-31b-it` mediante la credencial existente de Google: únicamente
+- Gemini `gemini-3.1-flash-lite`, elegido expresamente por el usuario tras el
+  rechazo de cuota de Gemma 4, mediante la credencial existente de Google: únicamente
   explica evidencia, brecha y acción; no puede devolver otro puntaje o estado.
   Se valida cobertura de requisitos y referencias existentes. Sin fallback.
 
-Se envían los resúmenes existentes de todos los documentos, datos esenciales y
-advertencias. Los hechos y citas completos quedan disponibles localmente para
+JEV recibe los resúmenes existentes de todos los documentos, datos esenciales y
+advertencias. El explicador comparte los 43 resúmenes completos una vez por lote
+de hasta cinco oportunidades, con matriz de campos, defaults explícitos, montos,
+fechas y flags de revisión. Omite prosa repetida de advertencias; mantiene sus
+contadores y la incertidumbre. No usa este contexto reducido para recalcular JEV. Los hechos y citas completos quedan disponibles localmente para
 aritmética y trazabilidad. `shared_defaults` factoriza repeticiones con expansión
 exacta comprobada; no corta fuentes ni requisitos. No se releen PDF ni se crean
 resúmenes con otra inferencia. RUC/RNP/CCI/formularios quedan en un checklist sin
@@ -58,6 +62,21 @@ match, provenance y extracción exacta. Menores usa `matches` y `match_events`.
 No modifica notas/estado del usuario ni envía notificaciones. No hay migraciones,
 reinicios de workers, cambios del modelo predeterminado o despliegue web.
 
-El costo se calcula desde usage real de JEV. Gemma por Google tiene tarifa pública
-gratuita, sujeta al acceso y límites de esa cuenta; eso no prueba saldo ni acceso
-efectivo hasta recibir la respuesta. Se guarda el uso sin afirmar factura verificada.
+La ejecución seleccionada utiliza:
+
+```sh
+.venv/bin/python scripts/run_dinaut_three_dot_gemma_batches.py --execute --recommendation-model gemini-3.1-flash-lite
+```
+
+El nombre legacy del archivo/etapa `gemma` no cambia el modelo real registrado.
+La transición conserva el rechazo Gemma HTTP429 por cuota 16000 tokens/minuto;
+cierra solamente su composición fallida y reutiliza el JEV200 exacto. No infiere
+otra vez ni considera la cuota de Gemma como cuota de Flash-Lite. Cuenta tokens
+antes de enviar; el máximo local Flash-Lite de 30000 es un límite operativo de
+entrada, no una cuota verificada de la cuenta. Sin fallback o reintento automático.
+
+El costo se calcula desde usage real único de JEV (USD0.042/M entrada) y Flash-Lite
+(USD0.25/M entrada, USD1.50/M salida, incluido thinking), según tarifa pública
+consultada el 15/10/2026. El reparto por caso de un batch es informativo: no se
+suma otra vez el usage completo compartido ni el JEV reutilizado de la cadena
+anterior. Se guardan uso y estimación sin afirmar factura verificada.

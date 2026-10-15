@@ -29,7 +29,7 @@ import tiktoken
 from buenapro_worker.matching.jev_recommendations import (
     POLICY_VERSION, JEV_MODEL, RECOMMENDATION_PROMPT, build_profile_cards,
     build_jev_payload, score_match, build_recommendation_context,
-    validate_recommendations, token_budget,
+    validate_recommendations, token_budget, build_small_recommendation_context,
 )
 from buenapro_worker.extraction.gemini import parse_json_response
 from buenapro_worker.matching.profile_evidence import guard_participation_actions
@@ -46,6 +46,14 @@ from match_provider_journal import ProviderBlocked, canonical, fingerprint, priv
 GEMMA_MODEL = 'gemma-4-31b-it'
 MODEL = JEV_MODEL + '+' + GEMMA_MODEL
 ALLOWED_REPLACEMENTS = frozenset({('seace_prod2',129),('seace_prod2',130),('seace_prod6',911)})
+
+
+def select_recommendation_model(model):
+    global GEMMA_MODEL,MODEL
+    if model not in {'gemma-4-31b-it','gemini-3.1-flash-lite'}:
+        raise ValueError('Unsupported explicitly selected recommendation model')
+    GEMMA_MODEL=model
+    MODEL=JEV_MODEL+'+'+model
 
 
 def emit(value):
@@ -103,7 +111,9 @@ def prepare(folder):
     manifest={'profile_id':PROFILE_ID,'tenant_id':TENANT_ID,'inputs_sha256':receipt['inputs_sha256'],
         'policy':POLICY_VERSION,'models':MODEL,'cases':[{k:x[k] for k in
             ('binding','pipeline_request_hash','token_budget')} for x in cases]}
-    once_json(folder/'execution-manifest.private.json',manifest)
+    manifest_name=('execution-manifest.private.json' if GEMMA_MODEL=='gemma-4-31b-it'
+                   else 'execution-manifest-flash-lite.private.json')
+    once_json(folder/manifest_name,manifest)
     return frozen,cards,cases,manifest
 
 
@@ -184,7 +194,7 @@ def reserved_dispatch(conn,case,case_folder,stage,payload,**kwargs):
         raise
 
 
-def verify_owned_claim(conn,claim,case,item,case_folder):
+def verify_owned_claim(conn,claim,case,item,case_folder,stage=None):
     if not claim:
         return
     row=conn.execute('SELECT *,lease_until>now() AS lease_live FROM prod2_evaluations WHERE id=%s',
@@ -199,14 +209,20 @@ def verify_owned_claim(conn,claim,case,item,case_folder):
         for stage in ('jev','gemma'))
     if row['status']=='running' and row['lease_live'] is True:
         return
+    if row['status']=='uncertain' and stage is not None:
+        response_path=case_folder/f'{stage}-response.private.json'
+        if response_path.exists() and json.loads(response_path.read_text()).get('http_status')==200:
+            return  # This exact stage is cached; journal cannot send it again.
     if row['status'] in {'done','uncertain'} and receipts_ready:
         return  # Only replay saved responses; dispatch_once will make no HTTP call.
     raise ProviderBlocked('PG reservation is not live; no new inference is authorized by an old claim')
 
 
-def gemma_request(payload,scoring):
+def gemma_request(payload,scoring,cards=None):
+    context=(build_small_recommendation_context(payload,scoring,cards) if cards is not None
+             else build_recommendation_context(payload,scoring))
     return {'systemInstruction':{'parts':[{'text':RECOMMENDATION_PROMPT}]},
-        'contents':[{'role':'user','parts':[{'text':canonical(build_recommendation_context(payload,scoring))}]}],
+        'contents':[{'role':'user','parts':[{'text':canonical(context)}]}],
         'generationConfig':{'temperature':0,'maxOutputTokens':8192,
                             'thinkingConfig':{'thinkingLevel':'minimal'}}}
 
@@ -221,6 +237,84 @@ def parse_gemma(body,payload):
     if any(type(usage.get(key)) is not int or usage[key]<0 for key in ('promptTokenCount','candidatesTokenCount')):
         raise ProviderBlocked('Gemma usage missing; preserve response before further calls')
     return result,usage
+
+
+def saved_batch_recommendation(case_folder,item):
+    binding=json.loads((case_folder/'gemma-batch-binding.private.json').read_text())
+    if binding['case_key']!=f"{item['case']['source_key']}-{item['case']['source_id']}" or binding['jev_request_sha256']!=fingerprint(item['jev_payload']):
+        raise PublicationConflict('Shared Gemma recommendation belongs to another JEV input')
+    batch_folder=(case_folder.parent/binding['batch_folder']).resolve()
+    if not batch_folder.is_relative_to((case_folder.parent/'gemma-batches').resolve()):
+        raise PublicationConflict('Unexpected shared Gemma receipt path')
+    request=json.loads((batch_folder/'gemma-request.private.json').read_text())
+    receipt=json.loads((batch_folder/'gemma-response.private.json').read_text())
+    if (receipt['http_status']!=200 or fingerprint(request)!=receipt['request_sha256']
+            or receipt['request_sha256']!=binding['batch_request_sha256']
+            or fingerprint(receipt)!=binding['batch_response_sha256']):
+        raise PublicationConflict('Shared Gemma receipt hash mismatch')
+    candidates=receipt['body'].get('candidates') or []
+    if len(candidates)!=1 or candidates[0].get('finishReason')!='STOP':
+        raise ProviderBlocked('Incomplete shared Gemma response')
+    text=''.join(p.get('text','') for p in candidates[0]['content']['parts'] if not p.get('thought'))
+    result=parse_json_response(text)
+    matches=[r for r in result['evaluations'] if r['case_key']==binding['case_key']]
+    if len(matches)!=1:
+        raise PublicationConflict('Shared Gemma output coverage changed')
+    recommendation=validate_recommendations({k:v for k,v in matches[0].items() if k!='case_key'},item['jev_payload'])
+    return recommendation,binding['allocated_usage']
+
+
+def transition_rejected_gemma_claim(conn,case,item,case_folder,claim):
+    """One explicitly authorized model change; the original paid JEV is reused."""
+    if GEMMA_MODEL!='gemini-3.1-flash-lite' or not claim:
+        return claim
+    row=conn.execute('SELECT * FROM prod2_evaluations WHERE id=%s',(claim['id'],)).fetchone()
+    if row and row['model']==MODEL:return claim
+    old_rejection=json.loads((case_folder/'gemma-response.private.json').read_text())
+    jev=json.loads((case_folder/'jev-response.private.json').read_text())
+    old_request=json.loads((case_folder/'jev-request.private.json').read_text())
+    rejected_request=json.loads((case_folder/'gemma-request.private.json').read_text())
+    old_binding={**item['binding'],'recommendation_model':'gemma-4-31b-it'}
+    old_pipeline_hash=fingerprint(old_binding)
+    if (case['source_key']!='seace_prod2' or case['source_id']!=1046782 or claim['id']!=2142
+            or not row or row['id_convocatoria']!=case['source_id'] or str(row['profile_id'])!=PROFILE_ID
+            or row['model']!=JEV_MODEL+'+gemma-4-31b-it' or row['status']!='uncertain'
+            or row['kind']!='gemini_match' or row['policy_version']!=POLICY_VERSION
+            or row['request_hash']!=old_pipeline_hash
+            or str(row['claim_token'])!=claim.get('claim_token')
+            or old_rejection['http_status']!=429 or jev['http_status']!=200
+            or jev.get('request_sha256')!=fingerprint(old_request)
+            or jev['body'].get('model')!=JEV_MODEL
+            or old_rejection.get('request_sha256')!=fingerprint(rejected_request)
+            or fingerprint(old_request)!=fingerprint(item['jev_payload'])):
+        raise ProviderBlocked('Old provider chain cannot be closed without verified rejection and the paid JEV receipt')
+    violations=[v for detail in old_rejection['body'].get('error',{}).get('details',[])
+                for v in detail.get('violations',[])]
+    if not any(v.get('quotaValue')=='16000' and 'InputTokensPerModelPerMinute' in v.get('quotaId','') for v in violations):
+        raise ProviderBlocked('Prior error is not the diagnosed Gemma input-token quota')
+    usage=jev['body']['usage']
+    proof={'reason':'Human selected Gemini 3.1 Flash-Lite after the verified Gemma429 quota rejection',
+        'old_evaluation_id':claim['id'],'reused_jev_request_sha256':fingerprint(old_request),
+        'old_gemma_response_sha256':fingerprint(old_rejection),'new_model':MODEL,
+        'jev_cost_usd':str(Decimal(usage['input_tokens'])*Decimal('.042')/Decimal(1_000_000)),
+        'old_gemma_generation_returned':False,'new_jev_inference_authorized':False}
+    once_json(case_folder/'provider-transition.private.json',proof)
+    once_json(case_folder/'pg-claim-gemma-original.private.json',claim)
+    with conn.transaction():
+        changed=conn.execute("""UPDATE prod2_evaluations SET status='failed',result_json=%s::jsonb,
+            input_tokens=%s,output_tokens=%s,cost_usd=%s,completed_at=now(),updated_at=now()
+            WHERE id=%s AND claim_token=%s AND status='uncertain'
+              AND id_convocatoria=%s AND profile_id=%s AND kind='gemini_match'
+              AND model=%s AND policy_version=%s AND request_hash=%s RETURNING id""",
+            (canonical(proof),usage['input_tokens'],usage['output_tokens'],proof['jev_cost_usd'],claim['id'],claim['claim_token'],
+             case['source_id'],PROFILE_ID,JEV_MODEL+'+gemma-4-31b-it',POLICY_VERSION,old_pipeline_hash)).fetchone()
+        if not changed:raise PublicationConflict('Original rejected provider claim changed')
+    new_claim=create_evaluation_before_dispatch(conn,case,profile_id=PROFILE_ID,
+        request_hash=item['pipeline_request_hash'],model=MODEL,policy_version=POLICY_VERSION)
+    if not new_claim or new_claim['status']!='claimed':
+        raise ProviderBlocked('New explicitly selected model reservation needs reconciliation')
+    private_json(case_folder/'pg-claim.private.json',new_claim)
+    return new_claim
 
 
 def compose(case,payload,scoring,recommendations,cards,item,usage):
@@ -264,7 +358,7 @@ def compose(case,payload,scoring,recommendations,cards,item,usage):
     return breakdown,missing
 
 
-def run_case(conn,settings,frozen,cards,item,folder,jev_key):
+def run_case(conn,settings,frozen,cards,item,folder,jev_key,*,jev_only=False):
     case=item['case'];case_folder=folder/f"{case['source_key']}-{case['source_id']}"
     result_path=case_folder/'published.private.json'
     if result_path.exists():
@@ -276,6 +370,7 @@ def run_case(conn,settings,frozen,cards,item,folder,jev_key):
     claim_path=case_folder/'pg-claim.private.json'
     if claim_path.exists():
         claim=json.loads(claim_path.read_text())
+        claim=transition_rejected_gemma_claim(conn,case,item,case_folder,claim)
     else:
         claim=create_evaluation_before_dispatch(conn,case,profile_id=PROFILE_ID,
             request_hash=item['pipeline_request_hash'],model=MODEL,policy_version=POLICY_VERSION)
@@ -283,25 +378,38 @@ def run_case(conn,settings,frozen,cards,item,folder,jev_key):
             raise ProviderBlocked('Existing PROD2 reservation needs reconciliation; no repeat inference')
         private_json(claim_path,claim,exclusive=True)
     try:
-        verify_owned_claim(conn,claim,case,item,case_folder)
+        verify_owned_claim(conn,claim,case,item,case_folder,stage='jev')
         jev=reserved_dispatch(conn,case,case_folder,'jev',item['jev_payload'],url='https://api.typesafe.ai/v1/systemone',
             api_key=jev_key,header_name='Authorization')['body']
         scoring=score_match(item['jev_payload'],jev,at=datetime.fromisoformat(frozen['receipt']['cutoff_utc']),profile_cards=cards)
         once_json(case_folder/'scoring.private.json',scoring)
         if scoring['score'] is None:
             raise ProviderBlocked('JEV produced no quantified capacity; retain the response for review')
-        request=gemma_request(item['jev_payload'],scoring)
-        verify_owned_claim(conn,claim,case,item,case_folder)
-        gemma=reserved_dispatch(conn,case,case_folder,'gemma',request,
-            url=f'https://generativelanguage.googleapis.com/v1beta/models/{GEMMA_MODEL}:generateContent',
-            api_key=settings.gemini_api_key,header_name='x-goog-api-key')['body']
-        recommendations,gusage=parse_gemma(gemma,item['jev_payload'])
+        if jev_only:
+            return {'source_key':case['source_key'],'source_id':case['source_id'],
+                'status':'jev_ready','score':scoring['score'],
+                'cost_usd':str(Decimal(jev['usage']['input_tokens'])*Decimal('.042')/Decimal(1_000_000))}
+        if (case_folder/'gemma-batch-binding.private.json').exists():
+            recommendations,gusage=saved_batch_recommendation(case_folder,item)
+        else:
+            request=gemma_request(item['jev_payload'],scoring,cards)
+            verify_owned_claim(conn,claim,case,item,case_folder)
+            gemma=reserved_dispatch(conn,case,case_folder,'gemma',request,
+                url=f'https://generativelanguage.googleapis.com/v1beta/models/{GEMMA_MODEL}:generateContent',
+                api_key=settings.gemini_api_key,header_name='x-goog-api-key')['body']
+            recommendations,gusage=parse_gemma(gemma,item['jev_payload'])
         once_json(case_folder/'recommendations.private.json',recommendations)
-        ju=jev['usage'];cost=str(Decimal(ju['input_tokens'])*Decimal('.042')/Decimal(1_000_000))
+        ju=jev['usage'];jev_cost=Decimal(ju['input_tokens'])*Decimal('.042')/Decimal(1_000_000)
+        output=gusage['candidatesTokenCount']+gusage.get('thoughtsTokenCount',0)
+        explanation_cost=(Decimal(gusage['promptTokenCount'])*Decimal('.25')+Decimal(output)*Decimal('1.50'))/Decimal(1_000_000) if GEMMA_MODEL=='gemini-3.1-flash-lite' else Decimal(0)
+        reused_paid=(case_folder/'provider-transition.private.json').exists()
+        cost=str(explanation_cost+(Decimal(0) if reused_paid else jev_cost))
         usage={'input_tokens':ju['input_tokens']+gusage['promptTokenCount'],
             'output_tokens':ju['output_tokens']+gusage['candidatesTokenCount']+gusage.get('thoughtsTokenCount',0),
-            'cost_usd':cost,'providers':{'jev':{'model':JEV_MODEL,**ju,'cost_usd':cost},
-                'gemma':{'model':GEMMA_MODEL,**gusage,'published_rate_cost_usd':'0','rate_source':'https://ai.google.dev/gemini-api/docs/pricing#gemma-4','provider_bill_verified':False}}}
+            'cost_usd':cost,'providers':{'jev':{'model':JEV_MODEL,**ju,'cost_usd':str(jev_cost),
+                'reused_from_prior_provider_chain':reused_paid,'incurred_in_this_chain_usd':'0' if reused_paid else str(jev_cost)},
+                'recommendations':{'model':GEMMA_MODEL,**gusage,'published_rate_cost_usd':str(explanation_cost),
+                    'rate_source':'https://ai.google.dev/gemini-api/docs/pricing','provider_bill_verified':False}}}
         composed_path=case_folder/'composed.private.json'
         if composed_path.exists():
             composed=json.loads(composed_path.read_text())
@@ -342,7 +450,10 @@ def main():
     parser.add_argument('--folder',type=Path,required=True)
     parser.add_argument('--execute',action='store_true')
     parser.add_argument('--limit',type=int)
+    parser.add_argument('--jev-only',action='store_true',help='Prepare only the reserved scoring stage for shared Gemma batches')
+    parser.add_argument('--recommendation-model',choices=['gemma-4-31b-it','gemini-3.1-flash-lite'],default='gemma-4-31b-it')
     args=parser.parse_args();folder=args.folder.resolve()
+    select_recommendation_model(args.recommendation_model)
     if folder!=(ROOT/'tmp/dinaut-three-dot-20261015').resolve():
         raise ValueError('Use the canonical DIN three-dot folder; never copy a paid batch to a new folder')
     frozen,cards,cases,manifest=prepare(folder)
@@ -373,14 +484,15 @@ def main():
                 results=[]
                 for item in cases[:args.limit]:
                     conn.execute('SELECT 1').fetchone()  # A dead lock-owner connection stops further dispatches.
-                    result=run_case(conn,settings,frozen,cards,item,folder,jev_key)
+                    result=run_case(conn,settings,frozen,cards,item,folder,jev_key,jev_only=args.jev_only)
                     results.append(result)
-                    emit({'status':'published','source':result['source_key'],'source_id':result['source_id'],
-                          'match_id':result['match_id'],'score':result['score'],'provisional':True,
+                    emit({'status':'jev_ready' if args.jev_only else 'published','source':result['source_key'],'source_id':result['source_id'],
+                          'match_id':result.get('match_id'),'score':result['score'],'provisional':True,
                           'completed_this_run':len(results),'known_cost_usd':result['cost_usd']})
-                    private_json(folder/'progress.private.json',{'commit':commit,'results':results,'complete':len(results)==len(cases)})
+                    private_json(folder/('jev-progress.private.json' if args.jev_only else 'progress.private.json'),
+                                 {'commit':commit,'results':results,'complete':not args.jev_only and len(results)==len(cases)})
                 emit({'status':'run_finished','completed_this_run':len(results),'authorized_ready':len(cases),
-                      'complete':len(results)==len(cases)})
+                      'complete':not args.jev_only and len(results)==len(cases)})
 
 
 if __name__=='__main__':
