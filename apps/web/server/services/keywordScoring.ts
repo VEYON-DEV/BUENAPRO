@@ -31,13 +31,14 @@ export function scoreBusinessLine(description: string, keywordPhrases: string[],
 }
 
 /** Calcula una sola vez el mejor fit entre las líneas del segmento del contrato. */
-export function keywordFitLateralSql(tenantParam: number) {
+export function keywordFitLateralSql(tenantParam: number, profileParam?: number) {
   return `
   LEFT JOIN LATERAL (
     SELECT fit.*
     FROM company_profiles cp
     CROSS JOIN LATERAL profile_contract_fit(cp.id,c.id_contrato) fit
     WHERE cp.tenant_id = $${tenantParam} AND cp.is_active = true
+      ${profileParam ? `AND cp.id = $${profileParam}::uuid` : ""}
     ORDER BY fit.fit_score DESC,fit.business_line_id
     LIMIT 1
   ) fit ON true`;

@@ -95,7 +95,7 @@ function FactRow({ icon, label, children }: { icon: Parameters<typeof AppIcon>[0
   );
 }
 
-export function OpportunityList({ rows }: { rows: any[] }) {
+export function OpportunityList({ rows, profileId }: { rows: any[]; profileId?: string }) {
   const [selectedId, setSelectedId] = useState<string | number | null>(rows[0]?.id_contrato ?? null);
   // Beside the list (>1500px) the inspector is always shown; below that it is an overlay revealed only after the user picks a row.
   const [userOpened, setUserOpened] = useState(false);
@@ -125,6 +125,7 @@ export function OpportunityList({ rows }: { rows: any[] }) {
     [rows, selectedId],
   );
   const detail = primary && storedDetail?.contract
+    && (!profileId || storedDetail.contract.profile_id === profileId)
     && String(storedDetail.contract.id_contrato) === String(primary.id_contrato) ? storedDetail : null;
 
   useEffect(() => {
@@ -136,7 +137,7 @@ export function OpportunityList({ rows }: { rows: any[] }) {
     let cancelled = false;
     setDetail(null);
     setDetailStatus("loading");
-    fetch(`/api/contracts/${selectedId}`)
+    fetch(`/api/contracts/${selectedId}${profileId ? `?profile_id=${encodeURIComponent(profileId)}` : ""}`)
       .then((response) => {
         if (!response.ok) throw new Error("No se pudo cargar metadata");
         return response.json();
@@ -154,7 +155,7 @@ export function OpportunityList({ rows }: { rows: any[] }) {
     return () => {
       cancelled = true;
     };
-  }, [selectedId]);
+  }, [selectedId, profileId]);
 
   if (!rows.length) {
     return (
@@ -280,7 +281,7 @@ export function OpportunityList({ rows }: { rows: any[] }) {
           </div>
 
           <div className={styles.previewActions}>
-            <Link className={styles.openLink} href={`/oportunidad/${primary.id_contrato}`}>
+            <Link className={styles.openLink} href={`/oportunidad/${primary.id_contrato}${profileId ? `?profile_id=${encodeURIComponent(profileId)}` : ""}`}>
               Ver detalle completo
               <AppIcon name="arrow" />
             </Link>

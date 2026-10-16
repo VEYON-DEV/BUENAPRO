@@ -2,7 +2,7 @@
 
 import { FileCheck2, Search } from "lucide-react";
 import { Input } from "@/components/ui/Input";
-import { analysisFilterHref } from "../../model/analysisPresentation";
+import { scoreFilterHref } from "../../model/analysisPresentation";
 import styles from "./Prod4OpportunityToolbar.module.css";
 
 function filterHref(defaults: Record<string, string>, object: string, source: "prod2" | "prod4") {
@@ -23,6 +23,7 @@ export function Prod4OpportunityToolbar({ defaults, source = "prod4" }: { defaul
         {source === "prod2" && defaults.profile_id ? <input name="profile_id" type="hidden" value={defaults.profile_id} /> : null}
         {object ? <input name="object" type="hidden" value={object} /> : null}
         {source === "prod2" && defaults.analysis === "done" ? <input name="analysis" type="hidden" value="done" /> : null}
+        {source === "prod2" && defaults.with_score === "true" ? <input name="with_score" type="hidden" value="true" /> : null}
         <label className={styles.search}>
           <Search aria-hidden="true" size={18} />
           <Input aria-label={source === "prod2" ? "Buscar procedimientos SEACE" : "Buscar concursos de tecnología"} autoComplete="off" defaultValue={defaults.q ?? ""} name="q" placeholder="Ej.: licencia de software…" type="search" />
@@ -37,10 +38,10 @@ export function Prod4OpportunityToolbar({ defaults, source = "prod4" }: { defaul
             </a>
           ))}
         </div>
-        {source === "prod2" ? <a aria-current={defaults.analysis === "done" ? "page" : undefined}
-          className={[styles.analysisFilter, defaults.analysis === "done" ? styles.active : ""].join(" ")}
-          href={analysisFilterHref(defaults, source)}>
-          <FileCheck2 aria-hidden="true" size={16} />Con análisis
+        {source === "prod2" ? <a aria-current={defaults.with_score === "true" ? "page" : undefined}
+          className={[styles.analysisFilter, defaults.with_score === "true" ? styles.active : ""].join(" ")}
+          href={scoreFilterHref(defaults, source)}>
+          <FileCheck2 aria-hidden="true" size={16} />Con puntaje
         </a> : null}
       </div>
     </section>

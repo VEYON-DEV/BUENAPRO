@@ -33,3 +33,14 @@ export function analysisFilterHref(defaults: Record<string, string>, source?: "p
   else next.set("analysis", "done");
   return `/feed?${next.toString()}`;
 }
+
+/** Numeric-score filtering is separate from the legacy saved-analysis filter. */
+export function scoreFilterHref(defaults: Record<string, string>, source?: "prod2" | "prod4") {
+  const next = new URLSearchParams(defaults);
+  if (source) next.set("source", source);
+  next.delete("page");
+  next.delete("analysis");
+  if (defaults.with_score === "true") next.delete("with_score");
+  else next.set("with_score", "true");
+  return `/feed?${next.toString()}`;
+}

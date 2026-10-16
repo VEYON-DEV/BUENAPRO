@@ -90,8 +90,8 @@ test('pagination uses convocatoria identity and preserves source provenance with
   assert.match(selection.sql, /'seace_prod2'::text AS source_key/);
   assert.match(selection.sql, /prod2_match_provenance/);
   assert.match(selection.sql, /document_sha256/);
-  assert.match(selection.sql, /ORDER BY fit\.keyword_points DESC NULLS LAST, CASE WHEN matched\.breakdown_json->'meta'->>'score_validated' = 'false' THEN NULL ELSE matched\.score END DESC NULLS LAST/);
-  assert.ok(selection.sql.indexOf('ORDER BY fit.keyword_points') < selection.sql.lastIndexOf('LIMIT $'));
+  assert.match(selection.sql, /ORDER BY CASE WHEN matched\.id IS NOT NULL AND matched\.score BETWEEN 0 AND 100 THEN matched\.score ELSE NULL END DESC NULLS LAST, fit\.keyword_points DESC NULLS LAST/);
+  assert.ok(selection.sql.indexOf('ORDER BY CASE WHEN matched.id IS NOT NULL AND matched.score BETWEEN') < selection.sql.lastIndexOf('LIMIT $'));
   assert.doesNotMatch(selection.sql, /prod4_processes|seace_contracts|worker_jobs/);
   const count = statements.find(statement => statement.sql.includes('count(*)::int AS total FROM prod2_discoveries'));
   assert.doesNotMatch(count.sql, /matched\.id IS NOT NULL|prod2_match_provenance/, 'default totals retain every enriched opportunity');
@@ -565,7 +565,7 @@ test('saved state comes from the tenant bookmark of each canonical opportunity',
   const service = load('prod2Opportunities.ts', { '@/server/db/client': { query: async (sql, values) => {
     statements.push({ sql, values });
     if (sql.includes('FROM saved_opportunities')) return { rows: [{ opportunity_id: 'opp-2' }] };
-    if (sql.includes('ORDER BY fit.keyword_points')) return { rows: [{ id_convocatoria: '1', opportunity_id: 'opp-1' }, { id_convocatoria: '2', opportunity_id: 'opp-2' }] };
+    if (sql.includes('p.published_at DESC NULLS LAST, p.id_convocatoria DESC')) return { rows: [{ id_convocatoria: '1', opportunity_id: 'opp-1' }, { id_convocatoria: '2', opportunity_id: 'opp-2' }] };
     return { rows: sql.includes('count(*)::int AS total') ? [{ total: 2 }] : [] };
   } }, '@/lib/prod2Analysis': analysis, './prod2DocumentStorage': { prod2StorageAvailable: () => false } });
   const result = await service.listProd2OpportunitiesForTenant('tenant-a', { object: null, q: '', page: 1, pageSize: 20, profileId: null });
@@ -578,9 +578,56 @@ test('saved state comes from the tenant bookmark of each canonical opportunity',
 test('lists keep working before the saved_opportunities migration is applied', async () => {
   const service = load('prod2Opportunities.ts', { '@/server/db/client': { query: async (sql) => {
     if (sql.includes('FROM saved_opportunities')) throw Object.assign(new Error('relation "saved_opportunities" does not exist'), { code: '42P01' });
-    if (sql.includes('ORDER BY fit.keyword_points')) return { rows: [{ id_convocatoria: '1', opportunity_id: 'opp-1' }] };
+    if (sql.includes('p.published_at DESC NULLS LAST, p.id_convocatoria DESC')) return { rows: [{ id_convocatoria: '1', opportunity_id: 'opp-1' }] };
     return { rows: sql.includes('count(*)::int AS total') ? [{ total: 1 }] : [] };
   } }, '@/lib/prod2Analysis': analysis, './prod2DocumentStorage': { prod2StorageAvailable: () => false } });
   const result = await service.listProd2OpportunitiesForTenant('tenant-a', { object: null, q: '', page: 1, pageSize: 20, profileId: null });
   assert.equal(result.data[0].is_saved, false);
+});
+
+test('PROD2 score flag is independent of the legacy saved-analysis flag', () => {
+  const service = load('prod2Opportunities.ts', { '@/server/db/client': { query: async () => { throw new Error('Parser must not query'); } }, '@/lib/prod2Analysis': analysis });
+  for (const query of ['', 'with_score=false']) assert.equal(service.parseProd2ListParams(new URLSearchParams(query)).withScore, false);
+  assert.equal(service.parseProd2ListParams(new URLSearchParams('with_score=true')).withScore, true);
+  assert.equal(service.parseProd2ListParams(new URLSearchParams('analysis=done')).analysis, 'done');
+  for (const invalid of ['all', '1', 'true OR true']) assert.throws(() => service.parseProd2ListParams(new URLSearchParams({ with_score: invalid })), error => error.status === 400);
+});
+
+test('PROD2 scores precede keyword affinity globally, including zero/provisional, with numeric filtering in count and page', async () => {
+  for (const score of [0, 51, 72, 100]) {
+    const { service, statements } = scoreProjectionService({ storedScore: score, scoreValidated: false });
+    await service.listProd2OpportunitiesForTenant('tenant', { object: 'service', q: 'software', page: 2, pageSize: 5, profileId, withScore: true });
+    const selections = statements.filter(statement => statement.sql.includes('FROM prod2_discoveries'));
+    assert.equal(selections.length, 2);
+    for (const { sql } of selections) {
+      assert.match(sql, /CASE WHEN matched\.id IS NOT NULL AND matched\.score BETWEEN 0 AND 100 THEN matched\.score ELSE NULL END IS NOT NULL/);
+      assert.match(sql, /m\.profile_id = \$1::uuid/);
+      assert.match(sql, /ev\.status = 'done' AND ev\.kind = 'gemini_match'/);
+      assert.doesNotMatch(sql, /matched\.score > 0|COALESCE\(matched\.score, 0\)/);
+    }
+    const page = selections[1];
+    assert.match(page.sql, /ORDER BY CASE WHEN matched\.id IS NOT NULL AND matched\.score BETWEEN 0 AND 100 THEN matched\.score ELSE NULL END DESC NULLS LAST, fit\.keyword_points DESC NULLS LAST/);
+    assert.ok(page.sql.indexOf('ELSE NULL END IS NOT NULL') < page.sql.lastIndexOf('LIMIT $4 OFFSET $5'));
+    assert.deepEqual(Array.from(page.values), [profileId, 'service', '%software%', 5, 5]);
+  }
+});
+
+test('PROD2 numeric-score filter never falls back to a foreign or missing profile', async () => {
+  for (const explicit of [null, profileId]) {
+    const statements = [];
+    const service = load('prod2Opportunities.ts', { '@/server/db/client': { query: async (sql, values) => {
+      statements.push({ sql, values }); return { rows: sql.includes('count(*)::int AS total') ? [{ total: 0 }] : [] };
+    } }, '@/lib/prod2Analysis': analysis });
+    const params = { object: null, q: '', page: 1, pageSize: 20, profileId: explicit, withScore: true };
+    if (explicit) {
+      await assert.rejects(service.listProd2OpportunitiesForTenant('foreign-tenant', params), error => error.status === 404);
+      assert.equal(statements.length, 1);
+    } else {
+      const result = await service.listProd2OpportunitiesForTenant('empty-tenant', params);
+      assert.equal(result.total, 0);
+      const page = statements.find(statement => statement.sql.includes('LIMIT $2 OFFSET $3'));
+      assert.equal(page.values[0], null);
+      assert.match(page.sql, /m\.profile_id = \$1::uuid/);
+    }
+  }
 });

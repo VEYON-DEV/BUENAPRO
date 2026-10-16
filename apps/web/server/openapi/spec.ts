@@ -37,6 +37,7 @@ export const openApiSpec = {
     { name: "Feed" },
     { name: "Contracts" },
     { name: "PROD4" },
+    { name: "PROD2" },
     { name: "Catalogs" },
     { name: "Documents" },
     { name: "Facets" },
@@ -96,10 +97,14 @@ export const openApiSpec = {
     "/api/contracts": {
       get: {
         tags: ["Contracts"],
-        summary: "Explora oportunidades SEACE cargadas, con match del tenant si existe",
+        summary: "Explora oportunidades SEACE con puntajes del perfil activo primero",
+        description: "Orden global antes de paginar: puntaje documental guardado 0–100 descendente, incluyendo provisionales y cero; después afinidad y fechas. No convierte afinidad en puntaje. profile_id debe pertenecer al tenant y estar activo.",
         parameters: [
           ...paginationParams,
           { name: "q", in: "query", schema: { type: "string" } },
+          { name: "profile_id", in: "query", schema: { type: "string", format: "uuid" } },
+          { name: "with_score", in: "query", description: "true incluye solo oportunidades con puntaje documental guardado válido, final o provisional", schema: { type: "boolean", default: false } },
+          { name: "analysis", in: "query", description: "Filtro legacy por análisis existente, aunque no tenga número publicable", schema: { type: "string", enum: ["done"] } },
           { name: "objeto", in: "query", schema: { type: "integer" } },
           { name: "estado", in: "query", schema: { type: "integer" } },
           { name: "segmento", in: "query", schema: { type: "string" } },
@@ -113,8 +118,30 @@ export const openApiSpec = {
         ],
         responses: {
           "200": { ...paginatedResponse, description: "Contratos cargados con ID legado y metadatos canónicos de oportunidad" },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "404": { description: "El perfil solicitado no está activo o no pertenece al tenant" },
           "401": { $ref: "#/components/responses/Unauthorized" },
         },
+      },
+    },
+    "/api/prod2/opportunities": {
+      get: {
+        tags: ["PROD2"],
+        summary: "Procedimientos consultados con puntajes del perfil activo primero",
+        description: "Puntaje documental guardado válido 0–100 descendente antes de afinidad y paginación. Conserva provenance vigente y avisos provisionales; sin puntaje no inventa cero.",
+        parameters: [
+          { name: "profile_id", in: "query", schema: { type: "string", format: "uuid" } },
+          { name: "with_score", in: "query", schema: { type: "boolean", default: false } },
+          { name: "analysis", in: "query", description: "Filtro legacy por análisis existente independiente del número", schema: { type: "string", enum: ["done"] } },
+          { name: "object", in: "query", schema: { type: "string", enum: ["good", "service"] } },
+          { name: "q", in: "query", schema: { type: "string", maxLength: 120 } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          { name: "page_size", in: "query", schema: { type: "integer", minimum: 1, maximum: 100, default: 20 } },
+        ],
+        responses: { "200": { description: "data, total, page, page_size y perfil activo seleccionado" },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { description: "Perfil no disponible en el tenant" } },
       },
     },
     "/api/prod4/opportunities": {

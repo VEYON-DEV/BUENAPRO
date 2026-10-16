@@ -10,7 +10,7 @@ export class Prod2RequestError extends Error {
   constructor(message: string, public status = 400) { super(message); }
 }
 
-export type Prod2ListParams = { object: "good" | "service" | null; q: string; page: number; pageSize: number; profileId: string | null; analysis?: "done" | null };
+export type Prod2ListParams = { object: "good" | "service" | null; q: string; page: number; pageSize: number; profileId: string | null; analysis?: "done" | null; withScore?: boolean };
 type Prod2Row = Record<string, any> & {
   id_convocatoria: string; id_procedimiento: string; opportunity_id: string; source_key: "seace_prod2";
   nomenclatura: string; title: string; description: string; object_type: "good" | "service";
@@ -46,7 +46,9 @@ export function parseProd2ListParams(params: URLSearchParams): Prod2ListParams {
   if (profileId && !uuidPattern.test(profileId)) throw new Prod2RequestError("profile_id must be a UUID");
   const analysis = params.get("analysis");
   if (analysis && analysis !== "done") throw new Prod2RequestError("analysis must be done");
-  return { object: object as Prod2ListParams["object"], q, page, pageSize, profileId, analysis: analysis ? "done" : null };
+  const withScore = params.get("with_score");
+  if (withScore && withScore !== "true" && withScore !== "false") throw new Prod2RequestError("with_score must be true or false");
+  return { object: object as Prod2ListParams["object"], q, page, pageSize, profileId, analysis: analysis ? "done" : null, withScore: withScore === "true" };
 }
 
 async function resolveProfile(tenantId: string, profileId: string | null) {
@@ -111,6 +113,9 @@ const PUBLISHED_MATCH_SCORE = "CASE WHEN matched.breakdown_json->'meta'->>'score
 const PUBLISHED_MATCH_VERDICT = "CASE WHEN matched.breakdown_json->'meta'->>'score_validated' = 'false' THEN 'gris' ELSE matched.verdict END";
 const MATCH_REVIEW_REQUIRED = "(COALESCE(matched.breakdown_json->'meta'->>'score_validated' = 'false', false) OR COALESCE(matched.evaluated_source_review_required, false))";
 const PROVISIONAL_MATCH_SCORE = `CASE WHEN ${MATCH_REVIEW_REQUIRED} AND matched.score >= 0 AND matched.score <= 100 THEN matched.score ELSE NULL END`;
+// The same retained 0–100 number shown by the UI, whether final or provisional.
+// This is never a keyword-affinity score and never substitutes zero for null.
+const AVAILABLE_MATCH_SCORE = "CASE WHEN matched.id IS NOT NULL AND matched.score BETWEEN 0 AND 100 THEN matched.score ELSE NULL END";
 const MATCH_STATUS_SELECT = `matched.id::text AS match_id, ${MATCH_REVIEW_REQUIRED} AS match_review_required, ${PROVISIONAL_MATCH_SCORE} AS provisional_score`;
 
 const KEYWORD_FIT_JOIN = keywordTextFitLateralSql(1, "p.description");
@@ -159,16 +164,18 @@ export async function listProd2OpportunitiesForTenant(tenantId: string, params: 
   // A saved analysis exists even when its score is unpublished. Match provenance
   // and the chosen tenant-owned profile establish availability, never score > 0.
   if (params.analysis === "done") where.push("matched.id IS NOT NULL");
+  if (params.withScore) where.push(`${AVAILABLE_MATCH_SCORE} IS NOT NULL`);
   const predicate = where.join(" AND ");
   const count = await query<{ total: number }>(`SELECT count(*)::int AS total FROM prod2_discoveries p JOIN prod2_details d USING(id_convocatoria)
-    ${params.analysis === "done" ? MATCH_JOIN : ""}
+    ${params.analysis === "done" || params.withScore ? MATCH_JOIN : ""}
     WHERE ($1::uuid IS NULL OR $1::uuid IS NOT NULL) AND ${predicate}`, values);
   const rows = await query<Prod2Row>(`SELECT ${BASE}, ${KEYWORD_FIT_SELECT}, jev.result_json AS jev_result,
     ${MATCH_STATUS_SELECT}, ${PUBLISHED_MATCH_SCORE} AS match_score, ${PUBLISHED_MATCH_VERDICT} AS match_verdict
     FROM prod2_discoveries p JOIN prod2_details d USING(id_convocatoria)
     ${MATCH_JOIN} ${JEV_JOIN} ${KEYWORD_FIT_JOIN}
     WHERE ${predicate}
-    ORDER BY fit.keyword_points DESC NULLS LAST, ${PUBLISHED_MATCH_SCORE} DESC NULLS LAST,
+    ORDER BY ${AVAILABLE_MATCH_SCORE} DESC NULLS LAST, fit.keyword_points DESC NULLS LAST,
+      ${PUBLISHED_MATCH_SCORE} DESC NULLS LAST,
       p.published_at DESC NULLS LAST, p.id_convocatoria DESC
     LIMIT $${values.length + 1} OFFSET $${values.length + 2}`, [...values, params.pageSize, (params.page - 1) * params.pageSize]);
   const saved = await savedOpportunityIds(tenantId, rows.rows.map(row => row.opportunity_id));

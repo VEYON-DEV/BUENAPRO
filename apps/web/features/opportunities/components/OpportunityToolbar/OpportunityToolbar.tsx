@@ -4,12 +4,12 @@ import { Bookmark, Clock3, FileCheck2, Search, SlidersHorizontal, Sparkles } fro
 import { useState } from "react";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { analysisFilterHref } from "../../model/analysisPresentation";
+import { scoreFilterHref } from "../../model/analysisPresentation";
 import styles from "./OpportunityToolbar.module.css";
 
 function hrefFor(entries: Record<string, string>, defaults: Record<string, string>) {
   const params = new URLSearchParams({ estado: "2", has_extraction: "true", deadline: "open" });
-  ["source", "profile_id", "q", "analysis"].forEach(key => { if (defaults[key]) params.set(key, defaults[key]); });
+  ["source", "profile_id", "q", "analysis", "with_score"].forEach(key => { if (defaults[key]) params.set(key, defaults[key]); });
   if (defaults.objeto === "1" || defaults.objeto === "2") params.set("objeto", defaults.objeto);
   Object.entries(entries).forEach(([key, value]) => { if (value) params.set(key, value); else params.delete(key); });
   return `/feed?${params.toString()}`;
@@ -44,6 +44,7 @@ export function OpportunityToolbar({ defaults }: { defaults: Record<string, stri
         {defaults.source ? <input name="source" type="hidden" value={defaults.source} /> : null}
         {defaults.profile_id ? <input name="profile_id" type="hidden" value={defaults.profile_id} /> : null}
         {defaults.analysis === "done" ? <input name="analysis" type="hidden" value="done" /> : null}
+        {defaults.with_score === "true" ? <input name="with_score" type="hidden" value="true" /> : null}
         {defaults.objeto === "1" || defaults.objeto === "2" ? <input name="objeto" type="hidden" value={defaults.objeto} /> : null}
         {defaults.saved === "true" ? <input name="saved" type="hidden" value="true" /> : null}
         <label className={styles.search}>
@@ -54,7 +55,7 @@ export function OpportunityToolbar({ defaults }: { defaults: Record<string, stri
           <a aria-current={isActive(defaults, "forYou") ? "page" : undefined} className={isActive(defaults, "forYou") ? styles.active : ""} href={hrefFor({ deadline: "open" }, defaults)}><Sparkles aria-hidden="true" size={17} /> Para ti</a>
           <a aria-current={isActive(defaults, "closing") ? "page" : undefined} className={isActive(defaults, "closing") ? styles.active : ""} href={hrefFor({ deadline: "24h" }, defaults)}><Clock3 aria-hidden="true" size={17} /> Cierran pronto</a>
           <a aria-current={isActive(defaults, "saved") ? "page" : undefined} className={isActive(defaults, "saved") ? styles.active : ""} href={hrefFor({ deadline: "all", saved: "true" }, defaults)}><Bookmark aria-hidden="true" size={17} /> Guardadas</a>
-          <a aria-current={defaults.analysis === "done" ? "page" : undefined} className={defaults.analysis === "done" ? styles.active : ""} href={analysisFilterHref(defaults)}><FileCheck2 aria-hidden="true" size={17} /> Con análisis</a>
+          <a aria-current={defaults.with_score === "true" ? "page" : undefined} className={defaults.with_score === "true" ? styles.active : ""} href={scoreFilterHref(defaults)}><FileCheck2 aria-hidden="true" size={17} /> Con puntaje</a>
         </nav>
       </form>
       {filtersOpen ? <div className={styles.disclosure}>
@@ -63,6 +64,7 @@ export function OpportunityToolbar({ defaults }: { defaults: Record<string, stri
           {defaults.source ? <input name="source" type="hidden" value={defaults.source} /> : null}
           {defaults.profile_id ? <input name="profile_id" type="hidden" value={defaults.profile_id} /> : null}
           {defaults.analysis === "done" ? <input name="analysis" type="hidden" value="done" /> : null}
+          {defaults.with_score === "true" ? <input name="with_score" type="hidden" value="true" /> : null}
           {defaults.objeto === "1" || defaults.objeto === "2" ? <input name="objeto" type="hidden" value={defaults.objeto} /> : null}
           {defaults.q ? <input name="q" type="hidden" value={defaults.q} /> : null}
           {defaults.saved === "true" ? <input name="saved" type="hidden" value="true" /> : null}

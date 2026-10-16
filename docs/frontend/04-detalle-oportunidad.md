@@ -89,7 +89,7 @@ features/opportunity-detail/components/EventTimeline/
 ## Backend
 
 ```text
-GET /api/contracts/:id
+GET /api/contracts/:id?profile_id=
 GET /api/contracts/:id/documents
 GET /api/contracts/:id/facets
 GET /api/contracts/:id/original/:docId
@@ -102,6 +102,8 @@ GET /api/contracts/:id/seace/quote-context
 ```
 
 ## Acciones principales
+
+El inspector y el enlace desde menores conservan `profile_id`; el detalle y su API resuelven ese perfil activo del tenant antes de elegir el match y la afinidad. El retorno al feed mantiene el perfil. Un UUID ajeno/inactivo no habilita fallback al puntaje de otra empresa. Omitirlo selecciona el primer perfil activo por orden estable, igual que el listado.
 
 - Marcar como interesada.
 - Iniciar preparacion.

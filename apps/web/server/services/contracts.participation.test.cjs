@@ -3,8 +3,10 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const ts = require('typescript');
+const profileId = '00000000-0000-0000-0000-000000000001';
 
-function serviceWithCurrentReading({ matchId = null, score = null, matchReviewRequired = false, provisionalScore = null } = {}) {
+function serviceWithCurrentReading({ matchId = null, score = null, matchReviewRequired = false, provisionalScore = null,
+  profileRows = [{ id: profileId, razon_social: 'Empresa QA' }] } = {}) {
   const statements = [], exports = {};
   const reading = { id: '72', quality: 'auto', requires_human_review: true,
     participation: { subcontratacion: { status: 'prohibited', clause: 'No se permite subcontratar.', page: 12, conditions: [] } },
@@ -17,6 +19,7 @@ function serviceWithCurrentReading({ matchId = null, score = null, matchReviewRe
     require(name) {
       if (name === '@/server/db/client') return { query: async (sql, values) => {
         statements.push({ sql, values });
+        if (sql.includes('SELECT id::text, razon_social FROM company_profiles')) return { rows: profileRows };
         // Canonical permission can be historical; the current extraction remains independently exposed.
         return { rows: sql.includes('FROM seace_contracts c')
           ? [{ id_contrato: 123, extraction_id: '72', subcontracting_status: 'permitted', participation_extraction: reading,
@@ -52,8 +55,8 @@ test('contract list and detail expose only participation from their own latest c
   }
   const listSql = selections[0].sql;
   assert.doesNotMatch(listSql, /te\.raw_extraction_json|SELECT tx\.summary_json, tx\.raw_extraction_json/);
-  assert.deepEqual(Array.from(selections[0].values), ['tenant-qa', 20, 0]);
-  assert.deepEqual(Array.from(selections[1].values), [123, 'tenant-qa']);
+  assert.deepEqual(Array.from(selections[0].values), ['tenant-qa', profileId, 20, 0]);
+  assert.deepEqual(Array.from(selections[1].values), [123, 'tenant-qa', profileId]);
   assert.match(selections[1].sql, /tx\.id AS extraction_id/);
   const facets = statements.find(({ sql }) => sql.includes('FROM requirement_facets') && !sql.includes('FROM seace_contracts c'));
   assert.match(facets.sql, /WHERE id_contrato = \$1 AND extraction_id = \$2 AND is_current = true/);
@@ -72,7 +75,7 @@ test('list and detail hide unvalidated model scores while legacy metadata keeps 
     assert.match(sql, /ORDER BY CASE WHEN m\.breakdown_json->'meta'->>'score_validated' = 'false' THEN NULL ELSE m\.score END DESC NULLS LAST/);
     assert.doesNotMatch(sql, /COALESCE\(m\.breakdown_json->'meta'->>'score_validated', 'false'\)/, 'absence of new flag never retroactively hides legacy scores');
   }
-  assert.match(selections[0].sql, /CASE WHEN m\.breakdown_json->'meta'->>'score_validated' = 'false' THEN 'gris' ELSE m\.verdict END = \$2/);
+  assert.match(selections[0].sql, /CASE WHEN m\.breakdown_json->'meta'->>'score_validated' = 'false' THEN 'gris' ELSE m\.verdict END = \$3/);
 });
 
 test('minor analysis filter retains unpublished and zero scores while filtering matches before the shared page count', async () => {
@@ -90,9 +93,9 @@ test('minor analysis filter retains unpublished and zero scores while filtering 
     assert.match(listSql, /WHERE cp\.tenant_id = \$1 AND m\.id_contrato = c\.id_contrato/);
     assert.match(listSql, /te\.summary_json IS NOT NULL AND m\.id IS NOT NULL/);
     assert.match(listSql, /count\(\*\) OVER\(\)::int AS total_count/);
-    assert.ok(listSql.indexOf('m.id IS NOT NULL') < listSql.lastIndexOf('LIMIT $2'));
+    assert.ok(listSql.indexOf('m.id IS NOT NULL') < listSql.lastIndexOf('LIMIT $3'));
     assert.match(listSql, /COALESCE\(fit\.keyword_points, 0\) DESC/);
-    assert.deepEqual(Array.from(selections[0].values), ['tenant-qa', 20, 0]);
+    assert.deepEqual(Array.from(selections[0].values), ['tenant-qa', profileId, 20, 0]);
     for (const { sql } of selections) {
       assert.match(sql, /COALESCE\(m\.breakdown_json->'meta'->>'score_validated' = 'false', false\) AS match_review_required/);
       assert.doesNotMatch(sql, /m\.score (?:>\s|IS NOT NULL)|COALESCE\(m\.score, 0\)/);
@@ -137,5 +140,62 @@ test('minor provisional projection rejects missing matches, nonnumeric and out-o
     assert.equal(detail.contract.provisional_score, null);
     assert.equal(list.data[0].score, scenario.score ?? null);
     assert.equal(detail.contract.score, scenario.score ?? null);
+  }
+});
+
+test('minor score-only filter includes stored zero and provisional numbers and runs before page count/limit', async () => {
+  for (const score of [0, 51, 72, 100]) {
+    const { service, statements } = serviceWithCurrentReading({ matchId: 916, matchReviewRequired: true, provisionalScore: score });
+    const result = await service.listContractsForTenant('tenant-qa', new URLSearchParams(`profile_id=${profileId}&with_score=true&q=software`));
+    assert.equal(result.data[0].provisional_score, score);
+    assert.equal(result.profile.id, profileId);
+    const page = statements.find(statement => statement.sql.includes('FROM seace_contracts c'));
+    const available = 'CASE WHEN m.id IS NOT NULL AND m.score BETWEEN 0 AND 100 THEN m.score ELSE NULL END';
+    assert.ok(page.sql.includes(`${available} IS NOT NULL`));
+    assert.ok(page.sql.indexOf(`${available} IS NOT NULL`) < page.sql.lastIndexOf('LIMIT $4'));
+    assert.match(page.sql, /ORDER BY\s+CASE WHEN m\.id IS NOT NULL AND m\.score BETWEEN 0 AND 100 THEN m\.score ELSE NULL END DESC NULLS LAST,/);
+    assert.ok(page.sql.lastIndexOf('BETWEEN 0 AND 100 THEN m.score ELSE NULL END DESC NULLS LAST') < page.sql.lastIndexOf('COALESCE(fit.keyword_points, 0) DESC'));
+    assert.match(page.sql, /cp\.is_active = true AND cp\.id = \$2::uuid/);
+    assert.match(page.sql, /count\(\*\) OVER\(\)::int AS total_count/);
+    assert.deepEqual(Array.from(page.values), ['tenant-qa', profileId, '%software%', 20, 0]);
+    assert.doesNotMatch(page.sql, /COALESCE\(m\.score, 0\)|m\.score > 0/);
+  }
+});
+
+test('minor browse and detail use one resolved active tenant-owned profile instead of another profile match', async () => {
+  const { service, statements } = serviceWithCurrentReading();
+  await service.listContractsForTenant('tenant-qa', new URLSearchParams(`profile_id=${profileId}`));
+  await service.getContractForTenant('tenant-qa', 123, profileId);
+  const guards = statements.filter(statement => statement.sql.includes('SELECT id::text, razon_social FROM company_profiles'));
+  assert.equal(guards.length, 2);
+  for (const statement of guards) {
+    assert.match(statement.sql, /tenant_id = \$1 AND is_active = true AND \(\$2::uuid IS NULL OR id = \$2::uuid\)/);
+    assert.deepEqual(Array.from(statement.values), ['tenant-qa', profileId]);
+  }
+  const detail = statements.filter(statement => statement.sql.includes('FROM seace_contracts c'))[1];
+  assert.match(detail.sql, /cp\.tenant_id = \$2 AND m\.id_contrato = c\.id_contrato\s+AND cp\.is_active = true AND cp\.id = \$3::uuid/);
+  assert.match(detail.sql, /\$3::uuid::text AS profile_id/);
+  assert.deepEqual(Array.from(detail.values), [123, 'tenant-qa', profileId]);
+});
+
+test('foreign or inactive minor profiles fail before listing or detail; no active profile cannot borrow another score', async () => {
+  for (const detail of [false, true]) {
+    const { service, statements } = serviceWithCurrentReading({ profileRows: [] });
+    await assert.rejects(detail ? service.getContractForTenant('tenant-qa', 123, profileId)
+      : service.listContractsForTenant('tenant-qa', new URLSearchParams(`profile_id=${profileId}&with_score=true`)), error => error.status === 404);
+    assert.equal(statements.length, 1);
+  }
+  const { service, statements } = serviceWithCurrentReading({ profileRows: [] });
+  await service.listContractsForTenant('empty-tenant', new URLSearchParams('with_score=true'));
+  const page = statements.find(statement => statement.sql.includes('FROM seace_contracts c'));
+  assert.equal(page.values[1], null);
+  assert.match(page.sql, /cp\.is_active = true AND cp\.id = \$2::uuid/);
+});
+
+test('invalid minor profile and score flags are rejected without executing the list SQL', async () => {
+  for (const query of ['profile_id=not-uuid', 'with_score=all', 'with_score=true OR true']) {
+    const { service, statements } = serviceWithCurrentReading();
+    await assert.rejects(service.listContractsForTenant('tenant-qa', new URLSearchParams(query)), error => error.status === 400);
+    assert.equal(statements.length, 0);
   }
 });

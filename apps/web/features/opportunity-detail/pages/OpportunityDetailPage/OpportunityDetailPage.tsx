@@ -222,12 +222,14 @@ function DataRow({ label, value }: { label: string; value?: React.ReactNode }) {
 export async function OpportunityDetailPage({
   tenantId,
   idContrato,
+  profileId,
 }: {
   tenantId: string;
   idContrato: number;
+  profileId?: string | null;
 }) {
   await refreshContractDetailIfStale(idContrato);
-  const data = await getContractForTenant(tenantId, idContrato);
+  const data = await getContractForTenant(tenantId, idContrato, profileId);
   if (!data) {
     return (
       <AppShell title="Oportunidad">
@@ -301,7 +303,7 @@ export async function OpportunityDetailPage({
         matchId={matchId ? String(matchId) : undefined}
       />
       <nav className={styles.breadcrumb} aria-label="Ruta">
-        <Link href="/feed">Oportunidades</Link>
+        <Link href={`/feed${contract.profile_id ? `?profile_id=${encodeURIComponent(contract.profile_id)}` : ""}`}>Oportunidades</Link>
         <span>/</span>
         <span>{contract.codigo}</span>
       </nav>

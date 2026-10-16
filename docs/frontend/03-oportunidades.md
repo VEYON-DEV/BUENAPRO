@@ -90,7 +90,7 @@ Base:
 - bucket MVP: tecnologia, transporte, legal
 - cierra antes de fecha
 - tiene extraccion IA
-- tiene análisis personalizado (`analysis=done`), aunque su puntaje esté por validar
+- con puntaje personalizado (`with_score=true`), final o provisional válido de 0 a 100; incluye cero
 - se puede cotizar
 
 El panel de filtros expone `Tipo` como tres opciones visibles: `Todos`, `Bienes` y `Servicios` (`objeto=1/2`). Al elegir una opción se aplica de inmediato y se marca la activa; `Aplicar`, la búsqueda y las vistas rápidas conservan el tipo seleccionado.
@@ -117,7 +117,7 @@ features/opportunities/components/EmptyOpportunities/
 ## Backend
 
 ```text
-GET /api/contracts?page=&page_size=&q=&objeto=&estado=&segmento=&region=&bucket=&has_extraction=&cotizar=&analysis=done
+GET /api/contracts?page=&page_size=&profile_id=&q=&objeto=&estado=&segmento=&region=&bucket=&has_extraction=&cotizar=&with_score=true
 PUT /api/contracts/:id/saved
 DELETE /api/contracts/:id/saved
 GET /api/feed?page=&page_size=&verdict=&q=&objeto=&estado=&segmento=&region=&role=&facet=&tipo_pago=
@@ -158,9 +158,11 @@ GET /api/catalogs/enabled-cubso-segments
 
 El motor comparte las reglas léxicas de menores: raíces españolas, frase en orden 15 puntos, término explícito 10, identidad general de empresa hasta 10; términos limitados a 30 y total a 45. Las palabras cubiertas por una frase no se cuentan otra vez. Se elige una sola línea activa, sin sumar señales de líneas diferentes. El inspector y detalle explican la línea y coincidencias. Cambiar keywords actualiza la siguiente lectura, sin jobs ni modelos.
 
-El orden global se aplica en PostgreSQL antes de paginar: puntos por palabras clave, evaluación documental existente y fecha/identidad como desempate estable. El Jev histórico se conserva en la API, pero ya no dirige el orden o los puntos visibles. Si existe evaluación documental vinculada vigente, mantiene su anillo/veredicto, igual que en menores; la afinidad comercial no acredita requisitos.
+El orden global se aplica en PostgreSQL antes de paginar: primero el puntaje documental guardado válido de 0 a 100, de mayor a menor, incluyendo provisionales y cero. Después se conservan las palabras clave y fecha/identidad como desempate estable. Las filas sin puntaje siguen disponibles después; la afinidad comercial no se usa como puntaje ni acredita requisitos. El Jev histórico se conserva en la API, pero no dirige los puntos visibles.
 
-Desde el 13/10/2026, «Con análisis» (`analysis=done`) filtra por identidad del análisis guardado antes del conteo y la paginación, no por puntaje numérico. En PROD2 se aplican la misma procedencia, revisión vigente y propiedad del perfil que en el detalle; `match_id` y `match_review_required` viajan en listado y ficha. En menores se conserva el alcance por tenant del listado existente. El filtro conserva búsqueda, tipo, perfil y plazo; por eso un contrato menor vencido aparece al elegir «Cualquier cierre».
+Desde el 15/10/2026, la cápsula existente se llama **Con puntaje** (`with_score=true`) y selecciona únicamente números documentales válidos de 0 a 100, antes del conteo y paginación. Conserva búsqueda, tipo, perfil y plazo; los menores vencidos requieren «Cualquier cierre». Ambos listados resuelven un único perfil activo del tenant y rechazan perfiles ajenos o inactivos. Las pestañas, búsqueda, paginación, inspector y detalle conservan ese perfil. En menores también se limita afinidad y selección del match al mismo perfil. No se considera «Por leer» como analizado ni se inventa una nota desde afinidad.
+
+El parámetro legacy `analysis=done` continúa disponible en ambas APIs con su semántica original: análisis guardado aunque el número no exista. El nuevo control migra ese parámetro a `with_score`; no modifica resultados ni flags de validación. `with_score=false` u omitido conserva todas las filas con las demás restricciones. Valores distintos de true/false reciben400.
 
 Por solicitud explícita del usuario del 13/10/2026, ambos listados e inspectores muestran el número guardado de 0 a 100 con etiqueta «Provisional / Por validar» cuando `provisional_score` es finito, está en rango y pertenece al análisis vigente en revisión. El anillo usa rojo para menos de 30, amarillo para 30–80 inclusive y verde para más de 80; `scoreTone` aplica el mismo criterio a notas finales y provisionales, independiente del veredicto documental. «Por validar» permanece incluso en verde, sin afirmar aprobación. El puntaje final `score` conserva su protección y no se modifica `score_validated`, fuente, resultado ni orden. Si falta el número, muestra «Analizado · Puntaje por validar»; una oportunidad sin análisis conserva solo afinidad preliminar. Un cero provisional real se muestra como cero y nunca se inventa desde null. Los ceros validados y resultados legacy publicados mantienen su anillo. El inspector ofrece el enlace al análisis completo y conserva el perfil seleccionado. En PROD2, el toolbar fija también el perfil resuelto cuando la URL inicial no lo incluía. El feed sin filtro continúa mostrando todas las fichas consultadas.
 

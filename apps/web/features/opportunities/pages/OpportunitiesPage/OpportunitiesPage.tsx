@@ -61,11 +61,12 @@ export async function OpportunitiesPage({ tenantId, params }: { tenantId: string
   if (params.get("source") === "prod2") {
     try {
       const result = await listProd2OpportunitiesForTenant(tenantId, parseProd2ListParams(params));
+      if (result.profile) params.set("profile_id", result.profile.id);
       const totalPages = Math.max(Math.ceil(result.total / result.page_size), 1);
       return <AppShell title="Oportunidades">
         <PageHeader title="Oportunidades" meta={`${result.total} procedimientos consultados en SEACE`}
           description="Afinidad comercial y requisitos con evidencia. Confirma la modalidad y las fechas oficiales antes de participar." />
-        <OpportunitySourceTabs source="prod2" />
+        <OpportunitySourceTabs source="prod2" profileId={result.profile?.id} withScore={params.get("with_score") === "true"} />
         <Prod4OpportunityToolbar source="prod2" defaults={{ ...Object.fromEntries(params.entries()), ...(result.profile ? { profile_id: result.profile.id } : {}) }} />
         <Prod4OpportunityList source="prod2" profileId={result.profile?.id} rows={result.data as unknown as Prod4OpportunitySummary[]} />
         <div className={styles.pagination}><Pagination page={result.page} totalPages={totalPages}
@@ -117,9 +118,10 @@ export async function OpportunitiesPage({ tenantId, params }: { tenantId: string
   if (!params.has("has_extraction")) params.set("has_extraction", "true");
   if (!params.has("estado")) params.set("estado", "2");
   normalizeDeadline(params);
-  const context = await getTenantOpportunityContext(tenantId);
-  const hasBusinessLines = context.lines.length > 0;
   const contracts = await listContractsForTenant(tenantId, params);
+  if (contracts.profile) params.set("profile_id", contracts.profile.id);
+  const context = await getTenantOpportunityContext(tenantId, contracts.profile?.id);
+  const hasBusinessLines = context.lines.length > 0;
   const rows = contracts.data;
   const meta = contracts.meta;
   const totalPages = Math.max(Math.ceil((meta.total ?? meta.count) / meta.page_size), 1);
@@ -132,12 +134,12 @@ export async function OpportunitiesPage({ tenantId, params }: { tenantId: string
         title="Oportunidades"
         meta={`${meta.total ?? meta.count} ${resultLabel(deadline, savedOnly)}`}
         description={hasBusinessLines
-          ? `Todas las coincidencias para ${context.razon_social}, de mayor a menor afinidad.`
+          ? `Primero las oportunidades con puntaje para ${context.razon_social}, de mayor a menor.`
           : "Configura tus líneas de negocio para priorizar las mejores coincidencias."}
       />
-      <OpportunitySourceTabs source="prod6" />
+      <OpportunitySourceTabs source="prod6" profileId={contracts.profile?.id} withScore={params.get("with_score") === "true"} />
       <OpportunityToolbar defaults={Object.fromEntries(params.entries())} />
-      <OpportunityList rows={rows} />
+      <OpportunityList rows={rows} profileId={contracts.profile?.id} />
       <div className={styles.pagination}>
         <Pagination
           page={meta.page}

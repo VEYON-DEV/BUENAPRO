@@ -49,7 +49,7 @@ function loadSource(filename) {
   return local.exports;
 }
 
-const { analysisPresentation, analysisFilterHref, provisionalAnalysisScore } = loadSource(path.join(__dirname, "analysisPresentation.ts"));
+const { analysisPresentation, analysisFilterHref, scoreFilterHref, provisionalAnalysisScore } = loadSource(path.join(__dirname, "analysisPresentation.ts"));
 const { Prod4OpportunityList } = loadSource(path.join(feature, "components/Prod4OpportunityList/Prod4OpportunityList.tsx"));
 const { OpportunityList } = loadSource(path.join(feature, "components/OpportunityList/OpportunityList.tsx"));
 const { Prod4OpportunityToolbar } = loadSource(path.join(feature, "components/Prod4OpportunityToolbar/Prod4OpportunityToolbar.tsx"));
@@ -232,37 +232,72 @@ test("minor invalid or missing provisional data never becomes zero, while uneval
 });
 
 function assertToolbarPreserves(html, source, objectKey) {
-  assert.match(html, /Con análisis/);
-  assert.match(html, /name="analysis"[^>]*value="done"/);
+  assert.match(html, /Con puntaje/);
+  assert.match(html, /name="with_score"[^>]*value="true"/);
   assert.match(html, /name="profile_id"[^>]*value="dinaut-profile"/);
   const links = [...html.matchAll(/href="([^"]*)"/g)].map(match => new URL(match[1].replaceAll("&amp;", "&"), "https://buenapro.invalid"));
-  const toggle = links.find(link => !link.searchParams.has("analysis") && link.searchParams.get("q") === "software" && link.searchParams.get(objectKey) === "service");
+  const toggle = links.find(link => !link.searchParams.has("with_score") && link.searchParams.get("q") === "software" && link.searchParams.get(objectKey) === "service");
   assert.ok(toggle);
   assert.equal(toggle.searchParams.get("source"), source);
   assert.equal(toggle.searchParams.get("profile_id"), "dinaut-profile");
   assert.equal(toggle.searchParams.has("page"), false);
-  const typeLinks = links.filter(link => link.searchParams.get("analysis") === "done");
+  const typeLinks = links.filter(link => link.searchParams.get("with_score") === "true");
   for (const link of typeLinks) assert.equal(link.searchParams.get("profile_id"), "dinaut-profile");
 }
 
-test("PROD2 toolbar retains filter on search/object links and offers a profile-preserving toggle", () => {
-  const html = render(Prod4OpportunityToolbar, { source: "prod2", defaults: { source: "prod2", profile_id: "dinaut-profile", q: "software", object: "service", analysis: "done", page: "4" } });
+test("PROD2 toolbar retains score filter on search/object links and offers a profile-preserving toggle", () => {
+  const html = render(Prod4OpportunityToolbar, { source: "prod2", defaults: { source: "prod2", profile_id: "dinaut-profile", q: "software", object: "service", with_score: "true", page: "4" } });
   assertToolbarPreserves(html, "prod2", "object");
   assert.match(html, /aria-current="page" class="analysisFilter active"/);
 });
 
-test("minor toolbar retains analysis and profile on search, type and quick views", () => {
-  const html = render(OpportunityToolbar, { defaults: { source: "prod6", profile_id: "dinaut-profile", q: "software", objeto: "2", analysis: "done", page: "4" } });
-  assert.match(html, /name="analysis"[^>]*value="done"/);
+test("minor toolbar retains score filter and profile on search, type and quick views", () => {
+  const html = render(OpportunityToolbar, { defaults: { source: "prod6", profile_id: "dinaut-profile", q: "software", objeto: "2", with_score: "true", page: "4" } });
+  assert.match(html, /name="with_score"[^>]*value="true"/);
   assert.match(html, /name="profile_id"[^>]*value="dinaut-profile"/);
-  assert.match(html, /Con análisis/);
+  assert.match(html, /Con puntaje/);
   const links = [...html.matchAll(/href="([^"]*)"/g)].map(match => new URL(match[1].replaceAll("&amp;", "&"), "https://buenapro.invalid"));
-  const toggle = links.find(link => !link.searchParams.has("analysis") && link.searchParams.get("q") === "software");
+  const toggle = links.find(link => !link.searchParams.has("with_score") && link.searchParams.get("q") === "software");
   assert.equal(toggle.searchParams.get("profile_id"), "dinaut-profile");
   assert.equal(toggle.searchParams.get("objeto"), "2");
   assert.equal(toggle.searchParams.get("source"), "prod6");
-  for (const link of links.filter(link => link.searchParams.get("analysis") === "done")) {
+  for (const link of links.filter(link => link.searchParams.get("with_score") === "true")) {
     assert.equal(link.searchParams.get("profile_id"), "dinaut-profile");
     assert.equal(link.searchParams.get("q"), "software");
   }
+});
+
+test("score toggle migrates the visible control while preserving legacy analysis API semantics", () => {
+  const href = scoreFilterHref({ source: "prod2", profile_id: "dinaut-profile", analysis: "done", q: "cloud", object: "service", page: "9", page_size: "25" }, "prod2");
+  const params = new URL(href, "https://buenapro.invalid").searchParams;
+  assert.equal(params.get("with_score"), "true");
+  assert.equal(params.has("analysis"), false);
+  assert.equal(params.has("page"), false);
+  for (const [name, value] of Object.entries({ source: "prod2", profile_id: "dinaut-profile", q: "cloud", object: "service", page_size: "25" })) assert.equal(params.get(name), value);
+  const toggled = new URL(scoreFilterHref(Object.fromEntries(params)), "https://buenapro.invalid").searchParams;
+  assert.equal(toggled.has("with_score"), false);
+  assert.equal(toggled.get("profile_id"), "dinaut-profile");
+  assert.equal(new URL(analysisFilterHref({ q: "cloud" }), "https://buenapro.invalid").searchParams.get("analysis"), "done");
+});
+
+test("source tabs preserve the selected profile and numeric-score filter in both directions", () => {
+  const { OpportunitySourceTabs } = loadSource(path.join(feature, "components/OpportunitySourceTabs/OpportunitySourceTabs.tsx"));
+  const html = render(OpportunitySourceTabs, { source: "prod2", profileId: "dinaut-profile", withScore: true });
+  const links = [...html.matchAll(/href="([^"]*)"/g)].map(match => new URL(match[1].replaceAll("&amp;", "&"), "https://buenapro.invalid"));
+  assert.equal(links.length, 2);
+  for (const link of links) {
+    assert.equal(link.searchParams.get("profile_id"), "dinaut-profile");
+    assert.equal(link.searchParams.get("with_score"), "true");
+  }
+  assert.equal(links[0].searchParams.get("source"), "prod2");
+  assert.equal(links[1].searchParams.has("source"), false);
+});
+
+test("minor inspector ignores a previous profile detail immediately and keeps the selected profile in its link", () => {
+  const row = minor({ match_id: "916", match_review_required: true, provisional_score: 72 });
+  const foreignDetail = { contract: { id_contrato: row.id_contrato, profile_id: "different-profile", descripcion: "FOREIGN PROFILE DETAIL" } };
+  const html = render(OpportunityList, { rows: [row], profileId: "dinaut-profile" }, [row.id_contrato, true, true, foreignDetail, "done"]);
+  assert.doesNotMatch(html, /FOREIGN PROFILE DETAIL/);
+  assert.match(html, /href="\/oportunidad\/101615\?profile_id=dinaut-profile"/);
+  assert.match(html, /Puntaje provisional: 72 de 100/);
 });

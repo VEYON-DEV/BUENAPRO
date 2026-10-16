@@ -358,6 +358,8 @@ Referencia: [Admin tecnico](../docs/frontend/08-admin-tecnico.md)
 
 ## QA frontend
 
+- [ ] Priorizar puntajes documentales válidos del perfil activo antes de afinidad y paginación en ambos feeds; sustituir la cápsula «Con análisis» por «Con puntaje», conservar filtro legacy API y propagar perfil entre pestañas/inspector/detalle. Implementación y regresiones locales en curso (15/10/2026); pendiente QA visual desktop/laptop/mobile y verificación final por principal antes de marcar completo.
+
 - [x] Unificar Decisión y Requisitos en una sola sección navegable del detalle; lectura ejecutiva primero y categorías documentales plegables debajo (2026-08-03).
 
 - [x] Comparar las diez vistas productivas contra `docs/new-style/generated-glass/` en desktop 1440 y mobile 390, sin overflow horizontal: Login, Registro, Inicio, Oportunidades, Detalle, Mercado, Postulaciones, Workspace, Perfil y Alertas (2026-08-03). Evidencia consolidada: `docs/new-style/qa/*-glass-*.png`.

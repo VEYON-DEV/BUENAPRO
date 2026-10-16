@@ -18,6 +18,23 @@ const PUBLISHED_MATCH_SCORE = "CASE WHEN m.breakdown_json->'meta'->>'score_valid
 const PUBLISHED_MATCH_VERDICT = "CASE WHEN m.breakdown_json->'meta'->>'score_validated' = 'false' THEN 'gris' ELSE m.verdict END";
 const MATCH_REVIEW_REQUIRED = "COALESCE(m.breakdown_json->'meta'->>'score_validated' = 'false', false)";
 const PROVISIONAL_MATCH_SCORE = `CASE WHEN ${MATCH_REVIEW_REQUIRED} AND m.score >= 0 AND m.score <= 100 THEN m.score ELSE NULL END`;
+const AVAILABLE_MATCH_SCORE = "CASE WHEN m.id IS NOT NULL AND m.score BETWEEN 0 AND 100 THEN m.score ELSE NULL END";
+
+export class ContractRequestError extends Error {
+  constructor(message: string, public status = 400) { super(message); }
+}
+
+async function resolveListProfile(tenantId: string, profileId: string | null) {
+  if (profileId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(profileId)) {
+    throw new ContractRequestError("profile_id must be a UUID");
+  }
+  const result = await query<{ id: string; razon_social: string }>(
+    `SELECT id::text, razon_social FROM company_profiles
+     WHERE tenant_id = $1 AND is_active = true AND ($2::uuid IS NULL OR id = $2::uuid)
+     ORDER BY created_at, id LIMIT 1`, [tenantId, profileId]);
+  if (profileId && !result.rows[0]) throw new ContractRequestError("Perfil no disponible en tu empresa.", 404);
+  return result.rows[0] ?? null;
+}
 
 function provisionalScore(row: Record<string, unknown>) {
   return row.match_id != null && row.match_review_required === true && typeof row.provisional_score === "number"
@@ -25,7 +42,8 @@ function provisionalScore(row: Record<string, unknown>) {
     ? row.provisional_score : null;
 }
 
-export async function getContractForTenant(tenantId: string, idContrato: number) {
+export async function getContractForTenant(tenantId: string, idContrato: number, profileId: string | null = null) {
+  const profile = await resolveListProfile(tenantId, profileId);
   const result = await query(
     `
     SELECT
@@ -59,7 +77,7 @@ export async function getContractForTenant(tenantId: string, idContrato: number)
       m.id AS match_id,
       ${MATCH_REVIEW_REQUIRED} AS match_review_required,
       ${PROVISIONAL_MATCH_SCORE} AS provisional_score,
-      m.profile_id::text AS profile_id,
+      $3::uuid::text AS profile_id,
       ${PUBLISHED_MATCH_SCORE} AS score,
       ${PUBLISHED_MATCH_VERDICT} AS verdict,
       m.user_state,
@@ -81,6 +99,7 @@ export async function getContractForTenant(tenantId: string, idContrato: number)
       FROM matches m
       JOIN company_profiles cp ON cp.id = m.profile_id
       WHERE cp.tenant_id = $2 AND m.id_contrato = c.id_contrato
+        AND cp.is_active = true AND cp.id = $3::uuid
       ORDER BY ${PUBLISHED_MATCH_SCORE} DESC NULLS LAST, m.updated_at DESC
       LIMIT 1
     ) m ON true
@@ -94,12 +113,12 @@ export async function getContractForTenant(tenantId: string, idContrato: number)
       ORDER BY tx.created_at DESC, tx.id DESC
       LIMIT 1
     ) te ON true
-    ${keywordFitLateralSql(2)}
+    ${keywordFitLateralSql(2, 3)}
     ${ECON_LATERAL_SQL}
     WHERE c.id_contrato = $1
     LIMIT 1
     `,
-    [idContrato, tenantId],
+    [idContrato, tenantId, profile?.id ?? null],
   );
   const contract: Record<string, any> | null = result.rows[0] ? { ...result.rows[0], provisional_score: provisionalScore(result.rows[0]) } : null;
   if (!contract) return null;
@@ -138,7 +157,10 @@ const ECON_LATERAL_SQL = `
 
 export async function listContractsForTenant(tenantId: string, params: URLSearchParams) {
   const { limit, offset, page, pageSize } = pagination(params);
-  const values: unknown[] = [tenantId];
+  const withScore = params.get("with_score");
+  if (withScore && withScore !== "true" && withScore !== "false") throw new ContractRequestError("with_score must be true or false");
+  const profile = await resolveListProfile(tenantId, params.get("profile_id"));
+  const values: unknown[] = [tenantId, profile?.id ?? null];
   const where: string[] = [];
 
   const q = params.get("q");
@@ -199,6 +221,7 @@ export async function listContractsForTenant(tenantId: string, params: URLSearch
           JOIN business_lines bl ON bl.profile_id = cp.id
           WHERE cp.tenant_id = $1
             AND cp.is_active = true
+            AND cp.id = $2::uuid
             AND bl.is_active = true
             AND cardinality(bl.cubso_segmentos) > 0
         )
@@ -208,6 +231,7 @@ export async function listContractsForTenant(tenantId: string, params: URLSearch
           JOIN business_lines bl ON bl.profile_id = cp.id
           WHERE cp.tenant_id = $1
             AND cp.is_active = true
+            AND cp.id = $2::uuid
             AND bl.is_active = true
             AND c.cubso_segmento = ANY(bl.cubso_segmentos)
         )
@@ -222,6 +246,7 @@ export async function listContractsForTenant(tenantId: string, params: URLSearch
   if (hasExtraction === "false") where.push("te.summary_json IS NULL");
   // Analysis availability is independent of publishing its numeric score.
   if (analysis === "done") where.push("m.id IS NOT NULL");
+  if (withScore === "true") where.push(`${AVAILABLE_MATCH_SCORE} IS NOT NULL`);
   if (verdict) {
     values.push(verdict);
     where.push(`${PUBLISHED_MATCH_VERDICT} = $${values.length}`);
@@ -282,6 +307,7 @@ export async function listContractsForTenant(tenantId: string, params: URLSearch
       te.summary_json,
       te.participation_extraction,
       m.id AS match_id,
+      m.profile_id::text AS profile_id,
       ${MATCH_REVIEW_REQUIRED} AS match_review_required,
       ${PROVISIONAL_MATCH_SCORE} AS provisional_score,
       ${PUBLISHED_MATCH_SCORE} AS score,
@@ -314,19 +340,22 @@ export async function listContractsForTenant(tenantId: string, params: URLSearch
       FROM matches m
       JOIN company_profiles cp ON cp.id = m.profile_id
       WHERE cp.tenant_id = $1 AND m.id_contrato = c.id_contrato
+        AND cp.is_active = true AND cp.id = $2::uuid
       ORDER BY ${PUBLISHED_MATCH_SCORE} DESC NULLS LAST, m.updated_at DESC
       LIMIT 1
     ) m ON true
-    ${keywordFitLateralSql(1)}
+    ${keywordFitLateralSql(1, 2)}
     ${ECON_LATERAL_SQL}
     ${whereSql}
     ORDER BY
+      ${AVAILABLE_MATCH_SCORE} DESC NULLS LAST,
       ${saved === "true" ? "sc.created_at DESC," : ""}
       COALESCE(fit.keyword_points, 0) DESC,
       fit_points DESC,
       ${PUBLISHED_MATCH_SCORE} DESC NULLS LAST,
       c.fec_fin_cotizacion ASC NULLS LAST,
-      c.fec_publica DESC NULLS LAST
+      c.fec_publica DESC NULLS LAST,
+      c.id_contrato DESC
     LIMIT $${values.length - 1}
     OFFSET $${values.length}
     `,
@@ -337,10 +366,11 @@ export async function listContractsForTenant(tenantId: string, params: URLSearch
   return {
     data: result.rows.map(({ total_count: _totalCount, ...row }) => ({ ...row, provisional_score: provisionalScore(row) })),
     meta: { page, page_size: pageSize, count: result.rows.length, total },
+    profile: profile ? { id: profile.id, name: profile.razon_social } : null,
   };
 }
 
-export async function getTenantOpportunityContext(tenantId: string) {
+export async function getTenantOpportunityContext(tenantId: string, profileId: string | null = null) {
   const result = await query(
     `
     SELECT
@@ -352,9 +382,10 @@ export async function getTenantOpportunityContext(tenantId: string) {
     LEFT JOIN business_lines bl ON bl.profile_id = cp.id AND bl.is_active = true
     WHERE cp.tenant_id = $1
       AND cp.is_active = true
+      AND ($2::uuid IS NULL OR cp.id = $2::uuid)
     ORDER BY bl.created_at NULLS LAST, bl.nombre NULLS LAST
     `,
-    [tenantId],
+    [tenantId, profileId],
   );
 
   const first = result.rows[0];
