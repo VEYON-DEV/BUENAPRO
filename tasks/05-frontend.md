@@ -358,7 +358,7 @@ Referencia: [Admin tecnico](../docs/frontend/08-admin-tecnico.md)
 
 ## QA frontend
 
-- [ ] Priorizar puntajes documentales válidos del perfil activo antes de afinidad y paginación en ambos feeds; sustituir la cápsula «Con análisis» por «Con puntaje», conservar filtro legacy API y propagar perfil entre pestañas/inspector/detalle. Implementación y regresiones locales en curso (15/10/2026); pendiente QA visual desktop/laptop/mobile y verificación final por principal antes de marcar completo.
+- [x] Priorizar puntajes documentales válidos del perfil activo antes de afinidad y paginación en ambos feeds; cápsula «Con puntaje» (with_score=true), incluidos cero/provisionales y filtro legacy analysis=done preservado. Perfil activo/propio consistente entre pestañas, afinidad, inspector y detalle. Principal 224 Node/5 skip, TypeScript/arquitectura16/build61; 12 capturas locales reales y seis productivas desktop1600/laptop1024/mobile390 revisadas contra Glass, sin overflow, errores ni escrituras. APIs verifican orden entre páginas, perfil ajeno404 e inválido400. Web05db6c9/imagen919b9e38 con585 hashes exactos. Evidencia privada tmp/dinaut-two-dot-50-20261015/qa-local-real y qa-production; los nuevos análisis se verifican por separado.
 
 - [x] Unificar Decisión y Requisitos en una sola sección navegable del detalle; lectura ejecutiva primero y categorías documentales plegables debajo (2026-08-03).
 

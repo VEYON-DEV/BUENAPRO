@@ -26,6 +26,7 @@ from dotenv import dotenv_values
 
 import run_dinaut_three_dot_matches as run
 from dinaut_recommendation_schema import legacy_map_schema_from_contexts,normalize_map_output,MAP_WIRE_PROMPT
+from dinaut_source_citation_refs import normalize_batch_source_refs,source_ref_decoder_proof,PROOF_FILENAME
 from buenapro_worker.matching.jev_recommendations import (
     build_small_recommendation_context,build_recommendation_batch,
     RECOMMENDATION_BATCH_PROMPT,validate_recommendation_batch,
@@ -157,15 +158,26 @@ def paced_wait(folder,next_tokens):
         while time.monotonic()<deadline:time.sleep(min(5,max(0,deadline-time.monotonic())))
 
 
-def recommendations_from_receipt(receipt,payloads):
+def recommendations_with_decoder_notes(receipt,payloads):
+    """Decode saved output; only the two-dot cohort reclassifies exact TDR refs."""
     candidates=receipt['body'].get('candidates') or []
     if len(candidates)!=1 or candidates[0].get('finishReason')!='STOP':
         raise run.ProviderBlocked('Incomplete Gemma batch response; no retry')
     text=''.join(p.get('text','') for p in candidates[0]['content']['parts'] if not p.get('thought'))
-    result=validate_recommendation_batch(normalize_map_output(run.parse_json_response(text),list(payloads)),payloads)
+    decoded=normalize_map_output(run.parse_json_response(text),list(payloads))
+    notes=[]
+    if run.ACTIVE_SCOPE==run.TWO_DOT_50_SCOPE:
+        decoded,notes=normalize_batch_source_refs(decoded,payloads)
+    result=validate_recommendation_batch(decoded,payloads)
     usage=receipt['body'].get('usageMetadata') or {}
     if any(type(usage.get(k))is not int or usage[k]<0 for k in ('promptTokenCount','candidatesTokenCount')):
         raise run.ProviderBlocked('Gemma batch usage missing; preserve response')
+    return result,usage,notes
+
+
+def recommendations_from_receipt(receipt,payloads):
+    """Preserve the established public return value for execution and audits."""
+    result,usage,_=recommendations_with_decoder_notes(receipt,payloads)
     return result,usage
 
 
@@ -181,7 +193,12 @@ def bind_saved_batch(batch_folder,items):
     if plan.get('jev_requests')!={k:run.fingerprint(items[k]['jev_payload']) for k in keys}:
         raise run.PublicationConflict('Saved batch belongs to a different frozen JEV snapshot')
     payloads={k:items[k]['jev_payload'] for k in plan['case_keys']}
-    _,usage=recommendations_from_receipt(receipt,payloads)
+    recommendations,usage,notes=recommendations_with_decoder_notes(receipt,payloads)
+    proof=source_ref_decoder_proof(request_sha256=receipt['request_sha256'],
+        response_sha256=run.fingerprint(receipt),jev_requests=plan['jev_requests'],
+        recommendations=recommendations,notes=notes)
+    if proof is not None:
+        run.once_json(batch_folder/PROOF_FILENAME,proof)
     total=len(plan['case_keys'])
     for index,k in enumerate(plan['case_keys']):
         allocated={name:usage.get(name,0)//total+(index<usage.get(name,0)%total)

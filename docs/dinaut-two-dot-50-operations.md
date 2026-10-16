@@ -55,3 +55,27 @@ el selector SQL canónico confirmados en Git. No despliega servicios, migra dato
 enciende workers ni crea colas. La ejecución operativa solo se cierra al verificar
 las 50 publicaciones, sus recibos únicos, costos conocidos e inciertos y la
 preservación de fuentes y análisis ajenos.
+
+La continuación se detuvo con 31 publicaciones por una respuesta Flash-Lite
+completa HTTP200: en el lote `batch-5acc9e45d7005336`, el caso
+`seace_prod2-1029693` colocó `Pág. 14, numeral 21.A` y `Pág. 10, numeral 9` en
+`evidence_refs`. Son citas exactas de los requisitos 1 y 3 de la extracción
+congelada, no alias de evidencia de la empresa. No representan D14 ni D10. El
+recibo pagado conserva 14 943 tokens de entrada y 753 de salida; este error de
+decodificación local no autoriza repetir la llamada.
+
+Para esta cohorte, `dinaut_source_citation_refs.py` aplica la regla versionada
+`exact_requirement_source_citation_v1` en ambos decoders. Retira solamente una
+referencia desconocida idéntica a `detalle.evidencia` del mismo `source_index`.
+Preserva todos los alias D/P válidos, textos, acciones, puntajes y estados;
+cualquier otra referencia desconocida o cobertura incompleta bloquea el lote.
+El comportamiento predeterminado de tres puntos conserva su validador estricto.
+
+Si hubo esta corrección, `bind_saved_batch` crea antes del binding el recibo
+privado inmutable `source-citation-decoder-proof.private.json`: vincula los SHA
+del request y response originales, el payload JEV de cada caso, las citas
+retiradas y los SHA de las recomendaciones derivadas. El decoder individual
+exige ese proof para reutilizar un caso corregido. El raw del proveedor, su uso,
+los manifiestos y los bindings anteriores permanecen intactos. Este paso no
+publica resultados, no acredita evidencia empresarial y no cambia el costo de la
+inferencia ya realizada.

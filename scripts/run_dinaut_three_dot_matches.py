@@ -47,6 +47,7 @@ from match_provider_journal import ProviderBlocked, canonical, fingerprint, priv
 from dinaut_batch_scope import THREE_DOT_SCOPE,TWO_DOT_50_SCOPE,validate_scope,scoped_source_sql,iso_snapshot
 from dinaut_jev_transport import dispatch_jev_transport, get_cached_jev_receipt, prepare_jev_transport
 from dinaut_recommendation_schema import normalize_map_output
+from dinaut_source_citation_refs import normalize_requirement_source_refs,verify_source_ref_case_proof,PROOF_FILENAME
 
 GEMMA_MODEL = 'gemma-4-31b-it'
 MODEL = JEV_MODEL + '+' + GEMMA_MODEL
@@ -386,7 +387,18 @@ def saved_batch_recommendation(case_folder,item):
     matches=[r for r in result['evaluations'] if r['case_key']==binding['case_key']]
     if len(matches)!=1:
         raise PublicationConflict('Shared Gemma output coverage changed')
-    recommendation=validate_recommendations({k:v for k,v in matches[0].items() if k!='case_key'},item['jev_payload'])
+    recommendation={k:v for k,v in matches[0].items() if k!='case_key'}
+    notes=[]
+    if ACTIVE_SCOPE==TWO_DOT_50_SCOPE:
+        recommendation,notes=normalize_requirement_source_refs(recommendation,item['jev_payload'])
+    recommendation=validate_recommendations(recommendation,item['jev_payload'])
+    if notes:
+        proof_path=batch_folder/PROOF_FILENAME
+        if not proof_path.exists():
+            raise PublicationConflict('Corrected source citation lacks its immutable decoder proof')
+        verify_source_ref_case_proof(json.loads(proof_path.read_text()),case_key=binding['case_key'],
+            request_sha256=binding['batch_request_sha256'],response_sha256=binding['batch_response_sha256'],
+            jev_request_sha256=binding['jev_request_sha256'],recommendation=recommendation,notes=notes)
     return recommendation,binding['allocated_usage']
 
 
