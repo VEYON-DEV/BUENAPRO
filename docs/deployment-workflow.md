@@ -1,5 +1,33 @@
 # Publicación desde el código local
 
+## Texto completo del detalle: 16 de octubre de 2026
+
+Web `c3aa3a4b5515697ec7324339efd91fc41b7ed00c` está publicada con
+`buenapro-web:readable-detail-c3aa3a4`, imagen
+`sha256:a3f7e539a9daf220043d2210a01c64ffd277a1242a0aacba5b44e06ca5d9b1ec`.
+El resumen usa el texto completo ya guardado y las brechas PROD2 permiten abrir
+el requisito íntegro; su vinculación evita confiar en posiciones históricas de
+facets. No cambian los análisis ni los puntajes.
+
+Pasaron 229 pruebas Node (5 omitidas), TypeScript, arquitectura de 16 dominios y
+builds de 61 páginas. Se revisaron seis capturas locales y seis productivas en
+desktop/laptop/mobile, con expansión por teclado y sin overflow ni errores.
+El caso 1047247 conserva el resumen de 582 caracteres y las descripciones de
+1497/334/411 caracteres. Las consultas locales usaron PostgreSQL read-only,
+credenciales de modelos desactivadas y un guard de red/escrituras.
+
+La imagen se construyó desde Git limpio y sus 588 hashes coinciden. Solo se
+recreó web; ocho contenedores ajenos, los valores de entorno y archivos privados
+se conservaron. La configuración material y HostConfig normalizada también
+coinciden. Salud local `/login` devolvió 200 y la ficha pública autenticada pasó
+QA real. El GET público desde `urllib` de la VM devolvió 403 en el edge; esa
+limitación se conserva y no se presenta como una comprobación 200. No hubo
+migraciones ni llamadas a modelos. Rollback conservado:
+`buenapro-web:rollback-05db6c9-before-readable-detail-c3aa3a4`.
+
+Recibos y capturas privados: `tmp/readable-detail-20261016/` y
+`/home/ubuntu/buenapro-releases/readable-detail-c3aa3a4-receipts/`.
+
 El flujo de BuenaPro es **local → validación → commit → push → checkout del commit en producción → build → verificación**. El repositorio Git es la fuente de verdad del código. Los archivos privados de configuración, entradas pendientes y recibos no son parte del código público.
 
 ## Preparación local
