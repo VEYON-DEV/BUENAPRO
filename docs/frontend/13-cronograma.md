@@ -2,6 +2,8 @@
 
 Ruta: `/cronograma?source=prod6|prod2|prod4&start=YYYY-MM-DD&days=14|30|60&q=`.
 
+Orden visual de fuentes: **Buscador SEACE** primero y **Contratos menores** después (16/10/2026). El orden coincide con Oportunidades; cambiar de pestaña conserva el periodo de fechas.
+
 Desde el 13/10/2026, la UI ofrece únicamente Contratos menores. La pestaña Concursos SEACE se retira junto con la navegación del feed; una URL guardada con `source=prod4` redirige a `source=prod6`, conservando búsqueda y periodo. Las APIs y datos históricos PROD4 permanecen disponibles. Desde el 13/10/2026 (tarde) existe la pestaña **Buscador SEACE** (`source=prod2`): muestra los procedimientos que el workspace guardó en `saved_opportunities` (migración 0044) con sus etapas oficiales de `prod2_details.schedule_json`, mientras sus ofertas sigan abiertas. PROD2 no tiene función de afinidad por tenant, por eso su Gantt es explícitamente la lista de guardadas. En Contratos menores, las guardadas (`saved_contracts`) aparecen siempre, además de las afinidades 2–3 y evaluaciones ámbar/verde, con la marca «Guardada». Si la tabla 0044 no existe, la pestaña PROD2 queda vacía sin error.
 
 ## Objetivo y diseño

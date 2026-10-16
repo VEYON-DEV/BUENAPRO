@@ -86,8 +86,8 @@ export function TimelineBoard({ initial, initialParams }: { initial: TimelineRes
   return <>
     <div className={styles.topline}>
       <nav className={styles.sources} aria-label="Fuente del cronograma">
-        <Link href={sourceHref("prod6")} className={source === "prod6" ? styles.sourceActive : ""} aria-current={source === "prod6" ? "page" : undefined}><Radio size={18} aria-hidden="true" />Contratos menores</Link>
         <Link href={sourceHref("prod2")} className={source === "prod2" ? styles.sourceActive : ""} aria-current={source === "prod2" ? "page" : undefined}><Landmark size={18} aria-hidden="true" />Buscador SEACE</Link>
+        <Link href={sourceHref("prod6")} className={source === "prod6" ? styles.sourceActive : ""} aria-current={source === "prod6" ? "page" : undefined}><Radio size={18} aria-hidden="true" />Contratos menores</Link>
       </nav>
       <p className={styles.urgency}><Clock3 size={17} aria-hidden="true" /><strong>{urgent}</strong> cierran en las próximas 72 h{urgentDays ? <span> · {urgentDays} próximos con hora no informada</span> : null}</p>
     </div>
