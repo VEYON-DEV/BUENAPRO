@@ -1,0 +1,128 @@
+{
+  "verified_at_utc": "2026-10-16T12:48:38.575692+00:00",
+  "verified_at_lima": "2026-10-16 07:48",
+  "api_profile": "DIN",
+  "ready_not_closed": 7,
+  "services": 6,
+  "goods": 1,
+  "ready_with_score": 3,
+  "unread_not_closed": 0,
+  "api_clean_params": {
+    "estado": "2",
+    "has_extraction": "true",
+    "open_only": "true",
+    "profile_id": "e11f2610-eb56-457a-97eb-bbd24dd6f1a1",
+    "page_size": "100"
+  },
+  "database_counts": {
+    "stored": 2120,
+    "estado_vigente": 416,
+    "vigente_not_closed": 7,
+    "vigente_not_closed_with_summary": 7,
+    "vigente_but_deadline_elapsed": 409
+  },
+  "source": {
+    "segments": [
+      43,
+      81
+    ],
+    "active_lines": 3,
+    "streams": [
+      {
+        "object": 1,
+        "segment": 43,
+        "pages": 1,
+        "rows": 53,
+        "capped": false
+      },
+      {
+        "object": 1,
+        "segment": 81,
+        "pages": 1,
+        "rows": 0,
+        "capped": false
+      },
+      {
+        "object": 2,
+        "segment": 43,
+        "pages": 1,
+        "rows": 0,
+        "capped": false
+      },
+      {
+        "object": 2,
+        "segment": 81,
+        "pages": 2,
+        "rows": 157,
+        "capped": false
+      }
+    ],
+    "counts_exclusive": {
+      "rows": 210,
+      "keyword_threshold_not_met": 65,
+      "quote_deadline_elapsed": 83,
+      "other_publication_year_or_unknown": 58,
+      "keyword_selected": 4
+    },
+    "source_current_year_not_closed_distinct": 69,
+    "selected_already_ready": 4,
+    "all_seace_scanned": false
+  },
+  "profile_scope": {
+    "DIN": {
+      "lines": 11,
+      "segments": [
+        "23",
+        "32",
+        "39",
+        "41",
+        "43",
+        "72",
+        "73",
+        "81",
+        "86"
+      ]
+    },
+    "active_reader": {
+      "lines": 3,
+      "segments": [
+        "43",
+        "81"
+      ]
+    },
+    "DIN_segments_not_covered": [
+      "23",
+      "32",
+      "39",
+      "41",
+      "72",
+      "73",
+      "86"
+    ]
+  },
+  "worker": {
+    "alive": true,
+    "coordinators": 1,
+    "pending_own_jobs": [],
+    "last_completed_utc": "2026-10-16T12:27:00.143605+00:00",
+    "status": "sweep_drained",
+    "temporary_local_reader": true
+  },
+  "interpretation": [
+    "No fixed five-row cap; clean API returns seven.",
+    "Cannot identify the exact five-row view without its URL/filters or refresh state.",
+    "Vigente label alone is not an unexpired quotation deadline.",
+    "Source69 is a metadata count within two configured segments, not69 DIN-qualified opportunities.",
+    "Current reader does not cover all DIN segments; no scope change was performed."
+  ],
+  "business_mutations": 0,
+  "model_calls": 0,
+  "document_downloads": 0,
+  "runtime_or_profile_changed": false,
+  "cleanup_freed_bytes": 0,
+  "retained": "Compact receipts and read-only diagnostic helpers; active ingestion inputs untouched.",
+  "evidence_sha256": {
+    "readback.private.json": "5f73a1f507c135163fc21c77db357fd5b40f6a15bfd4bb610d68eca911c76ccd",
+    "source.private.json": "09286c2a2171628ae34be819808d0505eea9ead0743c175031f61a3f3a87c2a6"
+  }
+}
