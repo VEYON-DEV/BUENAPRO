@@ -50,5 +50,48 @@ activa evaluaciones LLM2 ni notificaciones. DIN continúa disponible como perfil
 de lectura del listado compartido; sus interruptores de análisis automático y
 de ingesta propia no se modifican como efecto lateral.
 
-Los recibos compactos privados se conservan en `tmp/prod6-recovery-20261016/`.
-La publicación y su readback se registran al verificar la recuperación.
+## Resultado y limitación operativa
+
+La imagen `buenapro-worker-prod6:http-recovery-f2767e8`, digest
+`sha256:516b923ba6c75ee1d4c4b06b729239597e0bffe17fc8f2effeb8bb4c5fdca640`,
+se construyó desde Git limpio del commit
+`f2767e8ecc825acc44b7eb5e859be6904f6ee155`. Sus cinco hashes de runtime y etiqueta
+OCI coinciden; solo cambió `prod6/runtime.py` respecto al código anterior. Pasaron
+92 pruebas offline y la configuración/los ocho servicios ajenos se conservaron.
+
+La VM también recibió 403 en consultas de fichas e inventarios, no solo en una
+descarga. El gateway respondió `Forbidden` sin declarar la causa. No se acreditó
+que espaciar las peticiones lo resolviera y no se presenta el logging ni el
+tratamiento de errores como solución de ese acceso. Las mismas consultas públicas
+respondieron 200 desde la conexión normal del Mac.
+
+Se transfirieron los 17 resultados previos y recibos asociados al lector local,
+verificando todos sus hashes y prompts antes de ejecutarlo. El lector local
+PID2528 usa el mismo código, perfil y PostgreSQL de producción por túnel SSH;
+las claves permanecen en memoria. El contenedor de la VM está detenido y PG
+confirma un solo coordinador. Esta recuperación depende de que el Mac permanezca
+encendido; el retorno a una ejecución permanente en VM sigue pendiente.
+
+El primer ciclo local terminó `sweep_drained` a las 12:27 UTC (07:27 de Lima):
+210 registros fuente, cuatro candidatos, seis refrescos de ficha, nueve trabajos
+de identificación documental, trece trabajos de extracción (tres lecturas nuevas
+y diez reusos) y cuatro derivaciones. No quedan trabajos propios pendientes ni
+reservados. Hay 20 juegos de recibos completos, sin guard ni envíos inciertos;
+los 17 anteriores son idénticos. Los 53 matches de DIN y los ocho servicios ajenos
+permanecen idénticos. No hubo evaluaciones LLM2 ni notificaciones.
+
+La API de DIN devuelve siete contratos abiertos con lectura; los tres nuevos son
+101976 (Banco de la Nación), 102186 (OSITRAN) y 102597 (AGROMERCADO). No tienen
+puntaje LLM2; «Con puntaje» los excluye. Los 53 puntajes anteriores se conservan
+y tres siguen abiertos. Las lecturas automáticas no acreditan elegibilidad ni
+aprobación semántica.
+
+El costo local nuevo conocido es US$0.01263575; total de este lector
+US$0.08550875, sin duplicar los US$0.072873 anteriores. No es una conciliación de
+factura. No se guardaron originales nuevos ni se subieron a R2.
+
+Los recibos compactos y las entradas activas se conservan en
+`tmp/prod6-recovery-20261016/`, especialmente `local-runtime/`. Antes de pasar la
+operación a otro host, detener el lector, confirmar ausencia de coordinador y
+sincronizar recibos/guards; nunca reactivar la VM usando solo su copia anterior.
+No se creó una automatización de Codex.
