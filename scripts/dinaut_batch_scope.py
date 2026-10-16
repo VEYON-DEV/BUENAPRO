@@ -1,4 +1,4 @@
-"""Explicit immutable scopes for the two authorized DIN matching cohorts."""
+"""Explicit immutable scopes for the authorized DIN matching cohorts."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -18,6 +18,7 @@ class BatchScope:
     new_only: bool = False
     maximum_cases: int | None = None
     maximum_per_source: int | None = None
+    allowed_sources: tuple[str, ...] = ("seace_prod2", "seace_prod6")
 
 
 THREE_DOT_SCOPE = BatchScope(
@@ -31,12 +32,25 @@ TWO_DOT_50_SCOPE = BatchScope(
     execution_name="dinaut_two_dot_50_explicit_batch", new_only=True,
     maximum_cases=50, maximum_per_source=25,
 )
+TWO_DOT_SEACE_30_SCOPE = BatchScope(
+    name="dinaut_two_dot_seace_30", fit_level=2,
+    folder_name="dinaut-two-dot-seace-30-20261016",
+    event_prefix="dinaut_two_dot_seace_30_", publication_event="dinaut_two_dot_seace_30_analysis",
+    execution_name="dinaut_two_dot_seace_30_explicit_batch", new_only=True,
+    maximum_cases=30, allowed_sources=("seace_prod2",),
+)
 
 
 def validate_scope(scope: BatchScope) -> BatchScope:
-    if type(scope) is not BatchScope or scope not in (THREE_DOT_SCOPE, TWO_DOT_50_SCOPE):
-        raise ValueError("Only the two explicitly authorized immutable DIN scopes are supported")
+    if type(scope) is not BatchScope or scope not in (THREE_DOT_SCOPE, TWO_DOT_50_SCOPE, TWO_DOT_SEACE_30_SCOPE):
+        raise ValueError("Only the explicitly authorized immutable DIN scopes are supported")
     return scope
+
+
+def require_scope_source(source: str, scope: BatchScope) -> None:
+    validate_scope(scope)
+    if source not in scope.allowed_sources:
+        raise ValueError("Source outside the explicitly authorized DIN cohort")
 
 
 def scoped_source_sql(sql: str, scope: BatchScope) -> str:
@@ -49,8 +63,10 @@ def scoped_source_sql(sql: str, scope: BatchScope) -> str:
     prod2="p.buyer_name, d.proposals_closes_at AS closes_at,"
     minor="c.entidad_nombre AS buyer_name,c.fec_fin_cotizacion AS closes_at,"
     if result.count(prod2)==1:
+        require_scope_source("seace_prod2",scope)
         result=result.replace(prod2,"p.buyer_name, p.published_at AS published_at, d.proposals_closes_at AS closes_at,")
     elif result.count(minor)==1:
+        require_scope_source("seace_prod6",scope)
         result=result.replace(minor,"c.entidad_nombre AS buyer_name,c.fec_publica AS published_at,c.fec_fin_cotizacion AS closes_at,")
     else:
         raise ValueError("Canonical publication-date projection changed after the two-dot freeze")

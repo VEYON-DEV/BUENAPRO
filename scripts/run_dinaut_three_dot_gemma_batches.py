@@ -166,7 +166,7 @@ def recommendations_with_decoder_notes(receipt,payloads):
     text=''.join(p.get('text','') for p in candidates[0]['content']['parts'] if not p.get('thought'))
     decoded=normalize_map_output(run.parse_json_response(text),list(payloads))
     notes=[]
-    if run.ACTIVE_SCOPE==run.TWO_DOT_50_SCOPE:
+    if run.ACTIVE_SCOPE.new_only:
         decoded,notes=normalize_batch_source_refs(decoded,payloads)
     result=validate_recommendation_batch(decoded,payloads)
     usage=receipt['body'].get('usageMetadata') or {}
@@ -192,6 +192,8 @@ def bind_saved_batch(batch_folder,items):
         raise run.PublicationConflict('Saved batch case coverage changed')
     if plan.get('jev_requests')!={k:run.fingerprint(items[k]['jev_payload']) for k in keys}:
         raise run.PublicationConflict('Saved batch belongs to a different frozen JEV snapshot')
+    for k in keys:
+        run.require_scope_source(items[k]['case']['source_key'],run.ACTIVE_SCOPE)
     payloads={k:items[k]['jev_payload'] for k in plan['case_keys']}
     recommendations,usage,notes=recommendations_with_decoder_notes(receipt,payloads)
     proof=source_ref_decoder_proof(request_sha256=receipt['request_sha256'],
@@ -214,6 +216,9 @@ def bind_saved_batch(batch_folder,items):
 
 
 def execute_batch(conn,settings,batch_folder,group,contexts,items):
+    if run.ACTIVE_SCOPE==run.TWO_DOT_SEACE_30_SCOPE:
+        for k in group:
+            run.require_scope_source(items[k]['case']['source_key'],run.ACTIVE_SCOPE)
     if run.ACTIVE_SCOPE.new_only and (len(group)>2 or len(group)>1 and sum(len(contexts[k]['evaluation']['requirements']) for k in group)>16):
         raise run.ProviderBlocked('Two-dot Flash-Lite batch exceeds two cases or sixteen complete requirements')
     selected={k:contexts[k] for k in group}

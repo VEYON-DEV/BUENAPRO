@@ -44,7 +44,8 @@ from dinaut_three_dot_persistence import (
     create_evaluation_before_dispatch, publish_case,
 )
 from match_provider_journal import ProviderBlocked, canonical, fingerprint, private_json, dispatch_once
-from dinaut_batch_scope import THREE_DOT_SCOPE,TWO_DOT_50_SCOPE,validate_scope,scoped_source_sql,iso_snapshot
+from dinaut_batch_scope import (THREE_DOT_SCOPE,TWO_DOT_50_SCOPE,TWO_DOT_SEACE_30_SCOPE,
+    validate_scope,require_scope_source,scoped_source_sql,iso_snapshot)
 from dinaut_jev_transport import dispatch_jev_transport, get_cached_jev_receipt, prepare_jev_transport
 from dinaut_recommendation_schema import normalize_map_output
 from dinaut_source_citation_refs import normalize_requirement_source_refs,verify_source_ref_case_proof,PROOF_FILENAME
@@ -74,7 +75,7 @@ def scope_replacements():
 
 
 def scope_persistence_kwargs():
-    return ({'expected_fit_level':2} if ACTIVE_SCOPE==TWO_DOT_50_SCOPE else {})
+    return ({'expected_fit_level':2} if ACTIVE_SCOPE.new_only else {})
 
 
 def scope_snapshot(value):
@@ -85,6 +86,8 @@ def scoped_runtime_paths():
     """Extra two-dot guard covers every imported project runtime and SQL source."""
     if not ACTIVE_SCOPE.new_only:return []
     paths={'scripts/run_dinaut_two_dot_matches.py','apps/web/server/services/keywordTextScoring.ts'}
+    if ACTIVE_SCOPE==TWO_DOT_SEACE_30_SCOPE:
+        paths.add('scripts/run_dinaut_two_dot_seace_matches.py')
     root=ROOT.resolve()
     for module in list(sys.modules.values()):
         filename=getattr(module,'__file__',None)
@@ -127,9 +130,11 @@ def prepare(folder):
         raise ValueError('Frozen inputs hash mismatch')
     if (receipt['profile_id'],receipt['tenant_id'])!=(PROFILE_ID,TENANT_ID):
         raise ValueError('Batch outside the authorized DIN tenant/profile')
+    for case in frozen['cases']:
+        require_scope_source(case['source_key'],ACTIVE_SCOPE)
     if ACTIVE_SCOPE.new_only:
         sql_hashes={source:hashlib.sha256(scoped_source_sql(prod2_sql() if source=='seace_prod2' else PROD6_SQL,ACTIVE_SCOPE).encode()).hexdigest()
-                    for source in ('seace_prod2','seace_prod6')}
+                    for source in ACTIVE_SCOPE.allowed_sources}
         if receipt.get('selector_sql_sha256') is not None and receipt['selector_sql_sha256']!=sql_hashes:
             raise PublicationConflict('The canonical affinity selector changed after the two-dot freeze')
     selected=[c for c in frozen['cases'] if c['ready']]
@@ -192,6 +197,7 @@ def prepare(folder):
 
 
 def source_reader(conn,case):
+    require_scope_source(case['source_key'],ACTIVE_SCOPE)
     sql=prod2_sql() if case['source_key']=='seace_prod2' else PROD6_SQL
     sql=scoped_source_sql(sql,ACTIVE_SCOPE)
     live=conn.execute('SELECT * FROM ('+sql+') selected WHERE source_id=%(source_id)s',
@@ -234,6 +240,7 @@ def guard_live_provider_events(live,case_folder):
 
 
 def current_match(conn,case):
+    require_scope_source(case['source_key'],ACTIVE_SCOPE)
     prod2=case['source_key']=='seace_prod2'
     table,identity,value=('opportunity_matches','opportunity_id',case['opportunity_id']) if prod2 else ('matches','id_contrato',case['source_id'])
     row=conn.execute(f'SELECT * FROM {table} WHERE profile_id=%s AND {identity}=%s',(PROFILE_ID,value)).fetchone()
@@ -242,6 +249,7 @@ def current_match(conn,case):
 
 
 def publication_source_reader(conn,case,frozen):
+    require_scope_source(case['source_key'],ACTIVE_SCOPE)
     lines=conn.execute('SELECT * FROM business_lines WHERE profile_id=%s AND is_active FOR SHARE',(PROFILE_ID,)).fetchall()
     lines=scope_snapshot(lines)
     if fingerprint(sorted(lines,key=lambda l:str(l['id'])))!=fingerprint(sorted(frozen['business_lines'],key=lambda l:str(l['id']))):
@@ -253,6 +261,7 @@ def publication_source_reader(conn,case,frozen):
 
 
 def predispatch(conn,frozen,case,folder):
+    require_scope_source(case['source_key'],ACTIVE_SCOPE)
     profile=conn.execute('SELECT * FROM company_profiles WHERE id=%s AND tenant_id=%s AND is_active',(PROFILE_ID,TENANT_ID)).fetchone()
     profile=scope_snapshot(profile)
     if not profile or profile_fingerprint(profile)!=profile_fingerprint(frozen['profile']):
@@ -285,6 +294,7 @@ def predispatch(conn,frozen,case,folder):
 
 def reserved_dispatch(conn,case,case_folder,stage,payload,**kwargs):
     """A PG stage ledger also blocks replay from another local receipt folder."""
+    require_scope_source(case['source_key'],ACTIVE_SCOPE)
     request_hash=fingerprint(payload)
     metadata={'profile_id':PROFILE_ID,'source_key':case['source_key'],'source_id':case['source_id'],
               'provider_request_hash':request_hash,'policy':POLICY_VERSION,
@@ -367,6 +377,7 @@ def parse_gemma(body,payload):
 
 
 def saved_batch_recommendation(case_folder,item):
+    require_scope_source(item['case']['source_key'],ACTIVE_SCOPE)
     binding=json.loads((case_folder/'gemma-batch-binding.private.json').read_text())
     if binding['case_key']!=f"{item['case']['source_key']}-{item['case']['source_id']}" or binding['jev_request_sha256']!=fingerprint(item['jev_payload']):
         raise PublicationConflict('Shared Gemma recommendation belongs to another JEV input')
@@ -389,7 +400,7 @@ def saved_batch_recommendation(case_folder,item):
         raise PublicationConflict('Shared Gemma output coverage changed')
     recommendation={k:v for k,v in matches[0].items() if k!='case_key'}
     notes=[]
-    if ACTIVE_SCOPE==TWO_DOT_50_SCOPE:
+    if ACTIVE_SCOPE.new_only:
         recommendation,notes=normalize_requirement_source_refs(recommendation,item['jev_payload'])
     recommendation=validate_recommendations(recommendation,item['jev_payload'])
     if notes:
@@ -546,6 +557,7 @@ def compose(case,payload,scoring,recommendations,cards,item,usage):
 
 def run_case(conn,settings,frozen,cards,item,folder,jev_key,*,jev_only=False):
     case=item['case'];case_folder=folder/f"{case['source_key']}-{case['source_id']}"
+    require_scope_source(case['source_key'],ACTIVE_SCOPE)
     result_path=case_folder/'published.private.json'
     if result_path.exists():
         saved=json.loads(result_path.read_text());current=current_match(conn,case)['previous_match']
@@ -627,7 +639,7 @@ def run_case(conn,settings,frozen,cards,item,folder,jev_key,*,jev_only=False):
             evaluation_id=claim['id'] if claim else None,
             expected_previous=previous['previous_match'],expected_provenance=previous['previous_provenance'],
             allowed_replacements=scope_replacements(),
-            **({'expected_fit_level':2,'event_type':ACTIVE_SCOPE.publication_event} if ACTIVE_SCOPE==TWO_DOT_50_SCOPE else {}))
+            **({'expected_fit_level':2,'event_type':ACTIVE_SCOPE.publication_event} if ACTIVE_SCOPE.new_only else {}))
         result.update(cost_usd=cost,providers=usage['providers'],pipeline_request_hash=item['pipeline_request_hash'])
         private_json(result_path,result,exclusive=True)
         return result
@@ -639,8 +651,9 @@ def run_case(conn,settings,frozen,cards,item,folder,jev_key,*,jev_only=False):
 
 def cached_scoring_context(frozen,cards,item,folder):
     """Local paid-response reuse; live source/claim CAS still precedes generation/publication."""
-    if ACTIVE_SCOPE!=TWO_DOT_50_SCOPE:
+    if not ACTIVE_SCOPE.new_only:
         return None
+    require_scope_source(item['case']['source_key'],ACTIVE_SCOPE)
     case_folder=folder/f"{item['case']['source_key']}-{item['case']['source_id']}"
     receipt=get_cached_jev_receipt(case_folder,item['jev_payload'])
     if receipt is None:return None
@@ -667,7 +680,7 @@ def _main(argv=None):
     parser.add_argument('--jev-only',action='store_true',help='Prepare only the reserved scoring stage for shared Gemma batches')
     parser.add_argument('--recommendation-model',choices=['gemma-4-31b-it','gemini-3.1-flash-lite'],default='gemma-4-31b-it')
     args=parser.parse_args(argv);folder=args.folder.resolve()
-    if ACTIVE_SCOPE==TWO_DOT_50_SCOPE and args.recommendation_model!='gemini-3.1-flash-lite':
+    if ACTIVE_SCOPE.new_only and args.recommendation_model!='gemini-3.1-flash-lite':
         raise ValueError('The two-dot cohort uses only the explicitly selected Flash-Lite explanation model')
     select_recommendation_model(args.recommendation_model)
     if folder!=(ROOT/'tmp'/ACTIVE_SCOPE.folder_name).resolve():
@@ -687,7 +700,7 @@ def _main(argv=None):
         'scripts/dinaut_three_dot_persistence.py','scripts/match_provider_journal.py',
         'scripts/dinaut_jev_transport.py',
         'workers/seace/src/buenapro_worker/matching/jev_recommendations.py']
-    if ACTIVE_SCOPE==TWO_DOT_50_SCOPE:
+    if ACTIVE_SCOPE.new_only:
         tracked.extend(['scripts/run_dinaut_two_dot_matches.py','scripts/run_dinaut_three_dot_gemma_batches.py','scripts/dinaut_recommendation_schema.py'])
         tracked.extend(scoped_runtime_paths())
     if subprocess.run(['git','diff','--quiet','HEAD','--',*tracked],cwd=ROOT).returncode:

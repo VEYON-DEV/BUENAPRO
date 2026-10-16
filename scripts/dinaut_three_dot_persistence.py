@@ -15,7 +15,7 @@ from psycopg.pq import TransactionStatus
 from buenapro_worker.jobs.analyze_match import PROFILE_FIELDS
 from buenapro_worker.matching.readiness import match_readiness
 from buenapro_worker.prod2.repository import claim_evaluation
-from dinaut_batch_scope import iso_snapshot
+from dinaut_batch_scope import iso_snapshot,TWO_DOT_50_SCOPE,TWO_DOT_SEACE_30_SCOPE
 
 
 class PublicationConflict(ValueError):
@@ -136,9 +136,12 @@ def publish_case(conn: Any, case: dict, *, profile_id: str, tenant_id: str,
     Use a dictionary-row connection and no preexisting caller transaction.
     """
     source = _source(case)
+    if event_type==TWO_DOT_SEACE_30_SCOPE.publication_event and (expected_fit_level!=2 or source!='seace_prod2'):
+        raise PublicationConflict("The SEACE-only two-dot cohort permits only PROD2 publications")
     _ready(case, expected_fit_level)
     if expected_fit_level == 2:
-        if (event_type != "dinaut_two_dot_50_analysis" or allowed_replacements or expected_previous is not None
+        if (event_type not in {TWO_DOT_50_SCOPE.publication_event,TWO_DOT_SEACE_30_SCOPE.publication_event}
+                or allowed_replacements or expected_previous is not None
                 or case.get("existing_match_id") is not None):
             raise PublicationConflict("The two-dot cohort authorizes only new matches without replacement")
     _require_idle(conn)
