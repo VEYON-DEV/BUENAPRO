@@ -38,3 +38,42 @@ reemplaza análisis ni autoriza contratos menores. La finalización operativa ex
 verificar las 30 publicaciones, sus recibos y costos únicos, y la conservación de
 las cohortes y fuentes anteriores. Las entradas pendientes se conservan para
 reanudar sin repetir pagos.
+
+## Ejecución verificada del 16 de octubre
+
+El operador local confirmado y subido `44592c0c56bf980328767204034540d40eb9c49d`
+publicó las 30 oportunidades nuevas, sin reemplazos ni contratos menores nuevos.
+El preflight productivo verificó perfil, presencia de 43 documentos de empresa,
+11 líneas comerciales y las 30 fuentes; el piloto se reutilizó en la continuación sin
+repetir su llamada. Los manifiestos de las cohortes previas de 33 y 50 se
+reconstruyeron idénticos y sus 395 artefactos protegidos permanecieron intactos.
+
+El readback PG REPEATABLE READ READ ONLY del 16/10 a las 05:21:55 UTC verificó
+30 evaluaciones DONE, sus fuentes/provenance y 46 eventos únicos de proveedor.
+Los 97 matches anteriores (44 PROD2 y 53 menores) conservaron sus filas completas.
+La reconstrucción independiente desde recibos originales coincide con las
+asignaciones publicadas: 30 JEV por US$0.036492204 y 16 Flash-Lite por
+US$0.08537075; total calculado US$0.121862954. No hubo rechazos de proveedor ni
+envíos pendientes de respuesta; la factura del proveedor no se ha conciliado.
+
+Los puntajes van de 15 a 67 y todos siguen provisionales; 19 tienen cobertura
+parcial. Las 30 lecturas fuente conservan su revisión y en el freeze sus 30 fechas
+de cierre eran desconocidas. No se certifica vigencia ni aprobación documental.
+El scoring preserva todos los 101 requisitos sustantivos seleccionados y excluye
+papeleo administrativo del puntaje. No hubo relecturas PDF, nuevas ingestas,
+embeddings, migraciones, notificaciones ni cambios de servicios o frontend;
+la imagen web continúa siendo `buenapro-web:score-first-05db6c9`.
+
+La API productiva confirmó las 30 publicaciones tanto en lista como en detalle,
+con 74 puntajes SEACE totales de DIN y orden descendente; fueron 32 GET, sin
+escrituras ni llamadas a modelos. El cotejo exige el SHA raw del payload verificado
+en PG y su backup antes de comparar el árbol JSON de la API. JavaScript serializa
+flotantes integrales como `47.0` en `47`: se acepta esa equivalencia numérica
+exacta, con tipos booleanos/texto separados y sin redondeo ni tolerancia. Se
+conservan ambos hashes raw y los diagnósticos originales; 104 pruebas puras
+verifican también rechazo de cambios reales y manipulación de los respaldos.
+
+El reporte agregado `docs/dinaut-two-dot-seace-30-results-20261016.json` vincula los
+SHA de inputs, manifiesto y readbacks. Solo se retiraron dos bytecodes propios
+innecesarios (59.292 bytes); entradas congeladas, respuestas pagadas, respaldos,
+diagnósticos y recibos se retienen para revisar evidencia y conciliar la factura.

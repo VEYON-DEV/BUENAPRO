@@ -1,0 +1,118 @@
+{
+  "date_lima": "2026-10-16",
+  "status": "operational_batch_complete_provisional",
+  "branch": "codex/dinaut-three-dot-matching",
+  "execution_code_commit": "44592c0c56bf980328767204034540d40eb9c49d",
+  "score_model": "jev-1.13.0",
+  "recommendation_model": "gemini-3.1-flash-lite",
+  "service_image_change": "none_committed_local_operator_only",
+  "runtime_web_code_commit": "05db6c902e7bc11d1a0f888627e62ac84dcba584",
+  "runtime_web_image": "sha256:919b9e38dc63d017d0d7135ca27f7e24697bb4079fffd6448d131a2316c93d42",
+  "scope": {
+    "fit_level": 2,
+    "all_scores_provisional": true,
+    "by_source": {
+      "seace_prod2": 30
+    },
+    "closed_at_selection": 0,
+    "new_matches": 30,
+    "partial": 19,
+    "replaced": 0,
+    "score_range": [
+      15,
+      67
+    ],
+    "source_review_preserved": 30,
+    "targeted": 30,
+    "selected_deadlines_at_freeze": {
+      "unknown": 30
+    },
+    "exactly_two_seace_at_freeze": 771,
+    "eligible_new_ready_at_freeze": 367,
+    "excluded_not_ready": 376,
+    "excluded_por_leer": 351,
+    "intersection_with_previous_eighty_three": 0,
+    "context_truncated": false,
+    "substantive_requirements_preserved": 101
+  },
+  "frozen_inputs": {
+    "inputs_sha256": "0c0a1e7c5528f95a5f05152331ce6e8d5b5bc291f6c1da71ba0693d82ec405fb",
+    "execution_manifest_file_sha256": "1699adc3c7bb516268cca63ad12f00493c5bced0c5f0f4406410e22c91ba8b6a"
+  },
+  "cost": {
+    "flash_lite_requests": 16,
+    "flash_lite_usd": "0.08537075",
+    "jev_requests": 30,
+    "jev_usd": "0.036492204",
+    "known_published_rate_total_usd": "0.121862954",
+    "provider_bill_verified": false,
+    "rejected_without_usage_or_cost": 0,
+    "unresolved_sent_requests": 0,
+    "previous_cohort_costs_included": false,
+    "historical_uncertainties_preserved": true,
+    "shared_allocation": "Even split for case display, total deduplicated from exact raw requests"
+  },
+  "audit": {
+    "fresh_pg_repeatable_read_read_only": true,
+    "cutoff_utc": "2026-10-16T05:21:55.962040+00:00",
+    "receipt": "tmp/dinaut-two-dot-seace-30-20261016/final-readback-20261016T052211.private.json",
+    "receipt_sha256": "3104f407a8a872cf772d33a1a58aa14a1ad1b97ae111d91081a87f3358a91ea3",
+    "company_documents_metadata_verified": 43,
+    "active_business_lines_verified": 11,
+    "untargeted_previous_matches_unchanged": 97,
+    "untargeted_by_table": {
+      "matches": 53,
+      "opportunity_matches": 44
+    },
+    "previous_eighty_three_and_395_local_artifacts_preserved": true,
+    "durable_ledger": {
+      "all_target_claims_and_requests_exact": true,
+      "done_evaluations": 30,
+      "unique_provider_events": 46
+    },
+    "issues": [],
+    "semantic_or_legal_approval": false
+  },
+  "production_api": {
+    "new_scores_and_exact_details_verified": 30,
+    "all_profile_scored_seace_total": 74,
+    "ordered_before_pagination": true,
+    "profile_bound": true,
+    "filter": "with_score=true",
+    "filter_label": "Con puntaje",
+    "GET_requests": 32,
+    "write_requests": 0,
+    "model_calls": 0,
+    "other_source_requests": 0,
+    "receipt": "tmp/dinaut-two-dot-seace-30-20261016/final-api-readback-20261016T052909.private.json",
+    "receipt_sha256": "b7f7bcb49d32515493f9a0a1628cd9acb7c30d2da316a815f1bf9bc0830bc614",
+    "exact_JSON_comparison": "typed_trees_exact_finite_decimal_numbers; no_rounding_tolerance_or_text_conversion; bool_never_number",
+    "raw_PG_hash_and_publisher_backup_required_before_HTTP": true,
+    "numeric_lexical_hash_differences": 24,
+    "numeric_format_note": "Node JSON serializes integral floats such as 47.0 as 47; typed JSON values must remain exact, without tolerance or bool/text conversion"
+  },
+  "validation": {
+    "operator_offline_passed": 255,
+    "operator_optional_jsonschema_skipped": 7,
+    "private_API_guard_checks_passed": 104,
+    "previous_manifests_reconstructed_identical": [
+      33,
+      50
+    ]
+  },
+  "pending": {
+    "requested_thirty_remaining": 0,
+    "source_evidence_review_preserved": 30,
+    "partial_score_coverage": 19,
+    "closure_dates_unconfirmed_at_freeze": 30,
+    "provider_invoice_not_reconciled": true,
+    "not_ready_or_unselected_cases": "Retained outside this requested thirty; no new reading, historical retries or automatic batch activation"
+  },
+  "cleanup": {
+    "logical_bytes_freed": 59292,
+    "owned_bytecode_files_removed": 2,
+    "original_downloads": 0,
+    "new_R2_original_uploads": 0,
+    "retained": "All frozen inputs, provider receipts, backups, diagnosis and audit helpers/proofs for pending evidence review and invoice reconciliation"
+  }
+}
