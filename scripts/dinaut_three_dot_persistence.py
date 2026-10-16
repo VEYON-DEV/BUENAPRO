@@ -15,6 +15,7 @@ from psycopg.pq import TransactionStatus
 from buenapro_worker.jobs.analyze_match import PROFILE_FIELDS
 from buenapro_worker.matching.readiness import match_readiness
 from buenapro_worker.prod2.repository import claim_evaluation
+from dinaut_batch_scope import iso_snapshot
 
 
 class PublicationConflict(ValueError):
@@ -60,23 +61,27 @@ def _source(case: dict) -> str:
     return source
 
 
-def _ready(case: dict) -> None:
+def _ready(case: dict, expected_fit_level: int = 3) -> None:
+    if type(expected_fit_level) is not int or expected_fit_level not in {2, 3}:
+        raise PublicationConflict("Unsupported explicitly selected affinity scope")
     ready, _reason = match_readiness(case, case.get("facets") or [],
                                      provisional_source_review=True)
-    if not ready or case.get("fit_level") != 3:
-        raise PublicationConflict("Case is no longer a ready three-dot case")
+    if not ready or case.get("fit_level") != expected_fit_level:
+        raise PublicationConflict("Case is no longer ready in the explicitly selected affinity scope")
 
 
 def create_evaluation_before_dispatch(conn: Any, case: dict, *, profile_id: str,
-        request_hash: str, model: str, policy_version: str) -> dict | None:
+        request_hash: str, model: str, policy_version: str, expected_fit_level: int = 3) -> dict | None:
     """PROD2 legacy kind, no model-name allowlist. Caller must COMMIT before I/O.
 
     PROD6 has no compatible reservation table: its caller must use the durable
     private journal. Never fabricate a PROD2 convocation for a minor contract.
     """
+    if expected_fit_level != 3:
+        _ready(case, expected_fit_level)
     if _source(case) == "seace_prod6":
         return None
-    _ready(case)
+    _ready(case, expected_fit_level)
     _require_idle(conn)
     return claim_evaluation(conn, case["source_id"], kind="gemini_match",
         request_hash=request_hash, model=model, policy_version=policy_version,
@@ -121,7 +126,8 @@ def publish_case(conn: Any, case: dict, *, profile_id: str, tenant_id: str,
         missing_actions: list, source_reader: Callable[[Any, dict], dict | None],
         backup_callback: Callable[[dict], None], evaluation_id: int | None = None,
         expected_previous: dict | None = None, expected_provenance: dict | None = None,
-        allowed_replacements: frozenset[tuple[str, int]] = frozenset()) -> dict:
+        allowed_replacements: frozenset[tuple[str, int]] = frozenset(),
+        expected_fit_level: int = 3, event_type: str = "dinaut_three_dot_analysis") -> dict:
     """Publish atomically after paid receipts exist, with evidence and match CAS.
 
     backup_callback must durably fsync a private full-row snapshot before it
@@ -130,7 +136,11 @@ def publish_case(conn: Any, case: dict, *, profile_id: str, tenant_id: str,
     Use a dictionary-row connection and no preexisting caller transaction.
     """
     source = _source(case)
-    _ready(case)
+    _ready(case, expected_fit_level)
+    if expected_fit_level == 2:
+        if (event_type != "dinaut_two_dot_50_analysis" or allowed_replacements or expected_previous is not None
+                or case.get("existing_match_id") is not None):
+            raise PublicationConflict("The two-dot cohort authorizes only new matches without replacement")
     _require_idle(conn)
     if type(score) is not int or not 0 <= score <= 100 or verdict not in {"verde", "ambar", "rojo", "gris"}:
         raise PublicationConflict("Invalid provisional score or verdict")
@@ -149,6 +159,8 @@ def publish_case(conn: Any, case: dict, *, profile_id: str, tenant_id: str,
     with conn.transaction():
         profile = conn.execute("SELECT * FROM company_profiles WHERE id=%s AND tenant_id=%s AND is_active FOR UPDATE",
                                (profile_id, tenant_id)).fetchone()
+        if expected_fit_level==2:
+            profile=iso_snapshot(profile)
         if not profile or profile_fingerprint(profile) != expected_profile_fingerprint:
             raise PublicationConflict("Company input snapshot changed")
         # Existing keyword edits are independent of company_profiles.profile_hash.
@@ -160,7 +172,7 @@ def publish_case(conn: Any, case: dict, *, profile_id: str, tenant_id: str,
         live = source_reader(conn, case)
         if not live or source_fingerprint(live) != source_fingerprint(case):
             raise PublicationConflict("Source, affinity or documentary snapshot changed")
-        _ready(live)
+        _ready(live, expected_fit_level)
         if case.get("business_line_id") is not None and not conn.execute(
                 "SELECT id FROM business_lines WHERE id=%s AND profile_id=%s AND is_active FOR SHARE",
                 (case["business_line_id"], profile_id)).fetchone():
@@ -224,7 +236,7 @@ def publish_case(conn: Any, case: dict, *, profile_id: str, tenant_id: str,
                 (match_id, case["source_id"], case["extraction_id"], evaluation_id, expected_profile_fingerprint))
         else:
             conn.execute("INSERT INTO match_events(match_id,event_type,payload) VALUES(%s,%s,%s::jsonb)",
-                (match_id, "dinaut_three_dot_analysis", json.dumps({"score": score,"verdict": verdict,
+                (match_id, event_type, json.dumps({"score": score,"verdict": verdict,
                     "source": source,"extraction_id": case["extraction_id"],
                     "profile_hash": expected_profile_fingerprint}, ensure_ascii=False)))
     return {"match_id": match_id, "replaced": previous is not None,

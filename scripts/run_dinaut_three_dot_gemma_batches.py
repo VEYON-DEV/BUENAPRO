@@ -197,6 +197,8 @@ def bind_saved_batch(batch_folder,items):
 
 
 def execute_batch(conn,settings,batch_folder,group,contexts,items):
+    if run.ACTIVE_SCOPE.new_only and (len(group)>2 or len(group)>1 and sum(len(contexts[k]['evaluation']['requirements']) for k in group)>16):
+        raise run.ProviderBlocked('Two-dot Flash-Lite batch exceeds two cases or sixteen complete requirements')
     selected={k:contexts[k] for k in group}
     request=batch_request(selected)
     plan={'case_keys':group,'request_sha256':run.fingerprint(request),
@@ -226,13 +228,15 @@ def execute_batch(conn,settings,batch_folder,group,contexts,items):
 frozen_global=None
 
 
-def main():
+def _main(argv=None):
     global frozen_global
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--execute',action='store_true')
     parser.add_argument('--limit',type=int)
     parser.add_argument('--recommendation-model',choices=['gemma-4-31b-it','gemini-3.1-flash-lite'],default='gemma-4-31b-it')
-    args=parser.parse_args()
+    args=parser.parse_args(argv)
+    if run.ACTIVE_SCOPE.new_only and args.recommendation_model!='gemini-3.1-flash-lite':
+        raise ValueError('The two-dot cohort requires Flash-Lite recommendations')
     if args.limit is not None and args.limit<1:raise ValueError('Positive explicit limit required')
     global INPUT_BUDGET
     run.select_recommendation_model(args.recommendation_model)
@@ -243,6 +247,7 @@ def main():
     if not args.execute:
         run.emit({'status':'prepared_shared_batches','ready':len(cases),'inference_calls':0});return
     for path in ('scripts/run_dinaut_three_dot_gemma_batches.py','scripts/run_dinaut_three_dot_matches.py',
+                 'scripts/dinaut_batch_scope.py',
                  'scripts/dinaut_three_dot_persistence.py','scripts/dinaut_three_dot_selector.py','scripts/match_provider_journal.py',
                  'scripts/dinaut_jev_transport.py',
                  'scripts/dinaut_recommendation_schema.py',
@@ -250,6 +255,11 @@ def main():
         if subprocess.run(['git','diff','--quiet','HEAD','--',path],cwd=ROOT).returncode or subprocess.run(
                 ['git','ls-files','--error-unmatch',path],cwd=ROOT,capture_output=True).returncode:
             raise ValueError('Commit the verified recovery before production execution')
+    if run.ACTIVE_SCOPE.new_only:
+        for path in run.scoped_runtime_paths():
+            if subprocess.run(['git','diff','--quiet','HEAD','--',path],cwd=ROOT).returncode or subprocess.run(
+                    ['git','ls-files','--error-unmatch',path],cwd=ROOT,capture_output=True).returncode:
+                raise ValueError('Commit every imported two-dot runtime and canonical SQL source before execution')
     jev_key=dotenv_values(ROOT/'.env.jev.local').get('TYPESAFE_API_KEY')
     if not jev_key:raise ValueError('JEV credential unavailable')
     with (FOLDER/'coordinator.lock').open('a+') as lock:
@@ -276,9 +286,14 @@ def main():
                     if (case_folder/'published.private.json').exists() or (case_folder/'gemma-batch-binding.private.json').exists():
                         result=run.run_case(conn,settings,frozen,cards,item,FOLDER,jev_key)
                         results.append(result);continue
-                    run.run_case(conn,settings,frozen,cards,item,FOLDER,jev_key,jev_only=True)
-                    scoring=json.loads((case_folder/'scoring.private.json').read_text())
-                    contexts[k]=build_small_recommendation_context(item['jev_payload'],scoring,cards)
+                    cached=run.cached_scoring_context(frozen,cards,item,FOLDER)
+                    if cached is None:
+                        run.run_case(conn,settings,frozen,cards,item,FOLDER,jev_key,jev_only=True)
+                        scoring=json.loads((case_folder/'scoring.private.json').read_text())
+                        contexts[k]=run.explanation_context(item['jev_payload'],scoring,cards,item['case'])
+                    else:
+                        contexts[k]=cached
+                        scoring=json.loads((case_folder/'scoring.private.json').read_text())
                     run.emit({'status':'jev_ready','source_id':item['case']['source_id'],'completed_scoring':len(contexts),
                               'score':scoring['score']})
                 pending=list(contexts)
@@ -303,6 +318,20 @@ def main():
                     pending=pending[size:]
                 run.emit({'status':'complete' if len(results)==len(prepared) else 'pilot_complete','published':len(results),
                           'target':len(prepared)})
+
+
+def main(argv=None,*,scope=run.THREE_DOT_SCOPE,folder=None):
+    global FOLDER,INPUT_BUDGET,frozen_global
+    run.validate_scope(scope)
+    selected_folder=Path(folder).resolve() if folder is not None else (
+        (ROOT/'tmp'/scope.folder_name).resolve() if scope.new_only else FOLDER)
+    if scope.new_only and selected_folder!=(ROOT/'tmp'/scope.folder_name).resolve():
+        raise ValueError('Use the canonical two-dot folder; never copy a paid cohort')
+    previous=(FOLDER,INPUT_BUDGET,frozen_global)
+    with run.execution_scope(scope):
+        FOLDER=selected_folder
+        try:return _main(argv)
+        finally:FOLDER,INPUT_BUDGET,frozen_global=previous
 
 
 if __name__=='__main__':

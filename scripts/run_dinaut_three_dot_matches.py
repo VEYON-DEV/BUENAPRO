@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from decimal import Decimal
 import fcntl
@@ -30,6 +31,7 @@ from buenapro_worker.matching.jev_recommendations import (
     POLICY_VERSION, JEV_MODEL, RECOMMENDATION_PROMPT, build_profile_cards,
     build_jev_payload, score_match, build_recommendation_context,
     validate_recommendations, token_budget, build_small_recommendation_context,
+    _evidence as sanitize_match_evidence,
 )
 from buenapro_worker.extraction.gemini import parse_json_response
 from buenapro_worker.matching.profile_evidence import guard_participation_actions
@@ -42,18 +44,64 @@ from dinaut_three_dot_persistence import (
     create_evaluation_before_dispatch, publish_case,
 )
 from match_provider_journal import ProviderBlocked, canonical, fingerprint, private_json, dispatch_once
+from dinaut_batch_scope import THREE_DOT_SCOPE,TWO_DOT_50_SCOPE,validate_scope,scoped_source_sql,iso_snapshot
 from dinaut_jev_transport import dispatch_jev_transport, get_cached_jev_receipt, prepare_jev_transport
 from dinaut_recommendation_schema import normalize_map_output
 
 GEMMA_MODEL = 'gemma-4-31b-it'
 MODEL = JEV_MODEL + '+' + GEMMA_MODEL
 ALLOWED_REPLACEMENTS = frozenset({('seace_prod2',129),('seace_prod2',130),('seace_prod6',911)})
+ACTIVE_SCOPE = THREE_DOT_SCOPE
+
+
+@contextmanager
+def execution_scope(scope):
+    """Opt-in scope is process-local and restored even after a blocked run."""
+    global ACTIVE_SCOPE,GEMMA_MODEL,MODEL
+    validate_scope(scope)
+    previous=(ACTIVE_SCOPE,GEMMA_MODEL,MODEL)
+    ACTIVE_SCOPE=scope
+    if scope.new_only:
+        GEMMA_MODEL='gemini-3.1-flash-lite'
+        MODEL=JEV_MODEL+'+'+GEMMA_MODEL
+    try:yield
+    finally:ACTIVE_SCOPE,GEMMA_MODEL,MODEL=previous
+
+
+def scope_replacements():
+    return frozenset() if ACTIVE_SCOPE.new_only else ALLOWED_REPLACEMENTS
+
+
+def scope_persistence_kwargs():
+    return ({'expected_fit_level':2} if ACTIVE_SCOPE==TWO_DOT_50_SCOPE else {})
+
+
+def scope_snapshot(value):
+    return iso_snapshot(value) if ACTIVE_SCOPE.new_only else value
+
+
+def scoped_runtime_paths():
+    """Extra two-dot guard covers every imported project runtime and SQL source."""
+    if not ACTIVE_SCOPE.new_only:return []
+    paths={'scripts/run_dinaut_two_dot_matches.py','apps/web/server/services/keywordTextScoring.ts'}
+    root=ROOT.resolve()
+    for module in list(sys.modules.values()):
+        filename=getattr(module,'__file__',None)
+        if not filename:continue
+        try:path=Path(filename).resolve().relative_to(root)
+        except ValueError:continue
+        name=path.as_posix()
+        if name.endswith('.py') and (name.startswith('scripts/') or name.startswith('workers/seace/src/')):
+            paths.add(name)
+    return sorted(paths)
 
 
 def select_recommendation_model(model):
     global GEMMA_MODEL,MODEL
     if model not in {'gemma-4-31b-it','gemini-3.1-flash-lite'}:
         raise ValueError('Unsupported explicitly selected recommendation model')
+    if ACTIVE_SCOPE.new_only and model!='gemini-3.1-flash-lite':
+        raise ValueError('The two-dot scope fixes the explicitly authorized Flash-Lite model')
     GEMMA_MODEL=model
     MODEL=JEV_MODEL+'+'+model
 
@@ -78,9 +126,19 @@ def prepare(folder):
         raise ValueError('Frozen inputs hash mismatch')
     if (receipt['profile_id'],receipt['tenant_id'])!=(PROFILE_ID,TENANT_ID):
         raise ValueError('Batch outside the authorized DIN tenant/profile')
+    if ACTIVE_SCOPE.new_only:
+        sql_hashes={source:hashlib.sha256(scoped_source_sql(prod2_sql() if source=='seace_prod2' else PROD6_SQL,ACTIVE_SCOPE).encode()).hexdigest()
+                    for source in ('seace_prod2','seace_prod6')}
+        if receipt.get('selector_sql_sha256') is not None and receipt['selector_sql_sha256']!=sql_hashes:
+            raise PublicationConflict('The canonical affinity selector changed after the two-dot freeze')
     selected=[c for c in frozen['cases'] if c['ready']]
-    if not selected or any(c['fit_level']!=3 for c in selected):
+    if not selected or any(c['fit_level']!=ACTIVE_SCOPE.fit_level for c in selected):
         raise ValueError('Only ready three-dot opportunities are authorized')
+    if ACTIVE_SCOPE.maximum_cases is not None and len(selected)>ACTIVE_SCOPE.maximum_cases:
+        raise ValueError('Selected cohort exceeds the explicit opportunity limit')
+    counts=Counter(c['source_key'] for c in selected)
+    if ACTIVE_SCOPE.maximum_per_source is not None and any(n>ACTIVE_SCOPE.maximum_per_source for n in counts.values()):
+        raise ValueError('Selected cohort exceeds the explicit per-source limit')
     if len(selected)!=len({(c['source_key'],c['source_id']) for c in selected}):
         raise ValueError('Duplicate batch identity')
     cards=build_profile_cards(frozen['profile'])
@@ -91,28 +149,41 @@ def prepare(folder):
     cases=[]
     for case in selected:
         require_match_ready(case,case.get('facets') or [],provisional_source_review=True)
+        if ACTIVE_SCOPE.new_only and (case.get('existing_match_id') is not None
+                or case.get('prior_match_reservations') or case.get('prior_worker_jobs') or case.get('prior_provider_events')):
+            raise ProviderBlocked('The two-dot cohort preserves every existing match or historical matching attempt')
         if any(r['status'] in {'running','uncertain'} for r in case.get('prior_match_reservations') or []):
             raise ProviderBlocked('Historical running/uncertain matching attempt in selected case')
         if case.get('prior_worker_jobs'):
             raise ProviderBlocked('Historical worker job needs reconciliation before dispatch')
-        if case.get('existing_match_id') and (case['source_key'],case['existing_match_id']) not in ALLOWED_REPLACEMENTS:
+        if case.get('existing_match_id') and (case['source_key'],case['existing_match_id']) not in scope_replacements():
             raise PublicationConflict('Existing match outside the authorized replacement set')
         opportunity={'codigo':case['code'],'descripcion':case['description'],
             'entidad':case['buyer_name'],'resumen':case['summary_json'],
             'requires_human_review':case['requires_human_review'],
             'source_key':case['source_key'],'source_id':case['source_id']}
+        if ACTIVE_SCOPE.new_only:
+            # The canonical substantive facets are the scoring input. The source
+            # summary duplicates participation/administrative narrative; preserve
+            # it in the immutable source snapshot and restore it for explanations.
+            opportunity.pop('resumen')
         payload=build_jev_payload(cards,opportunity,case['facets'],token_counter=counter)
         binding={'source':source_fingerprint(case),'profile':profile_fingerprint(frozen['profile']),
             'lines':fingerprint(sorted(frozen['business_lines'],key=lambda l:str(l['id']))),
             'jev_request':fingerprint(payload),'recommendation_model':GEMMA_MODEL,
             'recommendation_prompt':fingerprint(RECOMMENDATION_PROMPT),'policy':POLICY_VERSION,
             'as_of':receipt['cutoff_utc']}
+        if ACTIVE_SCOPE!=THREE_DOT_SCOPE:
+            binding.update(cohort=ACTIVE_SCOPE.name,fit_level=ACTIVE_SCOPE.fit_level,
+                source_summary_policy='canonical_requirements_for_scoring_full_source_summary_for_explanations')
         cases.append({'case':case,'jev_payload':payload,'binding':binding,
                       'pipeline_request_hash':fingerprint(binding),
                       'token_budget':token_budget(payload,token_counter=counter)})
     manifest={'profile_id':PROFILE_ID,'tenant_id':TENANT_ID,'inputs_sha256':receipt['inputs_sha256'],
         'policy':POLICY_VERSION,'models':MODEL,'cases':[{k:x[k] for k in
             ('binding','pipeline_request_hash','token_budget')} for x in cases]}
+    if ACTIVE_SCOPE!=THREE_DOT_SCOPE:
+        manifest.update(cohort=ACTIVE_SCOPE.name,fit_level=ACTIVE_SCOPE.fit_level,new_matches_only=True)
     manifest_name=('execution-manifest.private.json' if GEMMA_MODEL=='gemma-4-31b-it'
                    else 'execution-manifest-flash-lite.private.json')
     once_json(folder/manifest_name,manifest)
@@ -121,8 +192,44 @@ def prepare(folder):
 
 def source_reader(conn,case):
     sql=prod2_sql() if case['source_key']=='seace_prod2' else PROD6_SQL
-    return conn.execute('SELECT * FROM ('+sql+') selected WHERE source_id=%(source_id)s',
-                        {**PARAMS,'source_id':case['source_id']}).fetchone()
+    sql=scoped_source_sql(sql,ACTIVE_SCOPE)
+    live=conn.execute('SELECT * FROM ('+sql+') selected WHERE source_id=%(source_id)s',
+                     {**PARAMS,'source_id':case['source_id']}).fetchone()
+    if live and ACTIVE_SCOPE.new_only:
+        live=dict(live)
+        live['prior_provider_events']=conn.execute("""SELECT id,stage,status,
+            metadata_json->>'provider_request_hash' AS provider_request_hash
+            FROM pipeline_events WHERE metadata_json->>'profile_id'=%s
+              AND metadata_json->>'source_key'=%s AND metadata_json->>'source_id'=%s
+              AND stage LIKE 'dinaut_%%' ORDER BY id""",
+            (PROFILE_ID,case['source_key'],str(case['source_id']))).fetchall()
+        if case['source_key']=='seace_prod2':
+            live['prior_worker_jobs']=conn.execute("""SELECT id,job_type,status,attempts
+                FROM worker_jobs WHERE payload->>'profile_id'=%s
+                  AND payload->>'id_convocatoria'=%s
+                  AND job_type IN ('analyze_match','analyze_prod2_match') ORDER BY id""",
+                (PROFILE_ID,str(case['source_id']))).fetchall()
+    return scope_snapshot(live)
+
+
+def guard_live_provider_events(live,case_folder):
+    if not ACTIVE_SCOPE.new_only:return
+    events=live.get('prior_provider_events') or []
+    if not events:return
+    allowed=set()
+    jev=get_cached_jev_receipt(case_folder)
+    if jev is not None:allowed.add((ACTIVE_SCOPE.event_prefix+'jev',jev['request_sha256']))
+    if (case_folder/'gemma-batch-binding.private.json').exists():
+        # Parsing validates the exact shared request/response and this case's
+        # complete immutable JEV source before its ledger hash may be reused.
+        binding=json.loads((case_folder/'gemma-batch-binding.private.json').read_text())
+        source_path=(case_folder/'jev-request.private.json' if (case_folder/'jev-request.private.json').exists()
+                     else case_folder/'jev-compact-json/source-payload.private.json')
+        source=json.loads(source_path.read_text())
+        saved_batch_recommendation(case_folder,{'case':live,'jev_payload':source})
+        allowed.add((ACTIVE_SCOPE.event_prefix+'gemma',binding['batch_request_sha256']))
+    if any((row.get('stage'),row.get('provider_request_hash')) not in allowed for row in events):
+        raise PublicationConflict('A provider ledger attempt outside this cohort owns the source; preserve it without replay')
 
 
 def current_match(conn,case):
@@ -135,16 +242,22 @@ def current_match(conn,case):
 
 def publication_source_reader(conn,case,frozen):
     lines=conn.execute('SELECT * FROM business_lines WHERE profile_id=%s AND is_active FOR SHARE',(PROFILE_ID,)).fetchall()
+    lines=scope_snapshot(lines)
     if fingerprint(sorted(lines,key=lambda l:str(l['id'])))!=fingerprint(sorted(frozen['business_lines'],key=lambda l:str(l['id']))):
         raise PublicationConflict('Business lines changed after provider evaluation')
-    return source_reader(conn,case)
+    live=source_reader(conn,case)
+    if live and ACTIVE_SCOPE.new_only:
+        guard_live_provider_events(live,ROOT/'tmp'/ACTIVE_SCOPE.folder_name/f"{case['source_key']}-{case['source_id']}")
+    return live
 
 
 def predispatch(conn,frozen,case,folder):
     profile=conn.execute('SELECT * FROM company_profiles WHERE id=%s AND tenant_id=%s AND is_active',(PROFILE_ID,TENANT_ID)).fetchone()
+    profile=scope_snapshot(profile)
     if not profile or profile_fingerprint(profile)!=profile_fingerprint(frozen['profile']):
         raise PublicationConflict('DIN profile changed since the frozen selection')
     lines=conn.execute('SELECT * FROM business_lines WHERE profile_id=%s AND is_active',(PROFILE_ID,)).fetchall()
+    lines=scope_snapshot(lines)
     if fingerprint(sorted(lines,key=lambda l:str(l['id'])))!=fingerprint(sorted(frozen['business_lines'],key=lambda l:str(l['id']))):
         raise PublicationConflict('DIN business lines changed since selection')
     live=source_reader(conn,case)
@@ -152,6 +265,8 @@ def predispatch(conn,frozen,case,folder):
         raise PublicationConflict('Source, requirements or three-dot affinity changed')
     require_match_ready(live,live.get('facets') or [],provisional_source_review=True)
     owned_claim=json.loads((folder/'pg-claim.private.json').read_text()) if (folder/'pg-claim.private.json').exists() else None
+    if ACTIVE_SCOPE.new_only and any(r['id']!=(owned_claim or {}).get('id') for r in live.get('prior_match_reservations') or []):
+        raise PublicationConflict('A historical matching reservation is outside the new-only two-dot cohort')
     if any(r['status'] in {'running','uncertain'} and r['id']!=(owned_claim or {}).get('id')
            for r in live.get('prior_match_reservations') or []):
         raise PublicationConflict('Another unresolved provider attempt owns this source/profile')
@@ -162,6 +277,7 @@ def predispatch(conn,frozen,case,folder):
         raise PublicationConflict('The existing analysis changed since the read-only selection')
     if live.get('prior_worker_jobs'):
         raise PublicationConflict('Another matching worker attempted this case; reconcile before dispatch')
+    guard_live_provider_events(live,folder)
     once_json(folder/'baseline-match.private.json',previous)
     return previous
 
@@ -172,7 +288,7 @@ def reserved_dispatch(conn,case,case_folder,stage,payload,**kwargs):
     metadata={'profile_id':PROFILE_ID,'source_key':case['source_key'],'source_id':case['source_id'],
               'provider_request_hash':request_hash,'policy':POLICY_VERSION,
               'model':JEV_MODEL if stage=='jev' else GEMMA_MODEL,'no_automatic_retry':True}
-    stage_name='dinaut_three_dot_'+stage
+    stage_name=ACTIVE_SCOPE.event_prefix+stage
     prior=conn.execute("""SELECT id,status FROM pipeline_events WHERE stage=%s
         AND metadata_json->>'profile_id'=%s AND metadata_json->>'provider_request_hash'=%s
         ORDER BY id DESC LIMIT 1""",(stage_name,PROFILE_ID,request_hash)).fetchone()
@@ -320,7 +436,7 @@ def transition_rejected_gemma_claim(conn,case,item,case_folder,claim):
              case['source_id'],PROFILE_ID,JEV_MODEL+'+gemma-4-31b-it',POLICY_VERSION,old_pipeline_hash)).fetchone()
         if not changed:raise PublicationConflict('Original rejected provider claim changed')
     new_claim=create_evaluation_before_dispatch(conn,case,profile_id=PROFILE_ID,
-        request_hash=item['pipeline_request_hash'],model=MODEL,policy_version=POLICY_VERSION)
+        request_hash=item['pipeline_request_hash'],model=MODEL,policy_version=POLICY_VERSION,**scope_persistence_kwargs())
     if not new_claim or new_claim['status']!='claimed':
         raise ProviderBlocked('New explicitly selected model reservation needs reconciliation')
     private_json(case_folder/'pg-claim.private.json',new_claim)
@@ -405,7 +521,7 @@ def compose(case,payload,scoring,recommendations,cards,item,usage):
             'company_evidence_review_required':scoring['source_review_required'],
             'score_basis':'substantive_capacity_weighted_rules_not_win_probability',
             'administrative_score_impact':False,'request_hash':item['pipeline_request_hash'],
-            'execution':'dinaut_three_dot_explicit_batch','fit_level':3,
+            'execution':ACTIVE_SCOPE.execution_name,'fit_level':ACTIVE_SCOPE.fit_level,
             'profile_snapshot_hash':item['binding']['profile'],
             'input_tokens':usage['input_tokens'],'output_tokens':usage['output_tokens'],
             'cost_usd':usage['cost_usd'],'provider_usage':usage['providers'],
@@ -428,11 +544,12 @@ def run_case(conn,settings,frozen,cards,item,folder,jev_key,*,jev_only=False):
     claim_path=case_folder/'pg-claim.private.json'
     if claim_path.exists():
         claim=json.loads(claim_path.read_text())
-        claim=transition_rejected_gemma_claim(conn,case,item,case_folder,claim)
-        claim=recover_rejected_jev_claim(conn,case,item,case_folder,claim)
+        if ACTIVE_SCOPE==THREE_DOT_SCOPE:
+            claim=transition_rejected_gemma_claim(conn,case,item,case_folder,claim)
+            claim=recover_rejected_jev_claim(conn,case,item,case_folder,claim)
     else:
         claim=create_evaluation_before_dispatch(conn,case,profile_id=PROFILE_ID,
-            request_hash=item['pipeline_request_hash'],model=MODEL,policy_version=POLICY_VERSION)
+            request_hash=item['pipeline_request_hash'],model=MODEL,policy_version=POLICY_VERSION,**scope_persistence_kwargs())
         if claim and claim['status']!='claimed':
             raise ProviderBlocked('Existing PROD2 reservation needs reconciliation; no repeat inference')
         private_json(claim_path,claim,exclusive=True)
@@ -452,6 +569,8 @@ def run_case(conn,settings,frozen,cards,item,folder,jev_key,*,jev_only=False):
         if (case_folder/'gemma-batch-binding.private.json').exists():
             recommendations,gusage=saved_batch_recommendation(case_folder,item)
         else:
+            if ACTIVE_SCOPE.new_only:
+                raise ProviderBlocked('Two-dot explanations require the schema-enforced shared Flash-Lite batch')
             request=gemma_request(item['jev_payload'],scoring,cards)
             verify_owned_claim(conn,claim,case,item,case_folder)
             gemma=reserved_dispatch(conn,case,case_folder,'gemma',request,
@@ -495,7 +614,8 @@ def run_case(conn,settings,frozen,cards,item,folder,jev_key,*,jev_only=False):
             backup_callback=lambda value:once_json(case_folder/'publication-backup.private.json',value),
             evaluation_id=claim['id'] if claim else None,
             expected_previous=previous['previous_match'],expected_provenance=previous['previous_provenance'],
-            allowed_replacements=ALLOWED_REPLACEMENTS)
+            allowed_replacements=scope_replacements(),
+            **({'expected_fit_level':2,'event_type':ACTIVE_SCOPE.publication_event} if ACTIVE_SCOPE==TWO_DOT_50_SCOPE else {}))
         result.update(cost_usd=cost,providers=usage['providers'],pipeline_request_hash=item['pipeline_request_hash'])
         private_json(result_path,result,exclusive=True)
         return result
@@ -505,19 +625,43 @@ def run_case(conn,settings,frozen,cards,item,folder,jev_key,*,jev_only=False):
         raise
 
 
-def main():
+def cached_scoring_context(frozen,cards,item,folder):
+    """Local paid-response reuse; live source/claim CAS still precedes generation/publication."""
+    if ACTIVE_SCOPE!=TWO_DOT_50_SCOPE:
+        return None
+    case_folder=folder/f"{item['case']['source_key']}-{item['case']['source_id']}"
+    receipt=get_cached_jev_receipt(case_folder,item['jev_payload'])
+    if receipt is None:return None
+    scoring=score_match(item['jev_payload'],receipt['body'],
+        at=datetime.fromisoformat(frozen['receipt']['cutoff_utc']),profile_cards=cards)
+    if scoring['score'] is None:raise ProviderBlocked('Cached JEV has no quantified capacity')
+    once_json(case_folder/'scoring.private.json',scoring)
+    return explanation_context(item['jev_payload'],scoring,cards,item['case'])
+
+
+def explanation_context(payload,scoring,cards,case,*,scope=None):
+    context=build_small_recommendation_context(payload,scoring,cards)
+    selected_scope=validate_scope(scope) if scope is not None else ACTIVE_SCOPE
+    if selected_scope.new_only:
+        context['evaluation']['opportunity']['resumen']=sanitize_match_evidence(case['summary_json'])
+    return context
+
+
+def _main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--folder',type=Path,required=True)
     parser.add_argument('--execute',action='store_true')
     parser.add_argument('--limit',type=int)
     parser.add_argument('--jev-only',action='store_true',help='Prepare only the reserved scoring stage for shared Gemma batches')
     parser.add_argument('--recommendation-model',choices=['gemma-4-31b-it','gemini-3.1-flash-lite'],default='gemma-4-31b-it')
-    args=parser.parse_args();folder=args.folder.resolve()
+    args=parser.parse_args(argv);folder=args.folder.resolve()
+    if ACTIVE_SCOPE==TWO_DOT_50_SCOPE and args.recommendation_model!='gemini-3.1-flash-lite':
+        raise ValueError('The two-dot cohort uses only the explicitly selected Flash-Lite explanation model')
     select_recommendation_model(args.recommendation_model)
-    if folder!=(ROOT/'tmp/dinaut-three-dot-20261015').resolve():
+    if folder!=(ROOT/'tmp'/ACTIVE_SCOPE.folder_name).resolve():
         raise ValueError('Use the canonical DIN three-dot folder; never copy a paid batch to a new folder')
     frozen,cards,cases,manifest=prepare(folder)
-    emit({'status':'prepared','ready_three_dots':len(cases),'sources':dict(Counter(x['case']['source_key'] for x in cases)),
+    emit({'status':'prepared',('ready_three_dots' if ACTIVE_SCOPE.fit_level==3 else 'ready_two_dots'):len(cases),'sources':dict(Counter(x['case']['source_key'] for x in cases)),
           'excluded_por_leer':sum(not c['ready'] for c in frozen['cases']),
           'documents':cards['coverage']['document_count'],'inference_calls':0})
     if not args.execute:return
@@ -527,9 +671,13 @@ def main():
     # Record the Git code identity. The private inputs/receipts never enter Git.
     commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
     tracked=['scripts/run_dinaut_three_dot_matches.py','scripts/dinaut_three_dot_selector.py',
+        'scripts/dinaut_batch_scope.py',
         'scripts/dinaut_three_dot_persistence.py','scripts/match_provider_journal.py',
         'scripts/dinaut_jev_transport.py',
         'workers/seace/src/buenapro_worker/matching/jev_recommendations.py']
+    if ACTIVE_SCOPE==TWO_DOT_50_SCOPE:
+        tracked.extend(['scripts/run_dinaut_two_dot_matches.py','scripts/run_dinaut_three_dot_gemma_batches.py','scripts/dinaut_recommendation_schema.py'])
+        tracked.extend(scoped_runtime_paths())
     if subprocess.run(['git','diff','--quiet','HEAD','--',*tracked],cwd=ROOT).returncode:
         raise ValueError('Commit the verified operational code before production execution')
     for path in tracked:
@@ -554,6 +702,11 @@ def main():
                                  {'commit':commit,'results':results,'complete':not args.jev_only and len(results)==len(cases)})
                 emit({'status':'run_finished','completed_this_run':len(results),'authorized_ready':len(cases),
                       'complete':not args.jev_only and len(results)==len(cases)})
+
+
+def main(argv=None,*,scope=THREE_DOT_SCOPE):
+    with execution_scope(scope):
+        return _main(argv)
 
 
 if __name__=='__main__':
