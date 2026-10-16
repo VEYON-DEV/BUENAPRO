@@ -1,5 +1,42 @@
 # Publicación desde el código local
 
+## Orden de fuentes del Cronograma: 16 de octubre de 2026
+
+El Cronograma muestra **Buscador SEACE primero y Contratos menores después** en
+desktop, laptop y móvil. La selección, los iconos y las fechas conservadas al
+cambiar de fuente mantienen su comportamiento. Los enlaces tienen altura mínima
+de 44 px, corrigiendo el target móvil de 38 px encontrado en la primera pasada.
+
+Código publicado `f8504fb317fbaf00d0b71df1a09a6a87edfb2fd9`, imagen
+`buenapro-web:timeline-tabs-f8504fb` /
+`sha256:27a717b1e1b2f4fddbf1e97c339e3123419050f30b848fa384bce67c8988df1a`.
+El build procede de Git limpio; etiqueta OCI y 588 hashes de runtime coinciden.
+Pasaron 14 pruebas focales, TypeScript, arquitectura de 16 dominios y build local aislado.
+Seis capturas locales y seis productivas autenticadas comprueban ambos estados
+activos en tres tamaños, navegación por teclado, foco, fechas y ausencia de
+overflow/errores. El principal revisó manualmente las seis locales y tres
+productivas representativas contra el diseño Glass y la captura del pedido.
+
+Solo se recreó web a las 07:43:53 Lima, con salud local 200. Entorno, configuración
+material, monturas, puertos, archivos privados y ocho contenedores ajenos se
+conservaron. La validación no escribió negocio ni llamó modelos/fuente. Las reglas
+de inclusión del Gantt y el filtro de ofertas vencidas no cambiaron.
+
+El primer build se inició con ubuntu, que no podía leer dos objetos root con modo 0400 y
+Git los reportó como corruptos. La descompresión y SHA-1 confirmaron que estaban
+íntegros; `git fsck --full --no-reflogs` con la cuenta de publicación devolvió 0.
+Se repitió el build con esa cuenta, preservando el recibo del intento fallido,
+sin reemplazar objetos ni cambiar sus permisos. Ningún servicio se había activado
+en ese intento.
+
+Se retiraron únicamente los worktrees propios de QA/build y dos capturas
+iniciales duplicadas: 581.526.747 bytes lógicos (489.716.759 locales de checkout,
+91.308.831 remotos y 501.157 de capturas). Las capturas finales, recibos compactos,
+entradas activas de PROD6 e imagen rollback
+`buenapro-web:rollback-c3aa3a4-before-timeline-tabs-f8504fb` se conservan.
+Evidencia en `tmp/timeline-tab-order-20261016/` y
+`/home/ubuntu/buenapro-releases/timeline-tabs-f8504fb-receipts/`.
+
 ## Texto completo del detalle: 16 de octubre de 2026
 
 Web `c3aa3a4b5515697ec7324339efd91fc41b7ed00c` está publicada con
