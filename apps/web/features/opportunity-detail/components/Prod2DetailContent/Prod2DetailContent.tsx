@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Building2, ExternalLink, FileText, ShieldCheck } from "lucide-react";
+import { Building2, ChevronDown, ExternalLink, FileText, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { SaveButton } from "@/features/opportunities";
 import { ParticipationTerms, ProcurementSchedule } from "@/features/procurement";
@@ -10,6 +10,7 @@ import { opportunityFacts, verdictShortLabels } from "@/lib/extraction/opportuni
 import type { ProcurementScheduleStage } from "@/lib/procurementSchedule";
 import type { getProd2OpportunityForTenant } from "@/server/services/prod2Opportunities";
 import { evaluationPresentation, isAdministrativeRequirement } from "../../model/evaluationPresentation";
+import { requirementFullText, requirementSourceFacet } from "../../model/requirementText";
 import { AdministrativeChecklist } from "../AdministrativeChecklist";
 import { DecisionOverview } from "../DecisionOverview";
 import { DetailSectionNavigator } from "../DetailSectionNavigator";
@@ -45,14 +46,7 @@ export function Prod2DetailContent({ detail }: { detail: Detail }) {
   const evaluated = records(breakdown.requisitos).filter(requirement => requirement.score_impact !== false
     && requirement.source_facet !== "penalty_condition"
     && (explicitChecklist || !isAdministrativeRequirement(requirement, analysis.facets)));
-  const requirements = analysis.facets.filter(facet => facet.facet !== "penalty_condition");
-  const sourceFacet = (requirement: RecordValue) => {
-    const index = Number(requirement.source_index);
-    if (explicitChecklist && Number.isInteger(index) && index > 0 && index <= analysis.facets.length) return analysis.facets[index - 1];
-    const direct = requirements.find(facet => facet.label === requirement.requisito);
-    const id = text(requirement.requirement_id).match(/^r(\d+)$/);
-    return direct ?? (id ? requirements[Number(id[1]) - 1] : undefined);
-  };
+  const sourceFacet = (requirement: RecordValue) => requirementSourceFacet(requirement, analysis.facets);
   const missing = evaluation.gaps;
   const facts = opportunityFacts(extraction);
   const primary = documents.find(document => document.codigo_alfresco === extraction?.codigo_alfresco)
@@ -67,6 +61,14 @@ export function Prod2DetailContent({ detail }: { detail: Detail }) {
   const actions = Array.isArray(breakdown.acciones_recomendadas) ? breakdown.acciones_recomendadas.filter((value: unknown) => typeof value === "string") as string[] : [];
   const feedUrl = `/feed?source=prod2${profile ? `&profile_id=${encodeURIComponent(profile.id)}` : ""}`;
   const affinity = keywordAffinitySummary(process);
+  const renderGap = (requirement: RecordValue, index: number) => {
+    const fullText = requirementFullText(requirement, analysis.facets);
+    const title = text(requirement.requisito) || text(requirement.label);
+    return <div className={styles.gap} key={index}><Badge tone={tone(requirement.estado)}>{labels[requirement.estado] ?? "Revisar"}</Badge>
+      <h3>{title}</h3><p>{text(requirement.gap)}</p>
+      {fullText && fullText !== title ? <details className={styles.disclosure}><summary>Ver requisito completo<ChevronDown aria-hidden="true" size={16} /></summary><p>{fullText}</p></details> : null}
+    </div>;
+  };
   return <>
     <nav className={styles.breadcrumb} aria-label="Ruta"><Link href={feedUrl}>Oportunidades</Link><span>/</span><span>Buscador SEACE</span></nav>
     <header className={styles.header}>
@@ -95,9 +97,10 @@ export function Prod2DetailContent({ detail }: { detail: Detail }) {
               {facts.observaciones.length ? <details className={styles.disclosure}><summary>Observaciones de las bases</summary><ul>{facts.observaciones.map((value, index) => <li key={index}>{value}</li>)}</ul></details> : null}</div>
           </div><ParticipationTerms reading={participationReading(process.participation_extraction)} /></section>
           <section className={styles.panel}><h2>Experiencia y capacidades requeridas</h2><p className={styles.muted}>Cada evaluación se vincula a las bases descargadas. Los requisitos deseables conservan su carácter.</p>
-            {evaluated.length ? evaluated.map((requirement, index) => { const facet = sourceFacet(requirement); return <details className={styles.requirement} key={text(requirement.requirement_id) || index}>
+            {evaluated.length ? evaluated.map((requirement, index) => { const facet = sourceFacet(requirement); const fullText = requirementFullText(requirement, analysis.facets); return <details className={styles.requirement} key={text(requirement.requirement_id) || index}>
               <summary><span>{text(requirement.requisito) || `Requisito ${index + 1}`}{requirement.conditional_branch === "mype" ? <small className={styles.requirementKind}>Condicional · MYPE</small> : facet ? <small className={styles.requirementKind}>{facet.required ? "Obligatorio" : "Deseable / no obligatorio"}</small> : null}</span><Badge tone={tone(requirement.estado)}>{labels[requirement.estado] ?? "Revisar"}</Badge></summary>
               <p>{text(requirement.gap) || "Sin brecha indicada."}</p>{requirement.accion ? <p><strong>Acción:</strong> {text(requirement.accion)}</p> : null}
+              {fullText && fullText !== text(requirement.requisito) ? <p><strong>Requisito de las bases:</strong> {fullText}</p> : null}
               {records(requirement.member_gaps).map((member, memberIndex) => <div className={styles.member} key={text(member.profile_id) || memberIndex}>
                 <h3>{text(memberNames[member.profile_id]) || "Miembro del convenio"}<Badge tone={tone(member.estado)}>{labels[member.estado] ?? "Revisar"}</Badge></h3>
                 <p>{text(member.gap) || "Sin brecha indicada."}</p>{member.accion ? <p><strong>Acción:</strong> {text(member.accion)}</p> : null}
@@ -105,6 +108,7 @@ export function Prod2DetailContent({ detail }: { detail: Detail }) {
               {facet && evidence(facet.evidence_json) ? <blockquote>{evidence(facet.evidence_json)}</blockquote> : <p className={styles.muted}>Consulta el requisito en las bases originales.</p>}
             </details>; }) : evaluation.substantiveFacets.length ? evaluation.substantiveFacets.map((facet, index) => <details className={styles.requirement} key={facet.id ?? index}>
               <summary><span>{facet.label}</span><Badge>{facet.required ? "Obligatorio" : "Deseable"}</Badge></summary>
+              {requirementFullText(facet, analysis.facets) && requirementFullText(facet, analysis.facets) !== facet.label ? <p>{requirementFullText(facet, analysis.facets)}</p> : null}
               {evidence(facet.evidence_json) ? <blockquote>{evidence(facet.evidence_json)}</blockquote> : <p className={styles.muted}>Consulta las bases originales.</p>}
             </details>) : <p className={styles.empty}>{extraction ? "Sin requisitos de capacidad detectados; consulta las bases originales." : "Los requisitos estarán disponibles cuando termine la lectura de las bases."}</p>}
             <AdministrativeChecklist items={evaluation.administrativeChecklist} />
@@ -134,9 +138,8 @@ export function Prod2DetailContent({ detail }: { detail: Detail }) {
       </DetailSectionNavigator>
       <aside className={styles.rail} aria-label="Contexto del procedimiento">
         <section className={styles.railPanel}><h2>Brechas de capacidad</h2>{match ? missing.length ? <>
-          {missing.slice(0, 3).map((requirement, index) => <div className={styles.gap} key={index}><Badge tone={tone(requirement.estado)}>{labels[requirement.estado] ?? "Revisar"}</Badge>
-            <h3>{text(requirement.requisito) || text(requirement.label)}</h3><p>{text(requirement.gap)}</p></div>)}
-          {missing.length > 3 ? <p className={styles.muted}>Consulta las {missing.length - 3} condiciones adicionales en Experiencia y capacidades requeridas.</p> : null}
+          {missing.slice(0, 3).map(renderGap)}
+          {missing.length > 3 ? <details className={styles.disclosure}><summary>Ver {missing.length - 3} brecha{missing.length - 3 === 1 ? "" : "s"} más<ChevronDown aria-hidden="true" size={16} /></summary>{missing.slice(3).map(renderGap)}</details> : null}
         </> : <p>Sin brechas indicadas en esta evaluación. Verifica la modalidad y la documentación antes de participar.</p> : <p>Evaluación documental pendiente.</p>}</section>
         <section className={styles.railPanel}><h2>Información oficial</h2><dl className={styles.facts}>
           <div><dt>Registro de participantes</dt><dd>{stageDate(registration)}</dd></div>

@@ -28,8 +28,12 @@
 .rail { display: grid; gap: 20px; min-width: 0; }
 .railPanel { background: var(--bp-color-glass); border: 1px solid var(--bp-color-border); border-radius: var(--bp-radius-lg); padding: 22px; box-shadow: var(--bp-shadow-subtle); }
 .gap { padding: 18px 0; border-bottom: 1px solid var(--bp-color-border); }
-.gap h3 { margin-top: 10px; }
+.gap h3 { margin-top: 10px; overflow-wrap: anywhere; }
 .gap p { font-size: 13px; }
+.disclosure summary { color: var(--bp-color-brand); }
+.disclosure summary > svg { flex: none; }
+.disclosure[open] > summary > svg { transform: rotate(180deg); }
+.disclosure > p { white-space: pre-line; }
 .requirement { border-bottom: 1px solid var(--bp-color-border); padding: 16px 0; }
 .requirement summary, .disclosure summary { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 44px; cursor: pointer; font-size: 14px; font-weight: 650; }
 .requirement summary > span:first-child { min-width: 0; overflow-wrap: anywhere; }

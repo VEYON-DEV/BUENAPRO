@@ -30,14 +30,12 @@ function loadSource(filename) {
     if (specifier === "@/lib/keywordAffinity") return { keywordAffinitySummary: () => null };
     if (specifier === "@/lib/scorePresentation") return loadSource(path.join(webRoot, "lib/scorePresentation.ts"));
     if (specifier === "@/lib/format/date") return { formatDateTime: value => value };
-    if (specifier === "@/lib/extraction/opportunity") return {
-      opportunityFacts: () => ({ lecturaRapida: "Bases ya leídas", observaciones: [] }),
-      verdictShortLabels: { gris: "Revisar", verde: "Preparada", ambar: "Con acciones" },
-    };
+    if (specifier === "@/lib/extraction/opportunity") return loadSource(path.join(webRoot, "lib/extraction/opportunity.ts"));
     if (specifier === "../DecisionOverview") return loadSource(path.join(detailRoot, "components/DecisionOverview/DecisionOverview.tsx"));
     if (specifier === "../AdministrativeChecklist") return loadSource(path.join(detailRoot, "components/AdministrativeChecklist/AdministrativeChecklist.tsx"));
     if (specifier === "../DetailSectionNavigator") return { DetailSectionNavigator: ({ children }) => React.createElement("div", null, children) };
     if (specifier === "../../model/evaluationPresentation") return loadSource(path.join(detailRoot, "model/evaluationPresentation.ts"));
+    if (specifier === "../../model/requirementText") return loadSource(path.join(detailRoot, "model/requirementText.ts"));
     return normalRequire(specifier);
   };
   loaded.set(filename, local);
@@ -179,4 +177,23 @@ test("MYPE branches remain visible as conditional and never increase required co
   assert.match(html, /Verificar condición MYPE/);
   assert.match(html, /1 de 1/);
   assert.doesNotMatch(html, /Deseable \/ no obligatorio/);
+});
+
+test("complete saved source text is readable in the summary, capacity requirement and every gap", () => {
+  const fullSummary = "Resumen íntegro: entrega en 45 días y acreditación de experiencia sin recortar.";
+  const facets = [
+    { id: "1", label: "RNP", facet: "rnp", required: true, details_json: { descripcion: "Texto que no corresponde a experiencia" } },
+    ...Array.from({ length: 4 }, (_, i) => ({ id: String(i + 2), label: `Experiencia ${i + 1}…`, facet: "specific_experience", required: true,
+      details_json: { descripcion: `Experiencia ${i + 1} completa con monto, periodo, bienes compatibles y respaldo documental.`, evidencia: "Bases" } })),
+  ];
+  const detail = fixture({ administrative_checklist: [], requisitos: facets.slice(1).map((facet, i) => ({ requisito: facet.label,
+    source_index: i + 1, source_facet: facet.facet, estado: "requiere_revision", gap: `Brecha ${i + 1}` })) }, facets);
+  detail.analysis.extraction.raw_extraction_json = { summary: { descripcion_corta: fullSummary } };
+  detail.analysis.extraction.summary_json = { descripcion_corta: "Resumen…" };
+  const html = render(detail);
+  assert.match(html, new RegExp(fullSummary));
+  assert.equal((html.match(/Ver requisito completo/g) ?? []).length, 4);
+  assert.match(html, /Ver 1 brecha más/);
+  for (const facet of facets.slice(1)) assert.equal((html.split(facet.details_json.descripcion).length - 1), 2);
+  assert.doesNotMatch(html, /Texto que no corresponde a experiencia/);
 });

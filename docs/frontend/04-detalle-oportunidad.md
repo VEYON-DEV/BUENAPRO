@@ -37,6 +37,10 @@ Proveedor que abrio una oportunidad desde el feed. Necesita decidir en pocos min
 7. Histórico comparable compacto: tres casos visibles y los demás bajo expansión.
 8. Copilot contextual en drawer con preguntas sugeridas, conversación, fuentes y confirmación explícita antes de aplicar cambios.
 
+### Texto completo de las bases
+
+La lectura ejecutiva usa el resumen íntegro guardado en la extracción, incluido `summary.descripcion_corta`; el resumen derivado del índice se reserva como fallback. En PROD2, las brechas conservan su título corto y ofrecen «Ver requisito completo» para leer la descripción original sin recorte. Las brechas adicionales se despliegan en el mismo rail y la descripción también está en el acordeón de capacidades. La vinculación exige un único facet con título exacto y tipo compatible: un índice histórico no basta si cambió el orden de las filas. No se regeneran análisis ni se alteran puntajes para presentar el texto.
+
 ## Puntaje de capacidad y preparación documental
 
 En contratos menores, el puntaje y las brechas prioritarias evalúan experiencia compatible, monto computable, personal y capacidades especializadas. RNP/RUC, declaraciones de impedimentos, propuesta económica, carta CCI y formatos ordinarios se presentan en «Documentos para presentar», plegado por defecto y sin impacto en el puntaje. El checklist conserva las obligaciones de presentación sin afirmar que la falta de un archivo en el perfil implica incapacidad o incumplimiento legal.

@@ -59,7 +59,9 @@ export function opportunityFacts(row: AnyRecord | null | undefined): Opportunity
       ? rawSummary
       : typeof rawSummary?.description === "string"
         ? rawSummary.description
-        : null;
+        : typeof rawSummary?.descripcion_corta === "string"
+          ? rawSummary.descripcion_corta
+          : null;
 
   return {
     descripcionCorta: summary.descripcion_corta || null,
