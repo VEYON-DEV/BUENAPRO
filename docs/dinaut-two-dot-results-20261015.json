@@ -1,0 +1,106 @@
+{
+  "date_lima": "2026-10-15",
+  "status": "operational_batch_complete_provisional",
+  "branch": "codex/dinaut-three-dot-matching",
+  "execution_code_commits": [
+    "a2691540bb7ff0cf57ca08c949e0a766d1da1f78",
+    "1d984c9f669476467dc333d96de943c0926c3dc1"
+  ],
+  "score_model": "jev-1.13.0",
+  "recommendation_model": "gemini-3.1-flash-lite",
+  "scope": {
+    "fit_level": 2,
+    "targeted": 50,
+    "audited": 50,
+    "new_matches": 50,
+    "replaced_matches": 0,
+    "by_source": {"seace_prod2": 25, "seace_prod6": 25},
+    "exactly_two_at_freeze": 1062,
+    "new_ready_candidates_at_freeze": 659,
+    "excluded_not_ready": 393,
+    "excluded_por_leer": 360,
+    "excluded_missing_or_unbound_requirements": 18,
+    "excluded_without_substantive_requirements": 15,
+    "existing_two_dot_matches_preserved": 10,
+    "intersection_with_previous_thirty_three": 0,
+    "selected_deadlines_at_freeze": {"future": 17, "unknown": 11, "closed": 22},
+    "source_review_preserved": 25
+  },
+  "frozen_inputs": {
+    "inputs_sha256": "c4aab5e4514122f5407c535d448bf30932489120ef19a7a61481087a4aad0556",
+    "execution_manifest_file_sha256": "5ae451c1edb4dc7522b432379467e61e7b24fca2b44c32393d4c6e132466448b"
+  },
+  "score": {
+    "minimum": 27,
+    "maximum": 81,
+    "partial": 38,
+    "all_provisional": true,
+    "administrative_requirements_affect_score": false,
+    "not_award_probability": true
+  },
+  "cost": {
+    "jev_unique_requests": 50,
+    "flash_lite_unique_requests": 31,
+    "jev_usd": "0.065763012",
+    "flash_lite_usd": "0.18181575",
+    "known_published_rate_total_usd": "0.247578762",
+    "unresolved_sent_requests": 0,
+    "new_rejections_without_usage_or_cost": 0,
+    "discarded_paid_responses": 0,
+    "source_citation_decoder_recovery_repeated_inferences": 0,
+    "provider_bill_verified": false,
+    "shared_recommendation_allocation": "Even split for per-case display, not measured per case; total deduplicated from raw requests",
+    "previous_cohort_costs": "Excluded from this total; original known and uncertain costs preserved"
+  },
+  "audit": {
+    "fresh_pg_repeatable_read_read_only": true,
+    "cutoff_utc": "2026-10-16T04:28:24.317721+00:00",
+    "receipt": "tmp/dinaut-two-dot-50-20261015/final-readback-20261016T042845.private.json",
+    "receipt_sha256": "c862e161ce247ede4178825fdeb316dcfecbb8ff5b918e1b0bdd4129db5cca2d",
+    "company_documents_verified": 43,
+    "active_business_lines_verified": 11,
+    "current_source_and_profile_snapshot_verified": true,
+    "provider_usage_independently_rebuilt_from_raw_receipts": true,
+    "untargeted_matches_unchanged": 47,
+    "previous_thirty_three_unchanged": true,
+    "issues": [],
+    "semantic_or_legal_approval": false
+  },
+  "production_api": {
+    "new_scores_verified": 50,
+    "all_profile_scored_totals": {"seace_prod2": 44, "seace_prod6": 53},
+    "descending_score_before_pagination": true,
+    "filter": "with_score=true",
+    "filter_label": "Con puntaje",
+    "active_owned_profile_bound": true,
+    "all_states_and_deadlines_checked": true,
+    "minor_closed_visibility": "Estado: Todos; Cierre: Cualquier cierre",
+    "receipt": "tmp/dinaut-two-dot-50-20261015/final-api-readback.private.json",
+    "receipt_sha256": "2f7e614de040264e9ba3119fd9400d187c6aef135c197f2100fbea2399571b18"
+  },
+  "web_release": {
+    "code_commit": "05db6c902e7bc11d1a0f888627e62ac84dcba584",
+    "image_tag": "buenapro-web:score-first-05db6c9",
+    "image_id": "sha256:919b9e38dc63d017d0d7135ca27f7e24697bb4079fffd6448d131a2316c93d42",
+    "git_hashes_verified": 585,
+    "local_real_data_screenshots": 12,
+    "production_screenshots": 6,
+    "unchanged_nonweb_services": 8,
+    "config_audit_limit": "Prior Config was retained as a hash only: material checks passed, full raw binary equality unproven"
+  },
+  "pending": {
+    "requested_fifty_remaining": 0,
+    "company_and_source_evidence_human_review_preserved": true,
+    "partial_score_coverage_review_count": 38,
+    "provider_invoice_not_reconciled": true,
+    "unselected_or_not_ready_cases": "Preserved outside this requested fifty; no automatic retries or new readings"
+  },
+  "cleanup": {
+    "local_logical_bytes_freed": 487494984,
+    "remote_logical_bytes_freed": 91177066,
+    "total_logical_bytes_freed": 578672050,
+    "downloaded_originals": 0,
+    "new_r2_original_uploads": 0,
+    "retained": "Frozen inputs, raw provider responses, decoder proofs, manifests, backups, screenshots and rollback image"
+  }
+}

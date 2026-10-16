@@ -40,3 +40,44 @@ Pasaron 233 pruebas Node (5 omitidas), TypeScript, arquitectura de 16 dominios y
 Se verificaron 34 capturas locales y 22 productivas, incluidos móvil y pantalla girada; las pruebas de transporte simulado confirmaron que una respuesta tardía no altera la siguiente oportunidad. Quince análisis persistidos conservaron sus puntajes provisionales, breakdown y acciones. Las comprobaciones de base de datos fueron de solo lectura: la migración 0044 ya estaba aplicada, y 0042 continúa pendiente. No se ejecutaron nuevas migraciones, modelos ni escrituras de negocio para publicar.
 
 La salud web devolvió 200, la configuración privada y el entorno permanecieron iguales y ocho contenedores ajenos a web conservaron identidad/inicio/política. Se retiraron únicamente temporales propios: 410602996 bytes locales y 90867094 remotos. El servidor local del usuario siguió funcionando; capturas, recibos, imagen anterior y entradas pendientes permanecen disponibles. Evidencia privada en `tmp/latest-local-release-20261014/`.
+
+## Puntajes del perfil primero: publicación del 15 de octubre de 2026 (Lima)
+
+El commit web `05db6c902e7bc11d1a0f888627e62ac84dcba584`, subido en
+`codex/dinaut-three-dot-matching`, se construyó desde un worktree Git limpio con el
+Dockerfile canónico. La imagen `buenapro-web:score-first-05db6c9`,
+`sha256:919b9e38dc63d017d0d7135ca27f7e24697bb4079fffd6448d131a2316c93d42`,
+declara esa revisión OCI y sus 585 hashes de web/prompts coinciden con Git.
+
+Ambas fuentes ordenan los puntajes válidos del perfil activo de mayor a menor
+antes de paginar y ofrecen «Con puntaje». El perfil se conserva entre pestañas,
+filtros, inspector y detalle; en menores se corrigió la selección de análisis de
+otros perfiles. Se mantienen puntajes cero y provisionales y el filtro legacy
+`analysis=done`. Pasaron 224 pruebas Node (5 omitidas), TypeScript, arquitectura de
+16 dominios y builds de 61 páginas. Doce capturas locales con datos reales y seis
+productivas desktop/laptop/mobile no mostraron overflow, errores de cliente ni
+escrituras. Se verificaron aislamiento de perfil y orden entre páginas.
+
+Se recreó únicamente web el 16/10 a las 04:14 UTC. Las lecturas de salud local y
+pública devolvieron 200. Se conservaron los 51 valores de entorno, archivos
+privados, puertos y política de reinicio; ocho contenedores ajenos conservaron
+identidad/inicio/restarts. HostConfig coincide exactamente al normalizar el orden
+de dos monturas. El recibo previo de Config conservó solo su hash: se acreditó
+igualdad material de los campos contrastables, pero no igualdad binaria total ni
+una causa concreta para esa diferencia de hash. No hubo migraciones ni reinicios
+de workers. La imagen anterior `f3233498…` y su override permanecen como rollback.
+
+El checkout operativo remoto avanzó por fast-forward desde `d613b16` a
+`1d984c9`, con su único cambio privado `profile-ingestion.env` intacto. Los commits
+posteriores del operador no alteran web/prompts/dependencias/Dockerfile frente a
+`05db6c9`; el cierre documental conserva este runtime y esta imagen. La ejecución
+autorizada de 50 análisis nuevos fue independiente del despliegue; el readback
+final confirma 44 puntajes PROD2 y 53 menores para DIN, sin cambiar los 47
+anteriores. Ver `docs/dinaut-two-dot-results-20261015.json`.
+
+Se retiraron solo el checkout local de QA y el worktree remoto limpio de build,
+más un temporal propio de diagnóstico: 487494984 bytes locales y 91177066 remotos
+(578672050 bytes lógicos en total). Se conservaron entradas congeladas, recibos,
+proofs, respaldos, capturas, configuración privada e imagen rollback. Evidencias
+en `tmp/score-first-build-20261015/remote-receipts/` y
+`tmp/dinaut-two-dot-50-20261015/`.

@@ -79,3 +79,34 @@ exige ese proof para reutilizar un caso corregido. El raw del proveedor, su uso,
 los manifiestos y los bindings anteriores permanecen intactos. Este paso no
 publica resultados, no acredita evidencia empresarial y no cambia el costo de la
 inferencia ya realizada.
+
+## Cierre verificado
+
+Las 50 publicaciones nuevas cerraron el 15/10/2026 (Lima): 25 PROD2 y 25 contratos
+menores, sin reemplazar análisis. La auditoría PostgreSQL de solo lectura del
+16/10 a las 04:28 UTC reconstruyó puntajes y costos desde los recibos originales,
+verificó las fuentes actuales y comprobó que los 47 matches anteriores seguían
+idénticos, incluidos los 33 de tres puntos. El modelo respondió a 50 solicitudes
+JEV y 31 solicitudes compartidas Flash-Lite; costo calculado conocido
+US$0.247578762, sin nuevos rechazos ni envíos pendientes de respuesta. La factura
+del proveedor no se ha conciliado. La recuperación del decoder usó la respuesta
+pagada guardada y no añadió una llamada.
+
+Los 50 puntajes siguen provisionales; 38 tienen cobertura parcial y 25 conservan
+la revisión de la lectura fuente. Al seleccionar había 17 cierres futuros, 11
+fechas desconocidas y 22 oportunidades ya cerradas. Estos análisis no convierten
+fechas históricas en oportunidades abiertas ni certifican la documentación de la
+empresa.
+
+El readback autenticado del frontend desplegado confirma las 50 publicaciones:
+44 puntajes almacenados totales en PROD2 y 53 en menores para DIN. Ambas listas
+priorizan el puntaje numérico del perfil activo, descendente antes de paginar; la
+cápsula «Con puntaje» excluye los casos sin puntaje. Para ver también los menores
+cerrados se usan «Todos» y «Cualquier cierre». El despliegue web sigue en
+`05db6c9`, imagen `buenapro-web:score-first-05db6c9`; los commits del operador
+`a269154` y `1d984c9` no requieren reconstruir esa imagen.
+
+El reporte agregado está en `docs/dinaut-two-dot-results-20261015.json`. Las
+entradas congeladas, recibos pagados, proof de decodificación y respaldos se
+conservan en la carpeta privada del lote para revisión y trazabilidad. No volver
+a ejecutar las 50 ni los 33 históricos para actualizar esta documentación.
