@@ -17,6 +17,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import httpx
+
 from buenapro_worker.db.connection import connect
 from buenapro_worker.jobs.derive_summary import derive_summary_job
 from buenapro_worker.jobs.download_file import download_file_job
@@ -31,6 +33,23 @@ NAMESPACE = "prod6-only-v1"
 JOB_TYPES = ("process_contract", "download_file", "extract_tdr", "derive_summary")
 IO_TYPES = ("process_contract", "download_file")
 LOCK = (2061013, 6)
+
+
+def free_http_failure(error: Exception) -> dict[str, Any] | None:
+    """Only temporary source HTTP failures may wait for another free polling cycle."""
+    if isinstance(error, httpx.HTTPStatusError):
+        status = error.response.status_code
+        if status in {408, 425, 429, 500, 502, 503, 504}:
+            return {"error_type": type(error).__name__, "http_status": status}
+    elif isinstance(error, (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError)):
+        return {"error_type": type(error).__name__}
+    return None
+
+
+def _wait_for_poll(should_stop, interval_seconds: int) -> None:
+    deadline = time.monotonic() + interval_seconds
+    while time.monotonic() < deadline and not should_stop():
+        time.sleep(min(2, max(0, deadline - time.monotonic())))
 
 
 def write_state(path: Path, value: dict[str, Any]) -> None:
@@ -270,10 +289,27 @@ def run(settings: Settings, *, profile_id: str, receipt_dir: Path, once: bool = 
                 return 2
             try:
                 source_started = time.monotonic()
-                with conn.transaction():
-                    state["source"] = poll_prod6_profile(settings, repo, profile_id=profile_id,
-                        max_pages_per_segment=max_pages, max_candidates=max_candidates,
-                        batch_id=batch_id, search_parallelism=http_workers)
+                try:
+                    with conn.transaction():
+                        state["source"] = poll_prod6_profile(settings, repo, profile_id=profile_id,
+                            max_pages_per_segment=max_pages, max_candidates=max_candidates,
+                            batch_id=batch_id, search_parallelism=http_workers)
+                except Exception as error:
+                    source_error = free_http_failure(error)
+                    if source_error is None:
+                        if isinstance(error, httpx.HTTPStatusError):
+                            state["source_error"] = {"error_type": type(error).__name__,
+                                                     "http_status": error.response.status_code}
+                        raise
+                    state.update(status="source_backoff", source_error=source_error,
+                                 retry_after_seconds=interval_seconds)
+                    write_state(receipt_dir / "state.json", state)
+                    write_state(receipt_dir / f"{batch_id}.json", state)
+                    print(json.dumps(state), flush=True)
+                    if once:
+                        return 2
+                    _wait_for_poll(lambda: stopping, interval_seconds)
+                    continue
                 state["source_seconds"] = round(time.monotonic() - source_started, 3)
                 state["status"] = "processing"
                 write_state(receipt_dir / "state.json", state)
@@ -300,12 +336,34 @@ def run(settings: Settings, *, profile_id: str, receipt_dir: Path, once: bool = 
                                 try:
                                     outcome = future.result()
                                 except Exception as error:
+                                    source_error = free_http_failure(error)
+                                    if source_error is not None:
+                                        with conn.transaction():
+                                            changed = conn.execute("""UPDATE worker_jobs SET status='pending',
+                                               claimed_by=NULL,claimed_at=NULL,
+                                               run_after=now()+%s * interval '1 second',last_error=%s
+                                               WHERE id=%s AND status='claimed' AND claimed_by=%s
+                                               AND payload->>'source_runtime'=%s
+                                               AND payload->>'scope_profile_id'=%s""",
+                                               (interval_seconds,
+                                                f"PROD6 free IO deferred: {source_error['error_type']}"
+                                                f" status={source_error.get('http_status', 'transport')}; next polling cycle",
+                                                io_job.id, worker_id, NAMESPACE, profile_id))
+                                            if changed.rowcount != 1:
+                                                raise RuntimeError("Deferred IO job ownership changed")
+                                        state.setdefault("deferred_io", []).append({"job_id": io_job.id,
+                                            "job_type": io_job.job_type, **source_error,
+                                            "retry_after_seconds": interval_seconds})
+                                        write_state(receipt_dir / "state.json", state)
+                                        continue
                                     with conn.transaction():
                                         conn.execute("""UPDATE worker_jobs SET status='pending',claimed_by=NULL,
                                            claimed_at=NULL,last_error=%s WHERE id=%s AND status='claimed'""",
                                            (f"PROD6 attention required: {type(error).__name__}; no automatic retry",
                                             io_job.id))
-                                    errors.append({"job_id": io_job.id, "error_type": type(error).__name__})
+                                    errors.append({"job_id": io_job.id, "error_type": type(error).__name__,
+                                        **({"http_status": error.response.status_code}
+                                           if isinstance(error, httpx.HTTPStatusError) else {})})
                                     continue
                                 state["done"][io_job.job_type] = state["done"].get(io_job.job_type, 0) + 1
                                 state["last_outcome"] = {"job_id": io_job.id,
@@ -348,7 +406,7 @@ def run(settings: Settings, *, profile_id: str, receipt_dir: Path, once: bool = 
                     state["suppressed"] = repo.suppressed
                     state["updated_at"] = datetime.now(timezone.utc).isoformat()
                     write_state(receipt_dir / "state.json", state)
-                state["status"] = "stopped" if stopping else "sweep_drained"
+                state["status"] = "stopped" if stopping else "sweep_deferred" if state.get("deferred_io") else "sweep_drained"
                 if state["source"]["capped_segments"] or state["source"]["limit_reached"]:
                     state["source_coverage"] = "bounded_partial"
                 else:
@@ -363,10 +421,8 @@ def run(settings: Settings, *, profile_id: str, receipt_dir: Path, once: bool = 
                 print(json.dumps(state), flush=True)
                 return 2
             if once or stopping:
-                return 0
-            deadline = time.monotonic() + interval_seconds
-            while time.monotonic() < deadline and not stopping:
-                time.sleep(min(2, max(0, deadline - time.monotonic())))
+                return 2 if state.get("deferred_io") else 0
+            _wait_for_poll(lambda: stopping, interval_seconds)
     return 0
 
 

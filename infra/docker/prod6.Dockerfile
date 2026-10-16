@@ -6,3 +6,6 @@ COPY workers/seace/src/buenapro_worker/prod6 /usr/local/lib/python3.12/site-pack
 COPY workers/seace/src/buenapro_worker/jobs/extract_tdr.py /usr/local/lib/python3.12/site-packages/buenapro_worker/jobs/extract_tdr.py
 COPY workers/seace/src/buenapro_worker/jobs/poll_prod6_profile.py /usr/local/lib/python3.12/site-packages/buenapro_worker/jobs/poll_prod6_profile.py
 CMD ["python", "-m", "buenapro_worker.prod6.runtime"]
+
+ARG VCS_REF=unknown
+LABEL org.opencontainers.image.revision=$VCS_REF
