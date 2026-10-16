@@ -30,11 +30,19 @@ fallos vuelve a `pending` con `run_after` futuro y propiedad comprobada. Los
 demás trabajos pueden avanzar. El estado diferencia `source_backoff`,
 `sweep_deferred` y `sweep_drained`; `--once` devuelve 2 si queda trabajo diferido.
 
-Los errores permanentes de acceso, integridad, protocolo local y errores no
-clasificados siguen deteniendo el servicio. Los fallos de `extract_tdr` y
+Los errores permanentes de acceso en búsquedas/fichas, integridad, protocolo
+local y errores no clasificados siguen deteniendo el servicio. Los fallos de `extract_tdr` y
 `derive_summary` también conservan la parada, aunque su excepción sea HTTP.
 El guard de pagos y las respuestas guardadas no cambian. El diagnóstico nuevo
 conserva tipo/estado HTTP seguros, sin URL, body ni credenciales.
+
+El primer release diagnosticó un 403 concreto al descargar el archivo 398091
+del contrato 100017. Las descargas con HTTP 401/403/404/410 quedan ahora retenidas
+como `pending`, con `run_after=infinity` y un bloqueo de documento ligado al
+contrato/archivo/perfil/namespace. No se reintentan ni se evitan controles de
+acceso. La misma identidad bloquea nuevas copias de descarga/lectura en ciclos
+posteriores, mientras los demás contratos siguen avanzando. `sweep_blocked`
+distingue estos pendientes manuales de una cola drenada; `--once` devuelve 2.
 
 El servicio conserva el mismo alcance configurado, carpeta de recibos, lock,
 perfil de ingesta y paralelismo 3 HTTP/2 IO/1 lectura. Activar este barrido no

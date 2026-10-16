@@ -78,6 +78,17 @@ class ScopedRepository(JobRepository):
             "source_runtime": NAMESPACE, "scope_profile_id": self.profile_id,
             "batch_id": self.batch_id,
         }
+        if job_type in {"download_file", "extract_tdr"} and payload.get("id_contrato_archivo") is not None:
+            blocked = self.conn.execute("""SELECT id FROM worker_jobs WHERE status='pending'
+                AND run_after='infinity'::timestamptz AND payload->>'source_runtime'=%s
+                AND payload->>'scope_profile_id'=%s AND payload->>'id_contrato'=%s
+                AND payload->>'id_contrato_archivo'=%s
+                AND payload->'source_document_block'->>'reason'='manual_review_required' LIMIT 1""",
+                (NAMESPACE, self.profile_id, str(payload.get("id_contrato")),
+                 str(payload["id_contrato_archivo"]))).fetchone()
+            if blocked:
+                self.suppressed["source_document_blocked"] = self.suppressed.get("source_document_blocked", 0) + 1
+                return None
         kwargs["dedup_key"] = f"{NAMESPACE}:{self.profile_id}:{kwargs.get('dedup_key') or job_type}"
         kwargs["max_attempts"] = 1
         return super().enqueue(job_type, payload, **kwargs)
@@ -336,6 +347,27 @@ def run(settings: Settings, *, profile_id: str, receipt_dir: Path, once: bool = 
                                 try:
                                     outcome = future.result()
                                 except Exception as error:
+                                    if (io_job.job_type == "download_file" and isinstance(error, httpx.HTTPStatusError)
+                                            and error.response.status_code in {401, 403, 404, 410}):
+                                        block = {"http_status": error.response.status_code,
+                                                 "reason": "manual_review_required"}
+                                        with conn.transaction():
+                                            changed = conn.execute("""UPDATE worker_jobs SET status='pending',
+                                               claimed_by=NULL,claimed_at=NULL,run_after='infinity'::timestamptz,
+                                               payload=payload || %s::jsonb,last_error=%s
+                                               WHERE id=%s AND status='claimed' AND claimed_by=%s
+                                               AND payload->>'source_runtime'=%s
+                                               AND payload->>'scope_profile_id'=%s""",
+                                               (json.dumps({"source_document_block": block}),
+                                                f"PROD6 source document HTTP {block['http_status']}; manual review; no automatic retry",
+                                                io_job.id, worker_id, NAMESPACE, profile_id))
+                                            if changed.rowcount != 1:
+                                                raise RuntimeError("Blocked document ownership changed")
+                                        state.setdefault("blocked_documents", []).append({"job_id": io_job.id,
+                                            "contract_id": io_job.payload["id_contrato"],
+                                            "file_id": io_job.payload["id_contrato_archivo"], **block})
+                                        write_state(receipt_dir / "state.json", state)
+                                        continue
                                     source_error = free_http_failure(error)
                                     if source_error is not None:
                                         with conn.transaction():
@@ -406,7 +438,10 @@ def run(settings: Settings, *, profile_id: str, receipt_dir: Path, once: bool = 
                     state["suppressed"] = repo.suppressed
                     state["updated_at"] = datetime.now(timezone.utc).isoformat()
                     write_state(receipt_dir / "state.json", state)
-                state["status"] = "stopped" if stopping else "sweep_deferred" if state.get("deferred_io") else "sweep_drained"
+                state["suppressed"] = repo.suppressed
+                incomplete = bool(state.get("blocked_documents") or repo.suppressed.get("source_document_blocked"))
+                state["status"] = ("stopped" if stopping else "sweep_blocked" if incomplete
+                                   else "sweep_deferred" if state.get("deferred_io") else "sweep_drained")
                 if state["source"]["capped_segments"] or state["source"]["limit_reached"]:
                     state["source_coverage"] = "bounded_partial"
                 else:
@@ -421,7 +456,7 @@ def run(settings: Settings, *, profile_id: str, receipt_dir: Path, once: bool = 
                 print(json.dumps(state), flush=True)
                 return 2
             if once or stopping:
-                return 2 if state.get("deferred_io") else 0
+                return 2 if state.get("deferred_io") or incomplete else 0
             _wait_for_poll(lambda: stopping, interval_seconds)
     return 0
 

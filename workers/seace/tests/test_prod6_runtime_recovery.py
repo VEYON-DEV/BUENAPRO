@@ -220,3 +220,135 @@ def test_changed_io_ownership_blocks_recovery_before_any_further_work(offline_ru
     h.wait.assert_not_called()
     assert h.states[-1]["status"] == "attention_required"
     assert h.states[-1]["error_type"] == "RuntimeError"
+
+
+@pytest.mark.parametrize("status", [401, 403, 404, 410])
+def test_inaccessible_download_is_held_without_retry_and_other_contract_continues(offline_runtime, capsys, status):
+    h = offline_runtime
+    blocked = Job(1, "download_file", "io", {"id_contrato": 42,
+        "id_contrato_archivo": 31, "batch_id": "original"}, 1)
+    other = Job(2, "process_contract", "io", {"id_contrato": 43, "batch_id": "original"}, 1)
+    local = Job(3, "derive_summary", "llm", {"id_contrato": 43, "batch_id": "original"}, 1)
+    h.queues(io=[blocked, other], serial=[local])
+
+    def execute(settings, profile_id, job, receipts):
+        if job.id == 1:
+            raise http_failure(status)
+        return {"files_changed": True}
+
+    h.execute_io.side_effect = execute
+    assert h.run(once=True) == 2
+    assert h.execute_io.call_count == 2
+    assert h.dispatch.call_count == 1 and h.dispatch.call_args.args[2].id == 3
+    state = h.states[-1]
+    assert state["status"] == "sweep_blocked"
+    assert state["done"] == {"process_contract": 1, "derive_summary": 1}
+    assert state["blocked_documents"] == [{"job_id": 1, "contract_id": 42,
+        "file_id": 31, "http_status": status, "reason": "manual_review_required"}]
+    assert "deferred_io" not in state
+    holds = [(call.args[0], call.args[1]) for call in h.conn.execute.call_args_list
+             if "run_after='infinity'" in call.args[0]]
+    assert len(holds) == 1
+    sql, values = holds[0]
+    assert "status='pending'" in sql and "status='claimed'" in sql and "claimed_by=%s" in sql
+    assert "payload->>'source_runtime'=%s" in sql and "payload->>'scope_profile_id'=%s" in sql
+    assert "interval" not in sql and "now()" not in sql
+    assert json.loads(values[0]) == {"source_document_block": {
+        "http_status": status, "reason": "manual_review_required"}}
+    assert values[2:] == (1, "prod6-only-v1:veyon", runtime.NAMESPACE, "veyon")
+    h.wait.assert_not_called()
+    assert not (h.folder / "readings").exists()
+    assert not list(h.folder.rglob("*started.private.json"))
+    assert SECRET not in json.dumps(h.states) + str(values) + capsys.readouterr().out
+
+
+@pytest.mark.parametrize("kind", ["download_file", "extract_tdr"])
+def test_held_source_document_suppresses_new_batches_in_same_archive_contract_scope(monkeypatch, kind):
+    conn = MagicMock()
+    conn.execute.return_value.fetchone.return_value = {"id": 77}
+    repo = runtime.ScopedRepository(conn, profile_id="veyon", batch_id="different-new-batch")
+    enqueue = MagicMock(return_value=99)
+    monkeypatch.setattr(runtime.JobRepository, "enqueue", enqueue)
+    assert repo.enqueue(kind, {"id_contrato": 42, "id_contrato_archivo": 31,
+                              "scope_profile_id": "foreign", "source_runtime": "foreign"}) is None
+    enqueue.assert_not_called()
+    assert repo.suppressed == {"source_document_blocked": 1}
+    sql, values = conn.execute.call_args.args
+    assert values == (runtime.NAMESPACE, "veyon", "42", "31")
+    assert "status='pending'" in sql and "run_after='infinity'::timestamptz" in sql
+    for field in ["source_runtime", "scope_profile_id", "id_contrato", "id_contrato_archivo"]:
+        assert f"payload->>'{field}'=%s" in sql
+    assert "payload->'source_document_block'->>'reason'='manual_review_required'" in sql
+    assert "batch_id" not in sql
+
+
+def test_document_hold_does_not_suppress_another_file_contract_or_profile(monkeypatch):
+    conn = MagicMock()
+
+    def execute(sql, values):
+        cursor = MagicMock()
+        cursor.fetchone.return_value = ({"id": 77} if values ==
+            (runtime.NAMESPACE, "veyon", "42", "31") else None)
+        return cursor
+
+    conn.execute.side_effect = execute
+    enqueue = MagicMock(return_value=99)
+    monkeypatch.setattr(runtime.JobRepository, "enqueue", enqueue)
+    repo = runtime.ScopedRepository(conn, profile_id="veyon", batch_id="new-batch")
+    assert repo.enqueue("download_file", {"id_contrato": 42, "id_contrato_archivo": 31}) is None
+    assert repo.enqueue("download_file", {"id_contrato": 42, "id_contrato_archivo": 32}) == 99
+    assert repo.enqueue("extract_tdr", {"id_contrato": 43, "id_contrato_archivo": 31}) == 99
+    another_profile = runtime.ScopedRepository(conn, profile_id="another-profile", batch_id="new-batch")
+    assert another_profile.enqueue("download_file", {"id_contrato": 42, "id_contrato_archivo": 31}) == 99
+    before = conn.execute.call_count
+    assert repo.enqueue("process_contract", {"id_contrato": 42}) == 99
+    assert conn.execute.call_count == before
+    assert enqueue.call_count == 4 and repo.suppressed == {"source_document_blocked": 1}
+
+
+def test_cycle_with_only_suppressed_document_is_blocked_even_without_claim(offline_runtime, monkeypatch):
+    h = offline_runtime
+    h.conn.execute.return_value.fetchone.return_value = {"locked": True, "id": 77}
+    enqueue = MagicMock(return_value=99)
+    monkeypatch.setattr(runtime.JobRepository, "enqueue", enqueue)
+
+    def discover(settings, repo, **kwargs):
+        assert repo.enqueue("download_file", {"id_contrato": 42, "id_contrato_archivo": 31}) is None
+        return dict(SOURCE_STATS)
+
+    h.poll.side_effect = discover
+    assert h.run(once=True) == 2
+    state = h.states[-1]
+    assert state["status"] == "sweep_blocked"
+    assert state["suppressed"] == {"source_document_blocked": 1}
+    assert "blocked_documents" not in state
+    enqueue.assert_not_called()
+    h.execute_io.assert_not_called()
+    h.dispatch.assert_not_called()
+    h.wait.assert_not_called()
+
+
+def test_403_for_process_contract_remains_fatal_not_a_document_hold(offline_runtime):
+    h = offline_runtime
+    h.queues(io=[Job(1, "process_contract", "io", {"id_contrato": 42, "batch_id": "original"}, 1)])
+    h.execute_io.side_effect = http_failure(403)
+    assert h.run(once=False) == 2
+    assert h.states[-1]["status"] == "attention_required"
+    assert h.states[-1]["io_errors"] == [{"job_id": 1, "error_type": "HTTPStatusError", "http_status": 403}]
+    assert "blocked_documents" not in h.states[-1]
+    h.dispatch.assert_not_called()
+    h.wait.assert_not_called()
+
+
+def test_lost_ownership_does_not_claim_to_have_held_the_document(offline_runtime):
+    h = offline_runtime
+    h.conn.execute.return_value.rowcount = 0
+    h.queues(io=[Job(1, "download_file", "io", {"id_contrato": 42,
+        "id_contrato_archivo": 31, "batch_id": "original"}, 1)])
+    h.execute_io.side_effect = http_failure(403)
+    assert h.run(once=False) == 2
+    assert h.states[-1]["status"] == "attention_required"
+    assert h.states[-1]["error_type"] == "RuntimeError"
+    assert "blocked_documents" not in h.states[-1]
+    h.dispatch.assert_not_called()
+    h.wait.assert_not_called()
