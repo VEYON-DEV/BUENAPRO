@@ -1,6 +1,7 @@
 """Offline receipt/payment contracts; providers, originals and DB stay untouched."""
 import json
 from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -77,6 +78,120 @@ def test_result_replay_after_caller_persistence_failure_does_not_create_client(s
     assert replay == first
     factory.assert_called_once()
     client.models.generate_content.assert_called_once()
+
+
+LEGACY_METADATA = (
+    ("part", "audio_transcription"),
+    ("part", "media_processing"),
+    ("part", "speech_metadata"),
+    ("candidate", "continuation_token"),
+)
+
+
+def metadata_target(raw, location):
+    candidate = raw["candidates"][0]
+    return candidate["content"]["parts"][0] if location == "part" else candidate
+
+
+def replace_synthetic_response(directory, mutate):
+    response_path = receipts(directory, "response")[0]
+    saved = json.loads(response_path.read_bytes())
+    mutate(saved["response"])
+    saved["response_sha256"] = reading._sha(reading._canonical(saved["response"]))
+    response_path.write_bytes(reading._canonical(saved))
+    result_path = receipts(directory, "result")[0]
+    result = json.loads(result_path.read_bytes())
+    result["response_sha256"] = saved["response_sha256"]
+    result_path.write_bytes(reading._canonical(result))
+
+
+def test_legacy_null_metadata_replay_preserves_receipts_and_never_sends(setup, monkeypatch):
+    extractor, client, factory, directory = setup
+    first = extractor.extract(PDF)
+
+    def add_metadata(raw):
+        for location, field in LEGACY_METADATA:
+            metadata_target(raw, location)[field] = None
+
+    replace_synthetic_response(directory, add_metadata)
+    before = {path.name: path.read_bytes() for path in directory.iterdir()}
+    factory.reset_mock()
+
+    def forbid_receipt_write(*args):
+        pytest.fail("Existing paid receipts must replay without being rewritten")
+
+    monkeypatch.setattr(reading, "_write_json", forbid_receipt_write)
+    assert extractor.extract(PDF) == first
+    assert {path.name: path.read_bytes() for path in directory.iterdir()} == before
+    assert not extractor.guard_path.exists()
+    factory.assert_not_called()
+    client.models.generate_content.assert_not_called()
+
+
+@pytest.mark.parametrize("location,field", LEGACY_METADATA)
+def test_unsupported_nonnull_legacy_metadata_blocks_without_resending(setup, location, field):
+    model = types.Part if location == "part" else types.Candidate
+    if field in model.model_fields:
+        pytest.skip("The installed SDK owns validation of its supported metadata")
+    extractor, client, factory, directory = setup
+    extractor.extract(PDF)
+    replace_synthetic_response(directory, lambda raw: metadata_target(raw, location).update(
+        {field: "unsupported non-null metadata"}))
+    before = {path.name: path.read_bytes() for path in directory.glob("*.private.json")}
+    factory.reset_mock()
+    with pytest.raises(reading.GuardedReadingError):
+        extractor.extract(PDF)
+    assert {path.name: path.read_bytes() for path in directory.glob("*.private.json")} == before
+    assert extractor.guard_path.exists()
+    factory.assert_not_called()
+    client.models.generate_content.assert_not_called()
+
+
+@pytest.mark.parametrize("location", ["part", "candidate", "content", "response"])
+def test_unknown_null_metadata_is_still_rejected_without_resending(setup, location):
+    extractor, client, factory, directory = setup
+    extractor.extract(PDF)
+
+    def add_unknown(raw):
+        target = (raw if location == "response" else raw["candidates"][0]["content"]
+                  if location == "content" else metadata_target(raw, location))
+        target["unknown_sdk_metadata"] = None
+
+    replace_synthetic_response(directory, add_unknown)
+    factory.reset_mock()
+    with pytest.raises(reading.GuardedReadingError):
+        extractor.extract(PDF)
+    factory.assert_not_called()
+    client.models.generate_content.assert_not_called()
+
+
+@pytest.mark.parametrize("location,field", LEGACY_METADATA)
+def test_sdk_supported_metadata_is_never_removed(monkeypatch, location, field):
+    model = types.Part if location == "part" else types.Candidate
+    monkeypatch.setitem(model.model_fields, field, object())
+    raw = response().model_dump(mode="json")
+    metadata_target(raw, location)[field] = None
+    before = deepcopy(raw)
+    compatible = reading._sdk_compatible_response(raw)
+    assert field in metadata_target(compatible, location)
+    assert compatible == before
+    assert raw == before
+
+
+def test_legacy_null_metadata_cannot_hide_response_hash_tampering(setup):
+    extractor, client, factory, directory = setup
+    extractor.extract(PDF)
+    path = receipts(directory, "response")[0]
+    saved = json.loads(path.read_bytes())
+    for location, field in LEGACY_METADATA:
+        metadata_target(saved["response"], location)[field] = None
+    # Keep the original hash: adaptation must not erase a receipt change.
+    path.write_bytes(reading._canonical(saved))
+    factory.reset_mock()
+    with pytest.raises(reading.GuardedReadingError):
+        extractor.extract(PDF)
+    factory.assert_not_called()
+    client.models.generate_content.assert_not_called()
 
 
 def test_raw_response_replays_when_result_persistence_was_interrupted(setup):

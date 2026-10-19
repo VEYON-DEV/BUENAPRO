@@ -4,10 +4,18 @@ from collections.abc import Mapping
 from typing import Any
 
 import httpx
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential_jitter
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
 from buenapro_worker.seace.schemas import SearchResponse
 from buenapro_worker.settings import Settings
+
+
+def _temporary_source_failure(error: BaseException) -> bool:
+    """Retry remote/transient failures, never an access denial or local config error."""
+    if isinstance(error, httpx.HTTPStatusError):
+        return error.response.status_code in {408, 425, 429, 500, 502, 503, 504}
+    return isinstance(error, (httpx.TimeoutException, httpx.NetworkError,
+                              httpx.RemoteProtocolError))
 
 
 class SeaceClient:
@@ -29,7 +37,7 @@ class SeaceClient:
         self.close()
 
     @retry(
-        retry=retry_if_exception_type((httpx.TimeoutException, httpx.TransportError, httpx.HTTPStatusError)),
+        retry=retry_if_exception(_temporary_source_failure),
         wait=wait_exponential_jitter(initial=1, max=20),
         stop=stop_after_attempt(4),
         reraise=True,
@@ -43,7 +51,7 @@ class SeaceClient:
         return response.json()
 
     @retry(
-        retry=retry_if_exception_type((httpx.TimeoutException, httpx.TransportError, httpx.HTTPStatusError)),
+        retry=retry_if_exception(_temporary_source_failure),
         wait=wait_exponential_jitter(initial=1, max=20),
         stop=stop_after_attempt(4),
         reraise=True,

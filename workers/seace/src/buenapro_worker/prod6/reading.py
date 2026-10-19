@@ -13,6 +13,7 @@ import json
 import os
 import tempfile
 from contextlib import contextmanager
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -87,6 +88,31 @@ def _read_json(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError("Receipt must be an object")
     return value
+
+
+def _sdk_compatible_response(raw_response: dict[str, Any]) -> dict[str, Any]:
+    """Adapt known null metadata on a copy, after hashing the original receipt."""
+    response = deepcopy(raw_response)
+    candidates = response.get("candidates")
+    if not isinstance(candidates, list):
+        return response
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        if ("continuation_token" not in types.Candidate.model_fields
+                and candidate.get("continuation_token") is None):
+            candidate.pop("continuation_token", None)
+        content = candidate.get("content")
+        parts = content.get("parts") if isinstance(content, dict) else None
+        if not isinstance(parts, list):
+            continue
+        for part in parts:
+            if not isinstance(part, dict):
+                continue
+            for field in ("audio_transcription", "media_processing", "speech_metadata"):
+                if field not in types.Part.model_fields and part.get(field) is None:
+                    part.pop(field, None)
+    return response
 
 
 class GuardedGeminiExtractor:
@@ -280,7 +306,8 @@ class GuardedGeminiExtractor:
 
     @staticmethod
     def _parsed_json(raw_response: dict[str, Any]) -> dict[str, Any]:
-        response = types.GenerateContentResponse.model_validate(raw_response)
+        response = types.GenerateContentResponse.model_validate(
+            _sdk_compatible_response(raw_response))
         if is_truncated(response):
             raise ValueError("Response was truncated")
         raw_json = parse_json_response(response.text or "{}")
