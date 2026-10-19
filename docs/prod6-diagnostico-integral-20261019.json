@@ -1,0 +1,362 @@
+{
+  "titulo": "Diagnóstico integral de PROD6 / Contratos menores",
+  "fecha_utc": "2026-10-19T16:47:03.497028+00:00",
+  "alcance": "Acceso público, continuidad del lector local/VM, integridad y seguridad de reanudación, alcance de perfiles y visibilidad de los datos guardados. Diagnóstico sin activación.",
+  "estado": "Worker detenido; diagnóstico completado con límites explícitos; recuperación operativa y regla exacta del403 pendientes.",
+  "conclusiones_principales": [
+    {
+      "hecho": "La ejecución local terminó con OperationalError después de26barridos completos.",
+      "evidencia": "Estado y log del proceso2528, metadatos de archivos y reproducción offline del fallo inicial de PG."
+    },
+    {
+      "hecho": "El Mac durmió por cierre de tapa762segundos durante la espera entre barridos. El retraso adicional fue760.58segundos.",
+      "inferencia": "La suspensión es una explicación fuerte para pérdida de sesión PG/SSH; no quedó el error detallado ni SQLSTATE para demostrar esa causalidad."
+    },
+    {
+      "hecho": "La primera consulta de habilitación del perfil está fuera del manejo de excepciones del ciclo. Al fallar deja sweeping pese a que el proceso terminó.",
+      "estado": "Defecto local reproducido; pendiente de corregir, no causa del403 externo."
+    },
+    {
+      "hecho": "El acceso HTTP aSEACE sigue403 en Mac/VM; el navegador local muestra resultados y conexiones al mismo destino.",
+      "inferencia": "Compatible con política de acceso sensible al contexto del cliente/sesión/TLS. WAF/gateway plausible; regla y fabricante no confirmados."
+    },
+    {
+      "hecho": "Las24lecturas están íntegras y actuales enPG; no hay trabajos propios abiertos ni coordinadores.",
+      "alcance": "Esta carpeta/runtime PROD6; no es una afirmación sobre otros pipelines históricos."
+    },
+    {
+      "hecho": "VM conserva17tríos de recibos y Mac24. Los51JSON compartidos coinciden.",
+      "accion": "Reconciliar21JSON de7lecturas faltantes antes de una futura reanudación enVM."
+    },
+    {
+      "hecho": "Ingesta configurada con3líneas deVEYON/2segmentos; DIN tiene11líneas/9segmentos.",
+      "accion": "Resolver alcance por separado; diagnóstico no amplía barrido ni autoriza nuevos pagos."
+    }
+  ],
+  "red_fuente": {
+    "evidencia_previa_revisada": "docs/prod6-rejection-cause-20261019.json",
+    "nuevos_get_explicitos": 5,
+    "nuevos_resultados_por_origen": {
+      "mac": {
+        "at_utc": "2026-10-19T16:42:30.602025+00:00",
+        "requests": {
+          "public_master_objects": {
+            "status": 403,
+            "body_sha256": "587895370c51435a3efdf1b184524464c4fdb47f660c534463351d3b0fffaeca",
+            "bytes": 83,
+            "response_header_names": [
+              "Connection",
+              "Content-Length"
+            ],
+            "request_id": "50618a2548cf81377a333fe9b846defe"
+          },
+          "known_contract_detail": {
+            "status": 403,
+            "body_sha256": "7d4694d461ce1ea96ac2794a40404bc41ce7700f6ec2e71abe6fa2808db6b29b",
+            "bytes": 83,
+            "response_header_names": [
+              "Connection",
+              "Content-Length"
+            ],
+            "request_id": "21a05b680f9256be888165d71e62b347"
+          }
+        }
+      },
+      "vm": {
+        "at_utc": "2026-10-19T16:42:31.334372+00:00",
+        "requests": {
+          "public_master_objects": {
+            "status": 403,
+            "body_sha256": "796ce9a8761d7eb18fdbe0115e1104e37e5efb303561694ce681195b187f2084",
+            "bytes": 83,
+            "response_header_names": [
+              "Connection",
+              "Content-Length"
+            ],
+            "request_id": "6e777245ce00256b7d0130bd52533b83"
+          },
+          "known_contract_detail": {
+            "status": 403,
+            "body_sha256": "dd4f320ae710728dadc1c93704be21e3be72f9b62059063b6822bc53ed43e196",
+            "bytes": 83,
+            "response_header_names": [
+              "Connection",
+              "Content-Length"
+            ],
+            "request_id": "6acb1aeda4211842cdef6b5ab438a499"
+          }
+        }
+      }
+    },
+    "curl_nativo_http2_negociacion": {
+      "metrics": {
+        "http_status": 403,
+        "http_version": "1.1",
+        "ssl_verify": 0,
+        "peer_ip": "129.213.173.146",
+        "redirects": 0
+      },
+      "protocol_lines": [
+        "* ALPN: curl offers h2,http/1.1",
+        "* SSL connection using TLSv1.2 / ECDHE-RSA-AES128-GCM-SHA256 / [blank] / UNDEF",
+        "* ALPN: server accepted http/1.1",
+        "*  SSL certificate verify ok.",
+        "> GET /v1/s8uit-services/buscadorpublico/contrataciones/buscador?anio=2024&palabra_clave=&orden=2&page=1&page_size=5 HTTP/1.1",
+        "> User-Agent: curl/8.7.1"
+      ],
+      "request_id": "86326c4dfb24a34de9dfb86207961ff0",
+      "body_sha256": "feb14c29484aea48ec4fd35df8bcff5a14ea61d3ffa6c0c3aa292a770ba61999",
+      "raw_log_sha256": "1e584af0eeff14657a0733bf74cc69bd41b15dfc538703f165454d33d471c340"
+    },
+    "navegador": {
+      "recorded_at_utc": "2026-10-19T16:45:59.512561+00:00",
+      "url": "https://prod6.seace.gob.pe/buscador-publico/contrataciones",
+      "title": "Buscador de contratos menores",
+      "visible_results_count_unfiltered": 90528,
+      "first_contract": "CM-205-2026-PETACC",
+      "http_status_observed": false,
+      "agent_tab_closed": true
+    },
+    "observacion_socket_navegador": {
+      "recorded_at_utc": "2026-10-19T16:45:59.512007+00:00",
+      "method": "Read-only OS socket metadata filtered to the current SEACE destination; absence is not proof of browser routing.",
+      "samples": 10,
+      "target_samples": 10,
+      "first_utc": "2026-10-19T16:41:02.790574+00:00",
+      "last_utc": "2026-10-19T16:41:07.948853+00:00",
+      "observed_process": "Codex (Service)",
+      "remote_peer": "129.213.173.146:443",
+      "limit": "TCP peer observation does not expose public NAT egress, accepted request headers, browser TLS/HTTP version, cookies or rule trigger."
+    },
+    "sin_proxy_sistema_observado": true,
+    "vpn_scutil_sin_servicios_listados": true,
+    "limites": "Los sockets muestran el destino TCP del navegador, no su IP pública NAT ni headers/sesión/TLS equivalentes. No se copiaron cookies, se imitaron navegadores ni se rotaron IPs.",
+    "descartes_como_explicacion_suficiente": [
+      "URL incorrecta únicamente",
+      "Certificado inválido o falta general de conectividad en las mediciones",
+      "Fallo exclusivo dehttpx",
+      "Cadena literal BuenaPro/.local únicamente",
+      "Falta deAcceptJSON únicamente",
+      "Los cambios de código del19/10 originaron el primer403"
+    ],
+    "sin_resolver": [
+      "Regla exacta y punto de origen WAF/LB/backend del403",
+      "Cabeceras/contexto de una petición aceptada del navegador, con trazas sanitizadas",
+      "Registros del operador correlacionados porRequestId"
+    ]
+  },
+  "continuidad": {
+    "vm": {
+      "state": {
+        "Status": "exited",
+        "Running": false,
+        "StartedAt": "2026-10-16T12:19:27.138967678Z",
+        "FinishedAt": "2026-10-16T12:19:50.679064205Z",
+        "ExitCode": 2,
+        "OOMKilled": false,
+        "Pid": 0
+      },
+      "restart_count": 0,
+      "restart_policy": {
+        "Name": "no",
+        "MaximumRetryCount": 0
+      },
+      "log_driver": "json-file"
+    },
+    "mac_barridos_completos": 26,
+    "ultimo_barrido_completo_utc": "2026-10-17T01:01:42.931981+00:00",
+    "ultimo_barrido_completo_lima": "16/10/2026 20:01:42",
+    "suspension_lima": [
+      "16/10/2026 20:18:24",
+      "16/10/2026 20:31:06"
+    ],
+    "duracion_suspension_segundos": 762,
+    "retraso_adicional_segundos": 760.579694,
+    "siguiente_barrido_inicio_lima": "16/10/2026 20:44:23",
+    "registro_fallo_mtime_utc": "2026-10-17T01:44:23.528299+00:00",
+    "cautela_tiempo_fallo": "mtime del archivo es evidencia de escritura, no un timestamp detallado de libpq/SSH.",
+    "fallo_reproducido": {
+      "observed_utc": "2026-10-19T16:42:22.960174+00:00",
+      "case": "profile_query_raises_OperationalError_before_source",
+      "runtime_sha256": "61bdeaeabd28cf3826f2d54092014db52ceedc73c444cdec436b7d9e2fdbb727",
+      "exception_escaped_run": "OperationalError",
+      "return_code": null,
+      "state_status": "sweeping",
+      "state_has_error_type": false,
+      "source_called": false,
+      "database_network_calls": 0,
+      "model_calls": 0,
+      "test_temporaries_removed": true
+    },
+    "consulta_sin_cobertura_error": "workers/seace/src/buenapro_worker/prod6/runtime.py:297",
+    "pg_sin_reinicios_ni_oom_en_ventana": true,
+    "registro_conexiones_desconexiones_pg": false,
+    "detalle_ssh_original": "No disponible: stdout/stderr del túnel descartados.",
+    "lector_no_tenia_supervisor_ni_reconexion": true,
+    "caffeinate_limitacion": "Inhibir reposo por inactividad no garantiza disponibilidad con la tapa cerrada; un Mac sigue siendo una recuperación temporal."
+  },
+  "integridad": {
+    "corte_pg": {
+      "checked_at": "2026-10-19 16:40:34.863319+00",
+      "read_only": "on"
+    },
+    "lecturas_locales": 24,
+    "trios_completos": 24,
+    "archivos_con_lock": 73,
+    "replay_validado": 24,
+    "lecturas_actuales_exactas_pg": 24,
+    "digest_archivos": "71e98eca2d0026bb93a8e704c785600818c4c8cfb585494419be8db883764228",
+    "guard_abierto": false,
+    "envios_incompletos_o_inciertos_en_este_lector": 0,
+    "coordinadores": 0,
+    "trabajos_propios_abiertos": 0,
+    "trabajos_propios_done": 307,
+    "recibos_vm_trios": 17,
+    "json_comunes_identicos": 51,
+    "json_solo_locales": 21,
+    "divergencias_comunes": 0,
+    "costo_historico_conocido_usd": "0.10021475",
+    "costo_factura_conciliada": false,
+    "costo_nuevo_modelos_usd": "0",
+    "llamadas_modelos_nuevas": 0,
+    "disponibilidad_actual_modelos": "No probada; el403 ocurre enSEACE antes de llamarlos."
+  },
+  "alcance_y_visibilidad": {
+    "corte_pg": {
+      "checked_at": "2026-10-19 16:42:14.580368+00",
+      "read_only": "on"
+    },
+    "perfil_lector": "VEYON",
+    "lineas_lector": 3,
+    "segmentos_lector": [
+      "43",
+      "81"
+    ],
+    "perfil_empresa_consultada": "DIN",
+    "lineas_din": 11,
+    "segmentos_din": [
+      "23",
+      "32",
+      "39",
+      "41",
+      "43",
+      "72",
+      "73",
+      "81",
+      "86"
+    ],
+    "segmentos_din_fuera_barrido": [
+      "23",
+      "32",
+      "39",
+      "41",
+      "72",
+      "73",
+      "86"
+    ],
+    "ingesta_propia_din_habilitada": false,
+    "llm2_automatico_din_habilitado": false,
+    "runtime_dedicado_excluye_llm2_y_notificaciones": true,
+    "guardados_abiertos_con_lectura_filtros_basicos": 7,
+    "con_puntaje_guardado": 1,
+    "puntaje_es_provisional": true,
+    "cierres_desconocidos_en_esos7": 0,
+    "ultima_ficha_actualizada_lima": "16/10/2026 20:01:40",
+    "ultima_lectura_creada_lima": "16/10/2026 18:31:12",
+    "advertencia_de_interpretacion": "Conteos PG con segmentos activos, estado guardado2, lectura y cierre>=now. No acreditan vigencia actual en la fuente; búsqueda, afinidad y otros filtros de laUI pueden reducirlos. No son todos los contratos menores deSEACE."
+  },
+  "codigo_y_release": {
+    "head_al_iniciar_diagnostico": "0452355565142f75d7dbe03c0d709996049b5efe",
+    "codigo_worker_local_corregido_commit": "521442166e7b39315547669c2314b7c4b18da357",
+    "codigo_worker_productivo_commit": "f2767e8ecc825acc44b7eb5e859be6904f6ee155",
+    "imagen_productiva_tag": "buenapro-worker-prod6:http-recovery-f2767e8",
+    "imagen_productiva_id": "sha256:516b923ba6c75ee1d4c4b06b729239597e0bffe17fc8f2effeb8bb4c5fdca640",
+    "cambios_previos_locales_no_desplegados": [
+      "403 sin reintentos permanentes",
+      "Replay SDK de4metadatos null sin cambiar recibos",
+      "Dockerfile copia cliente para futuros builds"
+    ],
+    "cambios_runtime_en_este_diagnostico": false,
+    "validacion_actual_offline": {
+      "status": "passed",
+      "suite": [
+        "test_seace_http_retry.py",
+        "test_prod6_runtime_recovery.py",
+        "test_prod6_runtime.py",
+        "test_prod6_profile_poll.py",
+        "test_prod6_safe_reading.py"
+      ],
+      "count": 149,
+      "duration_seconds": 1.8,
+      "network_calls": 0,
+      "note": "Already started before parent asked not to repeat earlier suite; no further tests repeated. These five files contain149 tests, not the179 earlier broader total."
+    },
+    "validacion_previa_principal": "179pruebas del conjunto más amplio, ya aprobadas. No se suman a149porque se solapan.",
+    "reproduccion_adicional_operational_error": "Fallo inicialPG fuera deltry reproducido sinBD/red/modelos.",
+    "riesgos_no_atribuidos_al403": [
+      "Dependencias Python sin lock reproducible para futuras reconstrucciones",
+      "Prefetch paralelo puede pedir hasta400páginas lógicas con este alcance antes de aplicar max_candidates; últimoéxito usó5, no prueba rate limit",
+      "HTTPRetryAfter no interpretado; la espera externa es1800segundos"
+    ]
+  },
+  "plan_ordenado_de_recuperacion": [
+    "Conseguir acceso legítimo verificable a la fuente. Contrastar traza sanitizada de petición aceptada o pedir correlación deRequestId al operador. No repetir polling sin evidencia nueva.",
+    "Corregir manejo del errorPG inicial, registrar fase/SQLSTATE y supervisar transporte. No activar restartalways ni reintentar pagos inciertos.",
+    "Antes deVM: comprobar ausencia de coordinadores y reconciliar los24tríos/guards con hashes. Construir desde Gitlimpio el código autorizado, conservando imagen de retorno.",
+    "Reanudar un único coordinador del mismo alcance/carpeta, verificar un barrido realmente finalizado, cola propia y lecturas preservadas, sin confundir proceso arrancado con recuperación.",
+    "Revisar alcanceDIN por separado antes de ampliar consultas/lecturas o activarLLM2. El diagnóstico no cambió esas opciones."
+  ],
+  "cierre_regla_fuente": {
+    "estado": "No identificada exactamente; no presentar inferencia como causa confirmada.",
+    "campos_que_pedir_si_el_operador_usa_Oracle_WAF": [
+      "request.id",
+      "responseProvider",
+      "backendStatusCode",
+      "requestAccessControl.matchedRules",
+      "requestProtection.matchedIds",
+      "requestRateLimiting.matchedRules"
+    ],
+    "para_que": "Distinguir origen/backend de regla de acceso/protección/límite. La documentación deOracle describe estos campos; no prueba que esa sea la implementación efectiva deSEACE.",
+    "referencias_primarias": [
+      "https://docs.oracle.com/en-us/iaas/Content/WAF/Actions/create_action.htm",
+      "https://docs.oracle.com/en-us/iaas/Content/Logging/Reference/details_for_lbwaf.htm"
+    ],
+    "contacto_externo_realizado": false
+  },
+  "limpieza": {
+    "bytes_liberados": 163316,
+    "alcance": "Solo temporales propios redundantes del diagnóstico.",
+    "conservado": "24tríos/guards/entradas de ingesta y evidencias compactas necesarias para la recuperación pendiente; ningún PDFnuevo descargado."
+  },
+  "efectos_laterales": {
+    "escrituras_negocio": 0,
+    "llamadas_modelos": 0,
+    "reinicios_servicios": 0,
+    "coordinadores_iniciados": 0,
+    "sincronizaciones_recibos": 0,
+    "cambios_flags": 0,
+    "automatizaciones_codex_creadas": 0
+  },
+  "evidencias": {
+    "browser-peer-summary.private.json": "fea7923543390b8a912038112fcdba09fef84dfe14ab88e612b7cc92b8d97df3",
+    "browser-render.private.json": "9385b3ccf1b692454f53ea76021c8513a929360141d18af44726d265aacff753",
+    "client-config-release.private.json": "0f7204bcf81e91bdf136cf88316dc6474b0fa2477432ca9448b81405fc6c2700",
+    "curl-protocol.private.json": "1ed0b813b1817677daa52811f923eea6db7dacd0be4dd1014fe90d491366940f",
+    "integrity.private.json": "f76a8f14fdfe5d27fa4bd3eacdc38315b3a7f3490c7faf01bbb993868072128e",
+    "lifecycle-audit.private.py": "04ae17ac810182f8cc15830501f6f988cee2029a0c72002c8fd249f486dff11c",
+    "lifecycle-mac-power.private.json": "8497ec31dcb838727d4e4db2c6b6fc3d83cfde288125f5bb4a171fd5b4d0c7a0",
+    "lifecycle-offline-reproduction.private.json": "d8a696eca1842edecba0fca5db949b53779d38b0df3eff45f35af947ae534101",
+    "lifecycle-offline-reproduction.private.py": "1c17397bd65d971e11f78fcc07e757a6adb99bdaf4050f38d376c2930590d0e0",
+    "lifecycle-remote.private.json": "f8fd38345a60826584d3bece18bb01a59ca64675f41e460ac9b56c0e0aba5891",
+    "lifecycle-session-match.private.json": "38f154dbea532acb2673ed82988e3b666aa0ad4f5c3f0ad6a28a0c690e4d6d3e",
+    "lifecycle-ssh-correlation.private.json": "f5854b18eedb56d41a3de4dded877656ffc1f756e45411a93f1b6512e8f68cc3",
+    "lifecycle-summary.private.json": "f6e0ec718395b0601179006eabbbd7ec7e143039d08a3520a4757f7f597d815e",
+    "lifecycle-summary.private.py": "c5ddb26510965a4d3ed4d281c92ef306c96d73440f64485c1bab043035af7526",
+    "lifecycle-tunnel.private.json": "d901eae3599b109db0e269018256b234d3c286be7f929a431d5ba2ed8d22cc14",
+    "principal-validation.private.json": "bffa10d648d4903ae2b5f67319450b3da6d1ad25525b5bb945e133255f3361cd",
+    "scope-visibility.private.json": "8fb70dfe63d1441d908a4bee39cf3f80e0873b6eed80d57bc5477c9ba96257aa",
+    "source-matrix-mac.private.json": "8cdde4b380b6913292cf2e1b50536434160171d2637f3aad651d2f2047b5c17c",
+    "source-matrix-vm.private.json": "42b9543881fabe3929b6fb9f3b7befbdc7a76b4cecddcb208a2ec9a2d50862b3",
+    "source-matrix.private.py": "e1b35260cc7788e3e60d9a66cd67e3ee7face383c241cb2a9e74f11040b83620"
+  }
+}

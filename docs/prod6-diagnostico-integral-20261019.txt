@@ -1,0 +1,60 @@
+DIAGNÓSTICO INTEGRAL — PROD6 / CONTRATOS MENORES
+19 de octubre de 2026 — cortes principales 11:40–11:43, hora de Lima
+
+El worker permanece detenido. Se identificaron dos incidentes distintos: la parada del lector local por OperationalError y el rechazo HTTP 403 que hoy impide volver a consultar SEACE. No se reiniciaron servicios, ampliaron perfiles ni ejecutaron modelos durante este diagnóstico.
+
+1. Qué pasó con el automático
+
+La VM terminó el 16/10 a las07:19:50Lima por dos HTTP 403 en trabajos de ficha/descarga. En ese mismo ciclo sí había completado cinco búsquedas y obtenido210 filas: no estaba acreditado un bloqueo permanente de toda la fuente. La política restart=no conservó la parada ante el rechazo.
+
+El lector temporal en el Mac completó26 barridos. El último terminó el 16/10 a las20:01:42. El sistema registra suspensión por cierre de tapa20:18:24–20:31:06:762 segundos. El siguiente ciclo empezó20:44:23, con760,58 segundos adicionales frente a la espera normal de30 minutos. La coincidencia temporal es muy fuerte.
+
+El launcher guardó OperationalError y terminó. El archivo de fallo se escribió unos12 ms después del estado sweeping. La primera consulta a PostgreSQL del ciclo está fuera del bloque que registra los errores: una reproducción offline produce exactamente el estado engañoso sweeping y la salida sin llegar a consultar SEACE.
+
+Está probado el reposo del Mac y el defecto de registro. Es muy probable que se perdiera la sesión PG/SSH al suspenderse, pero no se conservó el mensaje original, SQLSTATE o cierre del túnel para demostrar ese vínculo. PostgreSQL no se reinició ni tuvo OOM; sus registros no tenían habilitadas conexiones/desconexiones. Un lector local sin supervisor ni reconexión no equivale a un servicio 24/7. Inhibir reposo por inactividad tampoco garantiza disponibilidad con la tapa cerrada.
+
+2. Por qué sigue sin arrancar ahora
+
+Las consultas HTTP públicas siguen devolviendo403 desde Mac y VM, incluyendo búsquedas, metadatos y ficha conocida. Ambos llegan al destino correcto, con TLS válido. Los identificadores honestos BuenaPro, python-httpx y curl también reciben403. Accept: application/json no lo resolvió. Al ofrecer HTTP/2 con curl, el servidor eligió HTTP/1.1 y devolvió403: activar HTTP/2 por sí solo no quedó acreditado como solución.
+
+El navegador sí muestra resultados y el proceso local del navegador mantiene conexiones TCP al mismo servidor. Esto refuerza una diferencia de contexto de cliente/sesión/protocolo; no acredita una prohibición total de la IP ni permite ver el disparador interno. La respuesta solo expone Forbidden y RequestId. Un WAF/gateway es una explicación consistente, no una identificación definitiva de fabricante/regla.
+
+Para cerrar esa causa hace falta comparar una traza sanitizada de la petición aceptada, o correlacionar los RequestId con los registros del operador. Si usa Oracle WAF, responseProvider, backendStatusCode y las reglas matchedRules permiten distinguir acceso, protección, límite y backend. Se preparó evidencia; no se envió una solicitud a terceros.
+
+3. Datos, colas y pagos
+
+Las24 lecturas locales conservan sus24 tríos de recibos y se reproducen sin llamar al proveedor ni reescribirlos. Las24 extracciones actuales en PostgreSQL coinciden exactamente. Los73 archivos, incluido el lock, conservan su digest. Hay0 coordinadores,307 trabajos propios done y0 abiertos; no hay guard ni pagos inciertos efectivos en esta carpeta de PROD6.
+
+Costo histórico conocido: US$0,10021475, contado una sola vez por solicitud. No es factura conciliada. El diagnóstico generó US$0 de consumo de modelos; la disponibilidad actual del proveedor IA no se probó, pues el rechazo ocurre antes, en SEACE.
+
+La VM conserva17 tríos; el Mac24. Los51 JSON compartidos son idénticos y faltan en la VM21 JSON de siete lecturas posteriores. Aunque esas siete lecturas están en PostgreSQL, no debe reanudarse la VM con un registro de recibos incompleto. Se requiere reconciliación previa, sin repetir lecturas.
+
+4. Por qué aparecen pocas oportunidades de DIN
+
+El lector usa el perfil VEYON: tres líneas y segmentos43/81. DIN tiene11 líneas y nueve segmentos. Quedan fuera del barrido siete segmentos de DIN:23,32,39,41,72,73,86. La ingesta propia y el LLM2 automático de DIN están deshabilitados; el lector dedicado no ejecuta LLM2 ni notificaciones.
+
+Aplicando a los datos guardados los filtros básicos del backend —segmentos de DIN, estado2, lectura disponible y cierre no vencido— aparecen siete contratos. Si además se exige puntaje, queda uno, provisional. Otros filtros de la UI pueden reducir más. Estos conteos no son todos los contratos menores del portal ni acreditan su vigencia actual en SEACE.
+
+La última ficha guardada se actualizó el 16/10 a las20:01:40Lima. La última lectura se creó ese día a las18:31:12. La ausencia de nuevas ingestas y el vencimiento de fechas reducen el listado con el paso de los días.
+
+5. Código, riesgos y acciones concretas
+
+Las correcciones locales previas de reintentos 403 y replay SDK están en Git, commit 5214421, pero no desplegadas. La VM conserva el código f2767e8 y la imagen buenapro-worker-prod6:http-recovery-f2767e8 (sha256:516b923ba6c75ee1d4c4b06b729239597e0bffe17fc8f2effeb8bb4c5fdca640). El diagnóstico actual no modificó runtime.
+
+El barrido paralelo puede precargar hasta 400 páginas con los límites actuales antes de aplicar el máximo de candidatos; el último ciclo real solo usó cinco. Es un riesgo a acotar, no evidencia de que haya provocado un límite. También faltan un lock reproducible de dependencias y un manejo de Retry-After. No se hicieron pruebas masivas para estas hipótesis.
+
+Orden de recuperación:
+- Resolver y verificar acceso legítimo a SEACE.
+- Corregir el manejo del error PG inicial y supervisar conexión/túnel, manteniendo las paradas ante403 o pagos inciertos.
+- Reconciliar los24 tríos antes de volver a la VM y publicar únicamente código autorizado desde Git limpio.
+- Arrancar un solo coordinador y verificar un ciclo terminado, colas propias y reuso de lecturas.
+- Revisar por separado el alcance completo de DIN y su costo antes de ampliarlo o activar LLM2.
+
+La regla exacta del403 y el detalle físico de la caída PG/SSH siguen sin confirmarse. El informe distingue expresamente estas incertidumbres de los hechos reproducidos.
+
+Validación: revisión principal de código y recibos, PostgreSQL READ ONLY, reproducción offline del error y149 pruebas offline del subconjunto. La suite previa de179 pruebas se solapa y no se suma.
+
+Se liberaron163316 bytes de temporales propios redundantes. Se conservan entradas, recibos y evidencias compactas para la recuperación pendiente. No hubo originales nuevos, escrituras de negocio, cambios de flags, sincronización, reinicios ni nuevas automatizaciones.
+
+Evidencia estructurada: docs/prod6-diagnostico-integral-20261019.json
+Referencias primarias: https://docs.oracle.com/en-us/iaas/Content/WAF/Actions/create_action.htm y https://docs.oracle.com/en-us/iaas/Content/Logging/Reference/details_for_lbwaf.htm
