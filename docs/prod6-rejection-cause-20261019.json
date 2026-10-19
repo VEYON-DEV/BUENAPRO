@@ -1,0 +1,128 @@
+{
+  "checked_at_utc": "2026-10-19T16:12:14.124121+00:00",
+  "status": "access_denied_rule_not_exposed",
+  "confirmed": {
+    "browser_portal_displays_recent_results": true,
+    "same_search_url_as_worker_observed_in_portal": true,
+    "mac_and_vm_same_current_dns": [
+      "129.213.173.146"
+    ],
+    "verified_same_current_certificate_sha256": "852f90102e72e0a27bc3e3efc44651d782474d8ba663af903643adbeb4e87eb6",
+    "issuer": {
+      "countryName": "CA",
+      "organizationName": "Entrust Limited",
+      "commonName": "Entrust OV TLS Issuing RSA CA 2"
+    },
+    "tls_version_both": "TLSv1.2",
+    "cipher_both": "ECDHE-RSA-AES128-GCM-SHA256",
+    "ui_and_search_http_status_mac_vm": 403,
+    "truthful_ua_control": [
+      {
+        "label": "configured_worker",
+        "effective_user_agent": "BuenaPro/0.1 (+https://veyon-solutions.local)",
+        "status": 403
+      },
+      {
+        "label": "httpx_native",
+        "effective_user_agent": "python-httpx/0.28.1",
+        "status": 403
+      }
+    ],
+    "response_headers": [
+      "Connection",
+      "Content-Length"
+    ],
+    "response_size_bytes": 83,
+    "body_fields": [
+      "code",
+      "message",
+      "RequestId"
+    ],
+    "authentication_challenge_or_retry_after_or_cookie_in_measured_denials": false
+  },
+  "inference": {
+    "most_consistent_explanation": "An access policy in front of or within SEACE rejects the measured HTTP-client context. A WAF/gateway is plausible, because identical denial structure is documented by Oracle WAF and is returned for both public HTML and API.",
+    "confidence_limit": "Matching a response template is not proof of the vendor, rule, scope or backend execution. IP/country/ASN, rate, TLS/client context and browser session requirements are not independently isolated.",
+    "primary_reference": "https://docs.oracle.com/en-us/iaas/Content/WAF/Actions/create_action.htm"
+  },
+  "what_new_controls_exclude_as_sufficient_explanation": [
+    "Invalid TLS certificate or inability to connect for these measured requests.",
+    "A wrong search URL alone: the same URL is observed in the working public portal; HTML requests also fail.",
+    "The exact BuenaPro/.local User-Agent alone: native python-httpx identification also fails with the same other request settings.",
+    "Only a bug in httpx: stdlib HTTPS and prior native curl also receive403.",
+    "The19Oct retry/replay repairs caused the initial denial: denial predates those changes and previous preflight pins the worker tree to the last successful baseline."
+  ],
+  "historical_timeline": [
+    {
+      "at_utc": "2026-10-16T12:19:15Z",
+      "finding": "VM discovery succeeded before IOjobs returned403. A permanent geographic/global VM ban is not established by the history.",
+      "evidence": "tmp/prod6-recovery-20261016/readback-20261016T122015.private.json"
+    },
+    {
+      "at_utc": "2026-10-17T01:01:42.931981Z",
+      "at_lima": "2026-10-16 20:01:42",
+      "finding": "Last complete recorded local cycle:212rows/5pages.",
+      "evidence": "tmp/prod6-recovery-20261016/local-runtime/prod6-20261017T010130-2528.json"
+    },
+    {
+      "at_utc": "2026-10-17T01:44:23.511675Z",
+      "at_lima": "2026-10-16 20:44:23",
+      "finding": "Next recorded cycle start. Local launcher later retained OperationalError only, not exact failure time/detail or HTTP status. It does not establish when403 began."
+    }
+  ],
+  "not_yet_observable": [
+    "The internal access rule or trigger; responses only contain Forbidden and RequestId.",
+    "Equivalent browser request headers/session/TLS/egress; current browser tools expose resource URLs and rendered results but not HTTP request headers.",
+    "Historical snapshots of egress/DNS/TLS/dependency versions to isolate what changed between last success and first denial."
+  ],
+  "request_ids_for_operator_correlation": [
+    {
+      "origin": "mac",
+      "resource": "public_ui",
+      "observed_at_utc": "2026-10-19T16:10:08.706907+00:00",
+      "request_id": "1c23559cb2a63d98f8ba5f8695116305"
+    },
+    {
+      "origin": "mac",
+      "resource": "search",
+      "observed_at_utc": "2026-10-19T16:10:08.706907+00:00",
+      "request_id": "d7cea2b0cd3845d11da67feb5ec9f4a3"
+    },
+    {
+      "origin": "vm",
+      "resource": "public_ui",
+      "observed_at_utc": "2026-10-19T16:10:10.523598+00:00",
+      "request_id": "cd0f035d34a90695d0bcc5d86c384807"
+    },
+    {
+      "origin": "vm",
+      "resource": "search",
+      "observed_at_utc": "2026-10-19T16:10:10.523598+00:00",
+      "request_id": "477dbb3e0e41376f922d64dc6636937a"
+    }
+  ],
+  "next_step": "Correlate these RequestIds with OECE access/WAF/gateway logs to confirm exact rule, or obtain a sanitized trace of the accepted public-browser request to examine legitimate protocol/session differences. No support message was sent.",
+  "bounded_diagnostic": {
+    "explicit_free_http_gets": 6,
+    "proxy_or_ip_rotation": false,
+    "browser_impersonation": false,
+    "credentials_copied": false,
+    "captcha_actions": false,
+    "business_writes": 0,
+    "new_model_calls": 0,
+    "original_documents_downloaded": 0,
+    "coordinators_launched": 0,
+    "service_restarts": 0
+  },
+  "artifacts": {
+    "vm-transport.private.json": "47fbbefff1f93c8b7635bf5e6e8a04541d67b1659fc6667cb9ca822062c37741",
+    "browser-observation.private.json": "cf025ed4b71b1c5af83bf7575fca6e682ff9c5d3761179384d1749bed2961b9d",
+    "transport.private.py": "38a25d5cb0a3aa5d3b60a1100feaf9e7fb233dafc38f8523ebc42cb3e3ae0d9e",
+    "mac-transport.private.json": "643bf1abd597ce82c8310d14a9e30b07916edb5583a023968bc32253393e8b4a",
+    "ua-control.private.json": "131bc0b551d98e76f871b2f26ba275775201ce7ff0da95db76745e39760f3a13"
+  },
+  "cleanup_freed_bytes": 0,
+  "retained": "Small private diagnostic script/receipts retained for unresolved access review;24reading triples and all pending inputs untouched. Agent-created browser tab closed.",
+  "runtime_changed": false,
+  "code_commit_unchanged": "d27f40430a98c046f3f7a1114ff24a695985c6b2"
+}
