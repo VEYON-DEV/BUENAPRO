@@ -1,0 +1,66 @@
+{
+  "status": "local_defects_fixed_source_access_still_blocked",
+  "recorded_at_utc": "2026-10-19T14:31:02.149570+00:00",
+  "code_commit": "521442166e7b39315547669c2314b7c4b18da357",
+  "code_published_branch": "codex/dinaut-three-dot-matching",
+  "source": {
+    "last_source_check_utc": "2026-10-19T14:27:19.080788+00:00",
+    "last_http_status": 403,
+    "native_curl_same_documented_query_status": 403,
+    "native_curl_tls_verified": true,
+    "native_curl_recorded_at_utc": "2026-10-19T14:26:19.058949+00:00",
+    "native_curl_request_id": "b2a242ec2e8d29166af6ebbb3b50d4d2",
+    "base_url": "https://prod6.seace.gob.pe/v1/s8uit-services",
+    "browser_portal": "Normal official UI loaded fresh public results; it does not establish worker API access.",
+    "client_protocol_checks": "Documented base path/query verified; explicit Accept JSON and native curl also receive403. No configured system/Python proxy observed.",
+    "root_cause_limit": "SEACE/gateway rejects these HTTP requests. The exact access rule, including IP/client/rate conditions, cannot be determined from the response.",
+    "not_claimed": "No assertion of geographic blocking, specific WAF policy, current model-credit failure or general portal outage."
+  },
+  "implemented": [
+    "SEACE HTTP client makes one attempt on permanent HTTP400/401/403/404/409/410/422/501 and local protocol/configuration errors; bounded retries only for explicit transient failures.",
+    "Replay adapts only four known unsupported null SDK metadata fields on a copy after original receipt hash/identity/usage verification; original receipts never rewritten.",
+    "Selective PROD6 Dockerfile now includes the corrected shared client in future images."
+  ],
+  "principal_validation": {
+    "offline_tests_passed": 179,
+    "real_existing_readings_replayed": 24,
+    "unchanged_receipt_json_files": 72,
+    "all_receipt_files_including_lock": 73,
+    "receipt_set_sha256": "71e98eca2d0026bb93a8e704c785600818c4c8cfb585494419be8db883764228",
+    "no_guard_open": true,
+    "known_prior_cost_usd": "0.10021475",
+    "new_model_calls": 0,
+    "new_model_cost_usd": "0",
+    "git_diff_check": "passed"
+  },
+  "production": {
+    "checked_at_utc": "2026-10-19T14:29:45.621335+00:00",
+    "coordinators": 0,
+    "pending_own_jobs": 0,
+    "vm_worker_running": false,
+    "code_deployed": false,
+    "unchanged_worker_code_commit": "f2767e8ecc825acc44b7eb5e859be6904f6ee155",
+    "unchanged_image_tag": "buenapro-worker-prod6:http-recovery-f2767e8",
+    "unchanged_image_id": "sha256:516b923ba6c75ee1d4c4b06b729239597e0bffe17fc8f2effeb8bb4c5fdca640",
+    "service_restarts": 0,
+    "business_writes": 0
+  },
+  "next_required": "Recover verified, authorized access to the public source API before resuming. An OECE access review may be needed; a support diagnostic is prepared below and has not been sent. No repeat source polling without new evidence.",
+  "operator_request_draft": {
+    "recipient": "Soporte OECE/SEACE",
+    "subject": "Revisión de HTTP403 al consultar contratos menores públicos (PROD6)",
+    "text": "El19/10/2026, las consultas HTTPS públicas de búsqueda, ficha e inventario de PROD6 devuelven HTTP403 desde el cliente HTTP de BuenaPro, tanto en Mac como en VM. El portal oficial sí muestra resultados desde el navegador. Las URL coinciden con las observadas en el portal, TLS valida y no se usa autenticación ni proxy. Solicitamos verificar el RequestId adjunto e indicar el mecanismo de acceso automatizado autorizado. No se solicita omitir controles de seguridad.",
+    "method": "GET",
+    "example_url": "https://prod6.seace.gob.pe/v1/s8uit-services/buscadorpublico/contrataciones/buscador?anio=2024&palabra_clave=&orden=2&page=1&page_size=5",
+    "request_id": "b2a242ec2e8d29166af6ebbb3b50d4d2",
+    "sent": false
+  },
+  "runtime_file_sha256": {
+    "workers/seace/src/buenapro_worker/seace/client.py": "eb72eafa5c29adad62ffcc2d90d61a53371fd18d1b3bbba4cb95006fc44e3540",
+    "workers/seace/src/buenapro_worker/prod6/reading.py": "b3824df0942f5b5f639027fc1f16f8a47b87210e0bea8a688420283e501fd54b",
+    "infra/docker/prod6.Dockerfile": "3bda34bc0ada53294d2e188a1638bbacc7250081b9ee52688c1df76677a07567"
+  },
+  "cleanup_freed_bytes": 16187,
+  "retained": "All24 paid reading triples, lock/guards policy, existing inputs, private launch/preflight and compact diagnostics are retained for pending resumption. No PDFs were downloaded.",
+  "pending_launcher": "Private launcher pins reviewed code5214421/worker tree and preserves original receipt hashes. Source HTTP200 gate still fails; it was not executed. A fresh full preflight is required before resuming."
+}
