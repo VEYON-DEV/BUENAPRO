@@ -54,9 +54,10 @@
   ],
   "historical_timeline": [
     {
-      "at_utc": "2026-10-16T12:19:15Z",
       "finding": "VM discovery succeeded before IOjobs returned403. A permanent geographic/global VM ban is not established by the history.",
-      "evidence": "tmp/prod6-recovery-20261016/readback-20261016T122015.private.json"
+      "evidence": "tmp/prod6-recovery-20261016/readback-20261016T122015.private.json",
+      "cycle_started_at_utc": "2026-10-16T12:19:28.106998+00:00",
+      "io_failure_recorded_at_utc": "2026-10-16T12:19:41.249353+00:00"
     },
     {
       "at_utc": "2026-10-17T01:01:42.931981Z",
