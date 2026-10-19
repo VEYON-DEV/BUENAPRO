@@ -1,0 +1,50 @@
+{
+  "checked_at_utc": "2026-10-19T14:02:50.247613+00:00",
+  "status": "source_access_blocked_before_launch",
+  "new_coordinator_started": false,
+  "database_connection_restored": true,
+  "coordinators_at_preflight": 0,
+  "pending_own_jobs": 0,
+  "worker_tree_unchanged": true,
+  "same_scope": {
+    "active_lines": 3,
+    "segments": [
+      "43",
+      "81"
+    ]
+  },
+  "durable_readings": 24,
+  "receipts": 72,
+  "current_exact_pg_readings": 24,
+  "guard_open": false,
+  "inflight_or_uncertain_receipts": 0,
+  "known_cost_before_resume_usd": "0.10021475",
+  "receipt_files_sha256": "71e98eca2d0026bb93a8e704c785600818c4c8cfb585494419be8db883764228",
+  "source_http": {
+    "vm": {
+      "search": {
+        "status": 403
+      },
+      "detail": {
+        "status": 403
+      },
+      "files": {
+        "status": 403
+      }
+    },
+    "mac_search_normal_page_size100": 403,
+    "mac_existing_detail": 403,
+    "mac_public_ui_http_client": 403
+  },
+  "browser_public_portal": "Normal in-app browser loaded results; does not prove worker HTTP access.",
+  "sdk_compatibility_note": "17 historical durable responses include four additional null SDK metadata fields. Receipt integrity/content/schema and PG persistence validate; current SDK replay rejects those metadata fields. Preserve receipts; never regenerate to work around this.",
+  "prior_operational_error": "Historical OperationalError had no detailed cause retained; fresh DB connection works now.",
+  "business_writes": 0,
+  "new_model_calls": 0,
+  "new_cost_usd": "0",
+  "original_documents_downloaded": 0,
+  "runtime_deployed": false,
+  "cleanup_freed_bytes": 0,
+  "retained": "All active receipts/inputs; compact preflight helpers and evidence.",
+  "needed": "Verified recovery of worker source access before launch; no bypass or blind relaunch."
+}
