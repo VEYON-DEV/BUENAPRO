@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "status": "technical_recovery_preparing",
+  "status": "metadata_lifecycle_recovery_preparing",
   "scope": "DIN: IA/automatización e industrial; lectura por IDs del mapeo PROD2 cerrado",
   "selection": {
     "ids": 157,
@@ -93,7 +93,16 @@
       "log_sha256": "bc25aa88c37f3ecb5d52dce6712d5ca2819b8afa2f3d1a8f88ae80f508c1ecdb"
     },
     "runtime_recovery_independent_review": "approved; offline only",
-    "paid_calls_cutoff_utc": "2026-10-20T15:29:40.326942+00:00"
+    "paid_calls_cutoff_utc": "2026-10-20T15:29:40.326942+00:00",
+    "metadata_recovery_offline": {
+      "passed": 4327,
+      "skipped": 67,
+      "seconds": 84.07,
+      "log_sha256": "1ace571fe0f1132884bf10dca0ffb522c61264a39197839f077f515b5cc12f5f",
+      "external_calls": 0
+    },
+    "metadata_recovery_actual_json_qa_sha256": "072a68f207f323249d21315629df3775d7c5ddb99b223496a3bd37ce0303337a",
+    "unexpected_local_stop": "durable sanitized STOP; no outcome/ACK; typed reviews/limits preserved; in-flight known responses persist"
   },
   "costs": {
     "new_known_usd": "0.000295176",
@@ -104,19 +113,21 @@
     "final": false
   },
   "pending": [
+    "Fix volatile lifecycle metadata replay and recover exactly three technical pre-embedding outcomes",
     "Complete current reader batches and fresh PG/Redis readback",
     "DIN matching only ready new readings",
     "48 sector-boundary title holds",
     "PROD6 legitimate source access recovery"
   ],
   "cleanup": {
-    "freed_bytes": 211674807,
+    "freed_bytes": 318473818,
     "components": {
       "preparation_agent_bytecode": 59928,
       "principal_temporary_helpers": 22989,
       "matching_audit_agent_bytecode": 29451,
       "recovery_test_fixture_owner": 182052,
-      "principal_recovery_synthetic_tests": 211380387
+      "principal_recovery_synthetic_tests": 211380387,
+      "principal_metadata_recovery_synthetic_tests": 106799011
     },
     "retained": "Active PDFs/OCR/cache, selected IDs, source mapping cache, unique receipts, uncertainty/history and48holds",
     "active_inputs_removed": false
@@ -138,27 +149,58 @@
     "paid_retries": 0
   },
   "latest_cut": {
-    "at_utc": "2026-10-20T15:29:40.326942+00:00",
+    "at_utc": "2026-10-20T15:56:36.133292+00:00",
+    "plan_sha256": "3276a7263f1bee2ebfb3416d01f6a462fd31c34b46d3fde2df5d4a1be9d612c1",
+    "plan_path": "/Users/robertquispe/Projects/Me/Licita/BuenaPro/tmp/ia-industrial-execution-20261020/chain-plan.runtime-recovery-001.private.json",
+    "chain_folder": "/Users/robertquispe/Projects/Me/Licita/BuenaPro/tmp/ia-industrial-execution-20261020/chain-runtime-recovery-001",
+    "code_commit": "fa7241ca938ba9fe5f6c7b1270ffe23207a54172",
     "chain_status": "attention_required",
     "stage": "reader-001",
+    "parent_pid": 69684,
+    "child_pid": 70763,
+    "source_calls_by_health": 0,
+    "model_calls_by_health": 0,
+    "pg_writes": 0,
+    "redis_writes": 0,
     "outcomes": {
-      "total": 6,
+      "total": 9,
       "statuses": {
-        "closed_without_reading": 2,
-        "needs_review": 1,
+        "needs_review": 3,
+        "closed_without_reading": 3,
         "llm1_complete": 2,
         "opening_not_confirmed": 1
       },
       "ids": [
+        1047330,
+        1049681,
         1047521,
         1048448,
         1047247,
+        1049583,
         1047199,
         1047579,
         1050105
       ],
       "llm1_preserved": 2,
       "matching_eligible": 0
+    },
+    "dispatch_stop_marker": false,
+    "cost_audit_may_include_in_flight": {
+      "attempts": 4,
+      "jev_calls": 4,
+      "llm1_calls": 0,
+      "openai_calls": 0,
+      "embedding_attempts": 0,
+      "embedding_calls": 0,
+      "embedding_unknown_dispatch_attempts": 0,
+      "embedding_pre_send_failures": 0,
+      "embedding_usage_unknown_attempts": 0,
+      "embedding_receipt_conflicts": 0,
+      "embedding_input_tokens": 0,
+      "embedding_cost_usd": 0,
+      "known_cost_usd": 0.000295176,
+      "usage_unknown_attempts": 0,
+      "elapsed_seconds": 2.2322462490119506
     },
     "pg": {
       "coordinator_locks": 0,
@@ -170,16 +212,15 @@
       ]
     },
     "redis": {
-      "queued": 151,
+      "queued": 148,
       "pending": 0,
-      "payloads": 151,
+      "payloads": 148,
       "seen": 157
-    },
-    "dispatch_stop_marker": false
+    }
   },
   "followup": {
     "automation_id": "completar-lote-din-ia-e-industrial",
-    "status": "PAUSED_during_active_diagnosis",
+    "status": "PAUSED_during_active_metadata_diagnosis",
     "interval_minutes": 15,
     "purpose": "Watch authorized long-running reader/matching to verified closure; quiet during healthy progress",
     "old_mapping_followup": "remains PAUSED"
@@ -211,7 +252,107 @@
     "new_embedding_calls": 0,
     "source_or_provider_retries": 0,
     "old_manifest_and_report_unchanged": true,
-    "pending": "Audit opt-in runtime compatibility, exact one-ID recovery and same-folder cache reuse; commit/push then go",
+    "pending": "New parent started after committed recovery; verify actual embeddings/LLM1/cache reuse and unique PG ownership",
     "recovery_validation": "Full principal4286passed/67skipped; focal165passed; independent review approved. Apply/restart pending committed code."
+  },
+  "runtime_recovery": {
+    "code_commit": "fa7241ca938ba9fe5f6c7b1270ffe23207a54172",
+    "plan": "tmp/ia-industrial-execution-20261020/chain-plan.runtime-recovery-001.private.json",
+    "plan_sha256": "3276a7263f1bee2ebfb3416d01f6a462fd31c34b46d3fde2df5d4a1be9d612c1",
+    "authorization_sha256": "a717ad80f48da0f1e896e2d6d2a57fbe44485a3eead1ac7f21754af64e8260be",
+    "chain_folder": "tmp/ia-industrial-execution-20261020/chain-runtime-recovery-001",
+    "apply_receipt": "chain-runtime-recovery-001/recovery-applied.private.json",
+    "applied_at_utc": "2026-10-20T15:53:08.726704+00:00",
+    "requeued_ids": [
+      1048448
+    ],
+    "redis_after_apply": {
+      "queued": 152,
+      "pending": 0,
+      "payloads": 152,
+      "seen": 157
+    },
+    "old_terminal_outcomes_preserved": 5,
+    "all_original_inputs_verified_after_apply": 280,
+    "new_jev_attempts_during_apply": 0,
+    "apply_source_calls": 0,
+    "apply_model_calls": 0,
+    "apply_pg_business_writes": 0,
+    "readback_verified": true,
+    "readback_sha256": "85b2713c4cb0ca93bace6cb53b1a2813069194999e1f4a8e8ddd30cc8e8db662",
+    "old_manifest_report_plan_state_unchanged": true,
+    "parent_pid": 69684,
+    "progress_verified": true,
+    "outcome": "UniquePGlock and real reader verified; controlled stop for second local metadata timestamp bug before new model calls"
+  },
+  "metadata_lifecycle_incident": {
+    "at_utc": "2026-10-20T15:58:04.788533+00:00",
+    "status": "controlled_stop_metadata_lifecycle_timestamp_recovery_preparing",
+    "failed_ids": [
+      1047330,
+      1048448,
+      1049583
+    ],
+    "error_type": "ValueError",
+    "diagnosis": "Strict metadata stage snapshot includes volatile temporal_observed_at; freshly revalidated lifecycle differs only in timestamp and fails before selector/OCR/embeddings. Three cases confirmed offline. Original frozen metadata remains intact.",
+    "health_receipt": "activation/health-20261020T155639Z.private.json",
+    "health_sha256": "5475a4a691d02537b684ddb678ae295487adc0fbf126a2d7ea5d4edcf080f988",
+    "pg": {
+      "coordinator_locks": 0,
+      "own_run_members": 3,
+      "member_ids": [
+        1047330,
+        1048448,
+        1049583
+      ]
+    },
+    "redis": {
+      "queued": 148,
+      "pending": 0,
+      "payloads": 148,
+      "seen": 157
+    },
+    "outcomes": {
+      "total": 9,
+      "statuses": {
+        "needs_review": 3,
+        "closed_without_reading": 3,
+        "llm1_complete": 2,
+        "opening_not_confirmed": 1
+      },
+      "ids": [
+        1047330,
+        1049681,
+        1047521,
+        1048448,
+        1047247,
+        1049583,
+        1047199,
+        1047579,
+        1050105
+      ],
+      "llm1_preserved": 2,
+      "matching_eligible": 0
+    },
+    "costs": {
+      "attempts": 4,
+      "jev_calls": 4,
+      "llm1_calls": 0,
+      "openai_calls": 0,
+      "embedding_attempts": 0,
+      "embedding_calls": 0,
+      "embedding_unknown_dispatch_attempts": 0,
+      "embedding_pre_send_failures": 0,
+      "embedding_usage_unknown_attempts": 0,
+      "embedding_receipt_conflicts": 0,
+      "embedding_input_tokens": 0,
+      "embedding_cost_usd": 0,
+      "known_cost_usd": 0.000295176,
+      "usage_unknown_attempts": 0,
+      "elapsed_seconds": 2.2322462490119506
+    },
+    "source_or_provider_retries_authorized_by_this_diagnosis": false,
+    "provider_error_claimed": false,
+    "validation": "Root4327pass/67skip plus independent actual3caseJSON QA; source identity intact, fresh lifecycle separate, STOP unexpected local. Recovery002 apply/go pending committed code."
   }
 }

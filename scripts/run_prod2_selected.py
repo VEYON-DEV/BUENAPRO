@@ -8,7 +8,7 @@ and atomic Redis reservations. No LLM2, matching, scheduler or notifications.
 from __future__ import annotations
 
 import argparse
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 from datetime import datetime, timezone
 import hashlib
@@ -216,6 +216,32 @@ def safe_error_facts(error):
             item.update(safe_request_error_facts(error))
         chain.append(item)
     return {"error_type": chain[0]["error_type"], "error_chain": chain}
+
+
+def stop_handoff_after_local_error(guard, error, *, phase, convocation_id=None):
+    """Keep unexpected failures pending, with no claim about provider usage."""
+    STOP.set()
+    guard.stop.set()
+    with guard.lock:
+        if not guard.marker.exists():
+            receipt = {"version": "prod2_handoff_guards_v1", "binding_hash": guard.binding_hash,
+                "reason": "unexpected_local_exception", "phase": phase,
+                "observed_at": datetime.now(timezone.utc).isoformat(), **safe_error_facts(error)}
+            if convocation_id is not None:
+                receipt["convocation_id"] = convocation_id
+            private_write(guard.marker, receipt)
+
+
+def wait_consumers(workers, handoff_guard=None):
+    # Legacy keeps its existing result order. ID imports observe a failed
+    # consumer immediately, so another consumer cannot silently drain the run.
+    for worker in as_completed(workers) if handoff_guard is not None else workers:
+        try:
+            worker.result()
+        except Exception as error:
+            if handoff_guard is not None:
+                stop_handoff_after_local_error(handoff_guard, error, phase="consumer_worker")
+            raise
 
 
 def stop_after_uncertain_embedding_error(error):
@@ -741,6 +767,38 @@ def snapshot(path, value):
     private_write(path, value)
 
 
+HANDOFF_METADATA_OBSERVATION_FIELDS = frozenset({"temporal_state", "temporal_observed_at", "confirmed_open",
+    "requires_fresh_lifecycle", "matching_eligible", "temporal_reason_codes", "closes_at"})
+
+
+def handoff_metadata_identity(value):
+    """Keep all source metadata frozen; clock-derived lifecycle is an observation."""
+    if not isinstance(value, dict):
+        raise ValueError("Handoff metadata must be a structured snapshot")
+    return {key: item for key, item in value.items() if key not in HANDOFF_METADATA_OBSERVATION_FIELDS}
+
+
+def snapshot_handoff_metadata(folder, common):
+    """Replay source-identical work while appending fresh lifecycle evidence.
+
+    An earlier version stored the first observation in metadata.private.json.
+    Preserve those bytes, comparing its complete source projection. New folders
+    store the static projection there; both retain strict content checks.
+    """
+    identity = handoff_metadata_identity(common)
+    marker = folder / "metadata.private.json"
+    if marker.exists():
+        if handoff_metadata_identity(read_private(marker)) != identity:
+            raise ValueError("Frozen handoff source metadata changed; preserve inputs for review")
+    else:
+        snapshot(marker, identity)
+    observation = {"policy_version": "prod2_handoff_metadata_observation_v1",
+        "metadata_identity_sha256": digest(identity), "metadata": common}
+    path = folder / "metadata-observations" / (digest(observation) + ".private.json")
+    snapshot(path, observation)
+    return {"relative_path": str(path.relative_to(folder)), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+
+
 def download(conn, folder, conv, doc, manifest, pacer):
     guard = manifest.get("_handoff_runtime_guard")
     if guard is not None:
@@ -919,7 +977,10 @@ def enrich(conn, settings, folder, item, manifest, pacer, limits, jev_key, *, ca
         from buenapro_worker.prod2.handoff_guards import lifecycle_fields
         common.update(lifecycle_fields(temporal))
         common["matching_eligible"] = common["matching_eligible"] and detail["document_inventory_complete"] is True
-    snapshot(folder / "metadata.private.json", common)
+    if handoff_guard is not None:
+        common["metadata_observation"] = snapshot_handoff_metadata(folder, common)
+    else:
+        snapshot(folder / "metadata.private.json", common)
     if handoff_guard is not None:
         from buenapro_worker.prod2.handoff_guards import lifecycle_gate
         blocked = lifecycle_gate(temporal)
@@ -1311,11 +1372,18 @@ def consume(settings, staging, manifest, folder, pacer, limits, jev_key):
             except Exception as error:
                 handoff_guard = getattr(limits, "handoff_guard", None)
                 if handoff_guard is not None:
-                    handoff_guard.check_audit(audit_summary(folder))
+                    try:
+                        handoff_guard.check_audit(audit_summary(folder))
+                    except Exception as audit_error:
+                        stop_handoff_after_local_error(handoff_guard, audit_error,
+                            phase="consumer_cost_audit", convocation_id=conv)
+                        return
                     if isinstance(error, LimitReached):
                         if not STOP.is_set():
                             handoff_guard.budget_deferred = True
                         return  # pending payload and paid receipts remain resumable
+                    if STOP.is_set():
+                        return  # preserve the in-flight reservation and its receipts
                 # Local OCR checks STOP at page boundaries and checkpoints its
                 # text. Keep the Redis payload queued, rather than manufacturing
                 # a terminal error or retrying any paid stage.
@@ -1325,7 +1393,9 @@ def consume(settings, staging, manifest, folder, pacer, limits, jev_key):
                 dispatch_stop = stop_after_uncertain_embedding_error(error)
                 metadata = private / "metadata.private.json"
                 if metadata.exists():
-                    record.update(read_private(metadata))
+                    saved_metadata = read_private(metadata)
+                    record.update(handoff_metadata_identity(saved_metadata) if handoff_guard is not None
+                        else saved_metadata)
                 from buenapro_worker.prod2.handoff_guards import BoundedNativeIdentityNotLocated, document_preparation_review
                 if (handoff_guard is not None and type(error) is BoundedNativeIdentityNotLocated
                         and not STOP.is_set()):
@@ -1340,6 +1410,10 @@ def consume(settings, staging, manifest, folder, pacer, limits, jev_key):
                         proof = document_preparation_review(error, private) if not STOP.is_set() else None
                         if proof is not None:
                             record.update(document_preparation_review=proof, requires_human_review=True)
+                        else:
+                            stop_handoff_after_local_error(handoff_guard, error,
+                                phase="consumer_case", convocation_id=conv)
+                            return  # no terminal outcome or ACK for an unexpected failure
                 if dispatch_stop is not None:
                     record["embedding_dispatch_stop"] = dispatch_stop
             private_write(outcome_path, record)
@@ -1665,8 +1739,7 @@ def main():
                     with ThreadPoolExecutor(max_workers=args.processing_workers) as pool:
                         workers = [pool.submit(consume, settings, staging, manifest, folder, pacer, limits, jev_key)
                                    for _ in range(args.processing_workers)]
-                        for worker in workers:
-                            worker.result()
+                        wait_consumers(workers, HANDOFF_GUARD)
                     staging.recover()
                     outcomes = [read_private(path) for path in sorted(folder.glob("*/outcome.private.json"))]
                     report = {"run_id": manifest["run_id"], "pipeline": manifest["pipeline"], "terminal_stage": "llm1",

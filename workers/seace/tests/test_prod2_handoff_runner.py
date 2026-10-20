@@ -1,4 +1,6 @@
 from contextlib import contextmanager
+from concurrent.futures import Future, ThreadPoolExecutor
+from copy import deepcopy
 from datetime import datetime, timezone
 import importlib.util
 import json
@@ -290,8 +292,69 @@ def test_changed_identity_or_nonexact_runtime_error_is_not_a_missing_id_hold(con
     monkeypatch.setattr(handoff_guards, "preserve_by_id", lambda *a, **k: None)
     monkeypatch.setattr(subject, "get_detail", lambda *a, **k: (_ for _ in ()).throw(RuntimeError(message)))
     outcome = run_consumer(consumer)
-    assert outcome["status"] == "needs_review" and outcome["error_type"] == "RuntimeError"
-    assert "reading_gate" not in outcome
+    assert outcome is None and not consumer[2].acks and subject.STOP.is_set()
+    receipt = subject.read_private(consumer[1].handoff_guard.marker)
+    assert receipt["reason"] == "unexpected_local_exception" and receipt["error_type"] == "RuntimeError"
+
+
+@pytest.mark.parametrize("kind", ["attribute", "value", "preparation_without_valid_receipt"])
+def test_unexpected_handoff_error_stops_dispatch_without_ack_or_terminal_review(consumer, monkeypatch, kind):
+    from buenapro_worker.prod2.embedding_runtime import EmbeddingPreparationReview
+    error = {"attribute": AttributeError, "value": ValueError,
+        "preparation_without_valid_receipt": EmbeddingPreparationReview}[kind]("secret-text-must-not-be-recorded")
+    calls = []
+    next_job = consumer[2].next
+    monkeypatch.setattr(consumer[2], "next", lambda: calls.append("reserve") or next_job())
+    monkeypatch.setattr(handoff_guards, "preserve_by_id", lambda *a, **k: (_ for _ in ()).throw(error))
+    monkeypatch.setattr(subject, "handoff_detail", lambda *a, **k: pytest.fail("no source after local failure"))
+    local = consumer[0] / "123/pending-input.private.json"
+    write(local, {"synthetic": "unique pending input"})
+    before = local.read_bytes()
+    assert run_consumer(consumer) is None
+    assert subject.STOP.is_set() and not consumer[2].acks and local.read_bytes() == before
+    marker = consumer[1].handoff_guard.marker
+    data = marker.read_bytes()
+    receipt = json.loads(data)
+    assert receipt["reason"] == "unexpected_local_exception"
+    assert receipt["convocation_id"] == 123 and receipt["phase"] == "consumer_case"
+    assert receipt["error_type"] == type(error).__name__
+    assert b"secret-text" not in data and "request_sent" not in receipt and "cost_usd" not in receipt
+    assert run_consumer(consumer) is None and calls == ["reserve"]
+    restarted_stop = threading.Event()
+    handoff_guards.HandoffGuards(consumer[0], binding={"scope": "frozen"}, max_candidates=10,
+        max_new_documents=10, stop=restarted_stop)
+    assert restarted_stop.is_set() and marker.read_bytes() == data
+
+
+def test_handoff_uncertain_provider_stop_preserves_original_reason_and_pending_payload(consumer, monkeypatch):
+    guard = consumer[1].handoff_guard
+    def uncertain(*a, **k):
+        guard.observe_attempt({"provider": "jev", "request_sent": True, "usage_known": False,
+            "attempt_id": "owned-synthetic-attempt"})
+        raise ValueError("local parsing after uncertain response")
+    monkeypatch.setattr(handoff_guards, "preserve_by_id", uncertain)
+    assert run_consumer(consumer) is None and not consumer[2].acks
+    marker = subject.read_private(guard.marker)
+    assert marker["reason"] == "sent_provider_attempt_with_uncertain_usage"
+    assert marker["request_sent"] is True and marker["cost_usd"] is None
+
+
+def test_failed_handoff_consumer_future_stops_before_waiting_for_busy_consumer(consumer):
+    busy, failed = Future(), Future()
+    failed.set_exception(ValueError("secret future failure"))
+    with pytest.raises(ValueError):
+        subject.wait_consumers([busy, failed], consumer[1].handoff_guard)
+    assert subject.STOP.is_set() and not busy.done() and not busy.cancelled()
+    marker = subject.read_private(consumer[1].handoff_guard.marker)
+    assert marker["phase"] == "consumer_worker" and "convocation_id" not in marker
+
+
+def test_legacy_wait_keeps_existing_order_without_handoff(monkeypatch):
+    order = []
+    monkeypatch.setattr(subject, "as_completed", lambda *a: pytest.fail("legacy result order must stay unchanged"))
+    subject.wait_consumers([SimpleNamespace(result=lambda: order.append(1)),
+        SimpleNamespace(result=lambda: order.append(2))])
+    assert order == [1, 2] and not subject.STOP.is_set()
 
 
 def test_legacy_runtime_error_contract_is_unchanged_without_id_guard(consumer, monkeypatch):
@@ -320,6 +383,11 @@ def test_typed_economical_preparation_review_exports_only_bound_local_proof(cons
     monkeypatch.setattr(subject, "paid_jev", lambda *a, **k: (
         "a" * 64, {"affinity_index": 90, "cost_usd": 0}, True))
     monkeypatch.setattr(subject.repo, "promote_accepted", lambda *a, **k: {"created": False})
+    metadata = consumer[0] / "123/metadata.private.json"
+    old_lifecycle = {**handoff_guards.lifecycle_fields(assessment("closed")),
+        "temporal_observed_at": "2026-10-19T08:00:00+00:00", "detail_hash": "d" * 64}
+    write(metadata, old_lifecycle)
+    original_metadata = metadata.read_bytes()
     def review(conn, settings, folder, *a, **k):
         write(folder / "embedding-preparation-review.private.json", {
             "reason": "retrieval_context_needs_expansion_or_review", "corpus_hash": "b" * 64,
@@ -332,3 +400,142 @@ def test_typed_economical_preparation_review_exports_only_bound_local_proof(cons
         "reason": "retrieval_context_needs_expansion_or_review",
         "receipt_sha256": file_sha(consumer[0] / "123/embedding-preparation-review.private.json")}
     assert not outcome["matching_eligible"] and not subject.STOP.is_set()
+    assert outcome["temporal_observed_at"] == assessment()["as_of"]
+    assert outcome["temporal_state"] == "submission_open" and outcome["confirmed_open"]
+    assert metadata.read_bytes() == original_metadata
+
+
+def test_handoff_local_stop_keeps_already_inflight_known_response_and_result(consumer, monkeypatch):
+    from buenapro_worker.prod2 import prior_reading_guard
+    consumer[3]["run_id"] = "synthetic-reader"
+    monkeypatch.setattr(handoff_guards, "preserve_by_id", lambda *a, **k: None)
+    monkeypatch.setattr(prior_reading_guard, "preserve_prior_reading", lambda *a, **k: None)
+    monkeypatch.setattr(subject, "handoff_detail", lambda *a, **k: {"detail": {"schedule": []}})
+    monkeypatch.setattr(subject, "decide", lambda *a, **k: assessment())
+    monkeypatch.setattr(subject, "jev_request_hash", lambda *a, **k: "a" * 64)
+    monkeypatch.setattr(subject, "JevDescriptionAnalyzer", lambda *a, **k: None)
+    monkeypatch.setattr(subject, "AuditedJevClient", lambda *a, **k: SimpleNamespace(close=lambda: None))
+    monkeypatch.setattr(subject, "paid_jev", lambda *a, **k: (
+        "a" * 64, {"affinity_index": 90, "cost_usd": 0}, True))
+    monkeypatch.setattr(subject.repo, "promote_accepted", lambda *a, **k: {"created": False})
+    began, finish = threading.Event(), threading.Event()
+    response = consumer[0] / "123/known-response.private.json"
+    def inflight(conn, settings, folder, *a, **k):
+        began.set()
+        assert finish.wait(5), "test must release the already in-flight response"
+        write(response, {"usage_known": True, "cost_usd": 0.01, "response_hash": "b" * 64})
+        return {"status": "llm1_complete", "llm1_cost_usd": 0.01}
+    monkeypatch.setattr(subject, "enrich", inflight)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        live = pool.submit(run_consumer, consumer)
+        try:
+            assert began.wait(5)
+            failed = Future()
+            failed.set_exception(AttributeError("another consumer failed locally"))
+            with pytest.raises(AttributeError):
+                subject.wait_consumers([live, failed], consumer[1].handoff_guard)
+        finally:
+            finish.set()
+        outcome = live.result(timeout=5)
+    assert subject.STOP.is_set() and outcome["status"] == "llm1_complete"
+    assert outcome["llm1_cost_usd"] == 0.01 and subject.read_private(response)["usage_known"]
+    assert consumer[2].acks == ["123"]
+
+
+def metadata_snapshot():
+    return {"schedule": [{"stage": "Presentación de ofertas", "starts_at_text": "20/10/2026 10:00",
+            "ends_at_text": "20/10/2026 11:00"}], "item_states": ["Convocado"],
+        "document_scope": subject.SELECTED_DOCUMENTS_POLICY, "document_inventory_complete": True,
+        "documents": [{"document_uuid": "official", "filename": "bases.pdf", "type": "Bases",
+            "stage": "Convocatoria", "published_at": "2026-10-19", "source_url": "official-metadata"}],
+        "detail_hash": "a" * 64, "document_storage_policy": subject.OFFICIAL_LINKS_POLICY,
+        **handoff_guards.lifecycle_fields(assessment())}
+
+
+def test_handoff_metadata_clock_replay_keeps_source_identity_and_old_bytes(tmp_path):
+    old = metadata_snapshot()
+    marker = tmp_path / "metadata.private.json"
+    write(marker, old)
+    original_bytes = marker.read_bytes()
+    fresh = {**old, "temporal_observed_at": "2026-10-20T09:00:00+00:00"}
+    proof = subject.snapshot_handoff_metadata(tmp_path, fresh)
+    assert marker.read_bytes() == original_bytes
+    assert subject.handoff_metadata_identity(old) == subject.handoff_metadata_identity(fresh)
+    observation = tmp_path / proof["relative_path"]
+    assert file_sha(observation) == proof["sha256"]
+    assert json.loads(observation.read_text())["metadata"] == fresh
+    assert subject.snapshot_handoff_metadata(tmp_path, fresh) == proof
+    newer = {**fresh, "temporal_observed_at": "2026-10-20T09:30:00+00:00"}
+    subject.snapshot_handoff_metadata(tmp_path, newer)
+    assert len(list((tmp_path / "metadata-observations").glob("*.private.json"))) == 2
+
+
+@pytest.mark.parametrize("change", [
+    lambda value: value.update(detail_hash="b" * 64),
+    lambda value: value["documents"][0].update(filename="changed.pdf"),
+    lambda value: value["schedule"][0].update(ends_at_text="21/10/2026 11:00"),
+    lambda value: value.update(item_states=["Cancelado"]),
+])
+def test_handoff_clock_replay_never_ignores_changed_source_content(tmp_path, change):
+    old = metadata_snapshot()
+    marker = tmp_path / "metadata.private.json"
+    write(marker, old)
+    before = marker.read_bytes()
+    fresh = deepcopy(old)
+    fresh["temporal_observed_at"] = "2026-10-20T09:00:00+00:00"
+    change(fresh)
+    with pytest.raises(ValueError, match="source metadata changed"):
+        subject.snapshot_handoff_metadata(tmp_path, fresh)
+    assert marker.read_bytes() == before and not (tmp_path / "metadata-observations").exists()
+
+
+def test_new_handoff_metadata_baseline_is_static_and_legacy_snapshot_remains_strict(tmp_path):
+    first = metadata_snapshot()
+    subject.snapshot_handoff_metadata(tmp_path, first)
+    marker = tmp_path / "metadata.private.json"
+    assert json.loads(marker.read_text()) == subject.handoff_metadata_identity(first)
+    before = marker.read_bytes()
+    subject.snapshot_handoff_metadata(tmp_path, {**first, "temporal_observed_at": "2026-10-20T09:00:00+00:00"})
+    assert marker.read_bytes() == before
+    legacy = tmp_path / "legacy.private.json"
+    subject.snapshot(legacy, first)
+    with pytest.raises(ValueError, match="Frozen stage inputs changed"):
+        subject.snapshot(legacy, {**first, "temporal_observed_at": "2026-10-20T09:00:00+00:00"})
+
+
+def test_replayed_source_with_new_closed_lifecycle_stops_enrich_before_any_paid_or_document_work(tmp_path, monkeypatch):
+    real_decide = subject.decide
+    detail = {"procedure_id": 456, "convocatoria_id": 123, "selection_type": "Licitación Pública",
+        "description": "TABLERO ELÉCTRICO", "item_states": ["Convocado"], "document_inventory_complete": True,
+        "documents": [{"uuid": "official", "filename": "bases.pdf", "type": "Bases",
+            "stage": "Convocatoria", "published_at": "2026-10-19"}],
+        "schedule": [{"stage": "Registro de participantes", "starts_at_text": "19/10/2026 09:00",
+            "ends_at_text": "20/10/2026 09:00"}, {"stage": "Presentación de ofertas",
+            "starts_at_text": "20/10/2026 10:00", "ends_at_text": "20/10/2026 11:00"}]}
+    open_time = datetime.fromisoformat("2026-10-20T15:30:00+00:00")
+    closed_time = datetime.fromisoformat("2026-10-20T17:00:00+00:00")
+    old = {"schedule": detail["schedule"], "item_states": detail["item_states"],
+        "document_scope": subject.SELECTED_DOCUMENTS_POLICY, "document_inventory_complete": True,
+        "documents": subject.official_inventory(detail), "detail_hash": "a" * 64,
+        "document_storage_policy": subject.OFFICIAL_LINKS_POLICY,
+        **handoff_guards.lifecycle_fields(real_decide(detail, open_time))}
+    assert old["confirmed_open"]
+    marker = tmp_path / "metadata.private.json"
+    write(marker, old)
+    before = marker.read_bytes()
+    monkeypatch.setattr(subject, "decide", lambda value, now: real_decide(value, closed_time))
+    monkeypatch.setattr(subject, "persist_detail", lambda *a, **k: {"detail_hash": "a" * 64})
+    monkeypatch.setattr(subject, "save_participation_assessment", lambda *a, **k: None)
+    def forbidden(*a, **k):
+        pytest.fail("closed replay must not request source/documents/models")
+    for name in ("get_detail", "download", "preview_candidates", "JevDocumentSelector", "prepare_selected_document_set"):
+        monkeypatch.setattr(subject, name, forbidden)
+    limits = SimpleNamespace(handoff_guard=SimpleNamespace(observe_attempt=forbidden))
+    record = subject.enrich(object(), SimpleNamespace(gemini_model="gemini-3.1-flash-lite"), tmp_path,
+        {"row": {"convocation_id": 123}}, {"document_storage_policy": subject.OFFICIAL_LINKS_POLICY},
+        None, limits, "offline", capture={"detail": detail, "observed_at": closed_time.isoformat()})
+    assert record["status"] == "closed_without_reading" and record["temporal_state"] == "closed"
+    assert not record["confirmed_open"] and not record["matching_eligible"]
+    assert marker.read_bytes() == before
+    current = json.loads((tmp_path / record["metadata_observation"]["relative_path"]).read_text())
+    assert current["metadata"]["temporal_state"] == "closed"
