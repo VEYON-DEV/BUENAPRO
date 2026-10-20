@@ -10,6 +10,14 @@ Se conserva `jev-1.13.0`. TypeSafe publica US$0,042 por millón de tokens de ent
 
 Para comparar, 1.736 títulos sin reutilización costarían aproximadamente US$0,057 con el mismo tamaño medio y US$0,104 con el margen superior; 10.000, US$0,329 y US$0,602. Son extrapolaciones del prompt, no nuevos inventarios ni autorización para pagarlos. Si se incluyen contratos menores se congela primero su propio inventario almacenado; no hace falta consultar SEACE para clasificar títulos ya guardados.
 
+## Aclaración del alcance total de la BD
+
+Consulta humana posterior, PG fresco del 20/10 a las 13:06:59 de Lima: **8.822 oportunidades canónicas** contando históricos y el legado PROD4. Las tablas de las dos fuentes actuales almacenan **1.135 filas PROD2 + 2.124 contratos menores = 3.259 UUID distintos**, con **2.875 títulos distintos** y 384 reutilizables. Son filas almacenadas, no vigencia comprobada. Las 1.134 del cálculo inicial son el subconjunto PROD2 con ficha enriquecida visible en el Buscador.
+
+Los 7.024 resultados históricos, 106 filas PROD4 y 1.736 IDs del registro de mapeo no se suman sin deduplicar identidades. Varias fuentes/aliases pueden compartir un UUID y los históricos reutilizan la identidad de contratos menores. La reutilización por título evita pagos repetidos, sin fusionar licitaciones distintas.
+
+Extrapolando el tamaño medio del prompt ya medido a los 2.875 títulos de PROD2+menores: alrededor de **US$0,10–0,20**, incluyendo margen. No se midió la tokenización de esos títulos nuevos ni el costo de todo el archivo canónico de 8.822. Antes de ejecutar el alcance ampliado se necesita inventario por ID/título/hash congelado; este conteo agregado no ejecuta ni autoriza inferencias. Recibo compacto retenido, cero bytes liberados.
+
 ## Categorías y decisión
 
 Reutilizar las seis categorías versionadas: **Licencias y suscripciones**, **Desarrollo de software**, **IA y automatización**, **Industrial**, **Cloud e infraestructura**, **Soporte y mantenimiento**. Una licitación puede mostrar dos etiquetas en la misma columna; por ejemplo, suscripción ChatGPT = Licencias + IA, mantenimiento SCADA = Industrial + Soporte. Automatización industrial sin IA expresa no se etiqueta como IA; licencia municipal no es licencia de software. Desarrollo exige creación de código: instalar/configurar un producto no basta. Para esta clasificación por título, Soporte y mantenimiento se limita deliberadamente a tecnología/industrial; el eje documental por sí solo no impone ese límite de área. **Otros** y **Por confirmar** distinguen objeto ajeno de título insuficiente y no fabrican etiquetas.

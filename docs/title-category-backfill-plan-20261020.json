@@ -155,5 +155,46 @@
     "Development requires creating code; standalone implementation/configuration is not development.",
     "Title support/maintenance question intentionally covers technology/industrial maintenance; broad documentary work-type alone is not area-restricted.",
     "Per-category noul values are model signals, not validated domain confidence or tender-winning probability. Inclusion/unclear thresholds need pilot validation."
-  ]
+  ],
+  "latest_scope_clarification": {
+    "at_utc": "2026-10-20T18:06:59.586871+00:00",
+    "prior_scope": "1134 enriched rows in Buscador SEACE, not the whole DB",
+    "canonical_total_including_history": 8822,
+    "prod2_native_rows": 1135,
+    "prod2_enriched_visible": 1134,
+    "prod6_native_rows": 2124,
+    "prod2_prod6_total_rows_and_distinct_uuid": 3259,
+    "prod2_prod6_unique_titles_sql_count": 2875,
+    "duplicate_title_rows_reusable": 384,
+    "historical_outcomes_rows_not_additive": 7024,
+    "legacy_prod4_rows_not_additive": 106,
+    "map_only_registry_rows_not_additive": 1736,
+    "operational_cost_extrapolation": {
+      "method": "Use measured title-only prompt mean from prior1134 inventory; current2875 SQL-title count. Not tokenized new source inventory or provider invoice.",
+      "mean_proxy_tokens_per_request": "784.2251720747295968534906588",
+      "base_usd": "0.09469518952802359882005899705",
+      "upper_margin_usd": "0.1729547842920353982300884956",
+      "human_rounded_budget_range_usd": [
+        "0.10",
+        "0.20"
+      ],
+      "whole_canonical_archive_cost_measured": false
+    },
+    "scope_note": "Counts of stored rows; no current/open assertion. Source counts overlap through canonical UUIDs. Mapping-only registry is not automatically published or additive to native rows.",
+    "validation": "Fresh PG REPEATABLE READ READ ONLY; independent offline arithmetic/schema review. Aggregate SQL distinct-title count not independently replayed from row inventory.",
+    "receipt": {
+      "path": "tmp/title-category-plan-20261020/all-database-scope-counts-20261020.private.json",
+      "sha256": "2e266e8989dca2687d46f85acac21ded45e52d1ff41baa7da6e7f50335013376"
+    },
+    "operations": {
+      "source_calls": 0,
+      "model_calls": 0,
+      "pg_writes": 0,
+      "redis_access": 0
+    },
+    "cleanup": {
+      "freed_bytes": 0,
+      "retained": "Compact aggregate count receipt; no new title corpus or PDF downloaded"
+    }
+  }
 }
