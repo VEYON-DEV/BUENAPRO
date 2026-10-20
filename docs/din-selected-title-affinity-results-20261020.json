@@ -34,5 +34,32 @@
   "llm2_matches_created_by_this_affinity_run": 0,
   "source_http_calls": 0,
   "new_originals_r2": 0,
-  "pending_readings": "Nine follow-up reviews are tracked separately; two known responses preserved, seven never-sent cases continued under explicit bound authorization."
+  "strict_current_ui_projection_equal": 157,
+  "cleanup_own_closed_next_cache_bytes": 177599558,
+  "followup_readings": {
+    "selected": 9,
+    "stored_with_review": 2,
+    "current_extraction_ids": [
+      550,
+      551
+    ],
+    "truncated_response_ids": [
+      1047330,
+      1048369,
+      1048462
+    ],
+    "not_sent_ids": [
+      1048805,
+      1049089,
+      1049583,
+      1050007
+    ],
+    "known_llm1_attempts": 5,
+    "known_llm1_cost_usd_local": "0.1578859",
+    "new_billing_unknown_attempts": 0,
+    "new_documentary_llm2": 0,
+    "active_coordinator_locks": 0,
+    "input_and_output_receipts_preserved": true,
+    "llm2_preparation_hold": "Existing local per-request/per-question and recommendation token guards; no scoring or explanation sends made."
+  }
 }
