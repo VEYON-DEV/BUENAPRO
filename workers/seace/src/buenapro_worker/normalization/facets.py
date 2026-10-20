@@ -132,6 +132,8 @@ def derive_summary(raw: dict[str, Any]) -> dict[str, Any]:
             # evidence support for a quote absent from the exact sent context.
             classification["support_status"] = "needs_review"
         result["commercial_classification"] = classification
+        from buenapro_worker.normalization.commercial_categories import derive_commercial_categories
+        result["commercial_categories"] = derive_commercial_categories(classification)
     return result
 
 

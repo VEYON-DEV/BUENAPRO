@@ -11,6 +11,7 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 import tempfile
 from contextlib import contextmanager
 from copy import deepcopy
@@ -36,6 +37,10 @@ from buenapro_worker.extraction.gemini import (
     read_prompt,
 )
 from buenapro_worker.extraction.schemas import EettExtractionV1, TdrExtractionV2
+from buenapro_worker.extraction.commercial_classification import (
+    POLICY_KEY, TAXONOMY_VERSION, get_commercial_policy, prompt_with_commercial,
+    schema_with_commercial, validate_commercial_payload, version_with_commercial,
+)
 from buenapro_worker.settings import Settings
 
 
@@ -45,6 +50,76 @@ class GuardedReadingError(RuntimeError):
 
 class ReadingBlockedError(GuardedReadingError):
     """A durable receipt or open guard forbids another paid request."""
+
+
+class ReadingPolicyError(GuardedReadingError):
+    """The explicit reading policy differs from this frozen receipt namespace."""
+
+
+READING_POLICY_FILENAME = "reading-policy.private.json"
+
+
+def reading_policy_context(value=None) -> dict[str, str]:
+    """Only the explicit taxonomy key configures the dedicated reader."""
+    if value is None:
+        return {}
+    if not isinstance(value, dict) or set(value) - {POLICY_KEY}:
+        raise ReadingPolicyError("Invalid PROD6 reading policy context")
+    try:
+        policy = get_commercial_policy(value)
+    except ValueError:
+        raise ReadingPolicyError("Unsupported PROD6 commercial taxonomy") from None
+    return {POLICY_KEY: policy} if policy else {}
+
+
+def _bind_reading_policy_locked(directory: Path, context: dict[str, str]) -> None:
+    """Call only under the same file lock that owns durable payment receipts."""
+    marker = directory / READING_POLICY_FILENAME
+    if marker.is_symlink():
+        raise ReadingPolicyError("PROD6 reading policy must not be a symlink")
+    expected = {"version": 1, "policy_context": context}
+    if marker.exists():
+        try:
+            frozen = _read_json(marker)
+        except Exception:
+            raise ReadingPolicyError("PROD6 frozen reading policy is invalid") from None
+        if type(frozen.get("version")) is not int or frozen != expected:
+            raise ReadingPolicyError("PROD6 reading policy differs from frozen receipts")
+        return
+    if not context:
+        # No marker, prompt, schema, or receipt changes for historical readers.
+        return
+    if ((directory / "guard.json").exists()
+            or any(directory.glob("*.started.private.json"))
+            or any(directory.glob("*.response.private.json"))
+            or any(directory.glob("*.result.private.json"))):
+        raise ReadingPolicyError("Existing PROD6 receipts require their original reading policy")
+    _write_json(marker, expected)
+
+
+def bind_reading_policy(directory: Path, policy_context=None) -> dict[str, str]:
+    """Freeze an opt-in namespace after the runtime's exclusive PG lock.
+
+    Legacy absence does not create a directory or marker. Switching policies
+    cannot turn old responses or uncertain requests into new paid reads.
+    """
+    context = reading_policy_context(policy_context)
+    directory = Path(directory)
+    marker = directory / READING_POLICY_FILENAME
+    if not context and not marker.exists() and not marker.is_symlink():
+        return context
+    if directory.is_symlink():
+        raise ReadingPolicyError("PROD6 receipt directory must not be a symlink")
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    directory.chmod(0o700)
+    with (directory / ".reading.lock").open("a+b") as stream:
+        os.fchmod(stream.fileno(), 0o600)
+        fcntl.flock(stream, fcntl.LOCK_EX)
+        try:
+            _bind_reading_policy_locked(directory, context)
+        finally:
+            fcntl.flock(stream, fcntl.LOCK_UN)
+    return context
 
 
 def _canonical(value: Any) -> bytes:
@@ -116,12 +191,80 @@ def _sdk_compatible_response(raw_response: dict[str, Any]) -> dict[str, Any]:
 
 
 class GuardedGeminiExtractor:
-    def __init__(self, settings: Settings, receipt_dir: Path) -> None:
+    def __init__(self, settings: Settings, receipt_dir: Path, *, policy_context=None,
+                 allow_new_requests: bool = True) -> None:
+        self.policy_context = reading_policy_context(policy_context)
+        if type(allow_new_requests) is not bool:
+            raise ReadingPolicyError("PROD6 request permission must be explicit")
+        self.allow_new_requests = allow_new_requests
         self.settings = settings
         self.receipt_dir = Path(receipt_dir)
+        if self.policy_context and self.receipt_dir.is_symlink():
+            raise ReadingPolicyError("PROD6 receipt directory must not be a symlink")
         self.guard_path = self.receipt_dir / "guard.json"
         self.receipt_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.receipt_dir.chmod(0o700)
+
+    def reuse_prompt_versions(self, doc_class: str) -> tuple[str, ...]:
+        legacy = prompt_version_for_doc_class(doc_class)
+        current = version_with_commercial(legacy, self.policy_context)
+        # A prior paid reading is preserved, never regenerated merely to add tags.
+        return (current, legacy) if current != legacy else (legacy,)
+
+    def validate_reused_extraction(self, source: dict, doc_class: str) -> None:
+        if (not self.policy_context or source.get("prompt_version")
+                != self.reuse_prompt_versions(doc_class)[0]):
+            return
+        expected_schema = version_with_commercial(
+            EETT_SCHEMA_VERSION if doc_class == "eett" else SCHEMA_VERSION, self.policy_context)
+        if source.get("schema_version") != expected_schema:
+            raise ReadingPolicyError("Commercial cached extraction has an incompatible schema")
+        raw = source.get("raw_extraction_json")
+        validate_commercial_payload(raw, self.policy_context)
+        schema_with_commercial(EettExtractionV1 if doc_class == "eett" else TdrExtractionV2,
+                               self.policy_context).model_validate(raw)
+
+    def _request_identity(self, document_sha256: str, *, mime: str, doc_class: str):
+        if (doc_class not in {"tdr", "eett"} or mime != "application/pdf"
+                or not isinstance(document_sha256, str)
+                or not re.fullmatch(r"[0-9a-f]{64}", document_sha256)):
+            raise ValueError("PROD6 guarded reading requires an exact TDR/EETT PDF SHA")
+        model = self.settings.gemini_model
+        if model not in MODEL_PRICES_USD_PER_MILLION:
+            raise ValueError("PROD6 guarded reading requires a model with known local prices")
+        prompt = read_prompt(EETT_PROMPT_FILENAME if doc_class == "eett" else PROMPT_FILENAME)
+        prompt = prompt_with_commercial(prompt + PARTICIPATION_INSTRUCTION, self.policy_context)
+        identity = {"document_sha256": document_sha256, "doc_class": doc_class,
+            "mime": mime, "model": model,
+            "prompt_version": version_with_commercial(prompt_version_for_doc_class(doc_class), self.policy_context),
+            "prompt_sha256": _sha(prompt.encode("utf-8")),
+            "schema_version": version_with_commercial(
+                EETT_SCHEMA_VERSION if doc_class == "eett" else SCHEMA_VERSION, self.policy_context),
+            **self.policy_context}
+        return prompt, identity, _sha(_canonical(identity))
+
+    def recover_before_download(self, document_sha256: str, *, mime: str, doc_class: str):
+        """Previously attempted jobs require an exact, verifiable paid response.
+
+        A fresh folder, an unrelated receipt, or a started request cannot
+        authorize another source download or inference. Recovery is local only.
+        """
+        if self.allow_new_requests:
+            return None
+        prompt, identity, key = self._request_identity(document_sha256, mime=mime, doc_class=doc_class)
+        with self._lock():
+            _bind_reading_policy_locked(self.receipt_dir, self.policy_context)
+            if not ((self.receipt_dir / f"{key}.response.private.json").exists()
+                    or (self.receipt_dir / f"{key}.result.private.json").exists()):
+                self._check_new_send(key)
+                raise ReadingBlockedError("Prior PROD6 attempt has no exact durable response in this namespace")
+            try:
+                return self._extract_locked(b"", prompt, identity, key)
+            except GuardedReadingError:
+                raise
+            except Exception:
+                self._guard(key, "local_receipt_integrity_error")
+                raise GuardedReadingError("PROD6 exact response recovery failed local integrity checks") from None
 
     @contextmanager
     def _lock(self):
@@ -165,20 +308,9 @@ class GuardedGeminiExtractor:
                 doc_class: str = "tdr") -> ExtractionResult:
         if doc_class not in {"tdr", "eett"} or mime != "application/pdf" or not pdf_bytes:
             raise ValueError("PROD6 guarded reading requires a nonempty TDR/EETT PDF")
-        model = self.settings.gemini_model
-        if model not in MODEL_PRICES_USD_PER_MILLION:
-            raise ValueError("PROD6 guarded reading requires a model with known local prices")
-        prompt = read_prompt(EETT_PROMPT_FILENAME if doc_class == "eett" else PROMPT_FILENAME)
-        prompt += PARTICIPATION_INSTRUCTION
-        identity = {
-            "document_sha256": _sha(pdf_bytes), "doc_class": doc_class,
-            "mime": mime, "model": model,
-            "prompt_version": prompt_version_for_doc_class(doc_class),
-            "prompt_sha256": _sha(prompt.encode("utf-8")),
-            "schema_version": EETT_SCHEMA_VERSION if doc_class == "eett" else SCHEMA_VERSION,
-        }
-        key = _sha(_canonical(identity))
+        prompt, identity, key = self._request_identity(_sha(pdf_bytes), mime=mime, doc_class=doc_class)
         with self._lock():
+            _bind_reading_policy_locked(self.receipt_dir, self.policy_context)
             try:
                 return self._extract_locked(pdf_bytes, prompt, identity, key)
             except GuardedReadingError:
@@ -209,7 +341,10 @@ class GuardedGeminiExtractor:
             return self._parse_saved_response(identity, key, response, result_path)
 
         self._check_new_send(key)
-        schema = EettExtractionV1 if identity["doc_class"] == "eett" else TdrExtractionV2
+        if not self.allow_new_requests:
+            raise ReadingBlockedError("Prior PROD6 attempt permits exact local recovery only")
+        schema = schema_with_commercial(
+            EettExtractionV1 if identity["doc_class"] == "eett" else TdrExtractionV2, identity)
         config = types.GenerateContentConfig(
             system_instruction=prompt, response_mime_type="application/json",
             response_schema=schema, temperature=0, max_output_tokens=16384,
@@ -320,13 +455,17 @@ class GuardedGeminiExtractor:
                 usage: dict[str, Any]) -> ExtractionResult:
         if not usage.get("known"):
             raise ValueError("Usage unknown")
-        schema = EettExtractionV1 if identity["doc_class"] == "eett" else TdrExtractionV2
+        validate_commercial_payload(raw_json, identity)
+        schema = schema_with_commercial(
+            EettExtractionV1 if identity["doc_class"] == "eett" else TdrExtractionV2, identity)
         extraction = schema.model_validate(raw_json)
+        commercial = getattr(extraction, "commercial_classification", None)
         return ExtractionResult(
             extraction=extraction, raw_json=raw_json,
             model=identity["model"], prompt_version=identity["prompt_version"],
             schema_version=identity["schema_version"],
             input_tokens=usage["input_tokens"], output_tokens=usage["output_tokens"],
             cost_usd=estimate_cost(identity["model"], usage["input_tokens"], usage["output_tokens"]),
-            requires_human_review=bool(hasattr(extraction, "goods") and not extraction.goods.items),
+            requires_human_review=bool((hasattr(extraction, "goods") and not extraction.goods.items)
+                or (commercial is not None and commercial.support_status != "evidence_backed")),
         )

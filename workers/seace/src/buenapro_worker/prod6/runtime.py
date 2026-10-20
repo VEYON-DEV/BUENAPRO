@@ -29,6 +29,10 @@ from buenapro_worker.jobs.poll_prod6_profile import poll_prod6_profile
 from buenapro_worker.jobs.process_contract import process_contract
 from buenapro_worker.queue.repository import Job, JobRepository
 from buenapro_worker.settings import Settings
+from buenapro_worker.extraction.commercial_classification import POLICY_KEY, TAXONOMY_VERSION, get_commercial_policy
+from buenapro_worker.prod6.reading import (
+    ReadingPolicyError, bind_reading_policy, reading_policy_context,
+)
 
 
 NAMESPACE = "prod6-only-v1"
@@ -76,9 +80,10 @@ def failure_diagnostic(error: Exception) -> dict[str, str]:
 
 
 class ScopedRepository(JobRepository):
-    def __init__(self, conn, *, profile_id: str, batch_id: str):
+    def __init__(self, conn, *, profile_id: str, batch_id: str, reading_policy=None):
         super().__init__(conn)
         self.profile_id, self.batch_id = profile_id, batch_id
+        self.reading_policy = reading_policy_context(reading_policy)
         self.suppressed: dict[str, int] = {}
 
     def enqueue(self, job_type, payload=None, **kwargs):
@@ -89,6 +94,7 @@ class ScopedRepository(JobRepository):
         payload = dict(payload or {}) | {
             "source_runtime": NAMESPACE, "scope_profile_id": self.profile_id,
             "batch_id": self.batch_id,
+            **self.reading_policy,
         }
         if job_type in {"download_file", "extract_tdr"} and payload.get("id_contrato_archivo") is not None:
             blocked = self.conn.execute("""SELECT id FROM worker_jobs WHERE status='pending'
@@ -178,11 +184,25 @@ class HashBoundExtractor:
             raise ValueError("Document changed between identification and reading")
         return self.extractor.extract(content, **kwargs)
 
+    def reuse_prompt_versions(self, doc_class: str) -> tuple[str, ...]:
+        return self.extractor.reuse_prompt_versions(doc_class)
+
+    def validate_reused_extraction(self, source: dict, doc_class: str) -> None:
+        self.extractor.validate_reused_extraction(source, doc_class)
+
+    def recover_before_download(self, document_sha256: str, **kwargs):
+        if document_sha256 != self.expected:
+            raise ValueError("Recovery identity differs from the original document SHA")
+        return self.extractor.recover_before_download(document_sha256, **kwargs)
+
 
 def dispatch(settings: Settings, repo: ScopedRepository, job: Job, receipt_dir: Path):
     payload = job.payload
     contract_id = int(payload["id_contrato"])
     common = {"batch_id": repo.batch_id, "segment": payload.get("segment")}
+    if (job.job_type in IO_TYPES
+            and get_commercial_policy(payload) != get_commercial_policy(repo.reading_policy)):
+        raise ReadingPolicyError("Queued PROD6 IO differs from the runtime policy")
     if not eligible_contract(repo, contract_id):
         return {"outcome": "closed_preserved"}
     if job.job_type == "process_contract":
@@ -227,6 +247,12 @@ def dispatch(settings: Settings, repo: ScopedRepository, job: Job, receipt_dir: 
             enqueue_derive_summary(repo, id_contrato=contract_id,
                                    extraction_id=int(existing["id"]), **common)
             return {"outcome": "current_reading_preserved", "extraction_id": int(existing["id"])}
+        queued_policy = get_commercial_policy(payload)
+        expected_policy = get_commercial_policy(repo.reading_policy)
+        if queued_policy != expected_policy:
+            # A fresh receipt folder/config cannot adopt an older queued paid
+            # job whose semantic binding belongs to a different reader policy.
+            raise ReadingPolicyError("Queued PROD6 reading differs from the runtime policy")
         historical_error = repo.conn.execute(
             """SELECT id FROM worker_jobs WHERE job_type='extract_tdr' AND attempts>0
                AND status IN ('dead','failed','claimed')
@@ -237,12 +263,21 @@ def dispatch(settings: Settings, repo: ScopedRepository, job: Job, receipt_dir: 
         if historical_error:
             return {"outcome": "historical_attempt_preserved", "review_required": True,
                     "historical_job_id": int(historical_error["id"])}
+        same_runtime_attempt = repo.conn.execute(
+            """SELECT id FROM worker_jobs WHERE job_type='extract_tdr' AND attempts>0
+               AND id<>%s AND payload->>'id_contrato'=%s AND payload->>'id_contrato_archivo'=%s
+               AND payload->>'source_runtime'=%s LIMIT 1""",
+            (job.id, str(contract_id), str(archive_id), NAMESPACE),
+        ).fetchone()
         from buenapro_worker.prod6.reading import GuardedGeminiExtractor
         document = repo.conn.execute(
             "SELECT sha256_original FROM contract_documents WHERE id_contrato=%s AND id_contrato_archivo=%s",
             (contract_id, archive_id),
         ).fetchone()
-        extractor = HashBoundExtractor(GuardedGeminiExtractor(settings, receipt_dir / "readings"),
+        options = {"policy_context": repo.reading_policy} if repo.reading_policy else {}
+        if job.attempts > 1 or same_runtime_attempt:
+            options["allow_new_requests"] = False
+        extractor = HashBoundExtractor(GuardedGeminiExtractor(settings, receipt_dir / "readings", **options),
                                       document["sha256_original"])
         extraction_id = extract_tdr_job(settings, repo, id_contrato=contract_id,
                                        id_contrato_archivo=archive_id, extractor=extractor, **common)
@@ -253,14 +288,18 @@ def dispatch(settings: Settings, repo: ScopedRepository, job: Job, receipt_dir: 
     raise ValueError("Job outside PROD6 runtime scope")
 
 
-def execute_io_job(settings: Settings, profile_id: str, job: Job, receipt_dir: Path):
+def execute_io_job(settings: Settings, profile_id: str, job: Job, receipt_dir: Path, *, reading_policy=None):
     """Each free HTTP job owns a DB connection; paid reading stays on the coordinator."""
     if job.job_type not in IO_TYPES:
         raise ValueError("Parallel executor accepts only free HTTP jobs")
+    expected_policy = reading_policy_context(reading_policy)
+    if get_commercial_policy(job.payload) != get_commercial_policy(expected_policy):
+        raise ReadingPolicyError("Queued PROD6 IO differs from the runtime policy")
     with connect(settings) as conn:
         conn.commit()
         conn.autocommit = True
-        repo = ScopedRepository(conn, profile_id=profile_id, batch_id=job.payload["batch_id"])
+        repo = ScopedRepository(conn, profile_id=profile_id, batch_id=job.payload["batch_id"],
+                                reading_policy=expected_policy)
         with conn.transaction():
             if not profile_enabled(repo):
                 raise RuntimeError("Profile was paused")
@@ -273,7 +312,10 @@ def execute_io_job(settings: Settings, profile_id: str, job: Job, receipt_dir: P
 
 def run(settings: Settings, *, profile_id: str, receipt_dir: Path, once: bool = False,
         interval_seconds: int = 1800, max_pages: int = 100, max_candidates: int = 200,
-        http_workers: int = 3, io_workers: int = 2) -> int:
+        http_workers: int = 3, io_workers: int = 2,
+        llm1_commercial_taxonomy: str | None = None) -> int:
+    requested_policy = reading_policy_context(
+        {POLICY_KEY: llm1_commercial_taxonomy} if llm1_commercial_taxonomy is not None else None)
     if interval_seconds < 60 or max_pages < 1 or max_candidates < 1:
         raise ValueError("Positive bounded limits required; minimum poll interval is 60 seconds")
     if not 1 <= http_workers <= 4 or not 1 <= io_workers <= 4:
@@ -297,13 +339,15 @@ def run(settings: Settings, *, profile_id: str, receipt_dir: Path, once: bool = 
             locked = conn.execute("SELECT pg_try_advisory_lock(%s,%s) AS locked", LOCK).fetchone()
             if not locked["locked"]:
                 raise RuntimeError("Another PROD6 coordinator holds the lock")
+            startup_phase = "reading_policy"
+            effective_policy = bind_reading_policy(receipt_dir / "readings", requested_policy)
             startup_phase = "claim_recovery"
             # Recovery owns only this namespace, after exclusive ownership is established.
             with conn.transaction():
                 conn.execute("""UPDATE worker_jobs SET status='pending',claimed_by=NULL,claimed_at=NULL
                   WHERE status='claimed' AND claimed_by=%s AND payload->>'source_runtime'=%s
                   AND payload->>'scope_profile_id'=%s""", (worker_id, NAMESPACE, profile_id))
-        except psycopg.Error as error:
+        except (psycopg.Error, ReadingPolicyError) as error:
             failed_at = datetime.now(timezone.utc)
             startup = {"runtime": NAMESPACE, "profile_id": profile_id,
                 "status": "attention_required", "phase": startup_phase,
@@ -315,10 +359,12 @@ def run(settings: Settings, *, profile_id: str, receipt_dir: Path, once: bool = 
             return 2
         while not stopping:
             batch_id = f"prod6-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}-{os.getpid()}"
-            repo = ScopedRepository(conn, profile_id=profile_id, batch_id=batch_id)
+            repo = ScopedRepository(conn, profile_id=profile_id, batch_id=batch_id,
+                                    reading_policy=effective_policy)
             state: dict[str, Any] = {"runtime": NAMESPACE, "profile_id": profile_id,
                 "batch_id": batch_id, "started_at": datetime.now(timezone.utc).isoformat(),
                 "status": "sweeping", "phase": "profile_check", "done": {}, "suppressed": {},
+                **effective_policy,
                 "parallelism": {"http": http_workers, "io": io_workers, "paid_reading": 1}}
             write_state(receipt_dir / "state.json", state)
             try:
@@ -370,7 +416,8 @@ def run(settings: Settings, *, profile_id: str, receipt_dir: Path, once: bool = 
                         # Wait for every reserved job to settle before stopping on an error.
                         with ThreadPoolExecutor(max_workers=io_workers) as pool:
                             futures = {pool.submit(execute_io_job, settings, profile_id, io_job,
-                                                   receipt_dir): io_job for io_job in io_batch}
+                                                   receipt_dir, **({"reading_policy": effective_policy}
+                                                   if effective_policy else {})): io_job for io_job in io_batch}
                             for future in as_completed(futures):
                                 io_job = futures[future]
                                 try:
@@ -502,6 +549,8 @@ def main() -> None:
     parser.add_argument("--max-candidates", type=int, default=200)
     parser.add_argument("--http-workers", type=int, default=3)
     parser.add_argument("--io-workers", type=int, default=2)
+    parser.add_argument("--llm1-commercial-taxonomy", choices=[TAXONOMY_VERSION],
+                        help="Explicit fresh receipt namespace only: commercial classification in new readings")
     args = parser.parse_args()
     raise SystemExit(run(Settings(), **vars(args)))
 

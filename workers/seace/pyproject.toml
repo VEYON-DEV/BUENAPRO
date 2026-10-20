@@ -29,7 +29,7 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-"buenapro_worker.extraction" = ["commercial_taxonomy.v1.json"]
+"buenapro_worker.extraction" = ["commercial_taxonomy.v1.json", "commercial_categories.v1.json"]
 
 [project.scripts]
 buenapro-worker = "buenapro_worker.cli:main"

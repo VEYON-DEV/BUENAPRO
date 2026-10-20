@@ -145,6 +145,20 @@ def test_absent_configuration_records_attention_without_child(paths, monkeypatch
     assert service._read(state / "state.private.json")["status"] == "attention_required"
 
 
+def test_selected_service_explicit_taxonomy_flag_is_bound_into_epoch_without_automatic_activation(paths, monkeypatch):
+    config, state = paths
+    value = configuration()
+    value["base_argv"] += ["--llm1-commercial-taxonomy", "commercial_taxonomy_v1"]
+    write(config, value)
+    children = fake_children(monkeypatch)
+    assert service.run(config, state, project_root=ROOT, now=lambda: NOW) == 0
+    assert len(children) == 1
+    plan = service._read(children[0].folder / "plan.private.json")
+    assert plan["requested"]["llm1_commercial_taxonomy"] == "commercial_taxonomy_v1"
+    assert "--llm1-commercial-taxonomy" in plan["argv"]
+    assert service._read(children[0].folder / "manifest.private.json")["requested"] == plan["requested"]
+
+
 def test_configuration_and_state_symlinks_are_rejected_even_in_hold(paths):
     config, state = paths
     target = config.with_name("target.private.json")

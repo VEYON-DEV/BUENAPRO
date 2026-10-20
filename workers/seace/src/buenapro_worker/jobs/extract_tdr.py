@@ -37,13 +37,28 @@ def extract_tdr_job(
 
     # El objeto nativo resuelve documentos ya descargados antes de introducir EETT.
     doc_class = "eett" if int(document["objeto_codigo"]) == 1 else "tdr"
-    reusable = find_reusable_extraction(
-        repo,
-        document_id=int(document["id"]),
-        sha256_original=str(document["sha256_original"]),
-        prompt_version=prompt_version_for_doc_class(doc_class),
-    )
+    versions = (prompt_version_for_doc_class(doc_class),)
+    version_adapter = getattr(type(extractor), "reuse_prompt_versions", None)
+    if callable(version_adapter):
+        versions = version_adapter(extractor, doc_class)
+        if (not isinstance(versions, tuple) or not 1 <= len(versions) <= 2
+                or any(not isinstance(value, str) or not value for value in versions)
+                or len(set(versions)) != len(versions)):
+            raise ValueError("Invalid explicit extraction reuse policy")
+    reusable = None
+    for version in versions:
+        reusable = find_reusable_extraction(
+            repo,
+            document_id=int(document["id"]),
+            sha256_original=str(document["sha256_original"]),
+            prompt_version=version,
+        )
+        if reusable is not None:
+            break
     if reusable is not None:
+        validator = getattr(type(extractor), "validate_reused_extraction", None)
+        if callable(validator):
+            validator(extractor, reusable, doc_class)
         extraction_id = insert_reused_extraction(repo, document_id=int(document["id"]), source=reusable)
         mark_contract_extracted(repo, id_contrato)
         enqueue_derive_summary(
@@ -66,12 +81,18 @@ def extract_tdr_job(
         )
         return extraction_id
 
-    with SeaceClient(settings) as client:
-        pdf_bytes = client.download_file(id_contrato_archivo)
+    result = None
+    recovery_adapter = getattr(type(extractor), "recover_before_download", None)
+    if callable(recovery_adapter):
+        result = recovery_adapter(extractor, str(document["sha256_original"]),
+            mime=document["mime"] or "application/pdf", doc_class=doc_class)
+    if result is None:
+        with SeaceClient(settings) as client:
+            pdf_bytes = client.download_file(id_contrato_archivo)
 
-    result = (extractor or GeminiExtractor(settings)).extract(
-        pdf_bytes, mime=document["mime"] or "application/pdf", doc_class=doc_class
-    )
+        result = (extractor or GeminiExtractor(settings)).extract(
+            pdf_bytes, mime=document["mime"] or "application/pdf", doc_class=doc_class
+        )
 
     row = repo.conn.execute(
         """
