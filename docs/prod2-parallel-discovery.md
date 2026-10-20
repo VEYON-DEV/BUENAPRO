@@ -1,4 +1,10 @@
-# Mapeo paralelo PROD2: preparado, pendiente de go
+# Mapeo paralelo PROD2
+
+El go humano se recibió el 20/10/2026 y arrancó la alternativa amplia del mismo
+paquete: 183 keywords, años 2004–2026, 8.418 combinaciones. El
+[informe de ejecución](prod2-parallel-discovery-execution-20261020.json) registra
+el corte operativo; el arranque no acredita cobertura terminada. Los planes
+privados y los hashes runtime del commit `d4eb887` se mantienen intactos.
 
 Este flujo consulta metadatos del Buscador SEACE, compara identidades y versiones,
 y produce un informe revisable. No descarga documentos, llama modelos, usa Redis,

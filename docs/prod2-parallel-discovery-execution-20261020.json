@@ -1,0 +1,232 @@
+{
+  "status": "running_coverage_not_complete",
+  "cut_at_utc": "2026-10-20T07:21:43.228955+00:00",
+  "runtime_code_commit": "d4eb8877b5cc62f60b6866ea4b7626ab9d029340",
+  "execution_location": "Mac committed CLI; production PostgreSQL via private SSH tunnel",
+  "new_image": "not_applicable_no_new_image_or_service_deployment",
+  "plan": {
+    "run_id": "prod2-map-wide-20261020",
+    "sha256": "13ed875c36abf097262c817141bf6c07662232f96afdefb4b1e7370a52b4ffd4",
+    "keywords": 183,
+    "originals": 166,
+    "industrial_variants": 17,
+    "years": [
+      2004,
+      2005,
+      2006,
+      2007,
+      2008,
+      2009,
+      2010,
+      2011,
+      2012,
+      2013,
+      2014,
+      2015,
+      2016,
+      2017,
+      2018,
+      2019,
+      2020,
+      2021,
+      2022,
+      2023,
+      2024,
+      2025,
+      2026
+    ],
+    "objects": [
+      "good",
+      "service"
+    ],
+    "publication_window": [
+      "2026-10-04",
+      "2026-10-20"
+    ],
+    "planned_queries": 8418,
+    "max_workers": 10,
+    "ramp": [
+      1,
+      4,
+      10
+    ],
+    "global_request_interval_seconds": 2,
+    "max_http_requests": 20000,
+    "max_runtime_seconds": 43200
+  },
+  "source_access": {
+    "location": "Mac",
+    "native_search_verified": true,
+    "pre_schema_pilot_http": {
+      "elapsed_seconds": 5.462,
+      "methods": {
+        "GET": 1,
+        "POST": 2
+      },
+      "requests": 3,
+      "responses": 3,
+      "status_codes": {
+        "200": 3
+      },
+      "stop_reason": null
+    },
+    "errors": [],
+    "vm_access_tested": false
+  },
+  "migration": {
+    "name": "0045_prod2_discovery_registry.sql",
+    "applied": true,
+    "verified_schema": {
+      "status": "discovery_registry_schema_ready",
+      "tables": [
+        "prod2_listing_observations",
+        "prod2_listing_registry",
+        "prod2_map_query_observations",
+        "prod2_map_run_members",
+        "prod2_map_run_queries",
+        "prod2_map_runs"
+      ],
+      "historical_baseline_tables": [
+        "prod2_accepted_run_members",
+        "prod2_discoveries",
+        "prod2_jev_decision_cache"
+      ]
+    },
+    "other_migrations_applied": false
+  },
+  "startup": {
+    "pid": 89221,
+    "caffeinate_pid": 89222,
+    "launched_at_utc": "2026-10-20T07:19:32.827470+00:00",
+    "pg_observed_at_utc": "2026-10-20T07:19:56.803776+00:00",
+    "coordinator_pg_pid": 1653059,
+    "coordinator_count": 1,
+    "manifest_hash_matches": true,
+    "task_states_at_startup": [
+      {
+        "status": "pending",
+        "count": 8418
+      }
+    ],
+    "source_ids_at_startup": 0,
+    "scopes_observed_at_cut": [
+      {
+        "year": 2026,
+        "object_type": "good",
+        "status": "nonempty",
+        "errors": [],
+        "native_total": 499
+      },
+      {
+        "year": 2021,
+        "object_type": "service",
+        "status": "zero_verified",
+        "errors": [],
+        "native_total": 0
+      },
+      {
+        "year": 2021,
+        "object_type": "good",
+        "status": "zero_verified",
+        "errors": [],
+        "native_total": 0
+      },
+      {
+        "year": 2024,
+        "object_type": "service",
+        "status": "zero_verified",
+        "errors": [],
+        "native_total": 0
+      },
+      {
+        "year": 2026,
+        "object_type": "service",
+        "status": "nonempty",
+        "errors": [],
+        "native_total": 499
+      },
+      {
+        "year": 2025,
+        "object_type": "good",
+        "status": "nonempty",
+        "errors": [],
+        "native_total": 3
+      },
+      {
+        "year": 2022,
+        "object_type": "good",
+        "status": "zero_verified",
+        "errors": [],
+        "native_total": 0
+      },
+      {
+        "year": 2023,
+        "object_type": "service",
+        "status": "zero_verified",
+        "errors": [],
+        "native_total": 0
+      },
+      {
+        "year": 2025,
+        "object_type": "service",
+        "status": "nonempty",
+        "errors": [],
+        "native_total": 3
+      },
+      {
+        "year": 2022,
+        "object_type": "service",
+        "status": "zero_verified",
+        "errors": [],
+        "native_total": 0
+      },
+      {
+        "year": 2023,
+        "object_type": "good",
+        "status": "zero_verified",
+        "errors": [],
+        "native_total": 0
+      },
+      {
+        "year": 2024,
+        "object_type": "good",
+        "status": "zero_verified",
+        "errors": [],
+        "native_total": 0
+      }
+    ],
+    "log_bytes_at_cut": 0
+  },
+  "semantic_limits": {
+    "metadata_only": true,
+    "pdf_downloads": 0,
+    "model_calls": 0,
+    "redis_mutations": 0,
+    "published_opportunities": 0,
+    "prod6_activated": false,
+    "source_coverage_complete": false,
+    "native_lifecycle_filter": null,
+    "qa_semantic_approved": false
+  },
+  "monitor": {
+    "automation_id": "completar-mapeo-paralelo-prod2",
+    "status": "ACTIVE",
+    "interval_minutes": 15,
+    "notifications": "completion or actionable failure only"
+  },
+  "evidence": {
+    "private_root": "tmp/prod2-parallel-discovery-20261020/activation/",
+    "exact_run_folder": "tmp/prod2-parallel-discovery-20261020/runs/prod2-map-wide-20261020/"
+  },
+  "remaining": [
+    "finish all scopes and planned keyword/year/object queries",
+    "fresh PG final readback against report/handoff",
+    "count unique IDs, classifications and preserved observations",
+    "document real remaining items and safe cleanup",
+    "disable completion monitor at closure"
+  ],
+  "cleanup": {
+    "bytes_removed_this_execution": 0,
+    "retained": "all active run caches, logs, plan, preflight and launch receipts are necessary for completion/recovery"
+  }
+}
