@@ -1,0 +1,249 @@
+{
+  "version": 1,
+  "prepared_on": "2026-10-20",
+  "timezone": "America/Lima",
+  "status": "planning_only_not_executable",
+  "execution_ready": false,
+  "automatic_paid_authorization": false,
+  "requested_action": "Planificar únicamente IA/automatización e industrial para DIN",
+  "base_code_commit": "33be5aea09214cfb50005bacc8e43d9b47486f01",
+  "source": {
+    "run_id": "prod2-map-wide-20261020",
+    "plan": {
+      "path": "tmp/prod2-parallel-discovery-20261020/plans/wide-2004-2026.private.json",
+      "sha256": "13ed875c36abf097262c817141bf6c07662232f96afdefb4b1e7370a52b4ffd4"
+    },
+    "report": {
+      "path": "tmp/prod2-parallel-discovery-20261020/runs/prod2-map-wide-20261020/report.private.json",
+      "sha256": "381b5b942f90aac3714328842db137876b7644a2f077755ce86a0481394ef9cf"
+    },
+    "handoff": {
+      "path": "tmp/prod2-parallel-discovery-20261020/runs/prod2-map-wide-20261020/handoff.private.json",
+      "sha256": "45e6ee68c1b3cdb2350a77840a9ba6dd2c5c71d28c7009df3fdaa95849ad5575"
+    },
+    "unique_ids": 1736,
+    "new_against_mapping_ledgers": 1434,
+    "known_without_comparable_baseline": 302,
+    "goods": 944,
+    "services": 792,
+    "keyword_count": 183,
+    "queries_complete": 8418,
+    "publication_window": [
+      "2026-10-04",
+      "2026-10-20"
+    ],
+    "convocation_years": [
+      2004,
+      2026
+    ],
+    "repeating_discovery": false,
+    "metadata_does_not_prove": [
+      "vigencia",
+      "lectura completa",
+      "QA semántica",
+      "capacidad DIN"
+    ]
+  },
+  "planning_inventory": {
+    "status": "preliminary_planning_inventory_frozen",
+    "path": "tmp/ia-industrial-plan-20261020/sector-inventory.private.json",
+    "sha256": "59c2a2e933f8ded567aadc3cf97b95cff173df979c7545ebe0555b4ac5224129",
+    "bytes": 1561177,
+    "unique_ids_accounted": 1736,
+    "counts_disjoint": {
+      "ambiguous": 94,
+      "known_substring_noise_only": 14,
+      "lexical_pending_review": 228,
+      "no_explicit_title_signal": 1315,
+      "proposed_core": 85
+    },
+    "proposed_industrial_electrical_ids": 83,
+    "proposed_ai_chatbot_ids": [
+      1047579
+    ],
+    "proposed_process_automation_ids": [
+      1047199
+    ],
+    "core_outside_previous_32": 63,
+    "ambiguous_outside_previous_32": 88,
+    "cache_pages_bound": 153,
+    "semantics_approved": false,
+    "current_lifecycle_verified": false,
+    "executable_selection_frozen": false,
+    "pending": "Revisar metadatos de 228 coincidencias y ambiguos pertinentes antes de congelar ejecución; ficha confirma alcance y apertura",
+    "no_explicit_signal_is_semantic_rejection": false
+  },
+  "phases": [
+    {
+      "id": "prod2",
+      "scope": "Solo candidatos IA/automatización e industrial del mapeo cerrado",
+      "runnable_now": false
+    },
+    {
+      "id": "prod6",
+      "scope": "Fase posterior por líneas/segmentos/sectores permitidos, sin ampliar perfil global",
+      "runnable_now": false,
+      "activation_authorized_by_this_plan": false,
+      "access_recovery_verified_this_turn": false
+    }
+  ],
+  "pilot": {
+    "selection": "Hasta 10 IDs claros, primero IA explícita; comprobar apertura e históricos antes de leer",
+    "max_candidates": 10,
+    "max_accepted": 10,
+    "max_new_document_reads": 10,
+    "max_jev_calls_affinity_and_selector_combined": 30,
+    "max_llm1_calls": 10,
+    "max_embedding_request_batches": 100,
+    "max_new_din_matches": 10,
+    "all_results": false,
+    "single_pg_coordinator": true,
+    "search_workers_max": 4,
+    "global_source_interval_seconds": 2,
+    "processing_workers": 2,
+    "model_workers": 2,
+    "local_ocr_documents_in_parallel_max": 2,
+    "followup_batch_size_max": 10,
+    "widen_after": "Readback y medición verificados del piloto; no duplicar pagos",
+    "document_limit_control_implemented": false,
+    "llm1_request_may_include_multiple_documents": true
+  },
+  "required_implementation": [
+    {
+      "id": "handoff_import",
+      "done": false,
+      "requirement": "Modo explícito por IDs+SHA que conserva row/query/page_number/observed_at y evita run_sweeps/resolve_years. embedding-resume-from no admite el mapping."
+    },
+    {
+      "id": "history_before_affinity",
+      "done": false,
+      "requirement": "Prepass histórico de solo lectura por identidad/hash antes de nuevos pagos de afinidad."
+    },
+    {
+      "id": "open_before_document_io",
+      "done": false,
+      "requirement": "Conservar metadatos de cerrados/desconocidos y salir antes de previews/descarga/selector/embeddings/LLM1; enrich hoy registra estado pero continúa."
+    },
+    {
+      "id": "unique_document_budget",
+      "done": false,
+      "requirement": "Admisión por documento único, máximo10nuevos; separado de max-llm1-calls porque una solicitud puede agrupar documentos."
+    },
+    {
+      "id": "uncertain_batch_stop",
+      "done": false,
+      "requirement": "Detener nuevo dispatch ante incertidumbre enviada de cualquier etapa pagada; guard global actual cubre embeddings y 403/429 de fuente, no todos los proveedores."
+    },
+    {
+      "id": "din_scope",
+      "done": false,
+      "requirement": "Nuevo freeze por IDs, new-only y readiness/CAS; no reciclar cohortes 33/50/30 ni generic analyze_match_job con notificaciones."
+    },
+    {
+      "id": "prod6_sector_allowlist",
+      "done": false,
+      "requirement": "Allowlist inmutable previo a enqueue/descarga/modelos; la taxonomía de salida no restringe discovery."
+    }
+  ],
+  "execution_preflight_pending": [
+    "Commit futuro remoto limpio y hashes runtime; ninguna publicación por este documento",
+    "Cero coordinadores ajenos al lote y lock PG único; conciliación de colas/recibos",
+    "Perfil y evidencias actuales solo de DIN; vigencia y trazabilidad de cada fuente",
+    "Acceso legítimo verificado y sin hold 403/429; no repetir comprobaciones sin evidencia nueva",
+    "Configuración, tarifas y acceso a proveedores válidos; límites finitos explícitos"
+  ],
+  "policy": {
+    "preselection_jev_threshold": 60,
+    "preselection_profile": "Conjunto comercial histórico VEYON+DIN, afinidad gruesa sin alterar caches",
+    "final_matching_profile": "Solo DIN y sus evidencias",
+    "final_score_weights": {
+      "rubro": 20,
+      "experiencia": 30,
+      "experiencia_economica": 30,
+      "profesionales": 20
+    },
+    "administrative_requirements_reduce_capacity_score": false,
+    "matching_requires": "Readiness de requisitos/cobertura/citas/procedencia, no Por leer; conservar parcial/provisional",
+    "llm1_input": "embeddings",
+    "embedding_config": "docs/sources/prod2-embedding-reading.runtime.v5.json",
+    "llm1_scope": "qualification",
+    "commercial_taxonomy": "commercial_taxonomy_v1",
+    "llm1_model_routing": "pages20",
+    "llm1_fallback": "none",
+    "matching": "JEV y reglas para puntaje; Gemini 3.1 Flash-Lite para explicación concreta, según configuración validada al ejecutar",
+    "prod2_documents": "Temporales con enlaces oficiales, hashes y evidencia PG; ningún original nuevo R2",
+    "preserve_prior_readings": true,
+    "uncertain_cost_is_zero": false,
+    "detail_navigation_may_require": "Búsqueda JSF acotada para reencontrar fila/acción nativa; no otro barrido completo"
+  },
+  "historical_cost_basis": {
+    "is_current_quote": false,
+    "currency": "USD",
+    "llm1_per_document": 0.0125169,
+    "din_matching_30_cases_known_total": 0.121862954,
+    "din_matching_per_case": 0.004062098466666666,
+    "ten_documents_plus_ten_matches_before_extras": 0.16578998466666667,
+    "pilot_reserve_orientation": 1,
+    "hard_dollar_cap_implemented": false,
+    "exclusions": [
+      "JEV afinidad/selector",
+      "embeddings",
+      "tokens adicionales de clasificación",
+      "PDFs grandes/OCR/fallbacks permitidos",
+      "impuestos/infraestructura",
+      "consumo y costos inciertos"
+    ],
+    "sources": [
+      "docs/prod2-full-processing-cost-estimate-20261020.json",
+      "docs/prod2-pilot10-20261005.md",
+      "docs/dinaut-two-dot-seace-30-operations.md"
+    ],
+    "llm1_unit_caveat": "La muestra histórica informó10documentos/US$0.125169; no equivale a10requests V5, que pueden agrupar varios documentos. Solo referencia de tamaños comparables, no tarifa fija."
+  },
+  "time_estimate": {
+    "new_ingest_total_unknown_until_pilot": true,
+    "measure": [
+      "source HTTP",
+      "download",
+      "local OCR",
+      "embeddings",
+      "LLM1",
+      "matching",
+      "wall clock"
+    ],
+    "already_read_matching_50_planning_minutes": [
+      10,
+      20
+    ],
+    "not_a_service_guarantee": true
+  },
+  "operations_this_turn": {
+    "source_http_calls": 0,
+    "provider_calls": 0,
+    "postgresql_calls": 0,
+    "redis_mutations": 0,
+    "document_downloads": 0,
+    "business_writes": 0,
+    "deployments": 0,
+    "worker_starts": 0,
+    "new_automations": 0
+  },
+  "cleanup": {
+    "previous_completed_task_logical_bytes_released": 540565447,
+    "this_planning_task_bytes_released": 815,
+    "retained": "Inventario privado, mapping y recibos por ser entradas necesarias de ejecución pendiente",
+    "removed": "Auxiliar propio qa-entry.private.txt ya integrado; inventario y recibos retenidos"
+  },
+  "validation": {
+    "verified_at_utc": "2026-10-20T14:27:51.647967+00:00",
+    "offline_only": true,
+    "ids_exact_handoff": true,
+    "source_bindings_unchanged": true,
+    "cache_page_files_sha_verified": 153,
+    "record_title_and_listing_hashes_verified": 1736,
+    "count_partition_verified": true,
+    "no_placeholder": true,
+    "plan_document_sha256": "ab7e9e5219b54612fba375a97cbcc54abb865c6fa41d36e05a96c49b5e832cf6",
+    "independent_plan_review": "Revisión offline de capacidades/topes detectó requests != documentos; corregido y guard documental separado marcado pendiente. Sin ejecución."
+  }
+}
