@@ -1,0 +1,36 @@
+# Explicitly combine with docker-compose.yml; private inputs stay outside Git.
+services:
+  prod2-ingest:
+    profiles: ["prod2-only"]
+    image: ${PROD2_IMAGE:?Set the reviewed PROD2 image}
+    restart: "no"
+    init: true
+    stop_signal: SIGTERM
+    stop_grace_period: 30m
+    env_file:
+      - ${PROD2_RUNTIME_ENV:?Set a private env file; it may be empty during operator hold}
+    command:
+      - python
+      - -m
+      - buenapro_worker.prod2.service
+      - --config
+      - /run/prod2/service.private.json
+      - --state-dir
+      - /var/lib/buenapro/prod2
+    volumes:
+      - type: bind
+        source: ${PROD2_SERVICE_CONFIG:?Set the private service config file}
+        target: /run/prod2/service.private.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${PROD2_STATE_DIR:?Set the private durable service directory}
+        target: /var/lib/buenapro/prod2
+        bind:
+          create_host_path: false
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
