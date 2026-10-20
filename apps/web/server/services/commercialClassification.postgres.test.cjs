@@ -9,10 +9,10 @@ function classification(overrides = {}) {
   const value = { taxonomy_version: 'commercial_taxonomy_v1', primary_area: 'software_ti', secondary_areas: [], work_types: ['consultoria'],
     specialties: [], support_status: 'evidence_backed', ...overrides };
   return { ...value, evidence: [
-    { axis: 'area', value: value.primary_area, citation: 'Servicio de consultoría en software.', page: 2 },
-    ...value.secondary_areas.map(value => ({ axis: 'area', value, citation: 'Otro rubro expresamente citado.', page: 3 })),
+    { axis: 'area', value: value.primary_area, citation: 'Servicio de software e inteligencia artificial; equipos industriales y cloud.', page: 2 },
+    ...value.secondary_areas.map(value => ({ axis: 'area', value, citation: 'Software e inteligencia artificial, industrial y cloud.', page: 3 })),
     ...value.work_types.map(value => ({ axis: 'work_type', value, citation: 'Trabajo expresamente solicitado.', page: 4 })),
-    ...value.specialties.map(value => ({ axis: 'specialty', value, citation: 'Especialidad expresamente solicitada.', page: 5 })),
+    ...value.specialties.map(value => ({ axis: 'specialty', value, citation: 'Agentes de IA, chatbots, RPA y PLC/SCADA expresamente solicitados.', page: 5 })),
   ] };
 }
 const extraction = (block, extra = {}) => ({ raw: { commercial_classification: block }, summary: {}, current: true, quality: 'auto', ...extra });
@@ -40,6 +40,13 @@ const fixtures = [
   [extraction(ai, { raw: { commercial_classification: ai, retrieval_evidence_audit: { errors: [{ kind: 'unverified_facet_citation' }] } } })],
   [extraction(ai, { raw: { commercial_classification: ai, retrieval_evidence_audit: { errors: 'malformed' }, requires_human_review: true } })],
   [extraction(null, { summary: { commercial_classification: ai } })],
+  [extraction(classification({ primary_area: 'industrial_electrica', work_types: ['suministro_equipos'], specialties: ['plc_scada'] }))],
+  [extraction(classification({ primary_area: 'infraestructura_cloud', work_types: ['licencias_suscripciones'] }))],
+  [extraction(classification({ work_types: ['licencias_suscripciones', 'desarrollo_software', 'soporte_mantenimiento'] }))],
+  [extraction(classification({ secondary_areas: ['automatizacion_procesos'] }))],
+  [extraction(classification({ primary_area: 'otro', specialties: ['robotica'] }))],
+  [extraction(classification({ secondary_areas: ['industrial_electrica', 'infraestructura_cloud'], specialties: ['chatbot', 'plc_scada'],
+    work_types: ['licencias_suscripciones', 'desarrollo_software', 'soporte_mantenimiento'] }))],
 ];
 
 describe('commercial SQL against a disposable loopback PostgreSQL fixture', { skip: !dsn }, () => {
@@ -98,10 +105,15 @@ describe('commercial SQL against a disposable loopback PostgreSQL fixture', { sk
         'commercial_area=software_ti,inteligencia_artificial&commercial_work=desarrollo_software&commercial_specialty=chatbot,agentes_ia&commercial_status=evidence_backed',
         'commercial_area=software_ti&commercial_status=preliminary,needs_review',
         'commercial_status=unclassified', 'commercial_area=sin_clasificar', 'commercial_specialty=plc_scada',
+        ...api.commercialCategories.categories.map(row => `commercial_category=${row.id}`),
+        'commercial_category=industrial,ia_automatizacion',
+        'commercial_category=licencias_suscripciones,desarrollo_software&commercial_area=infraestructura_cloud',
+        'commercial_category=ia_automatizacion&commercial_status=unclassified',
       ]) {
         const filter = api.parseCommercialFilters(new URLSearchParams(query)), values = [], where = [];
         sql.appendCommercialPredicates(filter, values, where);
-        const matches = expected.flatMap((row, index) => (!filter.areas.length || filter.areas.some(value => value === row.primary_area || row.secondary_areas.includes(value)))
+        const matches = expected.flatMap((row, index) => (!filter.categories.length || filter.categories.some(value => api.deriveCommercialCategories(row).includes(value)))
+          && (!filter.areas.length || filter.areas.some(value => value === row.primary_area || row.secondary_areas.includes(value)))
           && (!filter.workTypes.length || filter.workTypes.some(value => row.work_types.includes(value)))
           && (!filter.specialties.length || filter.specialties.some(value => row.specialties.includes(value)))
           && (!filter.statuses.length || filter.statuses.includes(row.support_status)) ? [index + 1] : []);
@@ -136,6 +148,23 @@ describe('commercial SQL against a disposable loopback PostgreSQL fixture', { sk
       visit(result.rows[0]['QUERY PLAN'][0].Plan);
       assert.ok(validationPlans.length > 0, 'the optimizer retained the documentary validation subplans');
       assert.ok(validationPlans.every(plan => plan['Actual Loops'] === 0), `${source.name}: missing tags must short-circuit validation`);
+    }
+  });
+
+  test('category filtering short-circuits historical rows instead of executing category or evidence subplans', async () => {
+    for (const source of sources) {
+      const values = [], where = [];
+      sql.appendCommercialPredicates(api.parseCommercialFilters(new URLSearchParams('commercial_category=ia_automatizacion,industrial')), values, where);
+      const result = await db.query(`EXPLAIN (ANALYZE,FORMAT JSON,TIMING FALSE) SELECT ${source.id}
+        FROM ${source.from} ${source.join} WHERE ${source.id} = 6 AND ${where.join(' AND ')}`, values);
+      const plans = [];
+      function visit(node) {
+        if (node['Subplan Name']) plans.push(node);
+        for (const child of node.Plans || []) visit(child);
+      }
+      visit(result.rows[0]['QUERY PLAN'][0].Plan);
+      assert.ok(plans.length > 0);
+      assert.ok(plans.every(plan => plan['Actual Loops'] === 0), source.name);
     }
   });
 });

@@ -1,5 +1,5 @@
 import { query } from "@/server/db/client";
-import { normalizeCommercialClassification, parseCommercialFilters } from "@/lib/commercialTaxonomy";
+import { deriveCommercialCategories, normalizeCommercialClassification, parseCommercialFilters } from "@/lib/commercialTaxonomy";
 import { appendCommercialPredicates, COMMERCIAL_SELECT, PROD6_COMMERCIAL_JOIN } from "./commercialClassification";
 
 export async function getFeed(tenantId: string, params: URLSearchParams) {
@@ -162,7 +162,8 @@ export async function getFeed(tenantId: string, params: URLSearchParams) {
   const total = Number(result.rows[0]?.total_count ?? 0);
   return {
     data: result.rows.map(({ total_count: _totalCount, ...row }) => ({ ...row,
-      commercial_classification: normalizeCommercialClassification(row.commercial_classification) })),
+      commercial_classification: normalizeCommercialClassification(row.commercial_classification),
+      commercial_categories: deriveCommercialCategories(row.commercial_classification) })),
     meta: { page, page_size: limit, count: result.rows.length, total },
   };
 }

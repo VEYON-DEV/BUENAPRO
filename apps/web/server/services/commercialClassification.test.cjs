@@ -26,7 +26,7 @@ function service(file, rows = [], profileRows = [{ id: profileId, razon_social: 
   };
   const value = load(file, {
     '@/server/db/client': { query }, '@/lib/prod2Analysis': { normalizeProd2Schedule: () => [], prod2Affinity: () => null, buildProd2Analysis: () => ({}) },
-    './prod2DocumentStorage': {}, './prod2OfficialDocument': {}, './keywordTextScoring': { keywordTextFitLateralSql: () => '' },
+    './prod2DocumentStorage': { prod2StorageAvailable: () => false }, './prod2OfficialDocument': {}, './keywordTextScoring': { keywordTextFitLateralSql: () => '' },
     './savedOpportunities': { savedOpportunityIds: async () => new Set() },
     '@/server/services/crud': { pagination: params => {
       const page = Number(params.get('page') || 1), pageSize = Number(params.get('page_size') || 20);
@@ -38,16 +38,71 @@ function service(file, rows = [], profileRows = [{ id: profileId, razon_social: 
 
 test('public catalog remains the canonical shared JSON and filter axes are explicit', () => {
   assert.deepEqual(plain(api.commercialTaxonomy), require('../../../../workers/seace/src/buenapro_worker/extraction/commercial_taxonomy.v1.json'));
-  assert.deepEqual(plain(api.COMMERCIAL_FILTER_KEYS), ['commercial_area', 'commercial_work', 'commercial_specialty', 'commercial_status']);
+  assert.deepEqual(plain(api.COMMERCIAL_FILTER_KEYS), ['commercial_category', 'commercial_area', 'commercial_work', 'commercial_specialty', 'commercial_status']);
+  assert.deepEqual(plain(api.ADVANCED_COMMERCIAL_FILTER_KEYS), ['commercial_area', 'commercial_work', 'commercial_specialty', 'commercial_status']);
 });
 
 test('CSV and repeated query values are OR within an axis, trimmed and deduplicated', () => {
   const params = new URLSearchParams('commercial_area=software_ti,inteligencia_artificial&commercial_area=software_ti&commercial_work=desarrollo_software, consultoria&commercial_specialty=chatbot,agentes_ia&commercial_status=preliminary,unclassified');
   assert.deepEqual(plain(api.parseCommercialFilters(params)), {
-    areas: ['software_ti', 'inteligencia_artificial'], workTypes: ['desarrollo_software', 'consultoria'],
+    categories: [], areas: ['software_ti', 'inteligencia_artificial'], workTypes: ['desarrollo_software', 'consultoria'],
     specialties: ['chatbot', 'agentes_ia'], statuses: ['preliminary', 'unclassified'],
   });
-  assert.deepEqual(plain(api.parseCommercialFilters(new URLSearchParams('commercial_area='))), { areas: [], workTypes: [], specialties: [], statuses: [] });
+  assert.deepEqual(plain(api.parseCommercialFilters(new URLSearchParams('commercial_area='))), { categories: [], areas: [], workTypes: [], specialties: [], statuses: [] });
+});
+
+test('six commercial categories use the shared deterministic rules and stable ordering', () => {
+  assert.deepEqual(plain(api.commercialCategories), require('../../../../workers/seace/src/buenapro_worker/extraction/commercial_categories.v1.json'));
+  assert.equal(api.commercialCategories.classification_taxonomy_version, api.commercialTaxonomy.version);
+  assert.deepEqual(api.commercialCategories.categories.map(row => row.id), ['licencias_suscripciones', 'desarrollo_software', 'ia_automatizacion', 'industrial', 'cloud_infraestructura', 'soporte_mantenimiento']);
+  const catalogAxes = { areas: new Set(api.commercialTaxonomy.areas.map(row => row.id)), work_types: new Set(api.commercialTaxonomy.work_types.map(row => row.id)), specialties: new Set(api.commercialTaxonomy.specialties.map(row => row.id)) };
+  for (const category of api.commercialCategories.categories) {
+    for (const [axis, values] of Object.entries(category.match_any)) for (const id of values) assert.ok(catalogAxes[axis].has(id));
+  }
+  const all = classified({ primary_area: 'software_ti', secondary_areas: ['inteligencia_artificial', 'industrial_electrica', 'infraestructura_cloud'],
+    work_types: ['licencias_suscripciones', 'desarrollo_software', 'soporte_mantenimiento'], specialties: ['chatbot', 'plc_scada'] });
+  assert.deepEqual(plain(api.deriveCommercialCategories(all)), api.commercialCategories.categories.map(row => row.id));
+  assert.deepEqual(plain(api.deriveCommercialCategories(classified())), ['desarrollo_software', 'ia_automatizacion']);
+});
+
+test('each category can match its intended area, secondary area, work, or specialty without broad inference', () => {
+  const cases = [
+    [{ work_types: ['licencias_suscripciones'] }, ['licencias_suscripciones']],
+    [{ work_types: ['desarrollo_software'] }, ['desarrollo_software']],
+    [{ primary_area: 'inteligencia_artificial' }, ['ia_automatizacion']],
+    [{ secondary_areas: ['automatizacion_procesos'] }, ['ia_automatizacion']],
+    ...['chatbot', 'agentes_ia', 'rpa'].map(specialty => [{ specialties: [specialty] }, ['ia_automatizacion']]),
+    [{ primary_area: 'industrial_electrica' }, ['industrial']],
+    ...['plc_scada', 'instrumentacion', 'tableros_electricos', 'robotica', 'equipamiento_electromecanico'].map(specialty => [{ specialties: [specialty] }, ['industrial']]),
+    [{ secondary_areas: ['infraestructura_cloud'] }, ['cloud_infraestructura']],
+    [{ work_types: ['soporte_mantenimiento'] }, ['soporte_mantenimiento']],
+    [{}, []],
+  ];
+  for (const [patch, expected] of cases) {
+    const value = classified({ primary_area: 'software_ti', secondary_areas: [], work_types: ['consultoria'], specialties: [], ...patch });
+    assert.deepEqual(plain(api.deriveCommercialCategories(value)), expected, JSON.stringify(patch));
+  }
+});
+
+test('missing, malformed, historic or unclassified blocks never acquire a category from old summaries/titles', () => {
+  for (const value of [null, {}, { title: 'Licencias y automatización industrial con IA' }, { ...classified(), taxonomy_version: 'old' },
+    { ...classified(), support_status: 'invalid' }, { ...classified(), evidence: [] }, { ...classified(), primary_area: 'sin_clasificar' }]) {
+    assert.deepEqual(plain(api.deriveCommercialCategories(value)), []);
+  }
+  const raw = classified(), before = JSON.stringify(raw);
+  const downgraded = api.normalizeCommercialClassification(raw, { errors: [{ kind: 'unverified_commercial_citation' }] });
+  assert.deepEqual(plain(api.deriveCommercialCategories(downgraded)), ['desarrollo_software', 'ia_automatizacion']);
+  assert.equal(JSON.stringify(raw), before);
+});
+
+test('category API permits CSV OR, keeps advanced filters, and rejects unknown labels with 400', () => {
+  const parsed = api.parseCommercialFilters(new URLSearchParams('commercial_category=industrial,ia_automatizacion&commercial_category=industrial&commercial_area=industrial_electrica&commercial_status=needs_review'));
+  assert.deepEqual(plain(parsed.categories), ['industrial', 'ia_automatizacion']);
+  assert.deepEqual(plain(parsed.areas), ['industrial_electrica']);
+  assert.deepEqual(plain(api.parseCommercialFilters(new URLSearchParams('commercial_category=')).categories), []);
+  for (const category of ['Todas', 'IA y automatización', 'industrial,', "industrial') OR true --", 'unknown']) {
+    assert.throws(() => api.parseCommercialFilters(new URLSearchParams({ commercial_category: category })), error => error.status === 400);
+  }
 });
 
 test('unknown, malformed, injection and mixed blank filter values fail with 400', () => {
@@ -130,6 +185,20 @@ test('SQL binds request values and combines all axes with AND, including seconda
   assert.doesNotMatch(where.join(' AND '), /inteligencia_artificial|consultoria|chatbot/);
 });
 
+test('category SQL reads only validated tags, binds category IDs, and keeps the legacy axes as AND constraints', () => {
+  const filters = api.parseCommercialFilters(new URLSearchParams('commercial_category=industrial,ia_automatizacion&commercial_work=consultoria&commercial_status=needs_review'));
+  const values = ['tenant'], where = [];
+  sql.appendCommercialPredicates(filters, values, where);
+  assert.equal(where.length, 3);
+  assert.deepEqual(plain(values), ['tenant', ['industrial', 'ia_automatizacion'], ['consultoria'], ['needs_review']]);
+  assert.match(where[0], /CASE WHEN commercial\.classification IS NULL THEN false ELSE EXISTS/);
+  assert.match(where[0], /category\.id = ANY\(\$2::text\[\]\)/);
+  assert.match(where[0], /secondary_areas.*\?\| category\.areas/);
+  assert.match(where[1], /work_types.*\?\| \$3::text\[\]/);
+  assert.match(where[2], /support_status.*ANY\(\$4::text\[\]\)/);
+  assert.equal(sql.hasCommercialFilters({ ...api.parseCommercialFilters(new URLSearchParams()), categories: ['industrial'] }), true);
+});
+
 test('current extraction is selected before tags, excludes failed/noncurrent and never falls back to older tagged rows', () => {
   for (const join of [sql.PROD2_COMMERCIAL_JOIN, sql.PROD6_COMMERCIAL_JOIN]) {
     const source = join.slice(0, join.indexOf('cc_source ON true'));
@@ -177,12 +246,30 @@ test('PROD2 commercial selection cannot borrow a profile belonging to another te
   assert.match(statements[0].text, /tenant_id = \$1/);
 });
 
+test('category filtering reaches PROD2 count/page before pagination and list/detail expose the same derived IDs', async () => {
+  const { value, statements } = service('prod2Opportunities.ts', [{ id_convocatoria: '123', opportunity_id: '1', commercial_classification: classified(), match_score: 0 }]);
+  const params = value.parseProd2ListParams(new URLSearchParams({ profile_id: profileId, commercial_category: 'ia_automatizacion,industrial', commercial_status: 'needs_review', page: '2', page_size: '5' }));
+  const result = await value.listProd2OpportunitiesForTenant('tenant-qa', params);
+  const detail = await value.getProd2OpportunityForTenant('tenant-qa', '123', profileId);
+  assert.deepEqual(plain(result.data[0].commercial_categories), ['desarrollo_software', 'ia_automatizacion']);
+  assert.deepEqual(plain(detail.process.commercial_categories), plain(result.data[0].commercial_categories));
+  const selections = statements.filter(row => row.text.includes('FROM prod2_discoveries'));
+  for (const row of selections.slice(0, 2)) {
+    assert.match(row.text, /category\.id = ANY\(\$2::text\[\]\)/);
+    assert.match(row.text, /'unclassified'\) = ANY\(\$3::text\[\]\)/);
+  }
+  assert.deepEqual(plain(selections[0].values), [profileId, ['ia_automatizacion', 'industrial'], ['needs_review']]);
+  assert.deepEqual(plain(selections[1].values.slice(-2)), [5, 5]);
+});
+
 test('minor list and detail expose the same normalized classification independently of stored score', async () => {
   const { value, statements } = service('contracts.ts', [{ id_contrato: 123, extraction_id: '7', commercial_classification: classified(), score: 0, total_count: 17 }]);
   const result = await value.listContractsForTenant('tenant-qa', new URLSearchParams({ profile_id: profileId, commercial_area: 'software_ti',
     commercial_work: 'desarrollo_software', commercial_specialty: 'chatbot', commercial_status: 'evidence_backed', page: '2', page_size: '5' }));
   const detail = await value.getContractForTenant('tenant-qa', 123, profileId);
   assert.deepEqual(plain(result.data[0].commercial_classification), plain(detail.contract.commercial_classification));
+  assert.deepEqual(plain(result.data[0].commercial_categories), ['desarrollo_software', 'ia_automatizacion']);
+  assert.deepEqual(plain(detail.contract.commercial_categories), plain(result.data[0].commercial_categories));
   assert.equal(result.data[0].score, 0); assert.equal(result.meta.total, 17);
   const selected = statements.filter(item => item.text.includes('FROM seace_contracts c'));
   assert.equal(selected.length, 2);
@@ -200,10 +287,12 @@ test('missing current tags in either source stay unclassified without suppressin
     const p2 = service('prod2Opportunities.ts', [{ id_convocatoria: '123', opportunity_id: '1', commercial_classification: raw, match_score: 84 }]);
     const p2Result = await p2.value.listProd2OpportunitiesForTenant('tenant-qa', { object: null, q: '', page: 1, pageSize: 10, profileId: null });
     assert.equal(p2Result.data[0].commercial_classification.support_status, 'unclassified');
+    assert.deepEqual(plain(p2Result.data[0].commercial_categories), []);
     assert.equal(p2Result.data[0].match_score, 84);
     const minor = service('contracts.ts', [{ id_contrato: 123, commercial_classification: raw, score: 84 }]);
     const minorResult = await minor.value.listContractsForTenant('tenant-qa', new URLSearchParams());
     assert.equal(minorResult.data[0].commercial_classification.support_status, 'unclassified');
+    assert.deepEqual(plain(minorResult.data[0].commercial_categories), []);
     assert.equal(minorResult.data[0].score, 84);
   }
 });
@@ -225,10 +314,27 @@ test('feed supports the same normalized fields and parameterized filters before 
   const result = await value.getFeed('tenant-qa', new URLSearchParams('commercial_status=evidence_backed,unclassified&commercial_area=software_ti&page=2&page_size=1'));
   assert.equal(result.data[0].commercial_classification.primary_area, 'inteligencia_artificial');
   assert.equal(result.data[0].score, 72);
+  assert.deepEqual(plain(result.data[0].commercial_categories), ['desarrollo_software', 'ia_automatizacion']);
   assert.match(statements[0].text, /WHERE cp\.tenant_id = \$1/);
   assert.match(statements[0].text, /count\(\*\) OVER\(\)::int AS total_count/);
   assert.deepEqual(plain(statements[0].values), ['tenant-qa', ['software_ti'], ['evidence_backed', 'unclassified'], 1, 1]);
   assert.ok(statements[0].text.lastIndexOf('ANY($3::text[])') < statements[0].text.lastIndexOf('LIMIT $4'));
+});
+
+test('minor and feed category requests bind the same OR category selection without changing scores', async () => {
+  for (const file of ['contracts.ts', 'feed.ts']) {
+    const { value, statements } = service(file, [{ id_contrato: 123, commercial_classification: classified(), score: 72, total_count: 3 }]);
+    const params = new URLSearchParams('commercial_category=ia_automatizacion,industrial&page_size=5&page=2');
+    const result = await (file === 'contracts.ts' ? value.listContractsForTenant('tenant-qa', params) : value.getFeed('tenant-qa', params));
+    assert.equal(result.data[0].score, 72);
+    assert.deepEqual(plain(result.data[0].commercial_categories), ['desarrollo_software', 'ia_automatizacion']);
+    const page = statements.find(row => row.text.includes('FROM seace_contracts c') || row.text.includes('FROM matches m\n    JOIN company_profiles'));
+    const categoryIndex = file === 'contracts.ts' ? 3 : 2;
+    assert.match(page.text, new RegExp(`category\\.id = ANY\\(\\$${categoryIndex}::text\\[\\]\\)`));
+    assert.deepEqual(plain(page.values[categoryIndex - 1]), ['ia_automatizacion', 'industrial']);
+    assert.deepEqual(plain(page.values.slice(-2)), [5, 5]);
+    assert.ok(page.text.indexOf(`category.id = ANY($${categoryIndex}::text[])`) < page.text.lastIndexOf('LIMIT $'));
+  }
 });
 
 test('feed route exposes malformed classification filters as 400 and preserves auth responses', async () => {

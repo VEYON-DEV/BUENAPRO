@@ -28,6 +28,7 @@ function load(file) {
   mod._compile(output, file); return mod.exports;
 }
 const model = load(path.join(__dirname, 'commercialFilters.ts'));
+const { CommercialFilterFields } = load(path.join(webRoot, 'features/opportunities/components/CommercialFilterFields'));
 const { OpportunityToolbar } = load(path.join(webRoot, 'features/opportunities/components/OpportunityToolbar'));
 const { Prod4OpportunityToolbar } = load(path.join(webRoot, 'features/opportunities/components/Prod4OpportunityToolbar'));
 const { OpportunitySourceTabs } = load(path.join(webRoot, 'features/opportunities/components/OpportunitySourceTabs'));
@@ -49,17 +50,52 @@ test('commercial selection only keeps known unique IDs; clearing retains unrelat
   for (const name of ['commercial_area', 'commercial_work', 'commercial_specialty', 'commercial_status']) assert.equal(url.searchParams.has(name), false);
 });
 
-test('SEACE advanced filters expose labels, multi-choice state and canonical CSV without mixing a procurement method', () => {
+test('one category selector exposes exactly the six approved choices and preserves selected value', () => {
+  const html = render(CommercialFilterFields, { defaults: { commercial_category: 'industrial' } });
+  for (const label of ['Categoría', 'Todas', 'Licencias y suscripciones', 'Desarrollo de software', 'IA y automatización', 'Industrial', 'Cloud e infraestructura', 'Soporte y mantenimiento']) assert.ok(html.includes(label), label);
+  assert.equal((html.match(/<select\b/g) || []).length, 1);
+  assert.equal((html.match(/<option\b/g) || []).length, 7);
+  assert.match(html, /value="industrial" selected=""/);
+  assert.match(html, /<select[^>]*name="commercial_category"/);
+  assert.doesNotMatch(html, /type="checkbox"|Estado de clasificación|Tipo de trabajo|Especialidad|name="commercial_area"/);
+  assert.equal(model.commercialSelectionCount({ commercial_category: 'industrial' }), 1);
+  assert.equal(model.commercialCategorySelection({ commercial_category: 'industrial' }), 'industrial');
+  assert.equal(model.commercialCategorySelection({}), '');
+});
+
+test('previous advanced bookmarks retain their exact hidden filters without expanding a complex UI', () => {
   const html = render(Prod4OpportunityToolbar, { source: 'prod2', defaults: selected });
-  for (const label of ['Clasificación comercial', 'Rubro', 'Tipo de trabajo', 'Especialidad', 'Estado de clasificación', 'Licencias y suscripciones', 'Desarrollo de software', 'Industrial y eléctrico', 'Agentes de IA', 'Sin clasificar']) assert.ok(html.includes(label), label);
+  assert.ok(html.includes('Selección anterior'));
   assert.match(html, /name="commercial_area"[^>]*value="inteligencia_artificial,industrial_electrica"/);
   assert.match(html, /aria-controls="prod2-commercial-filters" aria-expanded="true"/);
-  assert.match(html, /type="checkbox"[^>]*checked=""/);
+  assert.doesNotMatch(html, /type="checkbox"|Tipo de trabajo|Estado de clasificación/);
   assert.equal((html.match(/<form\b/g) || []).length, 2);
   const search = html.slice(html.indexOf('<form'), html.indexOf('</form>'));
   for (const name of ['commercial_area', 'commercial_work', 'commercial_specialty', 'commercial_status']) assert.ok(search.includes(`name="${name}"`), name);
   const filterForm = html.slice(html.lastIndexOf('<form'));
   assert.doesNotMatch(filterForm, /name="page"/);
+  assert.equal(model.commercialCategorySelection(selected), 'previous');
+  assert.equal(model.commercialCategorySelection({ commercial_category: 'industrial,licencias_suscripciones' }), 'previous');
+});
+
+test('simple category survives both source forms and navigation; clear removes it while retaining profile', () => {
+  const simple = { source: 'prod2', profile_id: 'profile-1', q: 'tableros', with_score: 'true', page: '3', commercial_category: 'industrial' };
+  for (const [Component, props] of [[Prod4OpportunityToolbar, { source: 'prod2', defaults: simple }], [OpportunityToolbar, { defaults: { ...simple, source: 'prod6' } }]]) {
+    const html = render(Component, props);
+    const search = html.slice(html.indexOf('<form'), html.indexOf('</form>'));
+    assert.match(search, /name="commercial_category"[^>]*value="industrial"/);
+    for (const url of hrefs(html).filter(url => url.searchParams.has('commercial_category'))) {
+      assert.equal(url.searchParams.get('commercial_category'), 'industrial');
+      assert.equal(url.searchParams.get('profile_id'), 'profile-1');
+      assert.equal(url.searchParams.has('page'), false);
+    }
+  }
+  const urls = hrefs(render(OpportunitySourceTabs, { source: 'prod2', profileId: 'profile-1', commercialFilters: simple }));
+  for (const url of urls) assert.equal(url.searchParams.get('commercial_category'), 'industrial');
+  const cleared = new URL(model.clearCommercialFiltersHref(simple), 'http://qa.invalid');
+  assert.equal(cleared.searchParams.has('commercial_category'), false);
+  assert.equal(cleared.searchParams.get('profile_id'), 'profile-1');
+  assert.equal(cleared.searchParams.get('q'), 'tableros');
 });
 
 test('SEACE object and score links preserve all commercial criteria while resetting page', () => {

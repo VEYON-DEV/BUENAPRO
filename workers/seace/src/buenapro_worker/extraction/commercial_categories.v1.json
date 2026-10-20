@@ -1,0 +1,44 @@
+{
+  "version": "commercial_categories_v1",
+  "classification_taxonomy_version": "commercial_taxonomy_v1",
+  "categories": [
+    {
+      "id": "licencias_suscripciones",
+      "label": "Licencias y suscripciones",
+      "match_any": { "areas": [], "work_types": ["licencias_suscripciones"], "specialties": [] }
+    },
+    {
+      "id": "desarrollo_software",
+      "label": "Desarrollo de software",
+      "match_any": { "areas": [], "work_types": ["desarrollo_software"], "specialties": [] }
+    },
+    {
+      "id": "ia_automatizacion",
+      "label": "IA y automatización",
+      "match_any": {
+        "areas": ["inteligencia_artificial", "automatizacion_procesos"],
+        "work_types": [],
+        "specialties": ["chatbot", "agentes_ia", "rpa"]
+      }
+    },
+    {
+      "id": "industrial",
+      "label": "Industrial",
+      "match_any": {
+        "areas": ["industrial_electrica"],
+        "work_types": [],
+        "specialties": ["plc_scada", "instrumentacion", "tableros_electricos", "robotica", "equipamiento_electromecanico"]
+      }
+    },
+    {
+      "id": "cloud_infraestructura",
+      "label": "Cloud e infraestructura",
+      "match_any": { "areas": ["infraestructura_cloud"], "work_types": [], "specialties": [] }
+    },
+    {
+      "id": "soporte_mantenimiento",
+      "label": "Soporte y mantenimiento",
+      "match_any": { "areas": [], "work_types": ["soporte_mantenimiento"], "specialties": [] }
+    }
+  ]
+}

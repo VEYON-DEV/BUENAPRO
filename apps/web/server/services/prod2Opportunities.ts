@@ -5,7 +5,7 @@ import { prod2StorageAvailable, signedProd2DocumentUrl, validProd2PreviewKey } f
 import { prod2OfficialDocumentReference, resolveProd2OfficialDocument } from "./prod2OfficialDocument";
 import { keywordTextFitLateralSql } from "./keywordTextScoring";
 import { savedOpportunityIds } from "./savedOpportunities";
-import { CommercialFilterError, normalizeCommercialClassification, parseCommercialFilters, type CommercialFilters } from "@/lib/commercialTaxonomy";
+import { CommercialFilterError, deriveCommercialCategories, normalizeCommercialClassification, parseCommercialFilters, type CommercialFilters } from "@/lib/commercialTaxonomy";
 import { appendCommercialPredicates, COMMERCIAL_SELECT, hasCommercialFilters, PROD2_COMMERCIAL_JOIN } from "./commercialClassification";
 
 export class Prod2RequestError extends Error {
@@ -136,7 +136,8 @@ function provisionalScore(row: Prod2Row) {
 
 function processRow(row: Prod2Row) {
   const { schedule_json, jev_result, document_publication_events: _publicationEvents, ...process } = row;
-  return { ...process, commercial_classification: normalizeCommercialClassification(row.commercial_classification),
+  const classification = normalizeCommercialClassification(row.commercial_classification);
+  return { ...process, commercial_classification: classification, commercial_categories: deriveCommercialCategories(classification),
     provisional_score: provisionalScore(row), region: null, technology_segments: [], technology_match_reason: [], items_count: 0,
     fit_points: row.fit_points ?? null, keyword_points: row.keyword_points ?? null,
     fit_score: null, fit_level: row.fit_level ?? null, business_line_name: row.business_line_name ?? null,

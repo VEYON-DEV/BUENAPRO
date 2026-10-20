@@ -11,7 +11,7 @@ function load(file, mocks = {}) {
   const compiled = ts.transpileModule(fs.readFileSync(absolute, 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
   }).outputText;
-  vm.runInNewContext(compiled, { exports, URLSearchParams, Response, require(name) {
+  vm.runInNewContext(compiled, { exports, URLSearchParams, Response, process: { env: {} }, require(name) {
     if (name in mocks) return mocks[name];
     if (name.endsWith('.json')) return require(path.resolve(path.dirname(absolute), name));
     if (name === '@/lib/commercialTaxonomy') return load('../../lib/commercialTaxonomy.ts');

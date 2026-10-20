@@ -1,8 +1,11 @@
-import { commercialTaxonomy, type CommercialFilters } from "@/lib/commercialTaxonomy";
+import { commercialCategories, commercialTaxonomy, type CommercialFilters } from "@/lib/commercialTaxonomy";
 
 // SQL values here come exclusively from the versioned catalog, never request text.
 const literal = (value: string) => `'${value.replaceAll("'", "''")}'`;
 const known = (items: { id: string }[]) => `ARRAY[${items.map(item => literal(item.id)).join(",")}]::text[]`;
+const labels = (items: string[]) => `ARRAY[${items.map(literal).join(",")}]::text[]`;
+const categoryRules = commercialCategories.categories.map(category => `(${literal(category.id)}, ${labels(category.match_any.areas)},
+  ${labels(category.match_any.work_types)}, ${labels(category.match_any.specialties)})`).join(",\n");
 const safeArray = (field: string) => `CASE WHEN jsonb_typeof(cc_input.value->'${field}') = 'array' THEN cc_input.value->'${field}' ELSE '[]'::jsonb END`;
 
 function validArray(field: string, items: { id: string }[]) {
@@ -79,11 +82,23 @@ export const PROD6_COMMERCIAL_JOIN = classificationJoin(prod6Current);
 export const COMMERCIAL_SELECT = "commercial.classification AS commercial_classification";
 
 export function hasCommercialFilters(filters: CommercialFilters | undefined) {
-  return Boolean(filters && (filters.areas.length || filters.workTypes.length || filters.specialties.length || filters.statuses.length));
+  return Boolean(filters && (filters.categories?.length || filters.areas.length || filters.workTypes.length || filters.specialties.length || filters.statuses.length));
 }
 
 export function appendCommercialPredicates(filters: CommercialFilters | undefined, values: unknown[], where: string[]) {
   if (!filters) return;
+  if (filters.categories?.length) {
+    values.push(filters.categories);
+    where.push(`(CASE WHEN commercial.classification IS NULL THEN false ELSE EXISTS (
+      SELECT 1 FROM (VALUES ${categoryRules}) AS category(id, areas, work_types, specialties)
+      WHERE category.id = ANY($${values.length}::text[]) AND (
+        commercial.classification->>'primary_area' = ANY(category.areas)
+        OR commercial.classification->'secondary_areas' ?| category.areas
+        OR commercial.classification->'work_types' ?| category.work_types
+        OR commercial.classification->'specialties' ?| category.specialties
+      )
+    ) END)`);
+  }
   if (filters.areas.length) {
     values.push(filters.areas);
     where.push(`(COALESCE(commercial.classification->>'primary_area', 'sin_clasificar') = ANY($${values.length}::text[])

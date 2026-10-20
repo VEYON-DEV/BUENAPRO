@@ -1,7 +1,8 @@
-import { commercialTaxonomy, COMMERCIAL_FILTER_KEYS } from "@/lib/commercialTaxonomy";
+import { commercialCategories, commercialTaxonomy, COMMERCIAL_FILTER_KEYS } from "@/lib/commercialTaxonomy";
 
 export function commercialFilterValues(defaults: Record<string, string>, key: string): string[] {
-  const options = key === "commercial_area" ? commercialTaxonomy.areas
+  const options = key === "commercial_category" ? commercialCategories.categories
+    : key === "commercial_area" ? commercialTaxonomy.areas
     : key === "commercial_work" ? commercialTaxonomy.work_types
     : key === "commercial_specialty" ? commercialTaxonomy.specialties : [];
   const allowed = new Set(options.map(option => option.id));
@@ -9,7 +10,7 @@ export function commercialFilterValues(defaults: Record<string, string>, key: st
 }
 
 export function commercialSelectionCount(defaults: Record<string, string>): number {
-  return ["commercial_area", "commercial_work", "commercial_specialty"]
+  return ["commercial_category", "commercial_area", "commercial_work", "commercial_specialty"]
     .reduce((count, key) => count + commercialFilterValues(defaults, key).length, 0)
     + (defaults.commercial_status ? 1 : 0);
 }
@@ -23,4 +24,13 @@ export function clearCommercialFiltersHref(defaults: Record<string, string>): st
   COMMERCIAL_FILTER_KEYS.forEach(key => params.delete(key));
   ["page", "open_only", "closing_before"].forEach(key => params.delete(key));
   return `/feed${params.size ? `?${params.toString()}` : ""}`;
+}
+
+/** Keep old bookmarked combinations intact until the user chooses a category. */
+export function commercialCategorySelection(defaults: Record<string, string>): string {
+  const categories = commercialFilterValues(defaults, "commercial_category");
+  const previous = ["commercial_area", "commercial_work", "commercial_specialty", "commercial_status"]
+    .some(key => Boolean(defaults[key]));
+  if (previous || categories.length > 1) return "previous";
+  return categories[0] ?? "";
 }

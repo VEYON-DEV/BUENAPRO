@@ -1,7 +1,7 @@
 import { query } from "@/server/db/client";
 import { pagination } from "@/server/services/crud";
 import { keywordFitLateralSql } from "@/server/services/keywordScoring";
-import { CommercialFilterError, normalizeCommercialClassification, parseCommercialFilters } from "@/lib/commercialTaxonomy";
+import { CommercialFilterError, deriveCommercialCategories, normalizeCommercialClassification, parseCommercialFilters } from "@/lib/commercialTaxonomy";
 import { appendCommercialPredicates, COMMERCIAL_SELECT, PROD6_COMMERCIAL_JOIN } from "./commercialClassification";
 
 // Read the current document extraction; canonical participation may belong to another source or revision.
@@ -125,7 +125,8 @@ export async function getContractForTenant(tenantId: string, idContrato: number,
     [idContrato, tenantId, profile?.id ?? null],
   );
   const contract: Record<string, any> | null = result.rows[0] ? { ...result.rows[0], provisional_score: provisionalScore(result.rows[0]),
-    commercial_classification: normalizeCommercialClassification(result.rows[0].commercial_classification) } : null;
+    commercial_classification: normalizeCommercialClassification(result.rows[0].commercial_classification),
+    commercial_categories: deriveCommercialCategories(result.rows[0].commercial_classification) } : null;
   if (!contract) return null;
 
   const facets = await query(
@@ -376,7 +377,8 @@ export async function listContractsForTenant(tenantId: string, params: URLSearch
   const total = Number(result.rows[0]?.total_count ?? 0);
   return {
     data: result.rows.map(({ total_count: _totalCount, ...row }) => ({ ...row, provisional_score: provisionalScore(row),
-      commercial_classification: normalizeCommercialClassification(row.commercial_classification) })),
+      commercial_classification: normalizeCommercialClassification(row.commercial_classification),
+      commercial_categories: deriveCommercialCategories(row.commercial_classification) })),
     meta: { page, page_size: pageSize, count: result.rows.length, total },
     profile: profile ? { id: profile.id, name: profile.razon_social } : null,
   };
