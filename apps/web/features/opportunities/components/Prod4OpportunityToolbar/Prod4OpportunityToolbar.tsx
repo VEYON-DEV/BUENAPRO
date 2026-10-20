@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FileCheck2, Search, SlidersHorizontal } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { CommercialFilterFields, CommercialFilterHiddenInputs } from "../CommercialFilterFields";
@@ -22,6 +22,9 @@ export function Prod4OpportunityToolbar({ defaults, source = "prod4" }: { defaul
   const object = defaults.object ?? "";
   const count = commercialSelectionCount(defaults);
   const [filtersOpen, setFiltersOpen] = useState(count > 0);
+  const [filtersApplying, setFiltersApplying] = useState(false);
+  const categoryKey = commercialDefaultsKey(defaults);
+  useEffect(() => setFiltersApplying(false), [categoryKey]);
   return (
     <section className={styles.toolbar}>
       <form action="/feed" className={styles.searchForm}>
@@ -55,12 +58,13 @@ export function Prod4OpportunityToolbar({ defaults, source = "prod4" }: { defaul
           <SlidersHorizontal aria-hidden="true" size={16} />Filtros{count ? ` (${count})` : ""}
         </button> : null}
       </div>
-      {source === "prod2" && filtersOpen ? <form action="/feed" className={styles.filtersPanel} id="prod2-commercial-filters">
+      {source === "prod2" && filtersOpen ? <form action="/feed" aria-busy={filtersApplying || undefined} className={styles.filtersPanel} id="prod2-commercial-filters"
+        onSubmit={() => setFiltersApplying(true)}>
         {Object.entries(defaults).filter(([key]) => ![...COMMERCIAL_FILTER_KEYS, "page", "open_only", "closing_before"].includes(key)).map(([key, value]) =>
           <input key={key} name={key} type="hidden" value={value} />)}
         {!defaults.source ? <input name="source" type="hidden" value="prod2" /> : null}
-        <CommercialFilterFields defaults={defaults} key={commercialDefaultsKey(defaults)} />
-        <div className={styles.filterActions}><button className={styles.searchButton} type="submit">Aplicar filtros</button></div>
+        <CommercialFilterFields applyOnChange defaults={defaults} key={categoryKey} />
+        <div className={styles.filterActions}><button aria-live="polite" className={styles.searchButton} type="submit">{filtersApplying ? "Aplicando…" : "Aplicar filtros"}</button></div>
       </form> : null}
     </section>
   );

@@ -215,6 +215,13 @@ IA y automatización, Industrial, Cloud e infraestructura, Soporte y mantenimien
 Se conservan los controles existentes de vigencia, puntaje y guardadas; la
 clasificación comercial detallada deja de aparecer en el flujo normal.
 
+En Buscador SEACE, elegir una categoría la aplica de inmediato y anuncia
+**Aplicando…** mientras navega. La selección se serializa después de actualizar
+el control y retirar criterios comerciales anteriores; conserva perfil,
+búsqueda y tipo, y reinicia la página. Así no queda un borrador seleccionado
+frente a una lista con otra categoría. Contratos menores conserva el envío
+manual con **Aplicar filtros** para combinar sus distintos controles.
+
 El selector envía `commercial_category`. Búsqueda, tipo, vistas rápidas, cambio de
 fuente y paginación conservan categoría y perfil. Quitar categoría limpia solo los
 criterios comerciales. Un enlace antiguo con ejes detallados muestra Selección

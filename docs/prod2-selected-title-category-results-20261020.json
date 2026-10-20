@@ -1,0 +1,47 @@
+{
+  "at_utc": "2026-10-20T21:22:27.664758+00:00",
+  "scope": 157,
+  "selection_sha256": "5a3fd548248ee719d616f9bc1994dcdc1edebade84c234911d3c14d170e6f3db",
+  "manifest_sha256": "ea7102a9a05831b38c90174c1f885c91fe9f3ff21fd7c3b418d34b59d2275933",
+  "runtime_git": "78baaaf3d1f87d9bb6b27455da45c911cd3c81a4",
+  "current_publications_valid": 157,
+  "current_title_labels_valid": 157,
+  "applied_new_or_changed": 144,
+  "unchanged": 13,
+  "pending": 0,
+  "stale": 0,
+  "new_requests_done": 143,
+  "cache_reused_done": 14,
+  "incremental_known_cost_usd": "0.005883528000",
+  "historical_reused_known_cost_usd_informational": "0.000571410000",
+  "scope_known_cost_usd_not_incremental": "0.006454938000",
+  "new_input_tokens": 140084,
+  "new_output_tokens": 23454,
+  "uncertain_attempts_scope": 0,
+  "unknown_cost_attempts_scope": 0,
+  "effective_classification_states": {
+    "classified": 61,
+    "other": 21,
+    "unclear": 75
+  },
+  "effective_classification_sources": {
+    "document": 1,
+    "title": 156
+  },
+  "effective_category_filter_counts": {
+    "cloud_infraestructura": 3,
+    "desarrollo_software": 0,
+    "ia_automatizacion": 1,
+    "industrial": 39,
+    "licencias_suscripciones": 2,
+    "soporte_mantenimiento": 27
+  },
+  "readback_same_web_sql": true,
+  "title_coordinator_locks": 0,
+  "source_pdf_calls": 0,
+  "qualification_verified": false,
+  "document_readings_repeated": false,
+  "din_affinity_repeated": false,
+  "unclear_not_forced": true,
+  "source_selection_is_not_semantic_ground_truth": true
+}
