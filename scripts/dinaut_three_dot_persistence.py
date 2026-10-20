@@ -15,7 +15,7 @@ from psycopg.pq import TransactionStatus
 from buenapro_worker.jobs.analyze_match import PROFILE_FIELDS
 from buenapro_worker.matching.readiness import match_readiness
 from buenapro_worker.prod2.repository import claim_evaluation
-from dinaut_batch_scope import iso_snapshot,TWO_DOT_50_SCOPE,TWO_DOT_SEACE_30_SCOPE
+from dinaut_batch_scope import iso_snapshot,TWO_DOT_50_SCOPE,TWO_DOT_SEACE_30_SCOPE,SECTOR_SCOPE
 
 
 class PublicationConflict(ValueError):
@@ -61,27 +61,29 @@ def _source(case: dict) -> str:
     return source
 
 
-def _ready(case: dict, expected_fit_level: int = 3) -> None:
-    if type(expected_fit_level) is not int or expected_fit_level not in {2, 3}:
+def _ready(case: dict, expected_fit_level: int | None = 3, scope_name: str | None = None) -> None:
+    sector=scope_name == SECTOR_SCOPE.name and expected_fit_level is None
+    if (scope_name is not None and not sector) or (not sector and (type(expected_fit_level) is not int or expected_fit_level not in {2, 3})):
         raise PublicationConflict("Unsupported explicitly selected affinity scope")
     ready, _reason = match_readiness(case, case.get("facets") or [],
                                      provisional_source_review=True)
-    if not ready or case.get("fit_level") != expected_fit_level:
+    if not ready or (not sector and case.get("fit_level") != expected_fit_level):
         raise PublicationConflict("Case is no longer ready in the explicitly selected affinity scope")
 
 
 def create_evaluation_before_dispatch(conn: Any, case: dict, *, profile_id: str,
-        request_hash: str, model: str, policy_version: str, expected_fit_level: int = 3) -> dict | None:
+        request_hash: str, model: str, policy_version: str, expected_fit_level: int | None = 3,
+        scope_name: str | None = None) -> dict | None:
     """PROD2 legacy kind, no model-name allowlist. Caller must COMMIT before I/O.
 
     PROD6 has no compatible reservation table: its caller must use the durable
     private journal. Never fabricate a PROD2 convocation for a minor contract.
     """
-    if expected_fit_level != 3:
-        _ready(case, expected_fit_level)
+    if expected_fit_level != 3 or scope_name is not None:
+        _ready(case, expected_fit_level, scope_name)
     if _source(case) == "seace_prod6":
         return None
-    _ready(case, expected_fit_level)
+    _ready(case, expected_fit_level, scope_name)
     _require_idle(conn)
     return claim_evaluation(conn, case["source_id"], kind="gemini_match",
         request_hash=request_hash, model=model, policy_version=policy_version,
@@ -127,7 +129,8 @@ def publish_case(conn: Any, case: dict, *, profile_id: str, tenant_id: str,
         backup_callback: Callable[[dict], None], evaluation_id: int | None = None,
         expected_previous: dict | None = None, expected_provenance: dict | None = None,
         allowed_replacements: frozenset[tuple[str, int]] = frozenset(),
-        expected_fit_level: int = 3, event_type: str = "dinaut_three_dot_analysis") -> dict:
+        expected_fit_level: int | None = 3, event_type: str = "dinaut_three_dot_analysis",
+        scope_name: str | None = None) -> dict:
     """Publish atomically after paid receipts exist, with evidence and match CAS.
 
     backup_callback must durably fsync a private full-row snapshot before it
@@ -138,7 +141,13 @@ def publish_case(conn: Any, case: dict, *, profile_id: str, tenant_id: str,
     source = _source(case)
     if event_type==TWO_DOT_SEACE_30_SCOPE.publication_event and (expected_fit_level!=2 or source!='seace_prod2'):
         raise PublicationConflict("The SEACE-only two-dot cohort permits only PROD2 publications")
-    _ready(case, expected_fit_level)
+    sector=scope_name == SECTOR_SCOPE.name and expected_fit_level is None
+    if sector or event_type == SECTOR_SCOPE.publication_event:
+        if (not sector or event_type != SECTOR_SCOPE.publication_event or allowed_replacements
+                or expected_previous is not None or expected_provenance is not None
+                or case.get("existing_match_id") is not None):
+            raise PublicationConflict("Sector matching authorizes only explicitly scoped new matches")
+    _ready(case, expected_fit_level, scope_name)
     if expected_fit_level == 2:
         if (event_type not in {TWO_DOT_50_SCOPE.publication_event,TWO_DOT_SEACE_30_SCOPE.publication_event}
                 or allowed_replacements or expected_previous is not None
@@ -162,7 +171,7 @@ def publish_case(conn: Any, case: dict, *, profile_id: str, tenant_id: str,
     with conn.transaction():
         profile = conn.execute("SELECT * FROM company_profiles WHERE id=%s AND tenant_id=%s AND is_active FOR UPDATE",
                                (profile_id, tenant_id)).fetchone()
-        if expected_fit_level==2:
+        if expected_fit_level==2 or sector:
             profile=iso_snapshot(profile)
         if not profile or profile_fingerprint(profile) != expected_profile_fingerprint:
             raise PublicationConflict("Company input snapshot changed")
@@ -175,7 +184,7 @@ def publish_case(conn: Any, case: dict, *, profile_id: str, tenant_id: str,
         live = source_reader(conn, case)
         if not live or source_fingerprint(live) != source_fingerprint(case):
             raise PublicationConflict("Source, affinity or documentary snapshot changed")
-        _ready(live, expected_fit_level)
+        _ready(live, expected_fit_level, scope_name)
         if case.get("business_line_id") is not None and not conn.execute(
                 "SELECT id FROM business_lines WHERE id=%s AND profile_id=%s AND is_active FOR SHARE",
                 (case["business_line_id"], profile_id)).fetchone():

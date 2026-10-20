@@ -17,11 +17,13 @@ from .selected_control import LimitReached
 
 class AuditedJevClient:
     """Record received usage before typed answer validation can fail."""
-    def __init__(self, folder, limits, *, client=None, purpose="affinity", before_request=None):
+    def __init__(self, folder, limits, *, client=None, purpose="affinity", before_request=None,
+                 after_attempt=None):
         self.folder, self.limits, self.purpose = Path(folder), limits, purpose
         self.client = client or httpx.Client(timeout=60)
         self.owned = client is None
         self.before_request = before_request or (lambda: self.limits.before_request("jev"))
+        self.after_attempt = after_attempt
 
     def post(self, *args, **kwargs):
         self.before_request()
@@ -46,7 +48,11 @@ class AuditedJevClient:
             return response
         finally:
             record["elapsed_seconds"] = time.monotonic() - start
-            private_write(self.folder / (attempt_id + ".outcome.private.json"), record)
+            try:
+                private_write(self.folder / (attempt_id + ".outcome.private.json"), record)
+            finally:
+                if self.after_attempt is not None:
+                    self.after_attempt(record)
 
     def close(self):
         if self.owned:

@@ -127,7 +127,11 @@ def count_input(settings,request,folder):
         saved=json.loads(path.read_text())
         if saved['request_sha256']!=digest:raise run.PublicationConflict('Count belongs to another Gemma request')
         return saved['total_tokens']
-    result=requests.post(f'https://generativelanguage.googleapis.com/v1beta/models/{run.GEMMA_MODEL}:countTokens',
+    post=requests.post
+    if run.ACTIVE_SCOPE == run.SECTOR_SCOPE:
+        from dinaut_sector_match_scope import provider_control
+        post=provider_control().guarded_post(post)
+    result=post(f'https://generativelanguage.googleapis.com/v1beta/models/{run.GEMMA_MODEL}:countTokens',
         headers={'x-goog-api-key':settings.gemini_api_key},
         json={'generateContentRequest':{'model':'models/'+run.GEMMA_MODEL,**request}},
         timeout=(15,45),allow_redirects=False)

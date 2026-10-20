@@ -61,6 +61,7 @@ from buenapro_worker.prod2.completed_read_reuse import reuse_completed_read
 
 STOP = threading.Event()
 EMBEDDING_DISPATCH_STOP = threading.Event()
+HANDOFF_GUARD = None
 
 
 def parser():
@@ -96,6 +97,12 @@ def parser():
     p.add_argument("--max-candidates", type=int, default=100)
     p.add_argument("--max-jev-calls", type=int, default=120, help="Affinity and selector calls combined, including uncertain attempts")
     p.add_argument("--max-llm1-calls", type=int, default=10)
+    p.add_argument("--mapping-handoff", type=Path,
+                   help="Explicit ID mode: complete metadata-only mapping handoff; never repeat its sweep")
+    p.add_argument("--selection", type=Path, help="Frozen prod2_handoff_selection_v1 JSON")
+    p.add_argument("--selection-sha256", help="Exact SHA256 of the approved selection file")
+    p.add_argument("--max-new-documents", type=int,
+                   help="ID mode only: cumulative unique official sources/archive members, separate from LLM1 calls")
     p.add_argument("--selector-high", type=float, default=80)
     p.add_argument("--selector-low", type=float, default=20)
     p.add_argument("--document-previews", action="store_true",
@@ -150,12 +157,18 @@ def execution_policy(args):
     hashes. File-size, concurrency, pacing and unknown-payment guards remain.
     """
     all_results = bool(getattr(args, "all_results", False))
-    return {"policy_version": "prod2_execution_limits_v2", "all_results": all_results,
+    value = {"policy_version": "prod2_execution_limits_v2", "all_results": all_results,
         "effective_limits": {name: None if all_results else getattr(args, name)
             for name in ("max_accepted", "max_candidates", "max_jev_calls", "max_llm1_calls")}}
+    if getattr(args, "mapping_handoff", None):
+        value.update(max_new_documents=args.max_new_documents,
+            candidate_limit_unit="cumulative_processed_ID_admissions", limit_expansion_requires_readback=True)
+    return value
 
 
 def completion_exit_code(report, policy):
+    if "handoff_guards" in report:
+        return 2 if report["handoff_guards"]["dispatch_stopped"] or report["costs"]["usage_unknown_attempts"] else 0
     if report.get("embedding_dispatch_stop_requested") is True:
         return 2
     if not policy["all_results"]:
@@ -420,11 +433,33 @@ def plan(args):
     if args.sweep_id:
         from buenapro_worker.prod2.keyword_tracking import identifier
         identifier(args.sweep_id)
+    imported = None
+    if any(getattr(args, key, None) is not None for key in ("mapping_handoff", "selection", "selection_sha256")):
+        if not all(getattr(args, key, None) for key in ("mapping_handoff", "selection", "selection_sha256")):
+            raise ValueError("ID import requires handoff, selection and exact selection SHA256")
+        if (args.all_results or args.embedding_resume_from or args.sweep_id or args.keyword or args.lane
+                or args.all_keywords or args.business_batch or args.business_scope or args.keyword_preset
+                or args.preflight or args.keyword_status or args.prepare_selector_cache
+                or args.prepare_keyword_tracking or args.prepare_document_events
+                or args.prepare_7z_downloads or args.prepare_embeddings):
+            raise ValueError("ID import cannot sweep, preflight source, adopt an old queue or remove finite caps")
+        if not args.preserve_prior_readings or not 1 <= (args.max_new_documents or 0) <= 100000:
+            raise ValueError("ID import requires historical preservation and a finite document ceiling")
+        from buenapro_worker.prod2.handoff_selection import load_selection
+        imported = load_selection(args.mapping_handoff, args.selection, args.selection_sha256, root=ROOT)
+        if args.folder.resolve() == args.mapping_handoff.resolve().parent:
+            raise ValueError("ID import requires a new reading folder, not the mapping folder")
+        if args.folder.exists() and not (args.folder / "manifest.private.json").exists() and any(args.folder.iterdir()):
+            raise ValueError("ID import requires an empty new folder or its own frozen manifest")
+    elif args.max_new_documents is not None:
+        raise ValueError("Document admission policy requires explicit ID import mode")
     inventory = read_private(ROOT / "docs/sources/prod2-convenio-keywords.v3.json")
     configured = {kw.casefold(): kw for kw in configured_keywords(inventory)}
     lanes = {row["name"]: row["keywords"] for row in inventory["lanes"]}
     business = {}
-    if args.keyword_preset:
+    if imported is not None:
+        keywords = imported["keywords"]
+    elif args.keyword_preset:
         business = select_keyword_preset(read_private(ROOT / "docs/sources/prod2-keyword-presets.v1.json"),
             read_private(ROOT / "docs/sources/prod2-business-batches.v1.json"), inventory, args.keyword_preset)
         keywords = business["keywords"]
@@ -450,12 +485,20 @@ def plan(args):
         years = [int(year) for year in args.years.split(",")]
         if len(set(years)) != len(years) or any(not 2000 <= year <= 2100 for year in years):
             raise ValueError("Invalid exercise years")
+    if imported is not None:
+        if ((args.from_date and args.from_date != imported["published_from"])
+                or (args.to_date and args.to_date != imported["published_to"])
+                or (years != "auto" and years != imported["years"])):
+            raise ValueError("ID import cannot change mapped years or publication window")
+        years = imported["years"]
     publication_window(datetime.now(timezone.utc), months=args.months,
-        published_from=args.from_date, published_to=args.to_date)
-    return {"pipeline": "prod2_selected_llm1_v1", "document_scope": SELECTED_DOCUMENTS_POLICY,
+        published_from=imported["published_from"] if imported else args.from_date,
+        published_to=imported["published_to"] if imported else args.to_date)
+    result = {"pipeline": "prod2_selected_llm1_v1", "document_scope": SELECTED_DOCUMENTS_POLICY,
         "terminal_stage": "llm1", "inventory_hash": digest(inventory), "configured_keywords": len(configured),
         "keywords": keywords, "lanes": args.lane or [], "years": years, "objects": ["good", "service"],
-        "months": args.months, "from_date": args.from_date, "to_date": args.to_date,
+        "months": args.months, "from_date": imported["published_from"] if imported else args.from_date,
+        "to_date": imported["published_to"] if imported else args.to_date,
         "cache_folder": str(args.cache_folder.resolve()),
         "probe_empty_scopes": len(keywords) > 1 and not args.skip_empty_scope_probe,
         "jev_threshold": 60, "selector_high": args.selector_high, "selector_low": args.selector_low,
@@ -483,6 +526,16 @@ def plan(args):
         **({"keyword_preset": business["keyword_preset"]} if args.keyword_preset else {}),
         **({"keyword_tracking": {"sweep_id": args.sweep_id, "cache_folder": str(args.keyword_cache_folder.resolve()),
             "policy": "prod2_keyword_tracking_v1"}} if args.sweep_id else {})}
+    if imported is not None:
+        if not official_links_only(result) or result.get("llm1_luna_fallback"):
+            raise ValueError("ID import requires official temporary storage and --llm1-fallback none")
+        result.update(handoff_selection=imported["binding"],
+            handoff_guard_policy="prod2_handoff_guards_v1", probe_empty_scopes=False)
+        # Only this opt-in mode separates cumulative operational ceilings from
+        # paid/source identities. Expansion retains exactly the same queued IDs.
+        for key in ("max_accepted", "max_candidates", "max_jev_calls", "max_llm1_calls"):
+            del result[key]
+    return result
 
 
 @contextmanager
@@ -515,6 +568,8 @@ def source_hooks(pacer):
     def response(value):
         if value.status_code in {403, 429}:
             STOP.set()
+            if HANDOFF_GUARD is not None:
+                HANDOFF_GUARD.stop_access(value.status_code)
     return {"request": [request], "response": [response]}
 
 
@@ -668,6 +723,9 @@ def snapshot(path, value):
 
 
 def download(conn, folder, conv, doc, manifest, pacer):
+    guard = manifest.get("_handoff_runtime_guard")
+    if guard is not None:
+        guard.admit_document(doc["document_uuid"])
     suffix = Path(doc["filename"]).suffix.lower()
     kind = {".pdf": "pdf", ".doc": "ole", ".docx": "zip", ".zip": "zip", ".rar": "rar"}.get(suffix)
     if suffix == ".7z" and inventory_policy(manifest) == POLICY_7Z:
@@ -690,6 +748,8 @@ def download(conn, folder, conv, doc, manifest, pacer):
             result = download_document(http, doc["document_uuid"], target, expected_format=kind,
                                        max_bytes=manifest["max_source_mib"] * 1024**2)
         private_write(receipt, result)
+    if guard is not None:
+        guard.bind_document(doc["document_uuid"], result["sha256"])
     record_document_download(conn, conv, result)
     return target, result
 
@@ -706,10 +766,18 @@ def preview_candidates(conn, folder, conv, candidates, parents, archives, downlo
         ids = [row["candidate_id"] for row in candidates
                if row["document_uuid"] == parent_id and row.get("inventory_status") == "candidate"
                and Path(row["filename"]).suffix.lower() in {".pdf", ".doc", ".docx"}]
+        guard = manifest.get("_handoff_runtime_guard")
+        if guard is not None:
+            for row in candidates:
+                if row["candidate_id"] in ids:
+                    guard.admit_document(parent_id, member=row["member_path"], archive_sha256=row["archive_sha256"])
         for extracted in extract_members(original, inventory, candidate_ids=ids,
                                          destination=folder / (parent_id + ".members")):
             row = next(row for row in candidates if row["candidate_id"] == extracted["candidate_id"])
             row.update(original_sha256=extracted["original_sha256"], member_sha256=extracted["original_sha256"])
+            if guard is not None:
+                guard.bind_document(parent_id, extracted["original_sha256"], member=row["member_path"],
+                    archive_sha256=row["archive_sha256"])
             files[row["candidate_id"]] = Path(extracted["path"])
     for row in candidates:
         if row["source_kind"] == "loose" and Path(row["filename"]).suffix.lower() in {".pdf", ".doc", ".docx"}:
@@ -758,9 +826,14 @@ def llm1_generation_options(manifest):
     return {key: value[key] for key in ("max_output_tokens", "timeout_ms")}
 
 
-def enrich(conn, settings, folder, item, manifest, pacer, limits, jev_key):
+def enrich(conn, settings, folder, item, manifest, pacer, limits, jev_key, *, capture=None):
     from buenapro_worker.prod2.selected_extractor import SelectedGeminiExtractor
     generation_options = llm1_generation_options(manifest)
+    handoff_guard = getattr(limits, "handoff_guard", None)
+    if handoff_guard is not None:
+        # Runtime-only handle is never frozen, hashed or sent to a provider.
+        manifest = {**manifest, "_handoff_runtime_guard": handoff_guard}
+        generation_options = {**generation_options, "after_attempt": handoff_guard.observe_attempt}
     from buenapro_worker.prod2.luna_fallback import LUNA_FALLBACK_KEY, validate_luna_fallback_config
     fallback_config = validate_luna_fallback_config(manifest[LUNA_FALLBACK_KEY]) if LUNA_FALLBACK_KEY in manifest else None
     links_only = official_links_only(manifest)
@@ -800,7 +873,7 @@ def enrich(conn, settings, folder, item, manifest, pacer, limits, jev_key):
     if "llm1_model_routing" in manifest:
         resolve_llm1_model(manifest, 1, settings.gemini_model)
     conv = item["row"]["convocation_id"]
-    capture = get_detail(item, folder, pacer, source_hooks(pacer))
+    capture = capture if capture is not None else get_detail(item, folder, pacer, source_hooks(pacer))
     detail = capture["detail"]
     ficha_description = None
     if "llm1_ficha_context_policy" in manifest:
@@ -810,7 +883,8 @@ def enrich(conn, settings, folder, item, manifest, pacer, limits, jev_key):
         if ficha_description != ficha_reading_description(item["row"]["description"]):
             raise ValueError("Official ficha description differs from the discovery used")
     saved_detail = persist_detail(conn, detail, observed_at=datetime.fromisoformat(capture["observed_at"]), source_url=SEARCH_URL)
-    temporal = decide(detail, datetime.fromisoformat(capture["observed_at"]))
+    temporal = decide(detail, datetime.now(timezone.utc) if handoff_guard is not None
+                      else datetime.fromisoformat(capture["observed_at"]))
     save_participation_assessment(conn, conv, detail_hash=saved_detail["detail_hash"], assessment=temporal)
     parents = official_inventory(detail)
     common = {"schedule": detail["schedule"], "item_states": detail["item_states"],
@@ -822,7 +896,16 @@ def enrich(conn, settings, folder, item, manifest, pacer, limits, jev_key):
     if manifest.get("keyword_tracking"):
         common.update(temporal_observed_at=capture["observed_at"],
             confirmed_open=temporal.get("confirmed_open", False), temporal_reason_codes=temporal.get("reason_codes", []))
+    if handoff_guard is not None:
+        from buenapro_worker.prod2.handoff_guards import lifecycle_fields
+        common.update(lifecycle_fields(temporal))
+        common["matching_eligible"] = common["matching_eligible"] and detail["document_inventory_complete"] is True
     snapshot(folder / "metadata.private.json", common)
+    if handoff_guard is not None:
+        from buenapro_worker.prod2.handoff_guards import lifecycle_gate
+        blocked = lifecycle_gate(temporal)
+        if blocked is not None:
+            return {**common, **blocked}
     if detail["document_inventory_complete"] is not True:
         raise RuntimeError("Official inventory incomplete; selector/LLM1 not called")
     candidates, files, archives, downloads = [], {}, {}, {}
@@ -866,7 +949,8 @@ def enrich(conn, settings, folder, item, manifest, pacer, limits, jev_key):
             raise ValueError("Compact reading changed the original document selector request")
     with limits.model("selector:" + selector_hash), provider_permission(conn, folder, limits,
             provider="jev", kind="selector", request_hash=selector_hash) as issue:
-        http = AuditedJevClient(folder, limits, purpose="document_selection", before_request=guarded_issue(issue))
+        http = AuditedJevClient(folder, limits, purpose="document_selection", before_request=guarded_issue(issue),
+            **({"after_attempt": handoff_guard.observe_attempt} if handoff_guard is not None else {}))
         try:
             selector = JevDocumentSelector(jev_key, client=http, policy_version=policy_version)
             selection, reused = paid_document_selection(conn, folder, convocation_id=conv,
@@ -888,9 +972,16 @@ def enrich(conn, settings, folder, item, manifest, pacer, limits, jev_key):
         ids = [row["candidate_id"] for row in selected if row["document_uuid"] == parent_id]
         if not ids:
             continue
+        if handoff_guard is not None:
+            for row in selected:
+                if row["candidate_id"] in ids:
+                    handoff_guard.admit_document(parent_id, member=row["member_path"], archive_sha256=row["archive_sha256"])
         for extracted in extract_members(original, inventory, candidate_ids=ids, destination=folder / (parent_id + ".members")):
             row = next(row for row in selected if row["candidate_id"] == extracted["candidate_id"])
             row.update(original_sha256=extracted["original_sha256"], member_sha256=extracted["original_sha256"])
+            if handoff_guard is not None:
+                handoff_guard.bind_document(parent_id, extracted["original_sha256"], member=row["member_path"],
+                    archive_sha256=row["archive_sha256"])
             files[row["candidate_id"]] = Path(extracted["path"])
     for row in selected:
         if row["source_kind"] != "loose":
@@ -1036,6 +1127,48 @@ def cleanup_finished_case(conn, private, record, manifest):
     return report
 
 
+def handoff_detail(item, private, pacer):
+    """Reacquire only this ID's native ficha; never trust an old open window."""
+    root = private / "ficha-observations"
+    capture = None
+    now = datetime.now(timezone.utc)
+    for path in sorted(root.glob("*/detail.private.json"), reverse=True):
+        value = read_private(path)
+        observed = datetime.fromisoformat(value["observed_at"])
+        if observed.tzinfo is None or not 0 <= (now - observed).total_seconds() <= 60:
+            continue
+        capture = value
+        break
+    if capture is None:
+        fresh = root / str(time.time_ns())
+        fresh.mkdir(parents=True, mode=0o700)
+        try:
+            capture = get_detail(item, fresh, pacer, source_hooks(pacer))
+        except RuntimeError as error:
+            from buenapro_worker.prod2.handoff_guards import BOUNDED_ID_NOT_LOCATED, BoundedNativeIdentityNotLocated
+            if type(error) is not RuntimeError or str(error) != BOUNDED_ID_NOT_LOCATED:
+                raise
+            receipt = {"policy_version": "prod2_handoff_guards_v1",
+                "reason": "bounded_native_identity_not_located", "convocation_id": item["row"]["convocation_id"],
+                "procedure_id": item["row"]["procedure_id"], "query_hash": digest(item["query"]),
+                "captured_page_number": item["page_number"], "neighbor_radius": 2,
+                "mapped_observed_at": item["observed_at"], "attempted_at": now.isoformat(),
+                "provider_calls": 0, "pdf_downloads": 0,
+                "interpretation": "bounded_lookup_inconclusive_not_evidence_of_deletion_or_closed_status"}
+            receipt_path = private / "bounded-native-identity-review.private.json"
+            if receipt_path.exists():
+                raise ValueError("Bounded identity review requires its durable outcome; do not repeat source lookup") from None
+            private_write(receipt_path, receipt)
+            proof = {"reason": receipt["reason"], "receipt_sha256": hashlib.sha256(receipt_path.read_bytes()).hexdigest()}
+            raise BoundedNativeIdentityNotLocated(proof) from None
+    detail = capture["detail"]
+    if (detail.get("convocatoria_id") != item["row"]["convocation_id"]
+            or detail.get("procedure_id") != item["row"]["procedure_id"]
+            or ficha_reading_description(detail.get("description")) != ficha_reading_description(item["row"]["description"])):
+        raise ValueError("Frozen handoff ficha identity or title changed")
+    return capture
+
+
 def consume(settings, staging, manifest, folder, pacer, limits, jev_key):
     with psycopg.connect(settings.database_url, autocommit=True, row_factory=dict_row,
             application_name="buenapro-prod2-consumer:" + manifest.get("run_id", folder.name), connect_timeout=15,
@@ -1054,7 +1187,13 @@ def consume(settings, staging, manifest, folder, pacer, limits, jev_key):
             private.mkdir(mode=0o700, exist_ok=True)
             outcome_path = private / "outcome.private.json"
             if outcome_path.exists():
-                cleanup_finished_case(conn, private, read_private(outcome_path), manifest)
+                previous = read_private(outcome_path)
+                if manifest.get("handoff_selection"):
+                    if (previous.get("convocation_id") != conv
+                            or previous.get("procedure_id") != item["row"]["procedure_id"]
+                            or previous.get("handoff_provenance") != item["handoff_provenance"]):
+                        raise ValueError("Handoff outcome does not bind the frozen selected identity")
+                cleanup_finished_case(conn, private, previous, manifest)
                 staging.ack(candidate_id)
                 continue
             if not limits.can_process(conv):
@@ -1062,15 +1201,65 @@ def consume(settings, staging, manifest, folder, pacer, limits, jev_key):
                 return
             record = {"convocation_id": conv, "description": item["row"]["description"],
                 "object_type": item["row"]["object_type"], "accepted": False, "status": "needs_review"}
+            if manifest.get("handoff_selection"):
+                record.update(procedure_id=item["row"]["procedure_id"],
+                    handoff_provenance=item["handoff_provenance"], source_query=item["query"],
+                    source_page_number=item["page_number"], mapped_observed_at=item["observed_at"],
+                    requires_fresh_lifecycle=True, confirmed_open=False, matching_eligible=False)
             business = item.get("discovery_business_context") or manifest.get("business_plan", {}).get("keyword_index", {}).get(item["query"]["keyword"])
             if business:
                 record.update(discovery_keyword=item["query"]["keyword"],
                     business_batch_id=business["search_batch_id"], keyword_business_context=business)
             try:
+                handoff_guard = getattr(limits, "handoff_guard", None)
+                capture = None
+                if handoff_guard is not None:
+                    from buenapro_worker.prod2.handoff_guards import preserve_by_id, lifecycle_gate, lifecycle_fields
+                    handoff_guard.admit_candidate(conv)
+                    prior = preserve_by_id(conn, item, profile_id=manifest["profile_id"])
+                    if prior is not None:
+                        record.update(prior)
+                        if prior["status"] == "llm1_complete":
+                            if limits.admit(conv, lambda: True) is None:
+                                return
+                            record.update(accepted=True, requires_fresh_lifecycle=True,
+                                          confirmed_open=False, matching_eligible=False)
+                            capture = handoff_detail(item, private, pacer)
+                            assessment = decide(capture["detail"], datetime.now(timezone.utc))
+                            saved = persist_detail(conn, capture["detail"],
+                                observed_at=datetime.fromisoformat(capture["observed_at"]), source_url=SEARCH_URL)
+                            save_participation_assessment(conn, conv, detail_hash=saved["detail_hash"], assessment=assessment)
+                            canonical = prior["prior_reading_preserved"]["canonical"]
+                            listed = canonical["document_uuid"] in {
+                                value.get("uuid") for value in capture["detail"].get("documents", [])}
+                            inventory_complete = capture["detail"].get("document_inventory_complete") is True
+                            record.update(lifecycle_fields(assessment), detail_hash=saved["detail_hash"],
+                                schedule=capture["detail"].get("schedule", []),
+                                canonical_document_still_listed=listed,
+                                document_inventory_complete=inventory_complete)
+                            record["matching_eligible"] = record["matching_eligible"] and listed and inventory_complete
+                        private_write(private / "prior-reading-preserved.private.json", prior)
+                        private_write(outcome_path, record)
+                        staging.ack(candidate_id)
+                        continue
+                    capture = handoff_detail(item, private, pacer)
+                    assessment = decide(capture["detail"], datetime.now(timezone.utc))
+                    private_write(private / ("participation-gate-" + str(time.time_ns()) + ".private.json"), assessment)
+                    record.update(lifecycle_fields(assessment), matching_eligible=False)
+                    blocked = lifecycle_gate(assessment)
+                    if blocked is not None:
+                        record.update(blocked, temporal_state=assessment["state"],
+                            temporal_observed_at=assessment["as_of"], confirmed_open=False,
+                            temporal_reason_codes=assessment["reason_codes"],
+                            schedule=capture["detail"].get("schedule", []))
+                        private_write(outcome_path, record)
+                        staging.ack(candidate_id)
+                        continue
                 request_hash = jev_request_hash(item["row"]["description"], commercial_profiles=manifest["commercial_profiles"])
                 with limits.model("affinity:" + request_hash), provider_permission(conn, private, limits,
                         provider="jev", kind="affinity", request_hash=request_hash) as issue:
-                    http = AuditedJevClient(private, limits, before_request=guarded_issue(issue))
+                    http = AuditedJevClient(private, limits, before_request=guarded_issue(issue),
+                        **({"after_attempt": handoff_guard.observe_attempt} if handoff_guard is not None else {}))
                     try:
                         analyzer = JevDescriptionAnalyzer(jev_key, client=http)
                         request_hash, result, hit = paid_jev(conn, private, item["row"], manifest["commercial_profiles"],
@@ -1095,11 +1284,19 @@ def consume(settings, staging, manifest, folder, pacer, limits, jev_key):
                     if prior is not None:
                         private_write(private / "prior-reading-preserved.private.json", prior)
                     record.update(prior if prior is not None else
-                                  enrich(conn, settings, private, item, manifest, pacer, limits, jev_key))
+                                  enrich(conn, settings, private, item, manifest, pacer, limits, jev_key,
+                                      **({"capture": capture} if handoff_guard is not None else {})))
                 else:
                     repo.record_run_member(conn, run_id=manifest["run_id"], convocation_id=conv,
                         request_hash=request_hash, accepted=False, result=result)
             except Exception as error:
+                handoff_guard = getattr(limits, "handoff_guard", None)
+                if handoff_guard is not None:
+                    handoff_guard.check_audit(audit_summary(folder))
+                    if isinstance(error, LimitReached):
+                        if not STOP.is_set():
+                            handoff_guard.budget_deferred = True
+                        return  # pending payload and paid receipts remain resumable
                 # Local OCR checks STOP at page boundaries and checkpoints its
                 # text. Keep the Redis payload queued, rather than manufacturing
                 # a terminal error or retrying any paid stage.
@@ -1110,7 +1307,20 @@ def consume(settings, staging, manifest, folder, pacer, limits, jev_key):
                 metadata = private / "metadata.private.json"
                 if metadata.exists():
                     record.update(read_private(metadata))
-                record.update(status="needs_review", **safe_error_facts(error))
+                from buenapro_worker.prod2.handoff_guards import BoundedNativeIdentityNotLocated, document_preparation_review
+                if (handoff_guard is not None and type(error) is BoundedNativeIdentityNotLocated
+                        and not STOP.is_set()):
+                    record.update(status="opening_not_confirmed", requires_human_review=True,
+                        requires_fresh_lifecycle=True, confirmed_open=False, matching_eligible=False,
+                        new_document_requests=0, reading_gate={"policy_version": "prod2_handoff_guards_v1",
+                            "allowed": False, **error.proof})
+                else:
+                    record.update(status="needs_review", **safe_error_facts(error))
+                    if handoff_guard is not None:
+                        record["matching_eligible"] = False
+                        proof = document_preparation_review(error, private) if not STOP.is_set() else None
+                        if proof is not None:
+                            record.update(document_preparation_review=proof, requires_human_review=True)
                 if dispatch_stop is not None:
                     record["embedding_dispatch_stop"] = dispatch_stop
             private_write(outcome_path, record)
@@ -1197,18 +1407,26 @@ def run_sweeps(manifest, folder, pacer, staging, limits, tracker=None):
 
 
 def main():
+    global HANDOFF_GUARD
+    HANDOFF_GUARD = None
     args = parser().parse_args()
     os.umask(0o077)
     requested = plan(args)
     policy = execution_policy(args)
     start, end = publication_window(datetime.now(timezone.utc), months=args.months,
-        published_from=args.from_date, published_to=args.to_date)
+        published_from=requested["from_date"], published_to=requested["to_date"])
+    handoff_import = None
+    if requested.get("handoff_selection"):
+        from buenapro_worker.prod2.handoff_selection import load_selection
+        handoff_import = load_selection(args.mapping_handoff, args.selection, args.selection_sha256, root=ROOT)
+        if handoff_import["binding"] != requested["handoff_selection"]:
+            raise ValueError("ID handoff inputs changed while planning")
     resume_binding = embedding_resume_binding(requested, args.folder)
     if args.dry_run:
         print(json.dumps({**requested, "published_from": start, "published_to": end, "dry_run": True,
             "execution_policy": policy,
-            "coverage": "configured_keywords_date_window; lifecycle_from_ficha",
-            "base_queries": len(requested["keywords"]) * 2 * len(requested["years"]) if requested["years"] != "auto" else "keywords*2*native_year_count",
+            "coverage": "sha_verified_selected_IDs; lifecycle_from_fresh_ficha" if handoff_import else "configured_keywords_date_window; lifecycle_from_ficha",
+            "base_queries": 0 if handoff_import else len(requested["keywords"]) * 2 * len(requested["years"]) if requested["years"] != "auto" else "keywords*2*native_year_count",
             "cost_example_usd": {"jev_100000_at_1750_input_tokens": 7.35,
                 "selector_100000_at_3000_input_tokens": 12.60,
                 "llm1_3_1_flash_lite_each_10000_input_2000_output_tokens": .0055,
@@ -1336,7 +1554,9 @@ def main():
                     manifest = frozen_manifest
                 else:
                     # The coordinator owns the executor before any source I/O.
-                    if resume_binding is not None:
+                    if handoff_import is not None:
+                        years = handoff_import["years"]
+                    elif resume_binding is not None:
                         previous = resume_binding["source_manifest"]
                         if (previous["published_from"], previous["published_to"]) != (start, end):
                             raise ValueError("Embedding fork changed source dates")
@@ -1357,6 +1577,11 @@ def main():
                 private_write(folder / ("execution-policy-" + str(time.time_ns()) + ".private.json"),
                     {**policy, "run_id": manifest["run_id"], "manifest_sha256": hashlib.sha256(marker.read_bytes()).hexdigest(),
                      "started_at": datetime.now(timezone.utc).isoformat()})
+                if handoff_import is not None:
+                    from buenapro_worker.prod2.handoff_guards import HandoffGuards
+                    HANDOFF_GUARD = HandoffGuards(folder, binding=manifest["handoff_selection"],
+                        max_candidates=args.max_candidates, max_new_documents=args.max_new_documents, stop=STOP)
+                    HANDOFF_GUARD.check_audit(audit_summary(folder))
                 redis_client = redis.Redis.from_url(redis_url, decode_responses=True)
                 try:
                     queue_id = staging_identity(manifest)
@@ -1369,6 +1594,10 @@ def main():
                     after_stage = queue_checkpoint(epoch_cache / "queues", queue_id, total_seen) if epoch_cache else None
                     accepted_ids = [row["convocation_id"] for row in conn.execute("""SELECT convocation_id FROM
                         prod2_accepted_run_members WHERE run_id=%s AND accepted AND opportunity_id IS NOT NULL""", (manifest["run_id"],)).fetchall()]
+                    if handoff_import is not None:
+                        accepted_ids = sorted(set(accepted_ids) | {value["convocation_id"]
+                            for path in folder.glob("*/outcome.private.json")
+                            if (value := read_private(path)).get("accepted") is True})
                     costs = audit_summary(folder)
                     limits = RunLimits(**policy["effective_limits"],
                         model_workers=args.model_workers, accepted_ids=accepted_ids,
@@ -1377,6 +1606,8 @@ def main():
                         jev_calls=costs["jev_calls"], llm1_calls=costs["llm1_calls"],
                         max_embedding_calls=None if policy["all_results"] else args.max_embedding_calls,
                         embedding_calls=costs.get("embedding_calls", 0))
+                    if HANDOFF_GUARD is not None:
+                        limits.handoff_guard = HANDOFF_GUARD
                     began = time.monotonic()
                     tracker = None
                     if manifest.get("keyword_tracking") and resume_binding is None:
@@ -1388,7 +1619,13 @@ def main():
                             keepalives_idle=30, keepalives_interval=10, keepalives_count=3),
                             tracking["sweep_id"], manifest["run_id"], Path(tracking["cache_folder"]))
                     try:
-                        if resume_binding is not None:
+                        if handoff_import is not None:
+                            # Freeze every selected payload once. Candidate caps
+                            # govern processing admissions, not evidence import.
+                            staging.stage_many([(str(item["row"]["convocation_id"]), item)
+                                for item in handoff_import["items"]])
+                            coverage, proofs = handoff_import["coverage"], handoff_import["scope_proofs"]
+                        elif resume_binding is not None:
                             coverage, proofs = resume_binding["coverage"], resume_binding["scope_proofs"]
                         else:
                             coverage, proofs = run_sweeps(manifest, folder, pacer, staging, limits, tracker=tracker)
@@ -1398,7 +1635,7 @@ def main():
                     print(json.dumps({"phase": "search_finished", "queries_total": len(coverage),
                         "queries_complete": sum(q.get("coverage_complete", False) for q in coverage),
                         "redis": staging.stats(), "execution_policy": policy}), flush=True)
-                    if embedding_config is not None and not STOP.is_set():
+                    if embedding_config is not None and not STOP.is_set() and handoff_import is None:
                         from buenapro_worker.prod2.embedding_queries import prepare_query_vectors
                         warmup = prepare_query_vectors(embedding_config, settings, conn, folder, limits,
                             stop_requested=STOP.is_set)
@@ -1432,6 +1669,16 @@ def main():
                             "source_report_sha256": resume_binding["report_sha256"],
                             "handled_preserved": resume_binding["handled_count"],
                             "source_queries_repeated": 0, "handled_paid_reads_repeated": 0}
+                    if HANDOFF_GUARD is not None:
+                        report["handoff_guards"] = HANDOFF_GUARD.report()
+                        report["handoff_selection"] = manifest["handoff_selection"]
+                        report["source_queries_repeated"] = 0
+                        report["source_query_counter_scope"] = "global_mapping_sweep_only"
+                        report["native_ficha_reentry_may_search"] = True
+                        report["execution_status"] = (
+                            "attention_required" if HANDOFF_GUARD.marker.exists()
+                            else "budget_deferred" if report["redis"]["queued"] or report["redis"]["pending"]
+                            else "complete_with_reviews" if report["requires_review"] else "complete")
                     if official_links_only(manifest):
                         latest_checks = {}
                         for path in sorted(folder.glob("*/temporary-cleanup-check-*.private.json")):

@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "status": "authorized_preparing_not_started",
+  "scope": "DIN: IA/automatización e industrial; lectura por IDs del mapeo PROD2 cerrado",
+  "selection": {
+    "ids": 157,
+    "industrial": 154,
+    "ia_or_process_automation": 3,
+    "new_id": 128,
+    "known_baseline_missing": 29,
+    "held_sector_boundary": 48,
+    "other_title_screen_exclusions": 1531,
+    "semantic_census_claimed": false,
+    "sha256": "5a3fd548248ee719d616f9bc1994dcdc1edebade84c234911d3c14d170e6f3db",
+    "review_sha256": "24fcb1803870484ac2067804673a4cfc27ffbf3a1cf086364092cadb57a34d6d"
+  },
+  "source": {
+    "mapping_run": "prod2-map-wide-20261020",
+    "publication_window": [
+      "2026-10-04",
+      "2026-10-20"
+    ],
+    "mapping_handoff_sha256": "45e6ee68c1b3cdb2350a77840a9ba6dd2c5c71d28c7009df3fdaa95849ad5575",
+    "repeat_mapping_sweep": false,
+    "prod2_mac_native_probe": "HTTP 200; chatbot 1047579 exacto",
+    "prod6": "held_http_403; una comprobación nueva, cero reintentos"
+  },
+  "execution": {
+    "runtime": "Mac CLI, PG y Redis productivos por túnel privado",
+    "reader_folder": "tmp/ia-industrial-execution-20261020/runs/prod2-din-ia-industrial-20261020",
+    "model_slots": 2,
+    "processing_workers": 2,
+    "global_source_interval_seconds": 2,
+    "pilot_candidate_ids": 10,
+    "pilot_document_units": 10,
+    "finite_extra_batches": 8,
+    "max_cumulative_stages": 24,
+    "code_commit": null,
+    "image": null,
+    "deployment": false,
+    "started": false
+  },
+  "policy": {
+    "history_before_source_and_affinity": true,
+    "opening_before_documents_and_models": true,
+    "jev_threshold": 60,
+    "embedding_input": "V5; OCR local parcial; sin fallback PDF completo",
+    "commercial_taxonomy": "commercial_taxonomy_v1",
+    "original_document_storage": "official links + temporary analysis; no new originals R2",
+    "din_matching": "JEV/reglas + Gemini 3.1 Flash-Lite; new-only; DIN-only; sin notificaciones",
+    "lifecycle_for_matching": "confirmed open, timestamp <=6h, future PG deadline identical",
+    "unknown_sent_payment": "durable STOP; preserve in-flight replies; no automatic retry",
+    "legacy_queues": "preserved; never adopted",
+    "reader_identity": "LLM1 reserves canonical legacy joint commercial scope under VEYON member; not DIN capability proof. Matching is DIN-only."
+  },
+  "validation": {
+    "offline_suite": {
+      "passed": 4237,
+      "skipped": 67,
+      "seconds": 72.1,
+      "external_calls": 0
+    },
+    "actual157_dry_run": true,
+    "runtime_embedding_schema": "fresh verified; earlier nonexistent table probe corrected in schema-preflight receipt",
+    "production_writes_so_far": 0,
+    "new_paid_calls_so_far": 0,
+    "focused_final": {
+      "passed": 169,
+      "seconds": 1.93,
+      "overlaps_full_suite": true
+    }
+  },
+  "costs": {
+    "new_known_usd": "0",
+    "new_uncertain_attempts": 0,
+    "historical_uncertain_attempts": "preserved, outside this lot; never set to zero",
+    "limits_note": "Call/document limits are finite; not an implemented hard USD cap. No credit purchase or spend-limit changes authorized."
+  },
+  "pending": [
+    "Finish validation and commit/push before launch",
+    "Execute pilot and expansion with fresh scoped PG/Redis readback",
+    "DIN matching only ready new readings",
+    "48 sector-boundary title holds",
+    "PROD6 legitimate source access recovery"
+  ],
+  "cleanup": {
+    "freed_bytes": 59928,
+    "retained": "Private selected IDs, mapping cache, receipts, pending/history/payment inputs"
+  },
+  "evidence_root": "tmp/ia-industrial-execution-20261020/activation"
+}

@@ -38,6 +38,17 @@ from .input_policy import (input_snapshot, validate_input_snapshot,
 SELECTED_TRANSPORT_POLICY = "prod2_selected_files_transport_v1"
 INLINE_MAX_BYTES = 15 * 1024 * 1024
 FILE_PROCESSING_TIMEOUT = 60
+SAFE_GEMINI_ERROR_STATUSES = frozenset({"RESOURCE_EXHAUSTED", "PERMISSION_DENIED", "UNAUTHENTICATED",
+    "INVALID_ARGUMENT", "UNAVAILABLE", "DEADLINE_EXCEEDED", "INTERNAL", "NOT_FOUND", "FAILED_PRECONDITION"})
+
+
+def safe_gemini_error_facts(error):
+    """Strict opt-in callback diagnostics; never inspect message/body/headers."""
+    code, status = getattr(error, "code", None), getattr(error, "status", None)
+    if not isinstance(status, str):
+        status = getattr(status, "value", None)
+    return {"http_status": code if type(code) is int and 100 <= code <= 599 else None,
+        "provider_error_code": status if isinstance(status, str) and status in SAFE_GEMINI_ERROR_STATUSES else None}
 
 
 class SelectedTransportError(RuntimeError):
@@ -131,7 +142,8 @@ class SelectedGeminiExtractor(GeminiExtractor):
     def __init__(self, settings, prepared: dict, folder: Path,
                  before_request: Callable[[], Any] | None = None, *,
                  max_output_tokens: int = 24576, timeout_ms: int = 180_000,
-                 local_text_result: dict | None = None):
+                 local_text_result: dict | None = None,
+                 after_attempt: Callable[[dict], Any] | None = None):
         self.settings = settings
         self.prepared = copy.deepcopy(prepared)
         self.folder = Path(folder).resolve()
@@ -148,6 +160,8 @@ class SelectedGeminiExtractor(GeminiExtractor):
             raise SelectedTransportError("Selected model has no configured cost estimate")
         if before_request is not None and not callable(before_request):
             raise SelectedTransportError("Model reservation callback is invalid")
+        if after_attempt is not None and not callable(after_attempt):
+            raise SelectedTransportError("Model attempt callback is invalid")
         if (type(max_output_tokens) is not int or max_output_tokens not in {24576, 65536}
                 or type(timeout_ms) is not int or timeout_ms not in {180_000, 300_000}):
             raise SelectedTransportError("Selected generation limits require an explicit supported setting")
@@ -155,7 +169,7 @@ class SelectedGeminiExtractor(GeminiExtractor):
         actual = genai.Client(api_key=settings.gemini_api_key,
             http_options=types.HttpOptions(timeout=timeout_ms,
                 retry_options=types.HttpRetryOptions(attempts=1)))
-        self._state = {"actual": actual, "before_request": before_request, "used": False,
+        self._state = {"actual": actual, "before_request": before_request, "after_attempt": after_attempt, "used": False,
                        "closed": False, "remote": set(), "attempts": [], "attempt": None,
                        "response": None, "generation_started": False, "budget_failed": False,
                        "upload_unknown": False}
@@ -305,7 +319,13 @@ class SelectedGeminiExtractor(GeminiExtractor):
         _private_write(self.folder / (attempt["attempt_id"] + ".started.private.json"),
             {**attempt, "status": "generation_reserved", "reserved_at": _now()})
         state["generation_started"] = True
-        response = state["actual"].models.generate_content(**kwargs)
+        try:
+            response = state["actual"].models.generate_content(**kwargs)
+        except Exception as error:
+            if state["after_attempt"] is not None:
+                state["after_attempt"]({**attempt, "provider": "gemini", "model_call_started": True,
+                    "provider_usage_known": False, "status": "error_unknown", **safe_gemini_error_facts(error)})
+            raise
         usage = getattr(response, "usage_metadata", None)
         input_tokens = getattr(usage, "prompt_token_count", None)
         candidates_tokens = getattr(usage, "candidates_token_count", None)
@@ -334,8 +354,12 @@ class SelectedGeminiExtractor(GeminiExtractor):
         state["response"] = audit
         # Save generated text and usage before parsing can fail. Keep the body
         # only in this private receipt; outcomes/attempts used by logs omit it.
-        _private_write(self.folder / (attempt["attempt_id"] + ".response.private.json"),
-                       {**audit, "response_text": text_snapshot["response_text"]})
+        try:
+            _private_write(self.folder / (attempt["attempt_id"] + ".response.private.json"),
+                           {**audit, "response_text": text_snapshot["response_text"]})
+        finally:
+            if state["after_attempt"] is not None:
+                state["after_attempt"]({**audit, "provider": "gemini", "model_call_started": True})
         if not known:
             raise SelectedTransportError("Provider response has unknown token usage")
         return response

@@ -167,6 +167,9 @@ def prepare_retrieved_input(conn, settings, prepared, folder, limits, config, *,
     with limits.model("embedding:" + corpus["corpus_hash"]):
         client = EmbeddingClient(api_key=key, model=model, dimensions=dimensions,
             price_per_million=config["embedding"]["price_per_million_usd"])
+        handoff_guard = getattr(limits, "handoff_guard", None)
+        if handoff_guard is not None:
+            client = handoff_guard.embedding_client(client)
         try:
             vector_result = store.ensure_vectors(texts, client=client, folder=folder,
                 before_request_factory=permission)

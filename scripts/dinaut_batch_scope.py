@@ -10,7 +10,7 @@ from uuid import UUID
 @dataclass(frozen=True)
 class BatchScope:
     name: str
-    fit_level: int
+    fit_level: int | None
     folder_name: str
     event_prefix: str
     publication_event: str
@@ -39,10 +39,17 @@ TWO_DOT_SEACE_30_SCOPE = BatchScope(
     execution_name="dinaut_two_dot_seace_30_explicit_batch", new_only=True,
     maximum_cases=30, allowed_sources=("seace_prod2",),
 )
+SECTOR_SCOPE = BatchScope(
+    name="dinaut_ia_industrial", fit_level=None,
+    folder_name="dinaut-ia-industrial-20261020",
+    event_prefix="dinaut_ia_industrial_", publication_event="dinaut_ia_industrial_analysis",
+    execution_name="dinaut_ia_industrial_selected_ids_v1", new_only=True,
+    maximum_cases=5000,
+)
 
 
 def validate_scope(scope: BatchScope) -> BatchScope:
-    if type(scope) is not BatchScope or scope not in (THREE_DOT_SCOPE, TWO_DOT_50_SCOPE, TWO_DOT_SEACE_30_SCOPE):
+    if type(scope) is not BatchScope or scope not in (THREE_DOT_SCOPE, TWO_DOT_50_SCOPE, TWO_DOT_SEACE_30_SCOPE, SECTOR_SCOPE):
         raise ValueError("Only the explicitly authorized immutable DIN scopes are supported")
     return scope
 
@@ -59,7 +66,7 @@ def scoped_source_sql(sql: str, scope: BatchScope) -> str:
         return sql
     if sql.count("fit.fit_level=3") != 1:
         raise ValueError("Unexpected canonical affinity selector; cannot safely bind the two-dot scope")
-    result=sql.replace("fit.fit_level=3", "fit.fit_level=2")
+    result=sql.replace("fit.fit_level=3", "true" if scope == SECTOR_SCOPE else "fit.fit_level=2")
     prod2="p.buyer_name, d.proposals_closes_at AS closes_at,"
     minor="c.entidad_nombre AS buyer_name,c.fec_fin_cotizacion AS closes_at,"
     if result.count(prod2)==1:

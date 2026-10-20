@@ -44,7 +44,7 @@ from dinaut_three_dot_persistence import (
     create_evaluation_before_dispatch, publish_case,
 )
 from match_provider_journal import ProviderBlocked, canonical, fingerprint, private_json, dispatch_once
-from dinaut_batch_scope import (THREE_DOT_SCOPE,TWO_DOT_50_SCOPE,TWO_DOT_SEACE_30_SCOPE,
+from dinaut_batch_scope import (THREE_DOT_SCOPE,TWO_DOT_50_SCOPE,TWO_DOT_SEACE_30_SCOPE,SECTOR_SCOPE,
     validate_scope,require_scope_source,scoped_source_sql,iso_snapshot)
 from dinaut_jev_transport import dispatch_jev_transport, get_cached_jev_receipt, prepare_jev_transport
 from dinaut_recommendation_schema import normalize_map_output
@@ -54,20 +54,27 @@ GEMMA_MODEL = 'gemma-4-31b-it'
 MODEL = JEV_MODEL + '+' + GEMMA_MODEL
 ALLOWED_REPLACEMENTS = frozenset({('seace_prod2',129),('seace_prod2',130),('seace_prod6',911)})
 ACTIVE_SCOPE = THREE_DOT_SCOPE
+ACTIVE_FOLDER = None
 
 
 @contextmanager
-def execution_scope(scope):
+def execution_scope(scope, *, folder=None):
     """Opt-in scope is process-local and restored even after a blocked run."""
-    global ACTIVE_SCOPE,GEMMA_MODEL,MODEL
+    global ACTIVE_SCOPE,GEMMA_MODEL,MODEL,ACTIVE_FOLDER
     validate_scope(scope)
-    previous=(ACTIVE_SCOPE,GEMMA_MODEL,MODEL)
+    selected_folder=None
+    if scope == SECTOR_SCOPE:
+        from dinaut_sector_match_scope import sector_folder
+        selected_folder=sector_folder(folder,ROOT)
+    previous=(ACTIVE_SCOPE,GEMMA_MODEL,MODEL,ACTIVE_FOLDER)
     ACTIVE_SCOPE=scope
+    if scope == SECTOR_SCOPE:
+        ACTIVE_FOLDER=selected_folder
     if scope.new_only:
         GEMMA_MODEL='gemini-3.1-flash-lite'
         MODEL=JEV_MODEL+'+'+GEMMA_MODEL
     try:yield
-    finally:ACTIVE_SCOPE,GEMMA_MODEL,MODEL=previous
+    finally:ACTIVE_SCOPE,GEMMA_MODEL,MODEL,ACTIVE_FOLDER=previous
 
 
 def scope_replacements():
@@ -75,6 +82,8 @@ def scope_replacements():
 
 
 def scope_persistence_kwargs():
+    if ACTIVE_SCOPE == SECTOR_SCOPE:
+        return {'expected_fit_level':None,'scope_name':SECTOR_SCOPE.name}
     return ({'expected_fit_level':2} if ACTIVE_SCOPE.new_only else {})
 
 
@@ -130,6 +139,9 @@ def prepare(folder):
         raise ValueError('Frozen inputs hash mismatch')
     if (receipt['profile_id'],receipt['tenant_id'])!=(PROFILE_ID,TENANT_ID):
         raise ValueError('Batch outside the authorized DIN tenant/profile')
+    if ACTIVE_SCOPE == SECTOR_SCOPE:
+        from dinaut_sector_match_scope import validate_frozen_sector_inputs
+        validate_frozen_sector_inputs(frozen,receipt,folder)
     for case in frozen['cases']:
         require_scope_source(case['source_key'],ACTIVE_SCOPE)
     if ACTIVE_SCOPE.new_only:
@@ -138,7 +150,7 @@ def prepare(folder):
         if receipt.get('selector_sql_sha256') is not None and receipt['selector_sql_sha256']!=sql_hashes:
             raise PublicationConflict('The canonical affinity selector changed after the two-dot freeze')
     selected=[c for c in frozen['cases'] if c['ready']]
-    if not selected or any(c['fit_level']!=ACTIVE_SCOPE.fit_level for c in selected):
+    if (not selected and ACTIVE_SCOPE!=SECTOR_SCOPE) or (ACTIVE_SCOPE.fit_level is not None and any(c['fit_level']!=ACTIVE_SCOPE.fit_level for c in selected)):
         raise ValueError('Only ready three-dot opportunities are authorized')
     if ACTIVE_SCOPE.maximum_cases is not None and len(selected)>ACTIVE_SCOPE.maximum_cases:
         raise ValueError('Selected cohort exceeds the explicit opportunity limit')
@@ -182,6 +194,10 @@ def prepare(folder):
         if ACTIVE_SCOPE!=THREE_DOT_SCOPE:
             binding.update(cohort=ACTIVE_SCOPE.name,fit_level=ACTIVE_SCOPE.fit_level,
                 source_summary_policy='canonical_requirements_for_scoring_full_source_summary_for_explanations')
+        if ACTIVE_SCOPE == SECTOR_SCOPE:
+            binding.update(sector_selection_sha256=receipt['selection_sha256'],
+                company_documents_sha256=fingerprint(frozen['company_documents']),
+                lifecycle_policy=receipt['lifecycle_policy'],max_lifecycle_age_seconds=receipt['max_lifecycle_age_seconds'])
         cases.append({'case':case,'jev_payload':payload,'binding':binding,
                       'pipeline_request_hash':fingerprint(binding),
                       'token_budget':token_budget(payload,token_counter=counter)})
@@ -256,7 +272,10 @@ def publication_source_reader(conn,case,frozen):
         raise PublicationConflict('Business lines changed after provider evaluation')
     live=source_reader(conn,case)
     if live and ACTIVE_SCOPE.new_only:
-        guard_live_provider_events(live,ROOT/'tmp'/ACTIVE_SCOPE.folder_name/f"{case['source_key']}-{case['source_id']}")
+        guard_live_provider_events(live,(ACTIVE_FOLDER or ROOT/'tmp'/ACTIVE_SCOPE.folder_name)/f"{case['source_key']}-{case['source_id']}")
+    if ACTIVE_SCOPE == SECTOR_SCOPE:
+        from dinaut_sector_match_scope import verify_live_company_documents
+        verify_live_company_documents(conn,frozen)
     return live
 
 
@@ -266,6 +285,9 @@ def predispatch(conn,frozen,case,folder):
     profile=scope_snapshot(profile)
     if not profile or profile_fingerprint(profile)!=profile_fingerprint(frozen['profile']):
         raise PublicationConflict('DIN profile changed since the frozen selection')
+    if ACTIVE_SCOPE == SECTOR_SCOPE:
+        from dinaut_sector_match_scope import verify_live_company_documents
+        verify_live_company_documents(conn,frozen)
     lines=conn.execute('SELECT * FROM business_lines WHERE profile_id=%s AND is_active',(PROFILE_ID,)).fetchall()
     lines=scope_snapshot(lines)
     if fingerprint(sorted(lines,key=lambda l:str(l['id'])))!=fingerprint(sorted(frozen['business_lines'],key=lambda l:str(l['id']))):
@@ -274,6 +296,12 @@ def predispatch(conn,frozen,case,folder):
     if not live or source_fingerprint(live)!=source_fingerprint(case):
         raise PublicationConflict('Source, requirements or three-dot affinity changed')
     require_match_ready(live,live.get('facets') or [],provisional_source_review=True)
+    if ACTIVE_SCOPE == SECTOR_SCOPE:
+        from dinaut_sector_match_scope import verify_live_lifecycle
+        # Cached complete recommendations can be published without a new send;
+        # every still-unpaid JEV/explanation stage needs a recent official gate.
+        if not (folder/'gemma-batch-binding.private.json').exists():
+            verify_live_lifecycle(case,live)
     owned_claim=json.loads((folder/'pg-claim.private.json').read_text()) if (folder/'pg-claim.private.json').exists() else None
     if ACTIVE_SCOPE.new_only and any(r['id']!=(owned_claim or {}).get('id') for r in live.get('prior_match_reservations') or []):
         raise PublicationConflict('A historical matching reservation is outside the new-only two-dot cohort')
@@ -295,6 +323,11 @@ def predispatch(conn,frozen,case,folder):
 def reserved_dispatch(conn,case,case_folder,stage,payload,**kwargs):
     """A PG stage ledger also blocks replay from another local receipt folder."""
     require_scope_source(case['source_key'],ACTIVE_SCOPE)
+    if ACTIVE_SCOPE == SECTOR_SCOPE:
+        from dinaut_sector_match_scope import provider_control
+        control=provider_control()
+        if not (case_folder/f'{stage}-response.private.json').exists():control.require_send()
+        kwargs['post']=control.guarded_post(kwargs.get('post'))
     request_hash=fingerprint(payload)
     metadata={'profile_id':PROFILE_ID,'source_key':case['source_key'],'source_id':case['source_id'],
               'provider_request_hash':request_hash,'policy':POLICY_VERSION,
@@ -639,11 +672,14 @@ def run_case(conn,settings,frozen,cards,item,folder,jev_key,*,jev_only=False):
             evaluation_id=claim['id'] if claim else None,
             expected_previous=previous['previous_match'],expected_provenance=previous['previous_provenance'],
             allowed_replacements=scope_replacements(),
-            **({'expected_fit_level':2,'event_type':ACTIVE_SCOPE.publication_event} if ACTIVE_SCOPE.new_only else {}))
+            **({**scope_persistence_kwargs(),'event_type':ACTIVE_SCOPE.publication_event} if ACTIVE_SCOPE.new_only else {}))
         result.update(cost_usd=cost,providers=usage['providers'],pipeline_request_hash=item['pipeline_request_hash'])
         private_json(result_path,result,exclusive=True)
         return result
     except Exception:
+        if ACTIVE_SCOPE == SECTOR_SCOPE:
+            from dinaut_sector_match_scope import provider_control
+            provider_control().fail('case_failed')
         if claim:
             conn.execute("UPDATE prod2_evaluations SET status='uncertain',updated_at=now() WHERE id=%s AND claim_token=%s AND status='running'",(claim['id'],claim['claim_token']))
         raise
