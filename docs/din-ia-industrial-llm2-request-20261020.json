@@ -1,0 +1,101 @@
+{
+  "status": "llm2_blocked_by_missing_readings_and_preserved_history",
+  "checked_at_utc": "2026-10-20T20:07:18.771842+00:00",
+  "request": "Verify production publication and apply DIN LLM2 to the exact prior IA/industrial batch",
+  "scope": {
+    "source": "seace_prod2",
+    "selected_ids": 157,
+    "matching_selection_sha256": "e6aae536657d959443073c57636f0a09770169651d08fc060dbeb800dcd34645",
+    "profile_id": "e11f2610-eb56-457a-97eb-bbd24dd6f1a1"
+  },
+  "fresh_production_pg": {
+    "canonical_opportunity_present": 13,
+    "detail_present": 13,
+    "discovery_present": 13,
+    "registry_present": 157,
+    "current_usable_readings": 3,
+    "llm2_new_ready": 0,
+    "readiness": {
+      "existing_match_preserved": 2,
+      "needs_fresh_confirmed_open_lifecycle": 1,
+      "pending_reading": 154
+    },
+    "matching_coordinator_locks": 0,
+    "prior_match_reservations": 2,
+    "prior_worker_jobs": 0,
+    "prior_provider_events": 2
+  },
+  "publication_distinction": {
+    "registry_is_not_web_opportunity": true,
+    "web_sources_in_selected": 13,
+    "accepted_details_verified_at_previous_closure": 12,
+    "additional_existing_closed_detail": 1,
+    "mapped_ids_without_enriched_web_source": 144,
+    "closed_or_rejected_ids_not_promoted": true
+  },
+  "existing_readings": [
+    {
+      "convocation_id": 1047199,
+      "extraction_id": 446,
+      "existing_match_id": null,
+      "closes_at": null,
+      "reason": "needs_fresh_confirmed_open_lifecycle",
+      "match_metadata_unchanged": true
+    },
+    {
+      "convocation_id": 1047224,
+      "extraction_id": 146,
+      "existing_match_id": 157,
+      "closes_at": "2026-10-20T04:59:00+00:00",
+      "reason": "existing_match_preserved",
+      "match_metadata_unchanged": true
+    },
+    {
+      "convocation_id": 1047247,
+      "extraction_id": 120,
+      "existing_match_id": 153,
+      "closes_at": "2026-10-20T04:59:00+00:00",
+      "reason": "existing_match_preserved",
+      "match_metadata_unchanged": true
+    }
+  ],
+  "documentary_pending": {
+    "context_review": 8,
+    "document_selection_review": 1,
+    "new_llm1_readings": 0,
+    "llm2_needs_prior_usable_reading": true
+  },
+  "llm2_executed": false,
+  "new_matches": 0,
+  "new_cost_usd": "0",
+  "old_matching_batch_unchanged": true,
+  "operations": {
+    "models": 0,
+    "paid_calls": 0,
+    "pg_business_writes": 0,
+    "pg_read_only": true,
+    "publication": 0,
+    "redis_commands": 0,
+    "relaunches": 0,
+    "source_calls": 0
+  },
+  "next_prerequisites": [
+    "Resolve eight retained context reviews and one retained document-selection review under a separate reviewed recovery scope without altering the closed batch or repeating known payments",
+    "Complete and persist usable LLM1 with evidence",
+    "Validate recent confirmed open lifecycle and matching future PG deadline",
+    "Freeze genuinely new ready-only DIN inputs and execute JEV/rules plus Gemini Flash-Lite, preserving prior matches and uncertain payments"
+  ],
+  "qa": {
+    "principal": "Fresh repeatable-read, read-only PostgreSQL snapshot over exact157 IDs using canonical sector readiness",
+    "independent": "Offline selection/SHA/frozen input partition independently validated, no models or DB writes",
+    "semantic_approval": false
+  },
+  "cleanup": {
+    "freed_bytes": 0,
+    "retained": "Small verification script and compact receipt; all existing PDF/OCR/review/paid inputs retained"
+  },
+  "evidence": {
+    "path": "tmp/din-ia-industrial-llm2-request-20261020/pg-readiness-20261020T200721Z.private.json",
+    "sha256": "a3ef93c3013e05b25a502dc8b798782ba38753e5bfdf75ddd43ec44ff783717f"
+  }
+}
