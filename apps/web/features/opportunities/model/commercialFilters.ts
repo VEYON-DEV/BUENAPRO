@@ -19,6 +19,14 @@ export function commercialDefaultsKey(defaults: Record<string, string>): string 
   return COMMERCIAL_FILTER_KEYS.map(key => defaults[key] ?? "").join("|");
 }
 
+/** A newly chosen category replaces bookmarked commercial criteria everywhere. */
+export function commercialCategoryDraftDefaults(defaults: Record<string, string>, category: string): Record<string, string> {
+  const next = { ...defaults };
+  COMMERCIAL_FILTER_KEYS.forEach(key => delete next[key]);
+  if (category) next.commercial_category = category;
+  return next;
+}
+
 export function clearCommercialFiltersHref(defaults: Record<string, string>): string {
   const params = new URLSearchParams(defaults);
   COMMERCIAL_FILTER_KEYS.forEach(key => params.delete(key));

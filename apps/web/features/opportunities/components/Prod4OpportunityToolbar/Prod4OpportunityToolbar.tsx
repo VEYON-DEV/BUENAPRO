@@ -5,7 +5,7 @@ import { FileCheck2, Search, SlidersHorizontal } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { CommercialFilterFields, CommercialFilterHiddenInputs } from "../CommercialFilterFields";
 import { COMMERCIAL_FILTER_KEYS } from "@/lib/commercialTaxonomy";
-import { commercialDefaultsKey, commercialSelectionCount } from "../../model/commercialFilters";
+import { commercialCategoryDraftDefaults, commercialDefaultsKey, commercialSelectionCount } from "../../model/commercialFilters";
 import { scoreFilterHref } from "../../model/analysisPresentation";
 import styles from "./Prod4OpportunityToolbar.module.css";
 
@@ -23,12 +23,14 @@ export function Prod4OpportunityToolbar({ defaults, source = "prod4" }: { defaul
   const count = commercialSelectionCount(defaults);
   const [filtersOpen, setFiltersOpen] = useState(count > 0);
   const [filtersApplying, setFiltersApplying] = useState(false);
+  const [categoryDraft, setCategoryDraft] = useState<string | null>(null);
   const categoryKey = commercialDefaultsKey(defaults);
-  useEffect(() => setFiltersApplying(false), [categoryKey]);
+  const currentDefaults = categoryDraft === null ? defaults : commercialCategoryDraftDefaults(defaults, categoryDraft);
+  useEffect(() => { setFiltersApplying(false); setCategoryDraft(null); }, [categoryKey]);
   return (
     <section className={styles.toolbar}>
       <form action="/feed" className={styles.searchForm}>
-        {source === "prod2" ? <CommercialFilterHiddenInputs defaults={defaults} /> : null}
+        {source === "prod2" ? <CommercialFilterHiddenInputs defaults={currentDefaults} /> : null}
         <input name="source" type="hidden" value={source} />
         {source === "prod2" && defaults.profile_id ? <input name="profile_id" type="hidden" value={defaults.profile_id} /> : null}
         {object ? <input name="object" type="hidden" value={object} /> : null}
@@ -43,14 +45,14 @@ export function Prod4OpportunityToolbar({ defaults, source = "prod4" }: { defaul
       <div className={styles.secondaryFilters}>
         <div aria-label="Objeto de contratación" className={styles.objectChoices} role="group">
           {[["", "Todos"], ["good", "Bienes"], ["service", "Servicios"]].map(([value, label]) => (
-            <a aria-current={object === value ? "page" : undefined} className={object === value ? styles.active : ""} href={filterHref(defaults, value, source)} key={value}>
+            <a aria-current={object === value ? "page" : undefined} className={object === value ? styles.active : ""} href={filterHref(currentDefaults, value, source)} key={value}>
               {label}
             </a>
           ))}
         </div>
         {source === "prod2" ? <a aria-current={defaults.with_score === "true" ? "page" : undefined}
           className={[styles.analysisFilter, defaults.with_score === "true" ? styles.active : ""].join(" ")}
-          href={scoreFilterHref(defaults, source)}>
+          href={scoreFilterHref(currentDefaults, source)}>
           <FileCheck2 aria-hidden="true" size={16} />Con puntaje
         </a> : null}
         {source === "prod2" ? <button aria-controls="prod2-commercial-filters" aria-expanded={filtersOpen} className={styles.analysisFilter}
@@ -63,7 +65,7 @@ export function Prod4OpportunityToolbar({ defaults, source = "prod4" }: { defaul
         {Object.entries(defaults).filter(([key]) => ![...COMMERCIAL_FILTER_KEYS, "page", "open_only", "closing_before"].includes(key)).map(([key, value]) =>
           <input key={key} name={key} type="hidden" value={value} />)}
         {!defaults.source ? <input name="source" type="hidden" value="prod2" /> : null}
-        <CommercialFilterFields applyOnChange defaults={defaults} key={categoryKey} />
+        <CommercialFilterFields applyOnChange defaults={defaults} key={categoryKey} onCategoryChange={setCategoryDraft} />
         <div className={styles.filterActions}><button aria-live="polite" className={styles.searchButton} type="submit">{filtersApplying ? "Aplicando…" : "Aplicar filtros"}</button></div>
       </form> : null}
     </section>

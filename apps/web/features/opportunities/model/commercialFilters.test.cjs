@@ -66,6 +66,17 @@ test('one category selector exposes exactly the six approved choices and preserv
   assert.equal(model.commercialCategorySelection({}), '');
 });
 
+test('a pending category replaces legacy criteria without losing other toolbar defaults', () => {
+  const next = model.commercialCategoryDraftDefaults(selected, 'industrial');
+  assert.equal(next.commercial_category, 'industrial');
+  for (const key of ['commercial_area', 'commercial_work', 'commercial_specialty', 'commercial_status']) assert.equal(next[key], undefined);
+  for (const key of ['source', 'profile_id', 'q', 'with_score']) assert.equal(next[key], selected[key]);
+  const cleared = model.commercialCategoryDraftDefaults(next, '');
+  assert.equal(cleared.commercial_category, undefined);
+  assert.equal(cleared.profile_id, selected.profile_id);
+  assert.equal(selected.commercial_work, 'licencias_suscripciones', 'Applied defaults remain immutable');
+});
+
 test('previous advanced bookmarks retain their exact hidden filters without expanding a complex UI', () => {
   const html = render(Prod4OpportunityToolbar, { source: 'prod2', defaults: selected });
   assert.ok(html.includes('Selección anterior'));

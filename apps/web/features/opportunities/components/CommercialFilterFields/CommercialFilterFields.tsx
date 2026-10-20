@@ -6,7 +6,9 @@ import { commercialCategories, COMMERCIAL_FILTER_KEYS } from "@/lib/commercialTa
 import { clearCommercialFiltersHref, commercialCategorySelection, commercialSelectionCount } from "../../model/commercialFilters";
 import styles from "./CommercialFilterFields.module.css";
 
-export function CommercialFilterFields({ defaults, applyOnChange = false }: { defaults: Record<string, string>; applyOnChange?: boolean }) {
+export function CommercialFilterFields({ defaults, applyOnChange = false, onCategoryChange }: {
+  defaults: Record<string, string>; applyOnChange?: boolean; onCategoryChange?: (category: string) => void;
+}) {
   const [category, setCategory] = useState(() => commercialCategorySelection(defaults));
   const pendingForm = useRef<HTMLFormElement | null>(null);
   useEffect(() => {
@@ -20,6 +22,7 @@ export function CommercialFilterFields({ defaults, applyOnChange = false }: { de
       <span>Categoría</span>
       <Select name={category === "previous" ? undefined : "commercial_category"} onChange={event => {
         if (applyOnChange) pendingForm.current = event.currentTarget.form;
+        onCategoryChange?.(event.currentTarget.value);
         setCategory(event.currentTarget.value);
       }} value={category}>
         <option value="">Todas</option>

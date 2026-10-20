@@ -10,7 +10,7 @@ const repo = path.resolve(web, '../..');
 const python = process.env.BUENAPRO_BROWSER_TEST_PYTHON || path.join(repo, '.venv/bin/python');
 const browserAvailable = fs.existsSync(python) && spawnSync(python, ['-B', '-c', 'import playwright'], { timeout: 5000 }).status === 0;
 
-test('real React category interaction auto-applies SEACE after commit and keeps minor filters manual',
+test('real React category interaction auto-applies SEACE, preserves an in-flight category in Search, and keeps minor filters manual',
   { skip: !browserAvailable && 'Optional Python Playwright runtime unavailable', timeout: 60000 }, async () => {
     const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'buenapro-category-interaction-'));
     try {
@@ -33,19 +33,23 @@ from urllib.parse import parse_qs,urlencode,urlsplit
 from playwright.async_api import async_playwright
 
 async def main():
- bundle=Path(sys.argv[1]).read_bytes();errors=[];checks=[]
+ bundle=Path(sys.argv[1]).read_bytes();errors=[];checks=[];draft_links=[]
  async with async_playwright() as p:
   browser=await p.chromium.launch();context=await browser.new_context(service_workers='block')
-  state={'minor':False,'listen':False,'query':None}
+  state={'minor':False,'listen':False,'query':None,'delay_category':False}
   async def fixture(route):
    request=route.request;url=urlsplit(request.url)
    assert request.method=='GET' and url.scheme=='http' and url.netloc=='category-qa.invalid','Unexpected external operation'
    if url.path=='/harness.js':return await route.fulfill(content_type='application/javascript',body=bundle)
    assert url.path=='/feed','Unexpected fixture path'
    if state['listen']:state['query']=parse_qs(url.query,keep_blank_values=True)
+   if state['delay_category'] and parse_qs(url.query).get('commercial_category')==['industrial']:await asyncio.sleep(.6)
    html='<div id="root"></div><script>window.__minor='+str(state['minor']).lower()+'</script><script src="/harness.js"></script>'
-   await route.fulfill(content_type='text/html',body=html)
+   try:await route.fulfill(content_type='text/html',body=html)
+   except Exception:
+    if not state['delay_category']:raise
   await context.route('**/*',fixture);page=await context.new_page();page.set_default_timeout(5000);page.on('pageerror',lambda e:errors.append(type(e).__name__))
+  page.on('console',lambda message:draft_links.extend(json.loads(message.text[len('__DRAFT_LINKS__'):])) if message.text.startswith('__DRAFT_LINKS__') else None)
   base={'source':'prod2','profile_id':'profile-test','q':'tableros','object':'good','page':'3'}
   cases=[('all-to-industrial',{},'industrial',False),('replace-category',{'commercial_category':'industrial'},'cloud_infraestructura',False),
     ('replace-legacy',{'commercial_area':'industrial_electrica','commercial_work':'licencias_suscripciones','commercial_status':'needs_review'},'industrial',False),
@@ -72,13 +76,33 @@ async def main():
     next_panel=page.locator('#prod2-commercial-filters')
     if await next_panel.count():assert await next_panel.get_attribute('aria-busy') is None,'Pending state must reset after navigation'
    checks.append(name)
+  # A second native submit cancels the pending first GET. Search must use the
+  # draft category already visible to the user and the newly typed query.
+  state.update(minor=False,listen=False,query=None,delay_category=False)
+  legacy={'commercial_area':'industrial_electrica','commercial_work':'licencias_suscripciones','commercial_status':'needs_review'}
+  await page.goto('http://category-qa.invalid/feed?'+urlencode({**base,**legacy}),wait_until='load');await page.wait_for_function('document.body.dataset.ready==="true"')
+  await page.evaluate('''()=>window.addEventListener('submit',event=>{if(event.target.id!=='prod2-commercial-filters')return;console.log('__DRAFT_LINKS__'+JSON.stringify([...document.querySelectorAll('a[href]')].filter(a=>a.closest('[aria-label="Objeto de contratación"]')||a.textContent.includes('Con puntaje')).map(a=>new URL(a.href)).map(u=>({category:u.searchParams.get('commercial_category'),legacy:['commercial_area','commercial_work','commercial_specialty','commercial_status'].some(k=>u.searchParams.has(k))}))));setTimeout(()=>{const f=document.querySelector('form:not([id])');f.querySelector('[name="q"]').value='consulta nueva';f.querySelector('button[type="submit"]').click()},50)})''')
+  state.update(listen=True,delay_category=True)
+  await page.get_by_role('combobox',name='Categoría',exact=True).select_option('industrial')
+  # The second submit intentionally aborts the first navigation; do not attach
+  # wait_for_url to that aborted request while waiting for the later commit.
+  for attempt in range(100):
+   if parse_qs(urlsplit(page.url).query).get('q')==['consulta nueva']:break
+   await page.wait_for_timeout(20)
+  final=parse_qs(urlsplit(page.url).query,keep_blank_values=True)
+  assert final.get('q')==['consulta nueva'],'New search query did not commit'
+  assert final.get('commercial_category')==['industrial'],'Search dropped the category while its first GET was pending'
+  assert final.get('profile_id')==['profile-test'] and final.get('source')==['prod2'] and final.get('object')==['good'] and 'page' not in final
+  assert not any(k in final for k in legacy),'Search restored old bookmarked commercial criteria'
+  assert len(draft_links)>=3 and all(row=={'category':'industrial','legacy':False} for row in draft_links),'Type/score links lost the pending category'
+  checks.append('pending-category-then-new-search-and-links')
   assert not errors,'React runtime error'
   await context.close();await browser.close();print(json.dumps({'checks':checks,'react_errors':errors,'external_calls':0,'pg_calls':0,'model_calls':0}))
 asyncio.run(main())
 `, path.join(folder, 'bundle/harness.js')], { encoding: 'utf8', timeout: 45000, maxBuffer: 20000 });
       assert.equal(result.status, 0, `Native browser interaction failed: ${result.stderr || result.stdout}`);
       const report = JSON.parse(result.stdout.trim());
-      assert.equal(report.checks.length, 5);
+      assert.equal(report.checks.length, 6);
       assert.deepEqual(report.react_errors, []);
       assert.equal(report.external_calls + report.pg_calls + report.model_calls, 0);
     } finally {
