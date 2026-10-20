@@ -9,6 +9,7 @@ import uuid
 import httpx
 import psycopg
 from psycopg.conninfo import make_conninfo
+from psycopg.types.json import Jsonb
 import pytest
 
 from buenapro_worker.prod2 import title_categories as title
@@ -89,6 +90,43 @@ def test_uncertain_is_not_a_false_category(template, signal, clarity):
     payload = title.request_for("Generic service", template)
     result = title.parse_response(payload, response(payload, signal=signal, clarity=clarity))
     assert result["decision"] == "unclear" and result["categories"] == []
+
+
+@pytest.mark.parametrize("signals,confidence,probability,expected", [
+    ({"licencias_suscripciones": .98, "soporte_mantenimiento": .31}, .98, .99, ["licencias_suscripciones"]),
+    ({"desarrollo_software": .94, "ia_automatizacion": .87}, .36, .68,
+     ["desarrollo_software", "ia_automatizacion"]),
+    ({"cloud_infraestructura": .96, "soporte_mantenimiento": .98, "industrial": .21}, .99, .99,
+     ["cloud_infraestructura", "soporte_mantenimiento"]),
+])
+def test_v2_independent_strong_signals_preserve_actual_pilot_categories(template, signals, confidence, probability, expected):
+    payload = title.request_for("Title-only pilot regression", template)
+    data = response(payload, signal=0)
+    for category, value in signals.items():
+        data["answers"][category]["noul"] = value
+    data["answers"]["informacion"].update(confidence=confidence,
+        probabilities={"claro": probability, "insuficiente": 1-probability})
+    before = deepcopy(payload), deepcopy(data)
+    legacy = title.parse_legacy_response(payload, data)
+    current = title.parse_response(payload, data)
+    assert legacy["decision"] == "unclear"
+    assert current["categories"] == expected and current["decision"] == "classified"
+    assert current["derivation"] == title.DERIVATION
+    assert "derivation" not in legacy
+    assert {k: v for k, v in current.items() if k not in {"categories", "decision", "derivation"}} == {
+        k: v for k, v in legacy.items() if k not in {"categories", "decision"}}
+    assert (payload, data) == before  # no mutation to paid inputs or provider answers
+
+
+def test_v2_other_still_requires_strong_clarity_and_all_negative_signals(template):
+    payload = title.request_for("Other category", template)
+    data = response(payload, signal=0)
+    data["answers"]["informacion"]["confidence"] = .36
+    assert title.parse_response(payload, data)["decision"] == "unclear"
+    data["answers"]["informacion"]["confidence"] = .99
+    assert title.parse_response(payload, data)["decision"] == "other"
+    data["answers"]["industrial"]["noul"] = .21
+    assert title.parse_response(payload, data)["decision"] == "unclear"
 
 
 @pytest.mark.parametrize("change", [
@@ -366,3 +404,75 @@ def test_pg_apply_bulk_1000_cases_has_31_queries_ten_finite_transactions(pg, tem
         counted = CountingConnection(conn)
         assert runtime.apply_results(counted, value) == {"applied": 0, "unchanged": 993, "stale": 7, "pending": 0}
         assert len(counted.queries) == 21 and counted.transactions == 10
+
+
+def paid_legacy_fixture(pg, template, tmp_path):
+    value = manifest(template, count=1)
+    seed(pg, value)
+    def behavior(payload):
+        data = response(payload, category="licencias_suscripciones", signal=.98)
+        data["answers"]["soporte_mantenimiento"]["noul"] = .31
+        return httpx.Response(200, json=data)
+    client = ClientFactory(behavior)
+    run(pg, value, tmp_path, client)
+    request = value["requests"][0]
+    with runtime.connect(pg) as conn:
+        row = runtime.get_receipt(conn, request["request_hash"])
+        legacy = title.parse_legacy_response(request["payload"], row["response_json"])
+        conn.execute("UPDATE prod2_title_category_receipts SET result_json=%s WHERE request_hash=%s",
+                     (Jsonb(legacy), request["request_hash"]))
+    return value, request, client
+
+
+def test_pg_explicit_reproject_preserves_payment_raw_and_timestamps_without_second_send(pg, template, tmp_path):
+    value, request, client = paid_legacy_fixture(pg, template, tmp_path)
+    with runtime.connect(pg) as conn:
+        before = runtime.get_receipt(conn, request["request_hash"])
+        runtime.validate_receipt(before, request)  # exact known legacy remains auditable
+        with pytest.raises(runtime.StopDispatch, match="reproject"):
+            runtime.apply_results(conn, value)
+        with pytest.raises(runtime.StopDispatch, match="reproject"):
+            run(pg, value, tmp_path, client)
+        result = runtime.reproject(conn, value, tmp_path)
+        assert result == {"reprojected": 1, "already_current": 0, "foreign_run_unmodified": 0, "pending": 0,
+                          "paid_requests": 0}
+        after = runtime.get_receipt(conn, request["request_hash"])
+        assert {k: v for k, v in before.items() if k != "result_json"} == {
+            k: v for k, v in after.items() if k != "result_json"}
+        assert before["result_json"]["categories"] == []
+        assert after["result_json"]["categories"] == ["licencias_suscripciones"]
+        archive = runtime.read_json(next((tmp_path / "projections").glob("*.json")))
+        assert archive["old_result"] == before["result_json"] and archive["new_result"] == after["result_json"]
+        assert archive["raw_response_sha256"] == title.digest(before["response_json"])
+        assert runtime.reproject(conn, value, tmp_path)["already_current"] == 1
+        assert len(list((tmp_path / "projections").glob("*.json"))) == 1
+        assert runtime.apply_results(conn, value)["applied"] == 1
+    assert run(pg, value, tmp_path, client)["dispatched"] == 0
+    assert len(client.calls) == 1
+
+
+def test_pg_reproject_leaves_foreign_run_and_rejects_nonexact_legacy(pg, template, tmp_path):
+    value, request, client = paid_legacy_fixture(pg, template, tmp_path)
+    foreign = {**value, "run_id": "different_run"}
+    with runtime.connect(pg) as conn:
+        assert runtime.reproject(conn, foreign, tmp_path)["foreign_run_unmodified"] == 1
+        row = runtime.get_receipt(conn, request["request_hash"])
+        assert "derivation" not in row["result_json"]
+        tampered = {**row["result_json"], "categories": ["industrial"], "decision": "classified"}
+        conn.execute("UPDATE prod2_title_category_receipts SET result_json=%s WHERE request_hash=%s",
+                     (Jsonb(tampered), request["request_hash"]))
+        with pytest.raises(runtime.StopDispatch, match="differs"):
+            runtime.reproject(conn, value, tmp_path)
+        assert runtime.get_receipt(conn, request["request_hash"])["result_json"] == tampered
+    assert len(client.calls) == 1
+
+
+def test_pg_reproject_archive_conflict_rolls_back_before_result_update(pg, template, tmp_path):
+    value, request, _ = paid_legacy_fixture(pg, template, tmp_path)
+    runtime.immutable_write(tmp_path / "projections" / f"{title.DERIVATION}-{request['request_hash']}.private.json",
+                            {"conflicting": "archive"})
+    with runtime.connect(pg) as conn:
+        before = runtime.get_receipt(conn, request["request_hash"])
+        with pytest.raises(runtime.StopDispatch, match="Immutable"):
+            runtime.reproject(conn, value, tmp_path)
+        assert runtime.get_receipt(conn, request["request_hash"]) == before

@@ -195,6 +195,7 @@ describe('commercial SQL against a disposable loopback PostgreSQL fixture', { sk
       { categories: ['industrial', 'soporte_mantenimiento'] },
       { receipt: { normalized_title: 'Otro título', title_sha256: sha('Otro título') }, request: { state: { titulo: 'Otro título' } } },
       { receipt: { prompt_sha256: '0'.repeat(64) } },
+      { result: { derivation: null } }, { result: { derivation: 'unknown' } }, { omitDerivation: true },
     ];
     const expected = cases.map((row, index) => {
       if (index === 12) return ['document', 'classified', ['licencias_suscripciones']];
@@ -209,7 +210,8 @@ describe('commercial SQL against a disposable loopback PostgreSQL fixture', { sk
       const receipt = { status: 'done', model, policy_version: policy, normalized_title: normalized,
         title_sha256: sha(normalized), catalog_sha256: catalog,
         prompt_sha256: '641d7969735a8359de2bd53c09224fb1bfa9f916e3884f8f42968882dfd11e35', ...patch.receipt };
-      const result = { categories, decision, policy_version: policy, basis: 'title_jev', preliminary: true, ...patch.result };
+      const result = { categories, decision, policy_version: policy, derivation: 'title_category_projection_v2', basis: 'title_jev', preliminary: true, ...patch.result };
+      if (patch.omitDerivation) delete result.derivation;
       const request = { model, state: { titulo: normalized }, ...patch.request };
       await db.query('INSERT INTO prod2_discoveries VALUES($1,$2)', [id, title]);
       await db.query('INSERT INTO prod2_title_classifications VALUES($1,$2,$3,$4,$5,$6,$7)',

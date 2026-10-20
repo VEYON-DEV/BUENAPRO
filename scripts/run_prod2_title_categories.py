@@ -26,6 +26,7 @@ from buenapro_worker.prod2.title_categories import (INPUT_PRICE, build_manifest,
                                                    validate_manifest)
 from buenapro_worker.prod2.title_categories_runtime import (LOCK_KEY, StopDispatch, apply_results, connect,
     execute, immutable_write, prepare_schema, read_json, reconcile, register_run)
+from buenapro_worker.prod2.title_categories_runtime import reproject
 
 
 @contextmanager
@@ -56,7 +57,7 @@ def require_go(args):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("prepare", "dry-run", "schema", "execute", "reconcile", "apply"))
+    parser.add_argument("command", choices=("prepare", "dry-run", "schema", "execute", "reconcile", "reproject", "apply"))
     parser.add_argument("--folder", required=True)
     parser.add_argument("--run-id", default="prod2-title-categories-20261020")
     parser.add_argument("--template", default=str(ROOT / "tmp/title-category-plan-20261020/request-template.private.json"))
@@ -123,7 +124,12 @@ def main(argv=None):
                     raise StopDispatch("Title category coordinator already running")
                 try:
                     register_run(conn, manifest, args.expected_manifest_sha256)
-                    report = reconcile(conn, manifest, folder) if args.command == "reconcile" else apply_results(conn, manifest)
+                    if args.command == "reconcile":
+                        report = reconcile(conn, manifest, folder)
+                    elif args.command == "reproject":
+                        report = reproject(conn, manifest, folder)
+                    else:
+                        report = apply_results(conn, manifest)
                 finally:
                     conn.execute("SELECT pg_advisory_unlock(%s)", (LOCK_KEY,))
             from time import time_ns

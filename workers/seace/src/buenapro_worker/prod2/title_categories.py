@@ -14,6 +14,7 @@ from pathlib import Path
 import re
 
 POLICY = "title_commercial_classification_v1"
+DERIVATION = "title_category_projection_v2"
 MODEL = "jev-1.13.0"
 TEMPLATE_FILE_SHA256 = "907d4193da66aca2ac3a2372768f47d394a7b2f04f7a4fcfe30116c1a8061746"
 CATEGORIES = ("licencias_suscripciones", "desarrollo_software", "ia_automatizacion", "industrial",
@@ -135,7 +136,8 @@ def finite(value, low=0, high=1) -> float:
     return float(value)
 
 
-def parse_response(payload: dict, data: dict) -> dict:
+def parse_legacy_response(payload: dict, data: dict) -> dict:
+    """Exact v1 result reproduction for auditing already-paid pilot receipts."""
     if (not isinstance(data, dict) or data.get("model") != MODEL
             or not isinstance(data.get("answers"), dict)
             or set(data["answers"]) != set(payload["questions"])):
@@ -179,3 +181,23 @@ def parse_response(payload: dict, data: dict) -> dict:
             "output_tokens": usage["output_tokens"],
             "cost_usd": str(Decimal(usage["input_tokens"]) * INPUT_PRICE),
             "not_qualification_or_win_probability": True}
+
+
+def parse_response(payload: dict, data: dict) -> dict:
+    """Project independent strong category signals, without changing paid input.
+
+    Uncertain secondary signals do not erase a strong explicit category. The
+    clarity choice still gates classification. An affirmative Other result
+    additionally needs strong clarity confidence/distribution and all negatives.
+    """
+    result = parse_legacy_response(payload, data)
+    scores, clarity = result["signals"], result["clarity"]
+    categories = [category for category in CATEGORIES if scores[category] >= .8]
+    if categories and clarity["choice"] == "claro":
+        decision = "classified"
+    elif (clarity["choice"] == "claro" and clarity["confidence"] >= .8
+          and clarity["probabilities"]["claro"] >= .8 and all(score <= .2 for score in scores.values())):
+        decision = "other"
+    else:
+        categories, decision = [], "unclear"
+    return {**result, "categories": categories, "decision": decision, "derivation": DERIVATION}

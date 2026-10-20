@@ -102,6 +102,7 @@ export const PROD2_TITLE_CATEGORY_JOIN = `LEFT JOIN LATERAL (
     AND receipt.normalized_title = btrim(regexp_replace(p.description, ${titleWhitespace}, ' ', 'g'))
     AND receipt.title_sha256 = encode(sha256(convert_to(receipt.normalized_title, 'UTF8')), 'hex')
     AND receipt.result_json->>'policy_version' = tc.policy_version
+    AND receipt.result_json->>'derivation' = 'title_category_projection_v2'
     AND receipt.result_json->>'basis' = 'title_jev' AND receipt.result_json->'preliminary' = 'true'::jsonb
     AND receipt.result_json->'categories' = to_jsonb(tc.categories)
     AND receipt.result_json->>'decision' = tc.decision

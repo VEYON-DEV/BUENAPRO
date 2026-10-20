@@ -34,6 +34,7 @@ test('PROD2 title SQL pins current exact title, hashes, done receipt, policy, mo
     /title_commercial_classification_v1/, /receipt\.catalog_sha256/, /receipt\.result_json->'categories' = to_jsonb\(tc\.categories\)/,
     /receipt\.result_json->>'decision' = tc\.decision/, /array_position\(tc\.categories, NULL\) IS NULL/, /count\(DISTINCT category\)/,
     /receipt\.prompt_sha256 = '641d7969735a8359de2bd53c09224fb1bfa9f916e3884f8f42968882dfd11e35'/,
+    /receipt\.result_json->>'derivation' = 'title_category_projection_v2'/,
     /receipt\.normalized_title = btrim\(regexp_replace\(p\.description/]) assert.match(join, pattern);
   assert.doesNotMatch(sql.PROD6_COMMERCIAL_JOIN, /title_category|prod2_title/);
   const filters = api.parseCommercialFilters(new URLSearchParams('commercial_category=industrial&commercial_work=consultoria&commercial_status=needs_review'));

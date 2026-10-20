@@ -22,8 +22,8 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from .title_categories import (INPUT_PRICE, MODEL, POLICY, RESERVED_INPUT_TOKENS,
-                               digest, encode, parse_response, sha, validate_manifest)
+from .title_categories import (DERIVATION, INPUT_PRICE, MODEL, POLICY, RESERVED_INPUT_TOKENS,
+                               digest, encode, parse_legacy_response, parse_response, sha, validate_manifest)
 
 LOCK_KEY = 7820659504601
 ENDPOINT = "https://api.typesafe.ai/v1/systemone"
@@ -125,9 +125,79 @@ def validate_receipt(row, request):
             or row["catalog_sha256"] != request["catalog_sha256"]):
         raise StopDispatch("Durable cache does not bind the exact frozen request")
     if row["status"] == "done":
-        result = parse_response(request["payload"], row["response_json"])
+        saved_result = row["result_json"]
+        legacy = isinstance(saved_result, dict) and "derivation" not in saved_result
+        parser = parse_legacy_response if legacy else parse_response
+        result = parser(request["payload"], row["response_json"])
         if result != row["result_json"]:
             raise StopDispatch("Durable parsed result differs from the paid raw response")
+
+
+def require_current_projection(row):
+    if row["status"] == "done" and row["result_json"].get("derivation") != DERIVATION:
+        raise StopDispatch("Legacy paid result needs explicit local reproject; never resend")
+
+
+def reproject(conn, manifest, folder):
+    """Explicit local-only legacy pilot calibration; preserve all paid evidence.
+
+    Only exact original legacy parses claimed by this run may be changed. An
+    immutable old/new audit archive precedes a row-locked compare-and-swap that
+    updates result_json alone. Existing v2 results are verified and left intact.
+    """
+    receipts = fetch_receipts(conn, manifest)
+    counts = {"reprojected": 0, "already_current": 0, "foreign_run_unmodified": 0, "pending": 0,
+              "paid_requests": 0}
+    for request in manifest["requests"]:
+        cached = receipts.get(request["request_hash"])
+        if cached is None or cached["status"] != "done":
+            counts["pending"] += 1
+            continue
+        if cached["result_json"].get("derivation") == DERIVATION:
+            counts["already_current"] += 1
+            continue
+        if cached["claimed_run_id"] != manifest["run_id"]:
+            counts["foreign_run_unmodified"] += 1
+            continue
+        with conn.transaction():
+            row = conn.execute("SELECT * FROM prod2_title_category_receipts WHERE request_hash=%s FOR UPDATE",
+                               (request["request_hash"],)).fetchone()
+            if row is None:
+                raise StopDispatch("Paid pilot receipt disappeared before explicit projection")
+            validate_receipt(row, request)
+            if (row["status"] != "done" or row["claimed_run_id"] != manifest["run_id"]
+                    or row["response_json"] != cached["response_json"]
+                    or str(row["claim_token"]) != str(cached["claim_token"])
+                    or any(row[field] != cached[field] for field in
+                           ("request_sent", "input_tokens", "output_tokens", "cost_usd", "created_at", "completed_at"))):
+                raise StopDispatch("Paid pilot identity changed before explicit projection CAS")
+            if row["result_json"].get("derivation") == DERIVATION:
+                counts["already_current"] += 1
+                continue
+            if row["result_json"] != cached["result_json"]:
+                raise StopDispatch("Paid pilot result changed before explicit projection CAS")
+            old_result = parse_legacy_response(request["payload"], row["response_json"])
+            if row["result_json"] != old_result:
+                raise StopDispatch("Only the exact original legacy result may be reprojected")
+            new_result = parse_response(request["payload"], row["response_json"])
+            archive = {"request_hash": request["request_hash"], "request_sha256": digest(request["payload"]),
+                       "manifest_sha256": digest(manifest), "claimed_run_id": row["claimed_run_id"],
+                       "claim_token": str(row["claim_token"]), "raw_response_sha256": digest(row["response_json"]),
+                       "raw_response_hash_encoding": "canonical_json_utf8", "old_result": old_result,
+                       "new_result": new_result, "derivation": DERIVATION,
+                       "input_tokens": row["input_tokens"], "output_tokens": row["output_tokens"],
+                       "cost_usd": str(row["cost_usd"]), "created_at": row["created_at"].isoformat(),
+                       "completed_at": row["completed_at"].isoformat(), "paid_requests": 0}
+            immutable_write(Path(folder) / "projections" / f"{DERIVATION}-{request['request_hash']}.private.json", archive)
+            changed = conn.execute("UPDATE prod2_title_category_receipts SET result_json=%s "
+                "WHERE request_hash=%s AND status='done' AND claimed_run_id=%s AND claim_token=%s "
+                "AND result_json=%s AND response_json=%s RETURNING request_hash",
+                (Jsonb(new_result), request["request_hash"], manifest["run_id"], str(row["claim_token"]),
+                 Jsonb(old_result), Jsonb(row["response_json"]))).fetchone()
+            if not changed:
+                raise StopDispatch("Paid pilot projection compare-and-swap failed")
+            counts["reprojected"] += 1
+    return counts
 
 
 def reserve(conn, request, run_id):
@@ -247,6 +317,7 @@ def apply_results(conn, manifest, *, batch_size=100):
         if row is None or row["status"] != "done":
             counts["pending"] += 1
             continue
+        require_current_projection(row)
         ready.append(case)
     for offset in range(0, len(ready), batch_size):
         batch = ready[offset:offset + batch_size]
@@ -367,6 +438,7 @@ def execute(dsn, manifest, folder, expected_sha, api_key, *, limit=20, concurren
                     validate_receipt(row, request)
                     if row["status"] != "done":
                         raise StopDispatch("Existing durable attempt prevents automatic resend")
+                    require_current_projection(row)
                     cached += 1
                     # Conservative: count all reused receipts in the frozen manifest budget.
                     known += Decimal(str(row["cost_usd"]))
