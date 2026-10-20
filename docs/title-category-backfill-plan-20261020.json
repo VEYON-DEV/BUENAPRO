@@ -236,5 +236,9 @@
       "path": "tmp/title-category-plan-20261020/prod2-only-title-quote-20261020.private.json",
       "sha256": "0e5bec763aa300cce38ac9023ae5e10bf1b71a198ed516531d017a089cb3c180"
     }
+  },
+  "subsequent_authorized_execution": {
+    "status": "completed_and_published",
+    "report": "docs/prod2-title-categories-execution-20261020.json"
   }
 }

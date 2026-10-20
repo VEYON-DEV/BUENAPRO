@@ -1,6 +1,6 @@
 # Tareas - Worker
 
-- [ ] Ejecutar clasificación preliminar JEV1.13.0 por título de todo PROD2 almacenado: snapshot congelado, deduplicación, piloto, ledgerdurable sin reenvíos inciertos, presupuesto orientativoUS$0.10, aplicaciónCAS y cierrePG fresco. Solo título/sinPDF/perfil/Redis. Pedido humano20/10/2026.
+- [x] Ejecutar clasificación preliminar JEV 1.13.0 de todo PROD2 almacenado (20/10/2026): 1.135 IDs, 1.018 títulos distintos y 117 reutilizaciones; 808 con categoría, 322 por confirmar y 5 otros. Piloto calibrado reutilizando sus diez respuestas con archivo/CAS, 39 pruebas Python y revisión independiente. Uso conocido 962.908 tokens de entrada, costo calculado US$0.040442136, cero inciertos; CAS 1.135 aplicado/0 stale/0 pendientes, 144 matches idénticos y cero coordinadores. Solo título; sin PDF/perfil/Redis ni pago repetido. Evidencia docs/prod2-title-categories-execution-20261020.json.
 
 - [x] Acotar cotización de clasificación por título a solo PROD2 por aclaración humana (20/10): PG fresco READ ONLY confirma 1.135 registros/1.134 fichas enriquecidas, 1.018 títulos únicos/117 repetidos/0 vacíos. Mismo prompt completo y JEV1.13.0, proxy local798.328 tokens a US$0.042/M = US$0.033529776; rango orientativo US$0.03–0.07 y margen propuesto US$0.10 aún no implementado. Cero inferencias/escrituras/Redis; snapshot compacto retenido, 0 bytes liberados. Scope de implementación pendiente corregido a PROD2; docs/title-category-backfill-plan-20261020.{md,json}.
 

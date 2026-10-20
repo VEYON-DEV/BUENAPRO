@@ -1,6 +1,6 @@
 # Tareas - Backend/Web
 
-- [ ] Publicar categorías preliminares PROD2 con precedencia documental válida y filtro efectivo antes de count/página, manteniendo menores y puntajes. Git limpio, despliegue solo web y readback productivo; pedido20/10/2026.
+- [x] Publicar categorías preliminares PROD2 (20/10/2026): precedencia documental, fallback por título/hash/recibo done/proyección v2 y filtro antes de count/página. Web ad74430 publicada desde Git limpio, imagen title-categories-ad74430, 602 hashes y salud 200. Seis totales públicos verificados y 144 matches intactos; menores sin backfill pagado. Evidencia docs/prod2-title-categories-execution-20261020.json.
 
 - [x] Exponer las seis categorías simples compartidas en ambas fuentes (20/10/2026): commercial_category validado, OR por CSV en API y AND con criterios anteriores; filtro/count antes de página sobre clasificación vigente válida con raw prioritario. Listas/detalles/feed añaden commercial_categories derivado del JSON común, sin inferir desde título/score ni modificar notas/permisos/procedencia. SQL y proyecciones coinciden en 41 fixtures por fuente; siete pruebas PG desechables, servicios 128 pass/1 skip y 32 focales del principal solapadas. TypeScript y arquitectura16 aprobados; código c1f1802. Sin migración, backfill, pagos ni despliegue; publicación pendiente en la tarea existente. Evidencia docs/simple-categories-20261020.json.
 

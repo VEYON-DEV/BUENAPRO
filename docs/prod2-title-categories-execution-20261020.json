@@ -1,24 +1,141 @@
 {
-  "status": "implementation_validated_awaiting_pilot",
-  "scope": "existing_prod2_only",
-  "model": "jev-1.13.0",
-  "policy": "title_commercial_classification_v1",
-  "cases": 1135,
-  "unique_titles": 1018,
-  "reusable_duplicate_rows": 117,
+  "at": "2026-10-20T18:41:51.712562+00:00",
+  "categories": {
+    "cloud_infraestructura": 165,
+    "desarrollo_software": 87,
+    "ia_automatizacion": 17,
+    "industrial": 136,
+    "licencias_suscripciones": 327,
+    "soporte_mantenimiento": 246
+  },
+  "classified_rows": 1135,
+  "coordinator_locks": 0,
+  "current_prod2_total": 1135,
+  "decisions": {
+    "classified": 808,
+    "other": 5,
+    "unclear": 322
+  },
+  "derivation": "title_category_projection_v2",
+  "duplicate_rows_reused": 117,
+  "existing_matches_preserved": 144,
+  "existing_matches_sha256": "e229341209ae309bd8bf65cbd2582b16fb80a7159f8dc0ee40b79f129fbc71a1",
+  "frozen_cases": 1135,
+  "input_tokens": 962908,
+  "known_cost_usd": "0.040442136000",
   "manifest_sha256": "ab39e5dd41647a424c9dfad90442fef21a1e00c96528c05b9e2ba6ce788808f9",
-  "proxy_input_tokens": 792220,
-  "proxy_cost_usd": "0.033273240",
-  "budget_guard_usd": "0.10",
-  "budget_is_invoice_guarantee": false,
-  "paid_requests_so_far": 0,
+  "model": "jev-1.13.0",
+  "no_models_or_source_called_by_audit": true,
+  "output_tokens": 167052,
+  "paid_unique_titles": 1018,
+  "policy": "title_commercial_classification_v1",
+  "receipt_statuses": {
+    "done": 1018
+  },
+  "scope": "existing_prod2_only",
+  "semantic_QA_of_all_titles": false,
+  "status": "completed_and_web_published",
+  "titles_exact_current": true,
+  "uncertain_attempts": 0,
+  "unknown_cost_attempts": 0,
+  "visible_categories": {
+    "cloud_infraestructura": 164,
+    "desarrollo_software": 87,
+    "ia_automatizacion": 17,
+    "industrial": 136,
+    "licencias_suscripciones": 327,
+    "soporte_mantenimiento": 245
+  },
+  "visible_decisions": {
+    "classified": 807,
+    "other": 5,
+    "unclear": 322
+  },
+  "visible_rows": 1134,
+  "code_commit": "ad744300c46cd2fa2c63885f2ec6699292575a88",
+  "cli_runtime_commit": "07e1ce971a2fb8390031b51eba178240ce94d6e2",
+  "branch": "codex/prod2-parallel-discovery-prep",
+  "migration": {
+    "filename": "0046_prod2_title_categories.sql",
+    "sha256": "0ffa3c31558959f5fee921ca3127493baa2a6f36b0bb9a682300c342410c13e9",
+    "registered": true
+  },
+  "deployment": {
+    "at": "2026-10-20T18:48:14.431194+00:00",
+    "checks": {
+      "base_compose_preserved": true,
+      "environment_preserved": true,
+      "image_hashes_verified": true,
+      "material_config_preserved": true,
+      "new_web_container": true,
+      "nonweb_preserved": true,
+      "normalized_host_preserved": true,
+      "oci_revision": true,
+      "operating_checkout_preserved": true,
+      "ports_preserved": true,
+      "private_files_preserved": true,
+      "running": true,
+      "target_image": true
+    },
+    "code_commit": "ad744300c46cd2fa2c63885f2ec6699292575a88",
+    "image_id": "sha256:c9c76f6a92abb0e1a64b1b8ddf761ae2c33525c1797d8b9c8e64d67a23f48b81",
+    "image_tag": "buenapro-web:title-categories-ad74430",
+    "local_health": 200,
+    "migrations": 0,
+    "models_called": 0,
+    "nonweb_count": 10,
+    "rollback_tag": "buenapro-web:rollback-f8504fb-before-title-categories-ad74430",
+    "runtime_files": 602,
+    "status": "verified"
+  },
   "qa": {
-    "python_pass": 29,
+    "python_pass": 39,
     "node_pass": 195,
     "node_skip": 2,
-    "frontend_domains": 16,
-    "impeccable_detector_findings": 0
+    "architecture_domains": 16,
+    "typescript": "passed",
+    "next_build_pages": 61,
+    "impeccable_detector_findings": 0,
+    "local_visual_rounds": 2,
+    "local_captures": 12,
+    "production_captures": 6,
+    "all_18_captures_reviewed": true,
+    "all_1134_visible_ids_paged_locally": true,
+    "fresh_all_six_production_category_totals": true,
+    "profile_query_source_filters_preserved": true,
+    "badge_overlap_fixed_once_and_bounds_verified": true,
+    "production_application_functional_checks_passed": true,
+    "raw_strict_production_harness_passed": false,
+    "strict_guard_failure_retained": true,
+    "expected_cloudflare_analytics_guard_alert_resolved_by_matching_stub_SHA512": true,
+    "semantic_sample_size": 24,
+    "full_semantic_accuracy_claimed": false
   },
-  "deployment": "pending",
-  "temporary_cleanup": "pending"
+  "known_semantic_review_ids": [
+    1026459
+  ],
+  "cleanup": {
+    "local_removed_logical_bytes": 604753617,
+    "remote_removed_logical_bytes": 277655404,
+    "total_removed_logical_bytes": 882409021,
+    "physical_disk_difference_claimed": false,
+    "intermediate_image_tags_removed": 2,
+    "active_and_rollback_images_preserved": true,
+    "paid_manifests_raw_claims_projection_audits_and_receipts_retained": true
+  },
+  "actual_remaining": {
+    "title_ambiguities": 322,
+    "possible_IT_false_positive_from_title_needs_document_review": [
+      1026459
+    ],
+    "stored_record_without_enriched_detail": 1,
+    "unprocessed_frozen_title_requests": 0,
+    "stale_title_applications": 0
+  },
+  "unrelated_historical_uncertain_payments": "preserved separately; this batch zero uncertain does not change them",
+  "new_source_queries": 0,
+  "new_PDF_downloads": 0,
+  "new_embeddings_or_LLM1_or_match_calls": 0,
+  "Redis_operations": 0,
+  "new_originals_R2": 0
 }

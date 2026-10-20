@@ -1,5 +1,7 @@
 # Clasificación preliminar por título — plan del 20/10/2026
 
+Estado posterior: implementación y ejecución autorizadas por el usuario y publicadas el 20/10/2026. Ver [cierre de ejecución](./prod2-title-categories-execution-20261020.md). El resto conserva la estimación y planificación anteriores al pedido de ejecución.
+
 Clasificar las licitaciones actuales con JEV usando únicamente su título/objeto completo es suficiente para una columna de navegación **Categoría**, marcada como preliminar. La lectura documental posterior prevalece cuando existe. Esta tarea prepara el plan y la estimación; no ejecuta JEV ni publica etiquetas.
 
 ## Alcance actual solicitado: solo PROD2

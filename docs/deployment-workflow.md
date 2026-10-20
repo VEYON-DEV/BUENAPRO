@@ -1,5 +1,13 @@
 # Publicación desde el código local
 
+## Categorías preliminares PROD2: 20 de octubre de 2026
+
+Columna Categoría y filtro simple publicados en web `ad744300c46cd2fa2c63885f2ec6699292575a88`, imagen `buenapro-web:title-categories-ad74430` / `sha256:c9c76f6a92abb0e1a64b1b8ddf761ae2c33525c1797d8b9c8e64d67a23f48b81`. Solo web fue recreada; 602 hashes Git, 51 variables de entorno y diez contenedores ajenos verificados. La migración 0046 y el lote JEV por título se ejecutaron por separado con autorización humana: 1.135 filas, 1.018 solicitudes únicas, US$0.040442136 calculados y cero inciertos de este lote. Los 144 matches anteriores quedaron idénticos.
+
+Pasaron 39 pruebas Python, 195 Node/2 skip, TypeScript, arquitectura y builds; se revisaron 18 capturas locales/productivas. El guard productivo estricto conserva su fallo por bloquear analítica externa; diagnóstico acotado con SHA512 del stub confirma que la alerta SRI corresponde a esa sustitución y los checks de aplicación/filtros están aprobados. Los pendientes reales son 322 títulos por confirmar, una asignación dudosa de la muestra y un registro sin ficha enriquecida.
+
+Se retiraron 882,409,021 bytes lógicos propios, sin sumar imágenes compartidas ni limpiezas previas. Entradas, recibos, captura final e imagen rollback se conservan. Detalle en `docs/prod2-title-categories-execution-20261020.{md,json}` y evidencias privadas en `tmp/prod2-title-categories-20261020/`.
+
 ## Consolidación parcial de lectores: 19 de octubre de 2026
 
 Se retiraron únicamente los cinco contenedores legacy detenidos, conservando

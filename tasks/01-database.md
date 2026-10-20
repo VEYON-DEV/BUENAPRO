@@ -1,6 +1,6 @@
 # Tareas - Database
 
-- [ ] Aplicar y verificar únicamente0046 para categorías PROD2 por título: runs/recibos/categorías separados, título exacto, hashes y uso/costo; sin modificar extracciones ni matches. Pedido humano20/10/2026; cierre en docs/prod2-title-categories-execution-20261020.json.
+- [x] Aplicar y verificar únicamente 0046 para categorías PROD2 por título (20/10/2026): tres tablas separadas y migración registrada atómicamente; 1.018 recibos done y 1.135 filas con título exacto, hashes, costos y uso verificados por PG fresco. Sin alterar extracciones ni 144 matches existentes. Evidencia docs/prod2-title-categories-execution-20261020.json.
 
 - [x] Crear, validar y aplicar0043 para corpus/chunks/vectores/retrieval y reservas embeddings PROD2 (08/10/2026): tablas aditivas sin extensión ni originalesR2; cuatro contratos PostgreSQL reales en schema aislado bajo executor, preparación exclusiva idempotente, columnas/PK/FK/status y recibos/pagos exactos verificados. Smoke integrado real confirma texto reducido durable y replay sin nueva llamada con API simulada. Cero proveedores/fuente durante migración; guía `docs/prod2-embeddings-runtime-20261008.md`.
 
