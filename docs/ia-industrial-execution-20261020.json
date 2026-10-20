@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "status": "metadata_lifecycle_recovery_preparing",
+  "status": "running_reader_after_verified_recovery002",
   "scope": "DIN: IA/automatización e industrial; lectura por IDs del mapeo PROD2 cerrado",
   "selection": {
     "ids": 157,
@@ -35,14 +35,22 @@
     "pilot_document_units": 10,
     "finite_extra_batches": 8,
     "max_cumulative_stages": 24,
-    "code_commit": "d880953a0bd4a9c6db677c538639300a1310533a",
+    "code_commit": "7dccbc6ec92543455cf856054d8b00a2f7ce327b",
     "image": null,
     "deployment": false,
     "started": true,
-    "started_at_utc": "2026-10-20T15:15:45.113005+00:00",
-    "plan_sha256": "bdf829ca6e28db773de4a4b811cdf071b7be43ff637d0b28e7db91e6d6957500",
-    "parent_pid": 46708,
-    "last_child_pid": 46725
+    "started_at_utc": "2026-10-20T16:11:26.049916+00:00",
+    "plan_sha256": "25922f5da9f518064543ca875db33b541e6fe778606a0606175a53793a51c061",
+    "parent_pid": 85202,
+    "last_child_pid": 88477,
+    "initial_run": {
+      "code_commit": "d880953a0bd4a9c6db677c538639300a1310533a",
+      "plan_sha256": "bdf829ca6e28db773de4a4b811cdf071b7be43ff637d0b28e7db91e6d6957500",
+      "parent_pid": 46708,
+      "last_child_pid": 46725,
+      "started_at_utc": "2026-10-20T15:15:45.113005+00:00"
+    },
+    "chain_folder": "tmp/ia-industrial-execution-20261020/chain-runtime-recovery-002"
   },
   "policy": {
     "history_before_source_and_affinity": true,
@@ -67,7 +75,7 @@
     "actual157_dry_run": true,
     "runtime_embedding_schema": "fresh verified; earlier nonexistent table probe corrected in schema-preflight receipt",
     "production_writes_so_far": "Only0042 CHECK/registry and normal selected reader; no unrelated services/data changes",
-    "new_paid_calls_so_far": 4,
+    "new_paid_calls_so_far": 7,
     "focused_final": {
       "passed": 169,
       "seconds": 1.93,
@@ -93,7 +101,7 @@
       "log_sha256": "bc25aa88c37f3ecb5d52dce6712d5ca2819b8afa2f3d1a8f88ae80f508c1ecdb"
     },
     "runtime_recovery_independent_review": "approved; offline only",
-    "paid_calls_cutoff_utc": "2026-10-20T15:29:40.326942+00:00",
+    "paid_calls_cutoff_utc": "2026-10-20T16:18:39.067475+00:00",
     "metadata_recovery_offline": {
       "passed": 4327,
       "skipped": 67,
@@ -105,17 +113,17 @@
     "unexpected_local_stop": "durable sanitized STOP; no outcome/ACK; typed reviews/limits preserved; in-flight known responses persist"
   },
   "costs": {
-    "new_known_usd": "0.000295176",
+    "new_known_usd": "0.002236876",
     "new_uncertain_attempts": 0,
     "historical_uncertain_attempts": "preserved, outside this lot; never set to zero",
     "limits_note": "Call/document limits are finite; not an implemented hard USD cap. No credit purchase or spend-limit changes authorized.",
-    "cutoff_utc": "2026-10-20T15:29:40.326942+00:00",
+    "cutoff_utc": "2026-10-20T16:18:39.067475+00:00",
     "final": false
   },
   "pending": [
-    "Fix volatile lifecycle metadata replay and recover exactly three technical pre-embedding outcomes",
     "Complete current reader batches and fresh PG/Redis readback",
     "DIN matching only ready new readings",
+    "Typed document context reviews1047330/1048448 retained; no automatic paid resend",
     "48 sector-boundary title holds",
     "PROD6 legitimate source access recovery"
   ],
@@ -149,15 +157,15 @@
     "paid_retries": 0
   },
   "latest_cut": {
-    "at_utc": "2026-10-20T15:56:36.133292+00:00",
-    "plan_sha256": "3276a7263f1bee2ebfb3416d01f6a462fd31c34b46d3fde2df5d4a1be9d612c1",
-    "plan_path": "/Users/robertquispe/Projects/Me/Licita/BuenaPro/tmp/ia-industrial-execution-20261020/chain-plan.runtime-recovery-001.private.json",
-    "chain_folder": "/Users/robertquispe/Projects/Me/Licita/BuenaPro/tmp/ia-industrial-execution-20261020/chain-runtime-recovery-001",
-    "code_commit": "fa7241ca938ba9fe5f6c7b1270ffe23207a54172",
-    "chain_status": "attention_required",
+    "at_utc": "2026-10-20T16:18:39.067475+00:00",
+    "plan_sha256": "25922f5da9f518064543ca875db33b541e6fe778606a0606175a53793a51c061",
+    "plan_path": "/Users/robertquispe/Projects/Me/Licita/BuenaPro/tmp/ia-industrial-execution-20261020/chain-plan.runtime-recovery-002.private.json",
+    "chain_folder": "/Users/robertquispe/Projects/Me/Licita/BuenaPro/tmp/ia-industrial-execution-20261020/chain-runtime-recovery-002",
+    "code_commit": "7dccbc6ec92543455cf856054d8b00a2f7ce327b",
+    "chain_status": "running_child",
     "stage": "reader-001",
-    "parent_pid": 69684,
-    "child_pid": 70763,
+    "parent_pid": 85202,
+    "child_pid": 88477,
     "source_calls_by_health": 0,
     "model_calls_by_health": 0,
     "pg_writes": 0,
@@ -165,9 +173,10 @@
     "outcomes": {
       "total": 9,
       "statuses": {
-        "needs_review": 3,
+        "needs_review": 2,
         "closed_without_reading": 3,
         "llm1_complete": 2,
+        "rejected_below_60": 1,
         "opening_not_confirmed": 1
       },
       "ids": [
@@ -176,7 +185,7 @@
         1047521,
         1048448,
         1047247,
-        1049583,
+        1050006,
         1047199,
         1047579,
         1050105
@@ -186,48 +195,51 @@
     },
     "dispatch_stop_marker": false,
     "cost_audit_may_include_in_flight": {
-      "attempts": 4,
+      "attempts": 7,
       "jev_calls": 4,
       "llm1_calls": 0,
       "openai_calls": 0,
-      "embedding_attempts": 0,
-      "embedding_calls": 0,
+      "embedding_attempts": 3,
+      "embedding_calls": 3,
       "embedding_unknown_dispatch_attempts": 0,
       "embedding_pre_send_failures": 0,
       "embedding_usage_unknown_attempts": 0,
       "embedding_receipt_conflicts": 0,
-      "embedding_input_tokens": 0,
-      "embedding_cost_usd": 0,
-      "known_cost_usd": 0.000295176,
+      "embedding_input_tokens": 97085,
+      "embedding_cost_usd": 0.0019417,
+      "known_cost_usd": 0.002236876,
       "usage_unknown_attempts": 0,
       "elapsed_seconds": 2.2322462490119506
     },
     "pg": {
-      "coordinator_locks": 0,
-      "own_run_members": 3,
+      "coordinator_locks": 1,
+      "own_run_members": 4,
       "member_ids": [
         1047330,
         1048448,
-        1049583
+        1049583,
+        1050006
       ]
     },
     "redis": {
-      "queued": 148,
-      "pending": 0,
+      "queued": 146,
+      "pending": 2,
       "payloads": 148,
       "seen": 157
     }
   },
   "followup": {
     "automation_id": "completar-lote-din-ia-e-industrial",
-    "status": "PAUSED_during_active_metadata_diagnosis",
+    "status": "ACTIVE",
     "interval_minutes": 15,
     "purpose": "Watch authorized long-running reader/matching to verified closure; quiet during healthy progress",
-    "old_mapping_followup": "remains PAUSED"
+    "old_mapping_followup": "remains PAUSED",
+    "current_plan_sha256": "25922f5da9f518064543ca875db33b541e6fe778606a0606175a53793a51c061",
+    "current_chain_folder": "tmp/ia-industrial-execution-20261020/chain-runtime-recovery-002"
   },
   "local_contract_incident": {
     "at_utc": "2026-10-20T15:33:58.552313+00:00",
-    "status": "controlled_stop_local_contract_bug_recovery_preparing",
+    "status": "resolved_in_current_runtime_recovery002",
     "original_error_type": "AttributeError",
     "original_error_id": 1048448,
     "diagnosis": "Real EmbeddingStore reads model/dimensions/price_per_million before any vector claim/send; GuardedClient lacked them. Reproduced offline. Original sanitized outcome has no attribute name or traceback.",
@@ -252,7 +264,7 @@
     "new_embedding_calls": 0,
     "source_or_provider_retries": 0,
     "old_manifest_and_report_unchanged": true,
-    "pending": "New parent started after committed recovery; verify actual embeddings/LLM1/cache reuse and unique PG ownership",
+    "pending": null,
     "recovery_validation": "Full principal4286passed/67skipped; focal165passed; independent review approved. Apply/restart pending committed code."
   },
   "runtime_recovery": {
@@ -287,7 +299,7 @@
   },
   "metadata_lifecycle_incident": {
     "at_utc": "2026-10-20T15:58:04.788533+00:00",
-    "status": "controlled_stop_metadata_lifecycle_timestamp_recovery_preparing",
+    "status": "resolved_in_current_runtime_recovery002",
     "failed_ids": [
       1047330,
       1048448,
@@ -354,5 +366,43 @@
     "source_or_provider_retries_authorized_by_this_diagnosis": false,
     "provider_error_claimed": false,
     "validation": "Root4327pass/67skip plus independent actual3caseJSON QA; source identity intact, fresh lifecycle separate, STOP unexpected local. Recovery002 apply/go pending committed code."
+  },
+  "metadata_recovery002": {
+    "applied_at_utc": "2026-10-20T16:10:10.659069+00:00",
+    "plan": "tmp/ia-industrial-execution-20261020/chain-plan.runtime-recovery-002.private.json",
+    "plan_sha256": "25922f5da9f518064543ca875db33b541e6fe778606a0606175a53793a51c061",
+    "code_commit": "7dccbc6ec92543455cf856054d8b00a2f7ce327b",
+    "authorization_sha256": "ffc37a8bc3e7a5c0dad23ea43ebde3fb0a1fec2b20245aa610927ba2c4463c74",
+    "chain_folder": "tmp/ia-industrial-execution-20261020/chain-runtime-recovery-002",
+    "reader_folder": "tmp/ia-industrial-execution-20261020/runs/prod2-din-ia-industrial-20261020",
+    "requeued_ids": [
+      1048448,
+      1047330,
+      1049583
+    ],
+    "redis_after_apply": {
+      "payloads": 151,
+      "pending": 0,
+      "queued": 151,
+      "seen": 157
+    },
+    "original_inputs_verified": 291,
+    "original_inputs_bytes": 146154045,
+    "history_refs": 12,
+    "original_states_reports_plans_unchanged": true,
+    "preserved_jev_calls": 4,
+    "apply_source_calls": 0,
+    "apply_model_calls": 0,
+    "fresh_pg_redis_readback": true,
+    "readback_sha256": "f279144aeafbe53134d58765f9db89062090c881746e348931cb60fc47af94d4",
+    "launch_pid": 85202,
+    "reader_progress_verified": true,
+    "child_pid": 88477,
+    "health_receipt": "activation/health-20261020T161842Z.private.json",
+    "health_sha256": "5d3ae1900d5f0b3597d8210e4a4f223153911bb4c2106a9a8661f743c6a8331b",
+    "known_embedding_calls": 3,
+    "known_embedding_input_tokens": 97085,
+    "unknown_attempts": 0,
+    "technical_incident_resolved": true
   }
 }
