@@ -1,0 +1,94 @@
+{
+  "date": "2026-10-20",
+  "status": "estimate_only_no_paid_execution_authorized",
+  "currency": "USD",
+  "mapping_model_api_cost_usd": 0,
+  "mapped_ids": {
+    "new_id": 1434,
+    "known_baseline_missing": 302,
+    "total": 1736
+  },
+  "empirical_sources": [
+    {
+      "path": "docs/prod2-pilot10-20261005.md",
+      "scope": "10 LLM1 documents; historical PDF-reading pilot, not measured V5 cost for new cases",
+      "known_calculated_usd": "0.125169",
+      "usd_per_document": "0.0125169"
+    },
+    {
+      "path": "docs/dinaut-two-dot-seace-30-operations.md",
+      "scope": "30 already-read DIN cases; JEV scoring plus Gemini 3.1 Flash-Lite recommendations",
+      "known_calculated_usd": "0.121862954",
+      "usd_per_case": "0.004062098466666666666666666667"
+    },
+    {
+      "path": "docs/dinaut-two-dot-50-operations.md",
+      "scope": "50 already-read mixed-source cases; alternative matching reference",
+      "known_calculated_usd": "0.247578762",
+      "usd_per_case": "0.00495157524"
+    }
+  ],
+  "official_rates_checked_on": "2026-10-20",
+  "official_rates": [
+    {
+      "provider": "Google",
+      "model": "gemini-3.1-flash-lite",
+      "standard_input_usd_per_million": 0.25,
+      "standard_output_usd_per_million": 1.5,
+      "source": "https://ai.google.dev/gemini-api/docs/pricing#gemini-3.1-flash-lite"
+    },
+    {
+      "provider": "Typesafe",
+      "model": "Jev 1.13.0",
+      "input_usd_per_million": 0.042,
+      "output_usd_per_million": 0,
+      "source": "https://docs.typesafe.ai/models"
+    },
+    {
+      "provider": "OpenAI",
+      "model": "text-embedding-3-small",
+      "input_usd_per_million": 0.02,
+      "source": "https://developers.openai.com/api/docs/pricing"
+    }
+  ],
+  "scenarios_before_extras": [
+    {
+      "main_documents_per_case": 1,
+      "usd_per_case": 0.016578998466666668,
+      "usd_for_1434_new_ids": 23.7742838012,
+      "usd_for_1736_all_ids": 28.781141338133335
+    },
+    {
+      "main_documents_per_case": 2,
+      "usd_per_case": 0.029095898466666666,
+      "usd_for_1434_new_ids": 41.7235184012,
+      "usd_for_1736_all_ids": 50.510479738133334
+    },
+    {
+      "main_documents_per_case": 3,
+      "usd_per_case": 0.04161279846666667,
+      "usd_for_1434_new_ids": 59.6727530012,
+      "usd_for_1736_all_ids": 72.23981813813333
+    }
+  ],
+  "exclusions": [
+    "Initial JEV relevance screening",
+    "New corpus embeddings",
+    "Extra documents or materially longer requirements",
+    "Paid fallback models or uncertain failed sends",
+    "Infrastructure, local OCR compute, taxes and currency conversion"
+  ],
+  "limits": [
+    "Historical samples are small and selected; these are extrapolations, not measured current-batch prices or spending caps.",
+    "New tender document counts and lengths are unknown because mapping downloaded no PDFs.",
+    "The 302 known_baseline_missing IDs are not necessarily already read; verify readiness and receipts before reuse or any paid execution.",
+    "Mapping does not establish current eligibility, source validity, document completeness or semantic QA.",
+    "Known costs are calculated from recorded usage, not reconciled provider invoices."
+  ],
+  "validation": "Principal decimal arithmetic independently checked offline; official public price documentation read; no inference, new source query, PG or Redis mutation, worker restart or deployment.",
+  "cleanup": {
+    "bytes_freed": 0,
+    "temporary_files_created": 0,
+    "pending_inputs_preserved": true
+  }
+}
