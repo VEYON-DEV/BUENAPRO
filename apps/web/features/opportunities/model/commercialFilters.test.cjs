@@ -166,3 +166,12 @@ test('only PROD2 receives a category column; PROD4 retains its existing list con
   const retired = render(Prod4OpportunityList, { rows: [row], source: 'prod4' });
   assert.doesNotMatch(retired, />Categoría<|>Por título<|>Licencias y suscripciones</);
 });
+
+test('explicit listing-only publication stays visibly unread without claiming a consulted schedule or zero official documents', () => {
+  const row = { id_convocatoria: '123', id_procedimiento: '456', nomenclatura: 'LP-2026', title: 'Tableros eléctricos', object_type: 'good',
+    has_official_detail: false, documents_count: 0, publication_status: 'rejected_below_60', publication_status_label: 'Descartada por JEV' };
+  const html = render(Prod4OpportunityList, { rows: [row], source: 'prod2' });
+  assert.match(html, /Solo datos del listado/); assert.match(html, /Ficha por consultar/);
+  assert.match(html, /Descartada por JEV/); assert.match(html, /Por leer/);
+  assert.doesNotMatch(html, /Cronograma consultado|0 documentos/);
+});

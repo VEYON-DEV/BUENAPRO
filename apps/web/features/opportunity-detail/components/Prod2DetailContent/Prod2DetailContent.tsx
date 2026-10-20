@@ -77,6 +77,8 @@ export function Prod2DetailContent({ detail }: { detail: Detail }) {
       <p className={styles.title}>{process.description || "Objeto no informado"}</p>
       <div className={styles.meta}><span><Building2 aria-hidden="true" size={16} />{process.buyer_name || "Entidad no informada"}</span>
         {process.source_url ? <a href={process.source_url} target="_blank" rel="noopener noreferrer">Revisar en SEACE <ExternalLink aria-hidden="true" size={15} /></a> : null}</div>
+      {process.has_official_detail === false ? <p className={styles.muted}>Solo datos del listado. La ficha oficial, las bases y el cronograma todavía no están disponibles en BuenaPro.</p> : null}
+      {process.publication_status_label ? <p className={styles.muted}>{process.publication_status_label}. Estado conservado de la última revisión.</p> : null}
     </header>
     <DecisionOverview analyzed={evaluation.hasEvaluation} score={match?.score} provisionalScore={match?.provisional_score} scoreUnderReview={evaluation.scoreUnderReview || Boolean(process.match_review_required)} verdict={match ? verdictShortLabels[match.verdict] ?? match.verdict : "Evaluación pendiente"}
       verdictTone={tone(match?.verdict ?? "")} fit={affinity ? `${affinity.label} · ${affinity.pointLabel} puntos` : "Sin afinidad calculada"}

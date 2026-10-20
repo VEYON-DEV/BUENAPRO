@@ -156,6 +156,18 @@ GET /api/catalogs/enabled-cubso-segments
 
 `GET /api/prod2/opportunities` acepta `q` (máximo 120 caracteres), `object=good|service`, `page`, `page_size` (1–100) y `profile_id` opcional. Devuelve `data`, `total`, `page`, `page_size` y el perfil activo seleccionado. El perfil debe pertenecer al tenant autenticado; no se acepta un UUID de otra empresa. La paginación conserva fuente y perfil. Desde el 13/10/2026, la afinidad visible se calcula por reglas sobre las palabras clave actuales del perfil y la descripción oficial; se presenta con tres puntos, como Contratos menores. Los niveles son **Afinidad alta** (30–45 puntos), **Afinidad media** (10–29) y **Afinidad baja** (0–9). Sin perfil activo o líneas configuradas, muestra **Sin afinidad calculada**. No se infiere un segmento CUBSO ni capacidad económica para PROD2.
 
+Las selecciones publicadas explícitamente en `prod2_feed_publications` también
+pueden aparecer con los metadatos del listado mientras no existe ficha consultada.
+La publicación debe conservar el hash vigente de la fila; un descubrimiento crudo
+sin ficha ni publicación no aparece. `has_official_detail=false` muestra **Solo
+datos del listado**, **Ficha por consultar** y la ausencia de documentos/cronograma
+registrados, sin crear fechas ni puntajes. `publication_status` y
+`publication_status_label` conservan el resultado de la última revisión: descartada
+por JEV, cerrada al revisar, apertura por confirmar, lectura por revisar, documento
+por seleccionar o lectura previa conservada. Son observaciones del lote, no una
+declaración de vigencia actual. Las filas cerradas o descartadas no se ocultan por
+ese estado y mantienen los filtros, la identidad, el perfil y la paginación.
+
 El motor comparte las reglas léxicas de menores: raíces españolas, frase en orden 15 puntos, término explícito 10, identidad general de empresa hasta 10; términos limitados a 30 y total a 45. Las palabras cubiertas por una frase no se cuentan otra vez. Se elige una sola línea activa, sin sumar señales de líneas diferentes. El inspector y detalle explican la línea y coincidencias. Cambiar keywords actualiza la siguiente lectura, sin jobs ni modelos.
 
 El orden global se aplica en PostgreSQL antes de paginar: primero el puntaje documental guardado válido de 0 a 100, de mayor a menor, incluyendo provisionales y cero. Después se conservan las palabras clave y fecha/identidad como desempate estable. Las filas sin puntaje siguen disponibles después; la afinidad comercial no se usa como puntaje ni acredita requisitos. El Jev histórico se conserva en la API, pero no dirige los puntos visibles.

@@ -25,6 +25,7 @@ type Prod2Row = Record<string, any> & {
   jev_result: unknown; match_id: string | null; match_review_required: boolean; provisional_score: number | null; match_score: number | null; match_verdict: string | null;
   participation_extraction: unknown;
   commercial_categories?: unknown; commercial_classification_source?: unknown; commercial_classification_state?: unknown;
+  has_official_detail?: boolean; publication_status?: string | null;
 };
 type Prod2DocumentRow = {
   codigo_alfresco: string; name: string; document_type: string; stage_name: string; published_at: string | null;
@@ -70,7 +71,9 @@ const BASE = `p.id_convocatoria::text, p.id_procedimiento::text, p.opportunity_i
   'seace_prod2'::text AS source_key, p.nomenclature AS nomenclatura,
   p.description AS title, p.description, p.object_type, p.buyer_name,
   p.published_at::text, p.reference_amount, p.currency, p.last_seen_at::text,
-  d.source_url, d.detail_fetched_at::text, d.detail_fetched_at::text AS schedule_fetched_at,
+  COALESCE(d.source_url, 'https://prod2.seace.gob.pe/seacebus-uiwd-pub/buscadorPublico/buscadorPublico.xhtml') AS source_url,
+  (d.id_convocatoria IS NOT NULL) AS has_official_detail, pf.reader_status AS publication_status,
+  d.detail_fetched_at::text, d.detail_fetched_at::text AS schedule_fetched_at,
   d.registration_closes_at::text, d.proposals_start_at::text, d.proposals_closes_at::text,
   d.raw_detail->>'selection_type' AS procedure_type,
   d.schedule_json, d.item_states, d.document_inventory_total, d.document_inventory_complete,
@@ -87,6 +90,17 @@ const BASE = `p.id_convocatoria::text, p.id_procedimiento::text, p.opportunity_i
    FROM prod2_document_extractions ex
    WHERE ex.id_convocatoria = p.id_convocatoria AND ex.is_current
    ORDER BY ex.created_at DESC, ex.id DESC LIMIT 1) AS participation_extraction`;
+
+// Publishing selected listing metadata does not create a ficha. Legacy rows with
+// neither a real detail nor this explicit, current-hash publication stay hidden.
+const PUBLISHED_FROM = `prod2_discoveries p LEFT JOIN prod2_details d USING(id_convocatoria)
+  LEFT JOIN prod2_feed_publications pf ON pf.id_convocatoria = p.id_convocatoria AND pf.source_row_hash = p.row_hash`;
+const PUBLISHED_VISIBILITY = "(d.id_convocatoria IS NOT NULL OR pf.id_convocatoria IS NOT NULL)";
+const publicationLabels: Record<string, string> = {
+  closed_without_reading: "Cerrada al revisar", rejected_below_60: "Descartada por JEV",
+  opening_not_confirmed: "Apertura por confirmar", needs_review: "Lectura por revisar",
+  selection_needs_review: "Documento por seleccionar", llm1_complete: "Lectura previa conservada",
+};
 
 // Canonical matches must be tied to this source, this document revision and the durable evaluation.
 const MATCH_JOIN = `LEFT JOIN LATERAL (
@@ -139,11 +153,14 @@ function processRow(row: Prod2Row) {
   const { schedule_json, jev_result, document_publication_events: _publicationEvents, ...process } = row;
   const classification = normalizeCommercialClassification(row.commercial_classification);
   return { ...process, commercial_classification: classification, ...prod2CommercialCategoryPresentation(classification, row),
+    has_official_detail: row.has_official_detail !== false,
+    publication_status: row.publication_status && row.publication_status in publicationLabels ? row.publication_status : null,
+    publication_status_label: row.publication_status ? publicationLabels[row.publication_status] ?? null : null,
     provisional_score: provisionalScore(row), region: null, technology_segments: [], technology_match_reason: [], items_count: 0,
     fit_points: row.fit_points ?? null, keyword_points: row.keyword_points ?? null,
     fit_score: null, fit_level: row.fit_level ?? null, business_line_name: row.business_line_name ?? null,
     keyword_hits: row.keyword_hits ?? [], fit_basis: "profile_keywords" as const,
-    source_window_status: "observed" as const, source_presence_label: "Consultada en PROD2",
+    source_window_status: "observed" as const, source_presence_label: row.has_official_detail === false ? "Datos del listado PROD2" : "Consultada en PROD2",
     affinity: prod2Affinity(jev_result), official_schedule: normalizeProd2Schedule(schedule_json) };
 }
 
@@ -165,8 +182,8 @@ function publicationHistory(events: unknown, document: Prod2DocumentRow): Prod2P
 export async function listProd2OpportunitiesForTenant(tenantId: string, params: Prod2ListParams) {
   const profile = await resolveProfile(tenantId, params.profileId);
   const values: unknown[] = [profile?.id ?? null];
-  // Only enriched captures are shown. Discovery rows alone do not establish an opportunity's current status.
-  const where = ["true"];
+  // Include explicitly published selections without pretending a ficha exists.
+  const where = [PUBLISHED_VISIBILITY];
   if (params.object) { values.push(params.object); where.push(`p.object_type = $${values.length}`); }
   if (params.q) { values.push(`%${params.q}%`); where.push(`(p.nomenclature ILIKE $${values.length} OR p.description ILIKE $${values.length} OR p.buyer_name ILIKE $${values.length})`); }
   // A saved analysis exists even when its score is unpublished. Match provenance
@@ -175,13 +192,13 @@ export async function listProd2OpportunitiesForTenant(tenantId: string, params: 
   if (params.withScore) where.push(`${AVAILABLE_MATCH_SCORE} IS NOT NULL`);
   appendCommercialPredicates(params.commercial, values, where, "prod2_effective");
   const predicate = where.join(" AND ");
-  const count = await query<{ total: number }>(`SELECT count(*)::int AS total FROM prod2_discoveries p JOIN prod2_details d USING(id_convocatoria)
+  const count = await query<{ total: number }>(`SELECT count(*)::int AS total FROM ${PUBLISHED_FROM}
     ${params.analysis === "done" || params.withScore ? MATCH_JOIN : ""}
     ${hasCommercialFilters(params.commercial) ? `${PROD2_COMMERCIAL_JOIN} ${PROD2_TITLE_CATEGORY_JOIN}` : ""}
     WHERE ($1::uuid IS NULL OR $1::uuid IS NOT NULL) AND ${predicate}`, values);
   const rows = await query<Prod2Row>(`SELECT ${BASE}, ${KEYWORD_FIT_SELECT}, ${PROD2_COMMERCIAL_SELECT}, jev.result_json AS jev_result,
     ${MATCH_STATUS_SELECT}, ${PUBLISHED_MATCH_SCORE} AS match_score, ${PUBLISHED_MATCH_VERDICT} AS match_verdict
-    FROM prod2_discoveries p JOIN prod2_details d USING(id_convocatoria)
+    FROM ${PUBLISHED_FROM}
     ${MATCH_JOIN} ${JEV_JOIN} ${KEYWORD_FIT_JOIN} ${PROD2_COMMERCIAL_JOIN} ${PROD2_TITLE_CATEGORY_JOIN}
     WHERE ${predicate}
     ORDER BY ${AVAILABLE_MATCH_SCORE} DESC NULLS LAST, fit.keyword_points DESC NULLS LAST,
@@ -201,8 +218,9 @@ export async function getProd2OpportunityForTenant(tenantId: string, id: string,
     ${PUBLISHED_MATCH_SCORE} AS match_score, ${PUBLISHED_MATCH_VERDICT} AS match_verdict,
     matched.breakdown_json, matched.missing_actions_json,
     matched.matched_at::text, matched.updated_at::text AS match_updated_at, matched.evaluated_profile_hash
-    FROM prod2_discoveries p JOIN prod2_details d USING(id_convocatoria)
-    ${MATCH_JOIN} ${JEV_JOIN} ${KEYWORD_FIT_JOIN} ${PROD2_COMMERCIAL_JOIN} ${PROD2_TITLE_CATEGORY_JOIN} WHERE p.id_convocatoria = $2::bigint`, [profile?.id ?? null, id]);
+    FROM ${PUBLISHED_FROM}
+    ${MATCH_JOIN} ${JEV_JOIN} ${KEYWORD_FIT_JOIN} ${PROD2_COMMERCIAL_JOIN} ${PROD2_TITLE_CATEGORY_JOIN}
+    WHERE ${PUBLISHED_VISIBILITY} AND p.id_convocatoria = $2::bigint`, [profile?.id ?? null, id]);
   const row = result.rows[0];
   if (!row) return null;
   const [documents, extraction] = await Promise.all([

@@ -61,6 +61,9 @@ export type Prod4OpportunitySummary = Partial<CommercialCategoryPresentation> & 
   provisional_score?: number | null;
   participation_extraction?: unknown;
   is_saved?: boolean;
+  has_official_detail?: boolean;
+  publication_status?: string | null;
+  publication_status_label?: string | null;
 };
 
 type Prod4Detail = {
@@ -229,7 +232,8 @@ export function Prod4OpportunityList({ rows, source = "prod4", profileId }: { ro
                 <div className={styles.objectCell}>
                   <span className={styles.code} translate="no">{row.nomenclatura ?? rowId(row)}</span>
                   <strong>{row.title || row.description || "Objeto sin descripción"}</strong>
-                  <span className={styles.meta}>{objectLabel(row.object_type)} · {row.documents_count ?? 0} documentos</span>
+                  <span className={styles.meta}>{objectLabel(row.object_type)} · {source === "prod2" && row.has_official_detail === false ? "Solo datos del listado" : `${row.documents_count ?? 0} documentos`}</span>
+                  {source === "prod2" && row.publication_status_label ? <span className={styles.meta}>{row.publication_status_label}</span> : null}
                 </div>
                 <div className={styles.buyerCell}>
                   <span>{row.buyer_name || "Entidad no informada"}</span>
@@ -240,7 +244,7 @@ export function Prod4OpportunityList({ rows, source = "prod4", profileId }: { ro
                 <div className={styles.participationCell}><ParticipationStatus label="Consorcio" kind="consorcio" term={participationReading(row.participation_extraction).consorcio} /></div>
                 <div className={styles.dateCell}>
                   <strong>{deadlineLabel(row)}</strong>
-                  <span className={styles.meta}>{source === "prod2" ? "Cronograma consultado" : row.source_window_status === "current" ? "En radar oficial" : "Fuera del radar"}</span>
+                  <span className={styles.meta}>{source === "prod2" ? row.has_official_detail === false ? "Ficha por consultar" : "Cronograma consultado" : row.source_window_status === "current" ? "En radar oficial" : "Fuera del radar"}</span>
                 </div>
                 <AffinityMark row={row} source={source} />
               </button>
@@ -259,6 +263,8 @@ export function Prod4OpportunityList({ rows, source = "prod4", profileId }: { ro
           <span className={styles.previewCode}>{primary.nomenclatura ?? primary.id_procedimiento}</span>
           <h2>{primary.title || primary.description || "Objeto sin descripción"}</h2>
           <div className={styles.pills}><span>{objectLabel(primary.object_type)}</span><span>Procedimiento de selección</span></div>
+          {source === "prod2" && previewRow?.has_official_detail === false ? <p className={styles.eligibility}>Solo datos del listado. La ficha oficial, las bases y el cronograma todavía no están disponibles en BuenaPro.</p> : null}
+          {source === "prod2" && previewRow?.publication_status_label ? <p className={styles.eligibility}>{previewRow.publication_status_label}. Estado conservado de la última revisión.</p> : null}
           <div className={styles.previewAffinityGroup}>
             <div className={styles.previewAffinity}><span>{previewAnalysis !== "none" ? "Análisis de requisitos" : "Afinidad con tu empresa"}</span><AffinityMark row={detail?.process ?? primary} source={source} /></div>
             {previewAnalysis === "review" ? <p className={styles.analysisContext}>El análisis está disponible en el detalle. El puntaje sigue por validar.</p> : null}

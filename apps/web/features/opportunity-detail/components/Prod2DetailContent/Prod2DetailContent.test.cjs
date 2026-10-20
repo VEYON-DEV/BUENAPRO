@@ -59,6 +59,21 @@ function fixture(breakdown, facets, score = null) {
 }
 const render = detail => renderToStaticMarkup(React.createElement(Prod2DetailContent, { detail }));
 
+test('published listing metadata never claims a ficha, documents, deadline or evaluated score', () => {
+  const detail = fixture(null, []);
+  detail.documents = [];
+  detail.analysis.extraction = null;
+  detail.process.has_official_detail = false;
+  detail.process.source_url = 'https://prod2.seace.gob.pe/seacebus-uiwd-pub/buscadorPublico/buscadorPublico.xhtml';
+  detail.process.publication_status_label = 'Cerrada al revisar';
+  const html = render(detail);
+  assert.match(html, /Solo datos del listado/);
+  assert.match(html, /Cerrada al revisar\. Estado conservado de la última revisión/);
+  assert.match(html, /Fecha no informada/);
+  assert.match(html, /No hay documentos registrados en esta ficha/);
+  assert.doesNotMatch(html, /Abrir bases en PDF|<strong>0<\/strong>/);
+});
+
 test("PROD2 detail uses the explicit provisional score while keeping documentary review visible", () => {
   const detail = fixture({ meta: { score_validated: false }, resumen: "Experiencia por confirmar", requisitos: [
     { requisito: "Experiencia", source_index: 1, source_facet: "economic_experience", estado: "requiere_revision" },

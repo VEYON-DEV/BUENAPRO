@@ -1,7 +1,7 @@
 const { describe, test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { randomUUID, createHash } = require('node:crypto');
-const { commercial: api, commercialSql: sql } = require('./commercialClassification.test-support.cjs');
+const { commercial: api, commercialSql: sql, loadCommercialModule: load } = require('./commercialClassification.test-support.cjs');
 const dsn = process.env.BUENAPRO_COMMERCIAL_TEST_DATABASE_URL;
 const plain = value => JSON.parse(JSON.stringify(value));
 
@@ -244,5 +244,39 @@ describe('commercial SQL against a disposable loopback PostgreSQL fixture', { sk
     await db.query('DELETE FROM prod2_title_classifications');
     await db.query('DELETE FROM prod2_title_category_receipts');
     await db.query('DELETE FROM prod2_discoveries WHERE id_convocatoria >= 501');
+  });
+
+  test('PROD2 actual feed count includes only real detail or exact-hash opt-in publications, retaining rejected/closed rows', async () => {
+    await db.query(`ALTER TABLE prod2_discoveries ADD COLUMN row_hash text;
+      CREATE TABLE prod2_details (id_convocatoria bigint PRIMARY KEY);
+      CREATE TABLE prod2_feed_publications (id_convocatoria bigint PRIMARY KEY, source_row_hash text, reader_status text)`);
+    const statements = [];
+    const service = load('prod2Opportunities.ts', {
+      '@/server/db/client': { query: async (text, values) => { statements.push({ text, values }); return { rows: [] }; } },
+      '@/lib/prod2Analysis': { normalizeProd2Schedule: () => [], prod2Affinity: () => null },
+      './prod2DocumentStorage': {}, './prod2OfficialDocument': {}, './keywordTextScoring': { keywordTextFitLateralSql: () => '' },
+      './savedOpportunities': { savedOpportunityIds: async () => new Set() },
+    });
+    await service.listProd2OpportunitiesForTenant('tenant', { object: null, q: '', page: 1, pageSize: 20, profileId: null });
+    const count = statements.find(row => row.text.startsWith('SELECT count(*)::int AS total FROM prod2_discoveries'));
+    assert.ok(count, 'Capture the real count SQL rather than restating its visibility predicate in the fixture');
+    for (const [id, detail, publication, status] of [
+      [701, false, null, null], // Unenriched legacy discovery stays hidden.
+      [702, true, null, null],
+      [703, false, 'current', 'closed_without_reading'],
+      [704, false, 'stale', 'rejected_below_60'],
+      [705, false, 'current', 'rejected_below_60'],
+      [706, true, 'stale', 'needs_review'],
+    ]) {
+      await db.query('INSERT INTO prod2_discoveries VALUES($1,$2,$3)', [id, `Title ${id}`, 'current']);
+      if (detail) await db.query('INSERT INTO prod2_details VALUES($1)', [id]);
+      if (publication) await db.query('INSERT INTO prod2_feed_publications VALUES($1,$2,$3)', [id, publication, status]);
+    }
+    const visible = await db.query(count.text.replace('SELECT count(*)::int AS total', 'SELECT p.id_convocatoria')+' AND p.id_convocatoria >= 701 ORDER BY p.id_convocatoria', count.values);
+    assert.deepEqual(visible.rows.map(row => Number(row.id_convocatoria)), [702, 703, 705, 706]);
+    const total = await db.query(count.text+' AND p.id_convocatoria >= 701', count.values);
+    assert.equal(total.rows[0].total, 4);
+    await db.query("UPDATE prod2_discoveries SET row_hash='changed_after_publication' WHERE id_convocatoria=703");
+    assert.equal((await db.query(count.text+' AND p.id_convocatoria >= 701', count.values)).rows[0].total, 3);
   });
 });
