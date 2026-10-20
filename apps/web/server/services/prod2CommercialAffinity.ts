@@ -8,7 +8,8 @@ export type Prod2CommercialContext = { profileHash: string; commercialHash: stri
 
 /** Same one-company, commercial-only input as the DIN JEV publisher. */
 export function prod2CommercialContext(value: { profile_hash?: unknown; commercial_description?: unknown; active_business_lines?: unknown }): Prod2CommercialContext | null {
-  if (typeof value.profile_hash !== "string" || !/^[a-f0-9]{64}$/.test(value.profile_hash)
+  // Existing profiles retain their versioned 32/64-hex identity verbatim.
+  if (typeof value.profile_hash !== "string" || !/^(?:[a-f0-9]{32}|[a-f0-9]{64})$/.test(value.profile_hash)
     || typeof value.commercial_description !== "string" || !Array.isArray(value.active_business_lines)
     || value.active_business_lines.some(line => typeof line !== "string")) return null;
   const descripcion = compact(value.commercial_description);
