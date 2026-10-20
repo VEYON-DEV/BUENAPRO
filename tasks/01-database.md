@@ -162,3 +162,5 @@
 - [ ] Crear documentos y extracciones universales con version, procedencia, licencia y visibilidad.
 - [ ] Crear esquemas, terminos y mapeos de taxonomias CUBSO, UNSPSC, CPV y privadas.
 - [ ] Migrar referencias de `id_contrato` a `opportunity_id` mediante backfill, dual-write y compatibilidad temporal.
+
+- [x] Aplicar únicamente 0047 y verificar la publicación explícita de metadatos de los 157 seleccionados PROD2: 144 registros/UUID nuevos y 13 preservados, sin crear fichas/cronogramas/matches ni sobrescribir históricos. Transacción y readback productivo verificados; web c338422 desplegada desde Git con 603 hashes comprobados, capturas reales en tres tamaños y API200 del perfil DIN (2026-10-20).
