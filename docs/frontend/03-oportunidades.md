@@ -219,7 +219,9 @@ En Buscador SEACE, elegir una categoría la aplica de inmediato y anuncia
 **Aplicando…** mientras navega. La selección se serializa después de actualizar
 el control y retirar criterios comerciales anteriores; conserva perfil,
 búsqueda y tipo, y reinicia la página. Así no queda un borrador seleccionado
-frente a una lista con otra categoría. Contratos menores conserva el envío
+frente a una lista con otra categoría. Buscar y los enlaces de tipo/puntaje
+comparten también la categoría pendiente: una nueva búsqueda durante la carga
+conserva esa selección y el texto recién escrito. Contratos menores conserva el envío
 manual con **Aplicar filtros** para combinar sus distintos controles.
 
 El selector envía `commercial_category`. Búsqueda, tipo, vistas rápidas, cambio de

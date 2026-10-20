@@ -217,3 +217,5 @@
 - [x] Crear vista de contract tests SEACE.
 
 - [x] Proyectar afinidad comercial JEV exclusiva del perfil DIN vigente en feed/detalle PROD2 mediante política e identidad de título/fila/perfil/tenant; campo separado de matches documentales y orden global antes de paginar. 72 pruebas Node, cuatro fixtures SQL reales, TypeScript y arquitectura aprobados; despliegue y capturas se verifican por separado (2026-10-20).
+
+- [ ] Optimizar el cálculo de afinidad por keywords y el orden de filtros de PROD2 conservando clasificación/orden/paginación: diagnóstico PostgreSQL de una página ~4.95 s; `OFFSET 0` aislado solo mejora ~7 % y no se publicó. Evidencia: `tmp/prod2-category-performance-20261020/` (2026-10-20).
