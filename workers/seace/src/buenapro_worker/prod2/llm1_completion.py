@@ -640,6 +640,7 @@ def persist_completed_llm1(conn, *, convocation_id: int, document_uuid: str,
     repository._sha(extraction["prompt_hash"])
     result = extraction_for_persistence(extraction)
     from .extraction_policy import validate_scope_payload, get_scope_policy
+    from buenapro_worker.extraction.commercial_classification import get_commercial_policy
     from .input_policy import (schema_for_input as schema_for_scope,
         prompt_version_for_input as prompt_version_for_scope,
         schema_version_for_input as schema_version_for_scope, is_retrieved_input)
@@ -648,6 +649,10 @@ def persist_completed_llm1(conn, *, convocation_id: int, document_uuid: str,
     try:
         schema = schema_for_scope(extraction["doc_class"], selection)
         validate_scope_payload(result.raw_json, selection)
+        if get_commercial_policy(selection) and (
+                extraction["prompt_version"] != prompt_version_for_scope(extraction["doc_class"], selection)
+                or extraction["schema_version"] != schema_version_for_scope(extraction["doc_class"], selection)):
+            raise ValueError("Commercial extraction versions differ")
         if get_scope_policy(selection):
             expected_coverage = {"policy_version": get_scope_policy(selection),
                 "not_evaluated": ["payment", "requirements.proposal_documents"]}

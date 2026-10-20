@@ -114,6 +114,24 @@ def derive_summary(raw: dict[str, Any]) -> dict[str, Any]:
         # An excluded field is not evidence that the procedure has no obligation.
         result["tipo_pago"] = None
         result["documentos_clave"] = []
+    if "commercial_classification" in raw:
+        from pydantic import ValidationError
+        from buenapro_worker.extraction.commercial_classification import (
+            commercial_literal_errors, normalize_commercial_classification,
+        )
+        try:
+            classification = normalize_commercial_classification(raw["commercial_classification"])
+        except ValidationError:
+            # An unversioned/historical provider extra cannot invalidate the
+            # original reading or replace it with guessed commercial labels.
+            return result
+        proof = raw.get("llm1_input")
+        if (isinstance(proof, dict) and proof.get("route") == "retrieved_text"
+                and commercial_literal_errors(classification, proof.get("selected_blocks", []))):
+            # Retain the paid raw block; its normalized projection cannot claim
+            # evidence support for a quote absent from the exact sent context.
+            classification["support_status"] = "needs_review"
+        result["commercial_classification"] = classification
     return result
 
 

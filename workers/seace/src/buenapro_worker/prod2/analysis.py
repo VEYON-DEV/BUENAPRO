@@ -490,9 +490,11 @@ def extract_document(settings: Any, pdf_bytes: bytes, *, object_type: str,
     if cached is not None:
         return cached
     from .extraction_policy import get_scope_policy, validate_scope_payload
+    from buenapro_worker.extraction.commercial_classification import get_commercial_policy
     from .input_policy import get_input_policy, schema_version_for_input as schema_version_for_scope
     selection = (document_context or {}).get("selection_context")
     scoped = get_scope_policy(selection)
+    commercial = get_commercial_policy(selection)
     bound = getattr(extractor, "prepared", None)
     binding_fields = ("document_scope", "document_set", "document_set_hash", "document_set_identity",
                       "selection_context", "llm1_input")
@@ -500,7 +502,7 @@ def extract_document(settings: Any, pdf_bytes: bytes, *, object_type: str,
         if (document_context is None or bound.get("analysis_sha256") != analysis_sha
                 or any(bound.get(field) != document_context.get(field) for field in binding_fields)):
             raise ValueError("Selected extraction requires an exactly bound selected reader")
-    if scoped or (selection is not None and get_input_policy(selection)):
+    if scoped or commercial or (selection is not None and get_input_policy(selection)):
         if (not getattr(extractor, "supports_selected_input_policies", False)
                 or not isinstance(bound, dict) or bound.get("analysis_sha256") != analysis_sha
                 or any(bound.get(field) != document_context.get(field) for field in binding_fields)):
@@ -513,11 +515,20 @@ def extract_document(settings: Any, pdf_bytes: bytes, *, object_type: str,
         # single-document calls retain their exact prompt and cache identity.
         reader = copy.copy(reader)
         from .input_policy import prompt_for_input as prompt_for_scope
+        base_prompt = reader.prompts[doc_class]
+        if commercial:
+            # Selected adapters already carry their policy-specific prompt.
+            # Rebuild the same base used by _document_input so an appended
+            # commercial instruction is applied once, including legacy scope.
+            base_prompt = read_prompt(BASES_PROMPT_FILENAME)
+            if doc_class == "bases_good":
+                base_prompt += BASES_GOODS_INSTRUCTION
+            base_prompt += PARTICIPATION_INSTRUCTION
         reader.prompts = {**reader.prompts, doc_class: prompt_for_scope(doc_class,
-                         document_context.get("selection_context"), reader.prompts[doc_class]) +
+                         document_context.get("selection_context"), base_prompt) +
                          _document_set_instruction(manifest, document_context)}
     result = reader.extract(pdf_bytes, mime="application/pdf", doc_class=doc_class)
-    if scoped and (result.prompt_version != inputs["prompt_version"]
+    if (scoped or commercial) and (result.prompt_version != inputs["prompt_version"]
             or result.schema_version != schema_version_for_scope(doc_class, selection)):
         raise ValueError("Selected reader returned incompatible scope versions")
     raw = copy.deepcopy(result.raw_json)

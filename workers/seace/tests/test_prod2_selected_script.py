@@ -64,6 +64,45 @@ def test_default_pilot_and_all_keywords_cover_joint_union_goods_and_services():
     assert plan["document_storage_policy"] == subject.OFFICIAL_LINKS_POLICY
 
 
+def test_commercial_taxonomy_cli_is_explicit_new_only_and_auto_preserves_exact_frozen_inputs(tmp_path):
+    key, version = "llm1_commercial_taxonomy", "commercial_taxonomy_v1"
+    options = args("--folder", str(tmp_path))
+    legacy = subject.plan(options)
+    assert key not in legacy
+    options.llm1_commercial_taxonomy = "none"
+    assert subject.plan(options) == legacy
+    subject.private_write(tmp_path / "manifest.private.json", {**legacy, "requested": legacy})
+    options.llm1_commercial_taxonomy = "auto"
+    assert subject.plan(options) == legacy
+    options.llm1_commercial_taxonomy = version
+    with pytest.raises(ValueError, match="new folder"):
+        subject.plan(options)
+    (tmp_path / "manifest.private.json").unlink()
+    opted = subject.plan(options)
+    assert opted == {**legacy, key: version}
+    subject.private_write(tmp_path / "manifest.private.json", {**opted, "requested": opted})
+    options.llm1_commercial_taxonomy = "auto"
+    assert subject.plan(options) == opted
+    options.llm1_commercial_taxonomy = "none"
+    with pytest.raises(ValueError, match="new folder"):
+        subject.plan(options)
+
+
+@pytest.mark.parametrize("value", [None, "unknown", False])
+def test_invalid_commercial_taxonomy_fails_before_enrichment_side_effects(tmp_path, value):
+    with pytest.raises(ValueError, match="commercial taxonomy"):
+        subject.enrich(None, None, tmp_path, None, {"llm1_commercial_taxonomy": value}, None, None, None)
+
+
+def test_corrupt_commercial_taxonomy_manifest_is_not_rescued_by_auto(tmp_path):
+    options = args("--folder", str(tmp_path))
+    legacy = subject.plan(options)
+    subject.private_write(tmp_path / "manifest.private.json", {
+        **legacy, "llm1_commercial_taxonomy": "commercial_taxonomy_v1", "requested": legacy})
+    with pytest.raises(ValueError, match="inputs differ"):
+        subject.plan(options)
+
+
 def test_luna_low_default_is_frozen_only_for_new_folders(tmp_path):
     options = args("--folder", str(tmp_path))
     modern = subject.plan(options)
@@ -254,6 +293,14 @@ def test_prior_reading_preservation_is_explicit_and_separates_queue_policy():
     assert "prior_reading_policy" not in old
     assert new["prior_reading_policy"] == "prod2_preserve_prior_readings_v1"
     assert subject.staging_identity(old) != subject.staging_identity(new)
+
+
+def test_commercial_taxonomy_uses_separate_campaign_queue_only_when_opted_in():
+    old = subject.plan(args("--sweep-id", "initial")) | {
+        "run_id": "batch1", "commercial_profiles": {}, "gemini_model": "synthetic"}
+    opted = {**old, "llm1_commercial_taxonomy": "commercial_taxonomy_v1"}
+    assert subject.staging_identity(old) != subject.staging_identity(opted)
+    assert subject.staging_identity({**old}) == subject.staging_identity(old)
 
 
 @pytest.mark.parametrize("prior_status", ["llm1_complete", "needs_review", None])
@@ -745,7 +792,7 @@ def test_opt_in_ficha_scope_mismatch_blocks_before_persistence_or_models(tmp_pat
 @pytest.mark.parametrize("storage_mode", ["official", "r2"])
 def test_real_zip_inventory_selection_pdf_preparation_to_llm1_envelope_offline(
     tmp_path, monkeypatch, with_previews, with_ficha_context, analysis_pages, new_reading, storage_mode,
-    archive_format="zip"):
+    archive_format="zip", commercial_taxonomy=False):
     """Exercise the integrated archive/selector/preparation route; mock only I/O/providers."""
     from buenapro_worker.prod2 import selected_extractor, document_previews
     from buenapro_worker.prod2.document_selection import JevDocumentSelector
@@ -835,6 +882,10 @@ def test_real_zip_inventory_selection_pdf_preparation_to_llm1_envelope_offline(
         def __init__(self, settings, prepared, folder, before_request=None, *, local_text_result=None):
             assert prepared["page_count"] == analysis_pages
             self.prepared = prepared
+            from buenapro_worker.prod2.input_policy import schema_for_input
+            assert ("llm1_commercial_taxonomy" in prepared["selection_context"]) == commercial_taxonomy
+            assert ("commercial_classification" in schema_for_input(
+                "bases_service", prepared["selection_context"]).model_fields) == commercial_taxonomy
             assert (local_text_result is not None) == new_reading
             if new_reading:
                 assert prepared["llm1_input"]["route"] == "pdf"
@@ -846,11 +897,16 @@ def test_real_zip_inventory_selection_pdf_preparation_to_llm1_envelope_offline(
         def __exit__(self, *a):
             pass
         def extract(self, *a, **kw):
+            commercial = ({"commercial_classification": {"taxonomy_version": "commercial_taxonomy_v1",
+                "primary_area": "sin_clasificar", "secondary_areas": [], "work_types": [],
+                "specialties": [], "support_status": "needs_review", "evidence": []}}
+                if commercial_taxonomy else {})
+            suffix = "_commercial_taxonomy_v1" if commercial_taxonomy else ""
             return SimpleNamespace(raw_json={"requirements": {"provider": [{"tipo": "specific_experience",
-                "descripcion": "SYNTHETIC SUPPORT", "obligatorio": True}]}, "participation": {}},
+                "descripcion": "SYNTHETIC SUPPORT", "obligatorio": True}]}, "participation": {}, **commercial},
                 requires_human_review=False, model=self.settings.gemini_model,
-                prompt_version=("prod2_qualification_focus_bases_service_prompt_v1" if new_reading else "bases_extraction_v2"),
-                schema_version=("prod2_qualification_focus_bases_service_schema_v1" if new_reading else "bases_extraction_schema_v2"), prompt_hash="b" * 64,
+                prompt_version=("prod2_qualification_focus_bases_service_prompt_v1" if new_reading else "bases_extraction_v2") + suffix,
+                schema_version=("prod2_qualification_focus_bases_service_schema_v1" if new_reading else "bases_extraction_schema_v2") + suffix, prompt_hash="b" * 64,
                 input_tokens=100, output_tokens=10, cost_usd=.00004)
     monkeypatch.setattr(selected_extractor, "SelectedGeminiExtractor", Extractor)
     def paid(conn, folder, conv, request_hash, settings, profile, callback):
@@ -872,6 +928,14 @@ def test_real_zip_inventory_selection_pdf_preparation_to_llm1_envelope_offline(
         assert context["original_sha256"] == hashlib.sha256(archive.getvalue()).hexdigest()
         assert context["document_set"][0]["original_sha256"] == hashlib.sha256(pdf).hexdigest()
         assert context["document_set_hash"] == subject.canonical_hash(context["document_set_identity"])
+        if commercial_taxonomy:
+            assert context["selection_context"]["llm1_commercial_taxonomy"] == "commercial_taxonomy_v1"
+            assert context["raw_extraction_json"]["commercial_classification"]["primary_area"] == "sin_clasificar"
+            from buenapro_worker.prod2.pdf_preparation import selected_preparation_identity
+            old_context = {k: v for k, v in context["selection_context"].items() if k != "llm1_commercial_taxonomy"}
+            old_identity = selected_preparation_identity(context["document_set"], old_context,
+                max_source_bytes=context["document_set_identity"]["max_source_bytes"])
+            assert subject.canonical_hash(old_identity) != context["document_set_hash"]
         if with_ficha_context:
             assert context["selection_context"]["ficha_description"] == detail["description"]
         else:
@@ -885,6 +949,7 @@ def test_real_zip_inventory_selection_pdf_preparation_to_llm1_envelope_offline(
                             openai_api_key="synthetic-offline")
     options = args("--folder", str(tmp_path), "--cache-folder", str(tmp_path / "cache"),
                    "--document-storage", storage_mode,
+                   *(["--llm1-commercial-taxonomy", "commercial_taxonomy_v1"] if commercial_taxonomy else []),
                    *(["--archive-7z"] if archive_format == "7z" else []),
                    *([] if new_reading else ["--llm1-scope", "legacy", "--llm1-input", "pdf"]))
     manifest = subject.plan(options) | {"profile_id": "00000000-0000-4000-8000-000000000002"}
@@ -934,6 +999,12 @@ def test_real_zip_inventory_selection_pdf_preparation_to_llm1_envelope_offline(
         assert reused["llm1_receipt_hash"] == subject.canonical_hash(paid_bundle)
         assert reused["source_document_manifest"] == replay["source_document_manifest"]
         assert len(model_calls) == previous_calls and len(persisted) == 3
+
+
+def test_commercial_opt_in_cli_to_preparation_schema_and_paid_identity_offline(tmp_path, monkeypatch):
+    test_real_zip_inventory_selection_pdf_preparation_to_llm1_envelope_offline(
+        tmp_path, monkeypatch, with_previews=False, with_ficha_context=False,
+        analysis_pages=1, new_reading=True, storage_mode="official", commercial_taxonomy=True)
 
 
 def test_official_cleanup_closes_and_replays_without_paid_document_reentry(tmp_path, monkeypatch):

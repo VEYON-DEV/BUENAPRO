@@ -12,6 +12,11 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from buenapro_worker.extraction.commercial_classification import (
+    prompt_with_commercial, schema_with_commercial, validate_commercial_payload,
+    version_with_commercial,
+)
+
 from buenapro_worker.extraction.schemas import (
     BasesGoodsExtractionV2,
     BasesGoodsV2,
@@ -96,6 +101,7 @@ def validate_scope_payload(
     Pydantic's legacy extra="ignore" must not silently turn an out-of-scope
     response into a compliant reading. Source/provenance metadata is allowed.
     """
+    validate_commercial_payload(raw, selection_context)
     if get_scope_policy(selection_context) is None:
         return
     if not isinstance(raw, Mapping):
@@ -121,15 +127,17 @@ def schema_for_scope(
 ) -> type[BaseModel]:
     document_class = _doc_class(doc_class)
     if get_scope_policy(selection_context) is None:
-        return (
+        schema = (
             BasesGoodsExtractionV2 if document_class == "bases_good"
             else EettExtractionV1 if document_class == "eett" else TdrExtractionV2
         )
-    return (
-        QualificationBasesGoodsExtractionV1 if document_class == "bases_good"
-        else QualificationEettExtractionV1 if document_class == "eett"
-        else QualificationTdrExtractionV1
-    )
+    else:
+        schema = (
+            QualificationBasesGoodsExtractionV1 if document_class == "bases_good"
+            else QualificationEettExtractionV1 if document_class == "eett"
+            else QualificationTdrExtractionV1
+        )
+    return schema_with_commercial(schema, selection_context)
 
 
 def prompt_for_scope(
@@ -139,7 +147,7 @@ def prompt_for_scope(
 ) -> str:
     document_class = _doc_class(doc_class)
     if get_scope_policy(selection_context) is None:
-        return legacy_prompt
+        return prompt_with_commercial(legacy_prompt, selection_context)
     # Lazy import keeps scope models independent of a provider client and avoids
     # a module cycle if the legacy reader imports this policy in the future.
     from buenapro_worker.extraction.gemini import read_prompt
@@ -159,7 +167,7 @@ def prompt_for_scope(
             "Conserva cantidades, unidades, especificaciones, entrega y garantia. "
             "No confundas los bienes comprados con equipamiento del postor.\n"
         )
-    return prompt
+    return prompt_with_commercial(prompt, selection_context)
 
 
 def prompt_version_for_scope(
@@ -169,8 +177,10 @@ def prompt_version_for_scope(
     if get_scope_policy(selection_context) is None:
         from buenapro_worker.extraction.gemini import prompt_version_for_doc_class
 
-        return prompt_version_for_doc_class(document_class)
-    return f"prod2_qualification_focus_{document_class}_prompt_v1"
+        version = prompt_version_for_doc_class(document_class)
+    else:
+        version = f"prod2_qualification_focus_{document_class}_prompt_v1"
+    return version_with_commercial(version, selection_context)
 
 
 def schema_version_for_scope(
@@ -185,9 +195,11 @@ def schema_version_for_scope(
             SCHEMA_VERSION,
         )
 
-        return (
+        version = (
             BASES_GOODS_SCHEMA_VERSION if document_class == "bases_good"
             else BASES_SCHEMA_VERSION if document_class == "bases_service"
             else EETT_SCHEMA_VERSION if document_class == "eett" else SCHEMA_VERSION
         )
-    return f"prod2_qualification_focus_{document_class}_schema_v1"
+    else:
+        version = f"prod2_qualification_focus_{document_class}_schema_v1"
+    return version_with_commercial(version, selection_context)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -9,6 +10,10 @@ from google import genai
 from google.genai import types
 
 from buenapro_worker.extraction.schemas import BasesGoodsExtractionV2, EettExtractionV1, TdrExtractionV2
+from buenapro_worker.extraction.commercial_classification import (
+    get_commercial_policy, prompt_with_commercial, schema_with_commercial,
+    validate_commercial_payload, version_with_commercial,
+)
 from buenapro_worker.settings import Settings
 
 
@@ -81,7 +86,11 @@ class ExtractionResult:
 
 
 class GeminiExtractor:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, *, policy_context: Mapping[str, Any] | None = None) -> None:
+        # Explicit adapter configuration only. Existing jobs/settings do not
+        # enable this policy and retain their exact prompt/schema identities.
+        get_commercial_policy(policy_context)
+        self._commercial_policy_context = dict(policy_context) if policy_context is not None else None
         self.settings = settings
         self.client = genai.Client(api_key=settings.gemini_api_key)
         self.prompts = {
@@ -93,6 +102,9 @@ class GeminiExtractor:
             ),
             "bases_service": read_prompt(BASES_PROMPT_FILENAME) + PARTICIPATION_INSTRUCTION,
         }
+        if get_commercial_policy(policy_context):
+            self.prompts = {name: prompt_with_commercial(prompt, policy_context)
+                            for name, prompt in self.prompts.items()}
 
     def count_tokens(self, pdf_bytes: bytes, *, mime: str = "application/pdf") -> int:
         response = self.client.models.count_tokens(
@@ -106,6 +118,13 @@ class GeminiExtractor:
     ) -> ExtractionResult:
         if doc_class not in self.prompts:
             raise ValueError(f"Unsupported document class for extraction: {doc_class}")
+        if get_commercial_policy(getattr(self, "_commercial_policy_context", None)):
+            # A new opt-in classification never buys a fallback/retry merely
+            # because evidence was missing or output validation failed.
+            return self._extract_with_model(
+                self.settings.gemini_model, pdf_bytes, mime=mime,
+                doc_class=doc_class, max_output_tokens=16384,
+            )
         try:
             return self._extract_with_model(
                 self.settings.gemini_model,
@@ -150,18 +169,22 @@ class GeminiExtractor:
 
     def _validate_raw_json(self, raw_json: dict, doc_class: str) -> None:
         """Provider-independent default; versioned readers can enforce scope."""
+        validate_commercial_payload(raw_json, getattr(self, "_commercial_policy_context", None))
 
     def _response_schema(self, doc_class: str):
-        return (BasesGoodsExtractionV2 if doc_class == "bases_good"
-                else EettExtractionV1 if doc_class == "eett" else TdrExtractionV2)
+        schema = (BasesGoodsExtractionV2 if doc_class == "bases_good"
+                  else EettExtractionV1 if doc_class == "eett" else TdrExtractionV2)
+        return schema_with_commercial(schema, getattr(self, "_commercial_policy_context", None))
 
     def _prompt_version(self, doc_class: str) -> str:
-        return prompt_version_for_doc_class(doc_class)
+        return version_with_commercial(prompt_version_for_doc_class(doc_class),
+                                       getattr(self, "_commercial_policy_context", None))
 
     def _schema_version(self, doc_class: str) -> str:
-        return (BASES_GOODS_SCHEMA_VERSION if doc_class == "bases_good"
-                else BASES_SCHEMA_VERSION if doc_class == "bases_service"
-                else EETT_SCHEMA_VERSION if doc_class == "eett" else SCHEMA_VERSION)
+        version = (BASES_GOODS_SCHEMA_VERSION if doc_class == "bases_good"
+                   else BASES_SCHEMA_VERSION if doc_class == "bases_service"
+                   else EETT_SCHEMA_VERSION if doc_class == "eett" else SCHEMA_VERSION)
+        return version_with_commercial(version, getattr(self, "_commercial_policy_context", None))
 
     def _extract_with_model(
         self,
@@ -195,6 +218,9 @@ class GeminiExtractor:
         self._validate_raw_json(raw_json, doc_class)
         extraction = schema.model_validate(raw_json)
         if hasattr(extraction, "goods") and not extraction.goods.items:
+            requires_human_review = True
+        commercial = getattr(extraction, "commercial_classification", None)
+        if commercial is not None and commercial.support_status != "evidence_backed":
             requires_human_review = True
         usage = response.usage_metadata
         input_tokens = int(getattr(usage, "prompt_token_count", 0) or 0)

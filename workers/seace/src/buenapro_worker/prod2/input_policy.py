@@ -399,14 +399,18 @@ def prompt_version_for_input(doc_class, selection_context):
         version = ("v5" if is_partial_retrieved_input(selection_context) else
             "v4" if is_compact_retrieved_transport(selection_context) else
             "v2" if selection_context.get(VISUAL_REVIEW_POLICY_KEY) == OCR_TEXT_LAYOUT_REVIEW_POLICY else "v1")
-        return f"prod2_qualification_retrieved_{doc_class}_prompt_{version}"
+        from buenapro_worker.extraction.commercial_classification import version_with_commercial
+        return version_with_commercial(
+            f"prod2_qualification_retrieved_{doc_class}_prompt_{version}", selection_context)
     return prompt_version_for_scope(doc_class, selection_context)
 
 
 def schema_version_for_input(doc_class, selection_context):
     from .extraction_policy import schema_version_for_scope
     if is_retrieved_input(selection_context):
-        return f"prod2_qualification_retrieved_{doc_class}_schema_v1"
+        from buenapro_worker.extraction.commercial_classification import version_with_commercial
+        return version_with_commercial(
+            f"prod2_qualification_retrieved_{doc_class}_schema_v1", selection_context)
     return schema_version_for_scope(doc_class, selection_context)
 
 
@@ -431,6 +435,14 @@ def validate_retrieved_evidence(raw, proof):
     blocks = {row["block_id"]: row for row in proof["selected_blocks"]}
     normalized = lambda text: " ".join(text.split())
     errors = []
+    commercial_context = raw.get("selection_context")
+    if isinstance(commercial_context, dict):
+        from buenapro_worker.extraction.commercial_classification import (
+            commercial_literal_errors, get_commercial_policy,
+        )
+        if get_commercial_policy(commercial_context):
+            errors.extend(commercial_literal_errors(raw["commercial_classification"],
+                                                   proof["selected_blocks"]))
     citations = raw.get("evidence_citations", [])
     for index, citation in enumerate(citations):
         block = blocks.get(citation.get("block_id"))

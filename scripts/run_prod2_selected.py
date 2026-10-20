@@ -114,6 +114,8 @@ def parser():
                    help="New runs: >20 prepared pages use 2.5 Flash-Lite, <=20 use 3.1; auto preserves frozen legacy runs")
     p.add_argument("--llm1-scope", choices=["auto", "qualification", "legacy"], default="auto",
                    help="New runs: qualification requirements, excluding payment/proposal lists; auto preserves existing runs")
+    p.add_argument("--llm1-commercial-taxonomy", choices=["auto", "none", "commercial_taxonomy_v1"], default="auto",
+                   help="Explicit new folders only: documentary commercial labels; auto preserves frozen inputs and leaves new folders disabled")
     p.add_argument("--llm1-input", choices=["auto", "native", "pdf", "embeddings"], default="auto",
                    help="New runs: complete native text when usable, otherwise PDF; auto preserves existing runs")
     p.add_argument("--embedding-config", type=Path,
@@ -291,6 +293,33 @@ def requested_reading_policies(args):
     return policies
 
 
+def requested_commercial_taxonomy(args):
+    """Explicit opt-in only; never upgrade the semantics of a frozen folder."""
+    from buenapro_worker.extraction.commercial_classification import (
+        POLICY_KEY, TAXONOMY_VERSION, get_commercial_policy,
+    )
+    marker = args.folder / "manifest.private.json"
+    if args.folder.is_symlink() or marker.is_symlink():
+        raise ValueError("Frozen commercial-taxonomy paths must not be symlinks")
+    frozen = read_private(marker) if marker.exists() else None
+    previous = None
+    if frozen is not None:
+        requested = frozen.get("requested")
+        if (not isinstance(requested, dict) or (POLICY_KEY in requested) != (POLICY_KEY in frozen)
+                or requested.get(POLICY_KEY) != frozen.get(POLICY_KEY)):
+            raise ValueError("Frozen commercial-taxonomy inputs differ from the manifest")
+        previous = get_commercial_policy(requested)
+    flag = getattr(args, "llm1_commercial_taxonomy", "auto")
+    if flag not in {"auto", "none", TAXONOMY_VERSION}:
+        raise ValueError("Unsupported LLM1 commercial taxonomy policy")
+    chosen = previous if flag == "auto" else None if flag == "none" else TAXONOMY_VERSION
+    if frozen is not None and chosen != previous:
+        raise ValueError("Use a new folder for a changed LLM1 commercial taxonomy")
+    if chosen and getattr(args, "compact_unique_requirements", False):
+        raise ValueError("Legacy compact reading cannot use commercial taxonomy")
+    return {POLICY_KEY: chosen} if chosen else {}
+
+
 def requested_embedding_reading(args):
     from buenapro_worker.prod2.embedding_runtime import INPUT_POLICY, load_config, config_hash, validate_frozen_config
     policies = requested_reading_policies(args)
@@ -440,6 +469,7 @@ def plan(args):
            if getattr(args, "compact_unique_requirements", False) else {}),
         **requested_model_routing(args),
         **requested_reading_policies(args),
+        **requested_commercial_taxonomy(args),
         **requested_embedding_reading(args),
         **requested_luna_fallback(args),
         **requested_storage_policy(args),
@@ -506,6 +536,8 @@ def staging_identity(manifest):
         "pipeline": manifest["pipeline"], "document_scope": manifest["document_scope"],
         "jev_threshold": manifest["jev_threshold"], "selector_high": manifest["selector_high"],
         "selector_low": manifest["selector_low"],
+        **({"llm1_commercial_taxonomy": manifest["llm1_commercial_taxonomy"]}
+           if "llm1_commercial_taxonomy" in manifest else {}),
         **({"llm1_luna_fallback": manifest["llm1_luna_fallback"]} if "llm1_luna_fallback" in manifest else {}),
         **({"prior_reading_policy": manifest["prior_reading_policy"]} if "prior_reading_policy" in manifest else {}),
         **({"llm1_input_policy": manifest["llm1_input_policy"],
@@ -738,8 +770,10 @@ def enrich(conn, settings, folder, item, manifest, pacer, limits, jev_key):
     compact_policy = reading_policy(manifest)
     from buenapro_worker.prod2.extraction_policy import get_scope_policy
     from buenapro_worker.prod2.input_policy import get_input_policy, prepare_input
+    from buenapro_worker.extraction.commercial_classification import get_commercial_policy
     scope_policy, input_policy = get_scope_policy(manifest), get_input_policy(manifest)
-    if compact_policy and (scope_policy or input_policy):
+    commercial_policy = get_commercial_policy(manifest)
+    if compact_policy and (scope_policy or input_policy or commercial_policy):
         raise ValueError("Legacy compact reading cannot use the new scope/input policies")
     compact_binding = None
     if "compact_sources" in manifest:
@@ -878,6 +912,8 @@ def enrich(conn, settings, folder, item, manifest, pacer, limits, jev_key):
         context["llm1_reading_policy"] = compact_policy
     if scope_policy is not None:
         context["llm1_scope_policy"] = scope_policy
+    if commercial_policy is not None:
+        context["llm1_commercial_taxonomy"] = commercial_policy
     if input_policy is not None:
         context["llm1_input_policy"] = input_policy
     if "llm1_visual_review_policy" in manifest:

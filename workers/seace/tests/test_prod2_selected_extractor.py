@@ -16,7 +16,7 @@ from buenapro_worker.extraction.gemini import TruncatedResponseError, estimate_c
 from buenapro_worker.prod2 import pdf_preparation, selected_extractor as subject
 
 
-def prepared(folder, *, partition=False, cache_folder=None):
+def prepared(folder, *, partition=False, cache_folder=None, context=None):
     writer = PdfWriter()
     for number in range(5 if partition else 1):
         page = writer.add_blank_page(width=612, height=792)
@@ -34,7 +34,7 @@ def prepared(folder, *, partition=False, cache_folder=None):
         "published_at": "06/10/2026 12:00", "source_url": "https://example.invalid/official/" + code,
         "original_sha256": hashlib.sha256(content).hexdigest()}
     return pdf_preparation.prepare_selected_document_set(folder, [row], {row["candidate_id"]: path},
-        {"official_inventory": [row]}, max_analysis_bytes=5000 if partition else 45_000_000,
+        {"official_inventory": [row], **(context or {})}, max_analysis_bytes=5000 if partition else 45_000_000,
         optimize_lossless=False, cache_folder=cache_folder)
 
 
@@ -87,6 +87,39 @@ def test_small_pdf_inline_reserves_once_and_audits_before_parse(sdk, tmp_path):
     assert sdk.constructor.call_args.kwargs["http_options"].retry_options.attempts == 1
     assert len(list(tmp_path.glob("gemini-selected-*.response.private.json"))) == 1
     assert all(path.stat().st_mode & 0o777 == 0o600 for path in tmp_path.glob("gemini-selected-*.private.json"))
+
+
+@pytest.mark.parametrize("object_type", ["good", "service"])
+@pytest.mark.parametrize("qualification", [False, True])
+def test_opt_in_commercial_prompt_sent_once_matches_reserved_identity_in_legacy_and_focused_scope(
+        sdk, tmp_path, object_type, qualification):
+    from buenapro_worker.normalization.facets import canonical_hash
+    from buenapro_worker.prod2.analysis import _document_input, extract_document
+    context = {"llm1_commercial_taxonomy": "commercial_taxonomy_v1"}
+    if qualification:
+        context["llm1_scope_policy"] = "prod2_qualification_focus_v1"
+    bundle = prepared(tmp_path, context=context)
+    attribution = {key: bundle[key] for key in (
+        "document_scope", "document_set", "document_set_hash", "document_set_identity", "selection_context")}
+    manifest, content = bundle["source_document_manifest"], bundle["pdf_path"].read_bytes()
+    raw = {"summary": {"descripcion_corta": "Clasificación pendiente"}, "commercial_classification": {
+        "taxonomy_version": "commercial_taxonomy_v1", "primary_area": "sin_clasificar",
+        "secondary_areas": [], "work_types": [], "specialties": [],
+        "support_status": "needs_review", "evidence": []}}
+    if object_type == "good":
+        raw["goods"] = {"items": []}
+    sdk.client.models.generate_content.return_value = response(json.dumps(raw))
+    original_sha = bundle["document_set"][0]["original_sha256"]
+    inputs = _document_input(settings(), content, object_type, original_sha, manifest, attribution)
+    reserve = MagicMock()
+    with subject.SelectedGeminiExtractor(settings(), bundle, tmp_path, reserve) as extractor:
+        result = extract_document(settings(), content, object_type=object_type,
+            original_sha256=original_sha, manifest=manifest, document_context=attribution, extractor=extractor)
+    prompt = sdk.client.models.generate_content.call_args.kwargs["config"].system_instruction
+    assert prompt.count("CLASIFICACION_COMERCIAL=") == 1
+    assert canonical_hash(prompt) == inputs["prompt_hash"] == result["prompt_hash"]
+    assert result["cache_key"] == "prod2:llm1:" + canonical_hash(inputs)
+    assert reserve.call_count == sdk.client.models.generate_content.call_count == 1
 
 
 def test_all_transport_parts_upload_in_one_request_with_global_offsets_and_cleanup_across_copy(sdk, tmp_path):
