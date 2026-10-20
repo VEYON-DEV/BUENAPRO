@@ -102,6 +102,21 @@ def get_receipt(conn, key):
     return conn.execute("SELECT * FROM prod2_title_category_receipts WHERE request_hash=%s", (key,)).fetchone()
 
 
+def fetch_receipts(conn, manifest):
+    """One bounded scope query, rather than one tunnel round trip per title."""
+    requests = {request["request_hash"]: request for request in manifest["requests"]}
+    rows = conn.execute("SELECT * FROM prod2_title_category_receipts WHERE request_hash=ANY(%s)",
+                        (list(requests),)).fetchall()
+    receipts = {}
+    for row in rows:
+        key = row["request_hash"]
+        if key not in requests or key in receipts:
+            raise StopDispatch("Unexpected duplicate or out-of-scope durable receipt")
+        validate_receipt(row, requests[key])
+        receipts[key] = row
+    return receipts
+
+
 def validate_receipt(row, request):
     if (row["request_hash"] != request["request_hash"] or row["request_json"] != request["payload"]
             or row["model"] != MODEL or row["policy_version"] != POLICY
@@ -188,10 +203,13 @@ def complete(conn, request, token, envelope):
     return result
 
 
-def reconcile(conn, manifest, folder):
+def reconcile(conn, manifest, folder, *, receipts=None):
+    # Reuse the caller's validated snapshot; changed recoveries refresh only their own row.
+    if receipts is None:
+        receipts = fetch_receipts(conn, manifest)
     reconciled, blocked = 0, []
     for request in manifest["requests"]:
-        row = get_receipt(conn, request["request_hash"])
+        row = receipts.get(request["request_hash"])
         if row is None:
             continue
         validate_receipt(row, request)
@@ -205,44 +223,70 @@ def reconcile(conn, manifest, folder):
             complete(conn, request, str(row["claim_token"]), read_json(path))
             reconciled += 1
         except StopDispatch:
-            blocked.append({"request_hash": request["request_hash"], "status": get_receipt(conn, request["request_hash"])["status"]})
+            receipts[request["request_hash"]] = get_receipt(conn, request["request_hash"])
+            blocked.append({"request_hash": request["request_hash"], "status": receipts[request["request_hash"]]["status"]})
+        else:
+            receipts[request["request_hash"]] = get_receipt(conn, request["request_hash"])
     return {"reconciled": reconciled, "blocked": blocked}
 
 
-def apply_results(conn, manifest):
-    """Exact title CAS under source row lock; never replace extraction/matching."""
+def apply_results(conn, manifest, *, batch_size=100):
+    """Exact-title CAS in finite batches; three SQL statements per changed batch.
+
+    Locks source rows in ID order, checks complete receipt identities locally,
+    and atomically bulk-upserts only unchanged source titles. Separate batches
+    commit independently, so a local interruption can resume without payment.
+    """
+    if type(batch_size) is not int or not 1 <= batch_size <= 100:
+        raise ValueError("Publication batch size must be within 1..100")
     counts = {"applied": 0, "unchanged": 0, "stale": 0, "pending": 0}
-    requests = {request["request_hash"]: request for request in manifest["requests"]}
+    receipts = fetch_receipts(conn, manifest)
+    ready = []
     for case in manifest["cases"]:
-        request = requests[case["request_hash"]]
-        row = get_receipt(conn, case["request_hash"])
+        row = receipts.get(case["request_hash"])
         if row is None or row["status"] != "done":
             counts["pending"] += 1
             continue
-        validate_receipt(row, request)
+        ready.append(case)
+    for offset in range(0, len(ready), batch_size):
+        batch = ready[offset:offset + batch_size]
+        ids = [case["convocation_id"] for case in batch]
         with conn.transaction():
-            current = conn.execute("SELECT description FROM prod2_discoveries WHERE id_convocatoria=%s FOR UPDATE",
-                                   (case["convocation_id"],)).fetchone()
-            if current is None or current["description"] != case["source_title"]:
-                counts["stale"] += 1
-                continue
-            old = conn.execute("SELECT request_hash,source_title,source_title_sha256,categories,decision,policy_version "
-                "FROM prod2_title_classifications WHERE convocation_id=%s", (case["convocation_id"],)).fetchone()
-            values = {"request_hash": case["request_hash"], "source_title": case["source_title"],
-                      "source_title_sha256": case["source_title_sha256"], "categories": row["result_json"]["categories"],
-                      "decision": row["result_json"]["decision"], "policy_version": POLICY}
-            if old == values:
-                counts["unchanged"] += 1
+            current = {row["id_convocatoria"]: row["description"] for row in conn.execute(
+                "SELECT id_convocatoria,description FROM prod2_discoveries WHERE id_convocatoria=ANY(%s) "
+                "ORDER BY id_convocatoria FOR UPDATE", (ids,)).fetchall()}
+            existing = {row["convocation_id"]: row for row in conn.execute(
+                "SELECT convocation_id,request_hash,source_title,source_title_sha256,categories,decision,policy_version "
+                "FROM prod2_title_classifications WHERE convocation_id=ANY(%s) "
+                "ORDER BY convocation_id FOR UPDATE", (ids,)).fetchall()}
+            changes = []
+            for case in batch:
+                if current.get(case["convocation_id"]) != case["source_title"]:
+                    counts["stale"] += 1
+                    continue
+                row = receipts[case["request_hash"]]
+                values = {"convocation_id": case["convocation_id"], "request_hash": case["request_hash"],
+                          "source_title": case["source_title"], "source_title_sha256": case["source_title_sha256"],
+                          "categories": row["result_json"]["categories"], "decision": row["result_json"]["decision"],
+                          "policy_version": POLICY}
+                if existing.get(case["convocation_id"]) == values:
+                    counts["unchanged"] += 1
+                else:
+                    changes.append(values)
+            if not changes:
                 continue
             conn.execute("""INSERT INTO prod2_title_classifications
                 (convocation_id,source_title,source_title_sha256,request_hash,categories,decision,policy_version)
-                VALUES(%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(convocation_id) DO UPDATE SET
+                SELECT x.convocation_id,x.source_title,x.source_title_sha256,x.request_hash,
+                       ARRAY(SELECT jsonb_array_elements_text(x.categories)),x.decision,x.policy_version
+                FROM jsonb_to_recordset(%s) AS x(convocation_id BIGINT,source_title TEXT,
+                    source_title_sha256 TEXT,request_hash TEXT,categories JSONB,decision TEXT,policy_version TEXT)
+                ON CONFLICT(convocation_id) DO UPDATE SET
                 source_title=excluded.source_title,source_title_sha256=excluded.source_title_sha256,
                 request_hash=excluded.request_hash,categories=excluded.categories,decision=excluded.decision,
                 policy_version=excluded.policy_version,updated_at=now()""",
-                (case["convocation_id"], case["source_title"], case["source_title_sha256"], case["request_hash"],
-                 values["categories"], values["decision"], POLICY))
-            counts["applied"] += 1
+                (Jsonb(changes),))
+            counts["applied"] += len(changes)
     return counts
 
 
@@ -312,12 +356,13 @@ def execute(dsn, manifest, folder, expected_sha, api_key, *, limit=20, concurren
             raise StopDispatch("Another title-category coordinator owns the global PG lock")
         try:
             register_run(conn, manifest, expected_sha)
-            recovery = reconcile(conn, manifest, folder)
+            receipts = fetch_receipts(conn, manifest)
+            recovery = reconcile(conn, manifest, folder, receipts=receipts)
             if recovery["blocked"]:
                 raise StopDispatch("Existing incomplete paid/reserved attempts need explicit local reconciliation")
             pending = []
             for request in manifest["requests"]:
-                row = get_receipt(conn, request["request_hash"])
+                row = receipts.get(request["request_hash"])
                 if row is not None:
                     validate_receipt(row, request)
                     if row["status"] != "done":

@@ -293,3 +293,76 @@ def test_pg_raw_response_claim_mismatch_cannot_complete(pg, template, tmp_path, 
         result = runtime.reconcile(conn, value, tmp_path)
         assert result["reconciled"] == 0 and len(result["blocked"]) == 1
         assert runtime.get_receipt(conn, value["requests"][0]["request_hash"])["status"] == "running"
+
+
+class CountingConnection:
+    def __init__(self, conn):
+        self.conn, self.queries, self.transactions = conn, [], 0
+    def execute(self, sql, params=None):
+        self.queries.append(sql)
+        return self.conn.execute(sql, params)
+    def transaction(self):
+        self.transactions += 1
+        return self.conn.transaction()
+
+
+def test_pg_reconcile_one_scope_query_for_1018_unclaimed_titles(pg, template, tmp_path, monkeypatch):
+    value = manifest(template, count=1018)
+    # A per-title fallback in a cold reconcile is a latency regression.
+    monkeypatch.setattr(runtime, "get_receipt", lambda *a: pytest.fail("N+1 receipt lookup"))
+    with runtime.connect(pg) as conn:
+        counted = CountingConnection(conn)
+        assert runtime.reconcile(counted, value, tmp_path) == {"reconciled": 0, "blocked": []}
+        assert len(counted.queries) == 1
+        assert "request_hash=ANY" in counted.queries[0]
+
+
+def test_pg_execute_preflight_uses_two_receipt_scope_queries_not_2036(pg, template, tmp_path, monkeypatch):
+    value = manifest(template, count=1018, budget="0.000001")
+    original = runtime.connect
+    connections = []
+    @contextmanager
+    def counted_connection(dsn):
+        with original(dsn) as conn:
+            counted = CountingConnection(conn)
+            connections.append(counted)
+            yield counted
+    monkeypatch.setattr(runtime, "connect", counted_connection)
+    monkeypatch.setattr(runtime, "get_receipt", lambda *a: pytest.fail("N+1 preflight lookup"))
+    client = ClientFactory()
+    result = run(pg, value, tmp_path, client)
+    assert result["dispatched"] == 0 and result["budget_guard_stopped"] and not client.calls
+    receipt_queries = [query for conn in connections for query in conn.queries
+                       if "FROM prod2_title_category_receipts" in query]
+    assert len(receipt_queries) == 2  # one preflight snapshot + one final accounting snapshot
+    assert all("request_hash=ANY" in query for query in receipt_queries)
+
+
+def test_pg_apply_bulk_1000_cases_has_31_queries_ten_finite_transactions(pg, template, tmp_path):
+    titles = ["Tablero eléctrico", "Renovación IA", "Alimentos"]
+    value = title.build_manifest([{"id_convocatoria": i, "description": titles[i % 3]}
+                                   for i in range(1, 1001)], template, "bulk_apply")
+    seed(pg, value)
+    def behavior(payload):
+        label = payload["state"]["titulo"]
+        data = response(payload, signal=0 if label == "Alimentos" else 1)
+        if label == "Renovación IA":
+            data["answers"]["licencias_suscripciones"]["noul"] = 1
+            data["answers"]["ia_automatizacion"]["noul"] = 1
+        return httpx.Response(200, json=data)
+    run(pg, value, tmp_path, ClientFactory(behavior))
+    with runtime.connect(pg) as conn:
+        # Six exact-title changes and one missing source must stay stale.
+        conn.execute("UPDATE prod2_discoveries SET description=description||' ' WHERE id_convocatoria<=6")
+        conn.execute("DELETE FROM prod2_discoveries WHERE id_convocatoria=7")
+        counted = CountingConnection(conn)
+        assert runtime.apply_results(counted, value) == {"applied": 993, "unchanged": 0, "stale": 7, "pending": 0}
+        assert len(counted.queries) == 31  # one receipt snapshot, 3 statements per finite 100-case batch
+        assert counted.transactions == 10
+        rows = conn.execute("SELECT source_title,categories,decision FROM prod2_title_classifications").fetchall()
+        assert len(rows) == 993
+        assert any(row["categories"] == [] and row["decision"] == "other" for row in rows)
+        assert any(len(row["categories"]) == 3 for row in rows)
+        counted = CountingConnection(conn)
+        assert runtime.apply_results(counted, value) == {"applied": 0, "unchanged": 993, "stale": 7, "pending": 0}
+        assert len(counted.queries) == 21 and counted.transactions == 10
