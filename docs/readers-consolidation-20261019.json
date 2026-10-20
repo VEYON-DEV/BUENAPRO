@@ -1,0 +1,126 @@
+{
+  "request": "Limpiar los workers anteriores y dejar los lectores PROD2/PROD6 operativos.",
+  "status": "partial_blocked",
+  "production_observed_at_utc": "2026-10-20T02:47:43.251859+00:00",
+  "completed": [
+    "Retirados por nombre los cinco contenedores legacy detenidos, tras comprobar que solo cambiaron archivos de bytecode y no tenían monturas; registros históricos archivados antes de retirarlos.",
+    "Factories de conexión local desacopladas de los contenedores retirados: configuración obtenida de la web activa y credenciales solo en memoria.",
+    "Corregido y probado el registro de fallos PostgreSQL iniciales PROD6: fase/SQLSTATE, estado attention_required y recibos únicos; sin reconexión ni repetición automática de trabajo pagado.",
+    "Reconciliados los 21 recibos faltantes de siete lecturas en la VM; 24 lecturas exactas actuales comprobadas en PG antes de copiar, archivos comunes inalterados y 73 hashes finales idénticos entre Mac y VM.",
+    "Imagen PROD6 corregida construida desde commit remoto/Git limpio, hashes verificados sin red y contenedor preparado sin iniciar por el bloqueo de fuente.",
+    "Servicio PROD2 opt-in implementado, probado y construido desde Git limpio remoto: 127 hashes Python exactos, dry-run sin red y hold source_403 verificado sin claves ni ingesta. Contenedor creado sin iniciar; configuración activa todavía no suministrada."
+  ],
+  "readers": {
+    "prod2": {
+      "source": "Buscador SEACE",
+      "operational": false,
+      "dedicated_server_container": true,
+      "execution": "Servicio opt-in preparado; hold explícito source_403, sin credenciales ni alcance de ingesta activo; ningún coordinador iniciado.",
+      "source_preflight": {
+        "mac": "HTTP200 del formulario JSF únicamente; búsqueda/ficha/documentos no validados en este preflight.",
+        "server": "HTTP403"
+      },
+      "frozen_history": "Carpeta privada antigua no presente en este checkout; conservar colas/lecturas/pagos y conciliar entradas antes de cualquier recuperación histórica.",
+      "container_state": "created",
+      "image_tag": "buenapro-worker-prod2:service-2b1b0d6",
+      "image_id": "sha256:f01641f05721dc18f118c95e8936d361beaa28c274d9f3f14c3024997f405f7f",
+      "code_commit": "2b1b0d6ed67f4c3abd013fea14048daa1d2e5209",
+      "runtime_python_files_verified": 127,
+      "configuration_required_before_activation": "Alcance nuevo explícito, ventana/primer epoch en hora Perú, ciclos y límites finitos, claves privadas; acceso legítimo recuperado. No adoptar planes antiguos ni repetir pagos."
+    },
+    "prod6": {
+      "source": "Contratos menores",
+      "operational": false,
+      "container_state": "created",
+      "source_preflight": {
+        "mac": "HTTP403",
+        "server": "HTTP403"
+      },
+      "image_tag": "buenapro-worker-prod6:pg-guard-5950706",
+      "image_id": "sha256:deead1c59babac691ae98d43f50ac10fa6a049afc91e7db49d6011b85753f134",
+      "code_commit": "595070655a9977aba734309e802300dcac5ff0f3"
+    }
+  },
+  "source_preflight_note": "Cuatro GET de metadatos el 19/10 a las21:25Lima, sin reintentos, documentos ni inferencias; los checks finales no repitieron fuente.",
+  "tests": {
+    "principal_offline_passed": 209,
+    "new_prod2_service_cases": 27,
+    "delegated_overlapping_passed": 305,
+    "note": "La suite principal incluye PROD6, factories PROD2, HTTP retry y servicio PROD2. Pruebas delegadas solapadas, no se suman. Dos invocaciones previas no colectaron pruebas por nombres inexistentes; ejecución válida final aprobada. Smokes de ambas imágenes sin red; no son ciclos de lectura."
+  },
+  "preserved": {
+    "web_postgres_redis": true,
+    "private_configuration": "Configuración existente intacta; nueva configuración PROD2 contiene únicamente hold y su archivo de entorno está vacío.",
+    "web_login_http": 200,
+    "prod6_reading_files": 73,
+    "prod6_complete_reading_triples": 24,
+    "prod6_reading_tree_sha256": "71e98eca2d0026bb93a8e704c785600818c4c8cfb585494419be8db883764228",
+    "prod6_jobs": "307 done, cero abiertos; no se activaron coordinadores.",
+    "prod2_redis_counters": "Todas las identidades/cuentas coinciden antes y después de las dos preparaciones. Seis colas no vacías conservadas; no se suman como candidatos únicos ni se adjudican al grupo software sin reconstruir su identidad.",
+    "originals_r2": "Sin copias nuevas ni eliminación de históricos.",
+    "legacy_image_rollback": "Imágenes conservadas; logs comprimidos fuera de Git.",
+    "running_services": [
+      "web",
+      "postgres",
+      "redis"
+    ],
+    "prepared_stopped_readers": [
+      "prod2",
+      "prod6"
+    ]
+  },
+  "cleanup": {
+    "removed_legacy_containers": [
+      "docker-scheduler-1",
+      "docker-worker-io-1",
+      "docker-worker-llm-1",
+      "docker-worker-match-1",
+      "docker-worker-notify-1"
+    ],
+    "legacy_rw_bytes_reported": 4169728,
+    "legacy_logs_bytes_retained": 1840965,
+    "legacy_net_bytes_estimated": 2328763,
+    "build_worktree_logical_bytes_removed": 182818324,
+    "local_bytecode_bytes_removed": 210535,
+    "volumes_removed": 0,
+    "images_removed": 0,
+    "note": "Tamaños lógicos/estimados por artefacto, no diferencia física total del disco; se construyeron y conservan dos imágenes nuevas.",
+    "retained": "Entradas pendientes, colas, todos los recibos de pago, helpers de operación bloqueada, logs privados y rollback.",
+    "build_worktree_bytes_by_reader": {
+      "prod2": 91425814,
+      "prod6": 91392510
+    },
+    "prod2_smoke_bytes_removed": 109
+  },
+  "pending": [
+    "Recuperar acceso legítimo de SEACE desde el host de lectura: HTTP 403 es un bloqueo de fuente, no resuelto por los fixes de runtime; no se conoce la regla interna que lo causa.",
+    "Completar configuración privada activa PROD2 con alcance, ventana, límites finitos y claves, sin recrear planes antiguos ni duplicar pagos; durante el bloqueo solo existe el hold.",
+    "Antes de recuperar trabajos históricos PROD2, conciliar las entradas/manifiestos privados ausentes en este checkout; se conservan colas, lecturas e incertidumbres.",
+    "Iniciar solo un coordinador por fuente cuando estén satisfechos acceso, propiedad, configuración, manifiestos, recibos y guardas, y verificar un ciclo completo de cada lector."
+  ],
+  "actions": {
+    "source_metadata_gets": 4,
+    "model_calls": 0,
+    "business_writes": 0,
+    "redis_mutations": 0,
+    "coordinators_started": 0,
+    "migrations": 0,
+    "automations_created": 0
+  },
+  "evidence": [
+    "tmp/readers-consolidation-20261019/cleanup-result.private.json",
+    "tmp/readers-consolidation-20261019/receipt-reconciliation.private.json",
+    "tmp/readers-consolidation-20261019/before-deploy-integrity.private.json",
+    "tmp/readers-consolidation-20261019/integrity.private.json",
+    "tmp/readers-consolidation-20261019/production-final.private.json",
+    "tmp/prod6-full-diagnosis-20261019/readers-source-preflight.private.json",
+    "tmp/readers-consolidation-20261019/before-prod2-integrity.private.json",
+    "tmp/readers-consolidation-20261019/both-readers-final.private.json",
+    "tmp/readers-consolidation-20261019/validation.private.json"
+  ],
+  "integrity_observed_at_utc": "2026-10-20T02:47:49.371855+00:00",
+  "runtime_code_commits": {
+    "prod2": "2b1b0d6ed67f4c3abd013fea14048daa1d2e5209",
+    "prod6": "595070655a9977aba734309e802300dcac5ff0f3"
+  }
+}

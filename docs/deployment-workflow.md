@@ -1,5 +1,51 @@
 # Publicación desde el código local
 
+## Consolidación parcial de lectores: 19 de octubre de 2026
+
+Se retiraron únicamente los cinco contenedores legacy detenidos, conservando
+sus registros comprimidos, imágenes y volúmenes ajenos. Los túneles locales de
+los lectores obtienen ahora la configuración desde `docker-web-1`.
+
+La corrección del diagnóstico PG inicial de PROD6 se construyó desde Git limpio
+del commit remoto `595070655a9977aba734309e802300dcac5ff0f3`. Imagen
+`buenapro-worker-prod6:pg-guard-5950706` /
+`sha256:deead1c59babac691ae98d43f50ac10fa6a049afc91e7db49d6011b85753f134`.
+Se verificaron seis hashes runtime y la importación sin red. Los 21 recibos que
+faltaban en la VM se conciliaron con las 24 lecturas actuales exactas en PG;
+Mac y VM conservan los mismos 73 hashes.
+
+PROD2 cuenta ahora con servicio dedicado opt-in, construido desde Git limpio
+remoto `2b1b0d6ed67f4c3abd013fea14048daa1d2e5209`. Imagen
+`buenapro-worker-prod2:service-2b1b0d6` /
+`sha256:f01641f05721dc18f118c95e8936d361beaa28c274d9f3f14c3024997f405f7f`.
+Los 127 archivos Python instalados coinciden con Git. Pasaron dry-run y smoke
+sin red ni credenciales: el hold mínimo `version=1, operator_hold=source_403`
+guarda el bloqueo y sale antes de abrir PG, fuentes, colas o modelos.
+Para habilitarlo se requieren configuración privada explícita de alcance,
+ventana en hora Perú, primer epoch, límites finitos de ciclos/lecturas y claves.
+El servicio solo avanza tras validar el reporte, la cola vacía y las guardas;
+no adopta planes históricos ni reintenta ciclos incompletos automáticamente.
+
+**Ambos contenedores están creados sin iniciar**: la fuente devuelve HTTP 403
+desde la VM en PROD2 y PROD6, y también desde el Mac en PROD6. El HTTP 200 del
+formulario PROD2 desde el Mac solo acredita ese bootstrap. Las 209 pruebas
+offline aprobadas y las imágenes preparadas no acreditan recuperación del acceso
+ni lectura activa. La tarea de activar ambos lectores permanece abierta.
+
+Web, PG, Redis, configuración privada y contadores Redis anteriores siguen
+intactos; login 200, PG/Redis saludables y cero coordinadores al corte del
+19/10 a las 21:47 Lima (20/10 a las 02:47 UTC). La comprobación PG/Redis fresca
+posterior confirma 307 jobs PROD6 done, cero abiertos, 73 hashes conservados y
+contadores históricos PROD2 idénticos. No hubo modelos, migraciones, compras,
+colas borradas ni originales nuevos en R2. Rollback PROD6:
+`buenapro-worker-prod6:http-recovery-f2767e8`. Checkouts de build retirados:
+182.818.324 bytes lógicos; bytecode local propio retirado: 210.535 bytes;
+smoke temporal PROD2: 109 bytes. Son tamaños de artefactos, no diferencia física
+total del disco; las dos imágenes nuevas permanecen disponibles. Las
+entradas pendientes y los recibos privados permanecen fuera de Git.
+Informe `docs/readers-consolidation-20261019.json` y evidencias privadas en
+`tmp/readers-consolidation-20261019/`.
+
 ## Orden de fuentes del Cronograma: 16 de octubre de 2026
 
 El Cronograma muestra **Buscador SEACE primero y Contratos menores después** en
