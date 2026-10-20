@@ -196,5 +196,45 @@
       "freed_bytes": 0,
       "retained": "Compact aggregate count receipt; no new title corpus or PDF downloaded"
     }
+  },
+  "requested_scope": "PROD2 only: all1135stored records, not minors/history/map-only",
+  "prod2_only_quote": {
+    "at_utc": "2026-10-20T18:10:21.301024+00:00",
+    "scope": "All currently stored PROD2 discoveries only; title-only classification estimate, no paid execution",
+    "records": 1135,
+    "enriched_rows": 1134,
+    "unique_titles": 1018,
+    "duplicate_title_rows": 117,
+    "empty_titles": 0,
+    "request_template_sha256": "907d4193da66aca2ac3a2372768f47d394a7b2f04f7a4fcfe30116c1a8061746",
+    "model": "jev-1.13.0",
+    "input_usd_per_million": "0.042",
+    "token_proxy": {
+      "tokenizer": "cl100k_base; not provider tokenizer or billing quote",
+      "full_request_input_tokens": 798328,
+      "minimum_per_title": 742,
+      "maximum_per_title": 935
+    },
+    "estimated_base_usd": "0.033529776",
+    "heuristic_upper_usd": "0.0612402000",
+    "human_quote_usd": [
+      "0.03",
+      "0.07"
+    ],
+    "suggested_margin_usd": "0.10; not an implemented hard cap",
+    "source_calls": 0,
+    "model_calls": 0,
+    "pg_writes": 0,
+    "redis_access": 0,
+    "pdf_or_profile_input": false,
+    "paid_execution": false,
+    "cleanup": {
+      "freed_bytes": 0,
+      "retained": "Compact PROD2 title snapshot and estimate receipt for proposed classification"
+    },
+    "receipt": {
+      "path": "tmp/title-category-plan-20261020/prod2-only-title-quote-20261020.private.json",
+      "sha256": "0e5bec763aa300cce38ac9023ae5e10bf1b71a198ed516531d017a089cb3c180"
+    }
   }
 }

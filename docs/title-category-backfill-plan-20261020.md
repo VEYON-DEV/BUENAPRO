@@ -2,6 +2,12 @@
 
 Clasificar las licitaciones actuales con JEV usando únicamente su título/objeto completo es suficiente para una columna de navegación **Categoría**, marcada como preliminar. La lectura documental posterior prevalece cuando existe. Esta tarea prepara el plan y la estimación; no ejecuta JEV ni publica etiquetas.
 
+## Alcance actual solicitado: solo PROD2
+
+Confirmado por el usuario después de aclarar el total de la BD. Snapshot PG READ ONLY del 20/10 a las 13:10:21 de Lima: **1.135 registros PROD2 guardados**, de los cuales 1.134 tienen ficha enriquecida. Hay **1.018 títulos distintos**, 117 repetidos reutilizables y cero títulos vacíos. Para esta cotización se usa solo el título completo con el mismo prompt de seis categorías más claridad y `jev-1.13.0`.
+
+Proxy local del JSON completo: **798.328 tokens**, US$0,033529776 calculados; margen heurístico superior US$0,0612402. Cotización orientativa **US$0,03–0,07 para todo PROD2**, con reserva sugerida US$0,10 que todavía no es un límite implementado. El precio real depende del uso reportado por el proveedor. No se ejecutaron inferencias ni clasificación pagada. Se conserva únicamente el snapshot compacto y recibo de esta preparación, cero bytes liberados.
+
 ## Alcance y costo
 
 PostgreSQL productivo, transacción REPEATABLE READ READ ONLY del 20/10/2026 a las 12:24:51 de Lima: **1.134 filas SEACE enriquecidas**, exactamente el conjunto base del Buscador sin filtros. No significa que todas estén vigentes. Hay **1.017 títulos únicos** al compactar espacios, 117 filas repetidas reutilizables y ninguna categoría documental derivable con el catálogo actual. Los 1.736 IDs del mapeo son otro alcance: no todos están enriquecidos ni visibles en esta lista.
