@@ -56,8 +56,8 @@ function classificationJoin(current: string) {
   return `LEFT JOIN LATERAL (${current}) cc_source ON true
   LEFT JOIN LATERAL (SELECT COALESCE(NULLIF(cc_source.raw_extraction_json->'commercial_classification', 'null'::jsonb),
     cc_source.summary_json->'commercial_classification') AS value) cc_input ON true
-  LEFT JOIN LATERAL (SELECT CASE WHEN jsonb_typeof(cc_input.value) = 'object'
-    AND cc_input.value->>'taxonomy_version' = ${literal(commercialTaxonomy.version)}
+  LEFT JOIN LATERAL (SELECT CASE WHEN jsonb_typeof(cc_input.value) = 'object' THEN CASE
+    WHEN cc_input.value->>'taxonomy_version' = ${literal(commercialTaxonomy.version)}
     AND cc_input.value->>'primary_area' = ANY(${known(commercialTaxonomy.areas)})
     AND cc_input.value->>'primary_area' <> 'sin_clasificar'
     AND cc_input.value->>'support_status' = ANY(${known(commercialTaxonomy.support_statuses)})
@@ -71,7 +71,7 @@ function classificationJoin(current: string) {
         THEN cc_source.raw_extraction_json->'retrieval_evidence_audit'->'errors' ELSE '[]'::jsonb END) audit(value)
       WHERE audit.value->>'kind' = 'unverified_commercial_citation'
     ) THEN cc_input.value || jsonb_build_object('support_status', 'needs_review') ELSE cc_input.value END
-    ELSE NULL END AS classification) commercial ON true`;
+    ELSE NULL END ELSE NULL END AS classification) commercial ON true`;
 }
 
 export const PROD2_COMMERCIAL_JOIN = classificationJoin(prod2Current);

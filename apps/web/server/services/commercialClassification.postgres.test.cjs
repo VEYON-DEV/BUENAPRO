@@ -123,4 +123,19 @@ describe('commercial SQL against a disposable loopback PostgreSQL fixture', { sk
       assert.ok(result.rows.length > 0);
     }
   });
+
+  test('historical rows without tags never execute the costly classification-validation subplans', async () => {
+    for (const source of sources) {
+      const result = await db.query(`EXPLAIN (ANALYZE,FORMAT JSON,TIMING FALSE) SELECT ${sql.COMMERCIAL_SELECT}
+        FROM ${source.from} ${source.join} WHERE ${source.id} = 6`);
+      const validationPlans = [];
+      function visit(node) {
+        if (node['Subplan Name']) validationPlans.push(node);
+        for (const child of node.Plans || []) visit(child);
+      }
+      visit(result.rows[0]['QUERY PLAN'][0].Plan);
+      assert.ok(validationPlans.length > 0, 'the optimizer retained the documentary validation subplans');
+      assert.ok(validationPlans.every(plan => plan['Actual Loops'] === 0), `${source.name}: missing tags must short-circuit validation`);
+    }
+  });
 });

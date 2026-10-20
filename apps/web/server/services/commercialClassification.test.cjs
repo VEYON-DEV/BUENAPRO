@@ -140,6 +140,8 @@ test('current extraction is selected before tags, excludes failed/noncurrent and
     assert.match(join, /GROUP BY tag\.value HAVING count\(\*\) > 1/);
     assert.match(join, /BETWEEN 1 AND 9007199254740991/);
     assert.match(join, /CASE WHEN jsonb_typeof\(evidence\.value->'page'\) = 'number'/);
+    assert.match(join, /SELECT CASE WHEN jsonb_typeof\(cc_input\.value\) = 'object' THEN CASE\s+WHEN cc_input\.value->>'taxonomy_version'/,
+      'an outer CASE short-circuits expensive raw JSON validation when historical rows have no classification');
     assert.doesNotMatch(join, /INSERT|UPDATE|DELETE|title|description|score|jev/);
   }
 });
