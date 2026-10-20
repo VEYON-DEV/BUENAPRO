@@ -1,12 +1,12 @@
 # Ejecución DIN IA/industrial — 20/10/2026
 
-El lote autorizado está **en ejecución**, con dos lectores/modelslots y un único coordinador PostgreSQL. Corte fresco **16:18:39UTC**: nueve resultados de157IDs,146queued/2pending. Hay trescerrados, doslecturas históricas preservadas, dosrevisiones documentales tipadas, unrechazo JEV<60 y unaapertura no confirmada. **No hay lecturas LLM1 nuevas ni matching nuevo terminado en este corte.** Los contextos de1047330/1048448 necesitan ampliación o revisión; sus entradas y recibos se conservan, sin reenvío pagado automático.
+El lote autorizado está **en ejecución**, con dos lectores/modelslots. El supervisor aprobó el primer ciclo de**10/157casos** con readbackPG/Redis fresco;147quedaron en cola al cerrar ese ciclo y ya arrancó `reader-002`. Corte del recibo16:20:44UTC: trescerrados, doslecturas históricas preservadas, tresrevisiones documentales tipadas, unrechazoJEV<60 y unaapertura no confirmada. **El primer ciclo no produjo lecturas LLM1 ni matching nuevos.** Los contextos de1047330/1048448/1049583 necesitan ampliación o revisión y permanecen sin reenvío pagado automático. Esto no marca el pedido completo.
 
-Costo local conocido parcial: **US$0,002236876**, siete intentos conocidos (cuatro JEV originales y tres embeddings nuevos,97.085tokens), cero pagos inciertos nuevos. No se repitieron los cuatro pagos originales. Los seis inciertos históricos de lotes anteriores siguen aparte y desconocidos. Fuente completa, piloto iniciado o recibos conocidos no equivalen al cierre de las lecturas.
+Costo local conocido del primer ciclo: **US$0,003415016**, nueve intentos conocidos (cuatroJEVoriginales y cincoembeddingsnuevos,155.992tokens), cero inciertos nuevos. No se repitieron los cuatro pagos originales. Los seis inciertos históricos siguen aparte y desconocidos. Fuente completa, un piloto o recibos conocidos no equivalen al cierre de las lecturas. Los envíos posteriores/en vuelo quedan fuera de este corte.
 
 ## Autoridad de ejecución
 
-Runtime **7dccbc6ec92543455cf856054d8b00a2f7ce327b**, commit/push en `codex/prod2-parallel-discovery-prep`. CLI enMac conPG/Redis productivos por túnel; sin imagen nueva ni despliegue web. Supervisor85202/lector88477 al corte; se valida identidad actual, no permanencia de PIDs al terminar.
+Runtime **7dccbc6ec92543455cf856054d8b00a2f7ce327b**, commit/push en `codex/prod2-parallel-discovery-prep`. CLI enMac conPG/Redis productivos por túnel; sin imagen nueva ni despliegue web. Supervisor85202; cada ciclo registra su propioPID/argv/exit; se valida identidad actual, no permanencia de PIDs al terminar.
 
 - Plan actual: `tmp/ia-industrial-execution-20261020/chain-plan.runtime-recovery-002.private.json`, SHA`25922f5da9f518064543ca875db33b541e6fe778606a0606175a53793a51c061`.
 - Supervisor actual: `tmp/ia-industrial-execution-20261020/chain-runtime-recovery-002/`.
@@ -35,7 +35,7 @@ Recuperación002 aplicada a16:10 y relanzada16:11: CAS exacto de1048448/1047330/
 
 ## Verificación pendiente y seguimiento
 
-Principal: **4.327 pruebas offline aprobadas/67omitidas**, revisión independiente y replay de tresfichas reales con copiasJSON. El progreso real ya confirma metadata fresca, tresenvíos embedding conocidos y192vectoresdone enPG. No acredita QAsemántica ni cierre del lote.
+Principal: **4.327 pruebas offline aprobadas/67omitidas**, revisión independiente y replay de tresfichas reales con copiasJSON. El progreso real ya confirma metadata fresca, cincoenvíos embedding conocidos y primer ciclo aprobado; el readback adicional anterior confirmó192vectoresdone enPG. No acredita QAsemántica ni cierre del lote.
 
 El supervisor continúa hasta la partición exacta de157IDs, colas/reservas propias drenadas y matching de lecturas listas. El cierre verificará nuevos/preservados/rechazados/reviews, fichas/cronogramas/referencias, costos conocidos/inciertos y limpieza segura, manteniendo pendientes reales. Colas antiguas no se adoptan ni limpian.
 

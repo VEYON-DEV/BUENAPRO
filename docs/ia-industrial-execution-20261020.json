@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "status": "running_reader_after_verified_recovery002",
+  "status": "running_next_reader_batch_after_verified_pilot",
   "scope": "DIN: IA/automatización e industrial; lectura por IDs del mapeo PROD2 cerrado",
   "selection": {
     "ids": 157,
@@ -42,7 +42,7 @@
     "started_at_utc": "2026-10-20T16:11:26.049916+00:00",
     "plan_sha256": "25922f5da9f518064543ca875db33b541e6fe778606a0606175a53793a51c061",
     "parent_pid": 85202,
-    "last_child_pid": 88477,
+    "last_child_pid": 94351,
     "initial_run": {
       "code_commit": "d880953a0bd4a9c6db677c538639300a1310533a",
       "plan_sha256": "bdf829ca6e28db773de4a4b811cdf071b7be43ff637d0b28e7db91e6d6957500",
@@ -50,7 +50,9 @@
       "last_child_pid": 46725,
       "started_at_utc": "2026-10-20T15:15:45.113005+00:00"
     },
-    "chain_folder": "tmp/ia-industrial-execution-20261020/chain-runtime-recovery-002"
+    "chain_folder": "tmp/ia-industrial-execution-20261020/chain-runtime-recovery-002",
+    "current_stage": "reader-002",
+    "completed_batches": 1
   },
   "policy": {
     "history_before_source_and_affinity": true,
@@ -75,7 +77,7 @@
     "actual157_dry_run": true,
     "runtime_embedding_schema": "fresh verified; earlier nonexistent table probe corrected in schema-preflight receipt",
     "production_writes_so_far": "Only0042 CHECK/registry and normal selected reader; no unrelated services/data changes",
-    "new_paid_calls_so_far": 7,
+    "new_paid_calls_so_far": 9,
     "focused_final": {
       "passed": 169,
       "seconds": 1.93,
@@ -101,7 +103,7 @@
       "log_sha256": "bc25aa88c37f3ecb5d52dce6712d5ca2819b8afa2f3d1a8f88ae80f508c1ecdb"
     },
     "runtime_recovery_independent_review": "approved; offline only",
-    "paid_calls_cutoff_utc": "2026-10-20T16:18:39.067475+00:00",
+    "paid_calls_cutoff_utc": "2026-10-20T16:20:44.986060+00:00",
     "metadata_recovery_offline": {
       "passed": 4327,
       "skipped": 67,
@@ -113,17 +115,18 @@
     "unexpected_local_stop": "durable sanitized STOP; no outcome/ACK; typed reviews/limits preserved; in-flight known responses persist"
   },
   "costs": {
-    "new_known_usd": "0.002236876",
+    "new_known_usd": "0.003415016",
     "new_uncertain_attempts": 0,
     "historical_uncertain_attempts": "preserved, outside this lot; never set to zero",
     "limits_note": "Call/document limits are finite; not an implemented hard USD cap. No credit purchase or spend-limit changes authorized.",
-    "cutoff_utc": "2026-10-20T16:18:39.067475+00:00",
-    "final": false
+    "cutoff_utc": "2026-10-20T16:20:44.986060+00:00",
+    "final": false,
+    "scope": "closed pilot batch1; later/inflight work excluded"
   },
   "pending": [
     "Complete current reader batches and fresh PG/Redis readback",
     "DIN matching only ready new readings",
-    "Typed document context reviews1047330/1048448 retained; no automatic paid resend",
+    "Typed document context reviews1047330/1048448/1049583 retained; no automatic paid resend",
     "48 sector-boundary title holds",
     "PROD6 legitimate source access recovery"
   ],
@@ -404,5 +407,47 @@
     "known_embedding_input_tokens": 97085,
     "unknown_attempts": 0,
     "technical_incident_resolved": true
+  },
+  "first_batch_verified": {
+    "at_utc": "2026-10-20T16:20:44.986060+00:00",
+    "supervisor_status": "running_child",
+    "completed_batches": 1,
+    "report_sha256": "33d9711f1dbacc48761c2a83243974bfc9a9ced1b065e8f33a63edb6f49f15f8",
+    "readback_sha256": "723136ff8f2fc81f122110b10038ec02f80e9f4120fc73530fb1611ceae0af42",
+    "processed": 10,
+    "redis": {
+      "queued": 147,
+      "pending": 0,
+      "payloads": 147,
+      "seen": 157
+    },
+    "costs": {
+      "attempts": 9,
+      "jev_calls": 4,
+      "llm1_calls": 0,
+      "openai_calls": 0,
+      "embedding_attempts": 5,
+      "embedding_calls": 5,
+      "embedding_unknown_dispatch_attempts": 0,
+      "embedding_pre_send_failures": 0,
+      "embedding_usage_unknown_attempts": 0,
+      "embedding_receipt_conflicts": 0,
+      "embedding_input_tokens": 155992,
+      "embedding_cost_usd": 0.00311984,
+      "known_cost_usd": 0.003415016,
+      "usage_unknown_attempts": 0,
+      "elapsed_seconds": 2.2322462490119506
+    },
+    "guard": {
+      "policy_version": "prod2_handoff_guards_v1",
+      "candidate_admissions": 10,
+      "document_admissions": 4,
+      "max_candidates": 10,
+      "max_new_documents": 10,
+      "document_unit": "unique_official_UUID_plus_archive_member_identity",
+      "budget_deferred": true,
+      "dispatch_stopped": false
+    },
+    "full_scope_complete": false
   }
 }
