@@ -1,0 +1,126 @@
+{
+  "purpose": "Explicar el flujo real de PROD2 y PROD6 y verificar qué ejecutores están activos, por consulta humana.",
+  "production_observed_at_utc": "2026-10-20T02:19:37.001807+00:00",
+  "production_observed_at_lima": "2026-10-19T21:19:37.001807-05:00",
+  "local_processes_observed_at_utc": "2026-10-20T02:20:54.766440+00:00",
+  "runtime_code_review_commit": "39e0f85",
+  "production_observation": {
+    "method": "SSH de solo lectura: inventario e inspect de contenedores y búsqueda de procesos conocidos en host; observación local independiente de procesos Python por argumentos sin publicar argumentos completos.",
+    "prod2_dedicated_container_found": false,
+    "known_host_worker_processes": [],
+    "known_local_worker_processes": [],
+    "worker_containers": [
+      {
+        "service": "prod6-ingest",
+        "container": "docker-prod6-ingest-1",
+        "running": false,
+        "exit_code": 2,
+        "finished_at_utc": "2026-10-16T12:19:50.679064205Z",
+        "restart_policy": "no",
+        "image": "buenapro-worker-prod6:http-recovery-f2767e8",
+        "image_id": "sha256:516b923ba6c75ee1d4c4b06b729239597e0bffe17fc8f2effeb8bb4c5fdca640",
+        "runtime_commit_previously_verified": "f2767e8ecc825acc44b7eb5e859be6904f6ee155"
+      },
+      {"service": "scheduler", "running": false, "exit_code": 137, "restart_policy": "no"},
+      {"service": "worker-io", "running": false, "exit_code": 137, "restart_policy": "no"},
+      {"service": "worker-llm", "running": false, "exit_code": 137, "restart_policy": "no"},
+      {"service": "worker-match", "running": false, "exit_code": 137, "restart_policy": "no"},
+      {"service": "worker-notify", "running": false, "exit_code": 137, "restart_policy": "no"}
+    ],
+    "running_worker_containers": 0,
+    "main_services": {
+      "web": {
+        "running": true,
+        "image": "buenapro-web:timeline-tabs-f8504fb",
+        "image_id": "sha256:27a717b1e1b2f4fddbf1e97c339e3123419050f30b848fa384bce67c8988df1a"
+      },
+      "postgres": {"running": true, "health": "healthy"},
+      "redis": {"running": true, "health": "healthy"}
+    }
+  },
+  "prod2": {
+    "source": "Buscador SEACE / procedimientos de selección",
+    "execution": "Lote finito ejecutado desde Mac, con persistencia en PostgreSQL de producción; no daemon permanente de producción.",
+    "entrypoint": "scripts/run_prod2_selected.py",
+    "optional_supervisor": "scripts/run_prod2_keyword_chain.py",
+    "retired_entrypoint": "scripts/run_prod2_ingestion.py",
+    "queue": "Redis con reservas deduplicadas; progreso y resultados en PostgreSQL.",
+    "steps": [
+      "Consulta fuente por keywords, objetos y ventana congelados; deduplica candidatos.",
+      "JEV comercial compara descripción del procedimiento con perfiles comerciales antes de descargar documentos; solo afinidad >=60 continúa.",
+      "Promueve aceptadas a PostgreSQL; el guard conserva lecturas previas y pagos inciertos sin repetirlos.",
+      "Consulta y guarda ficha, cronograma e inventario oficial de documentos.",
+      "Descarga temporales e inventaría archivos/contenidos; un segundo JEV selecciona bases, TDR, EETT y anexos pertinentes. Ambigüedad o inventario incompleto conserva revisión.",
+      "En modo embeddings V5 prepara PDF/Word, extrae texto nativo y OCR local parcial, genera vectores y recupera fragmentos pertinentes con procedencia y cobertura declaradas.",
+      "LLM1 Gemini estructura requisitos desde el texto recuperado en ese modo; valida reservas, hashes, UUID, esquema e inventario antes de persistir extracción, resumen, facets y referencias en PostgreSQL.",
+      "La web consulta PostgreSQL. El ejecutor termina en LLM1; LLM2, matching de empresa y notificaciones se ejecutan por otro flujo."
+    ],
+    "providers": {
+      "jev": "jev-1.13.0 vía Typesafe; afinidad comercial y selección documental, no puntaje final de elegibilidad DIN.",
+      "embeddings": "OpenAI text-embedding-3-small, 1536 dimensiones; vectorización, no lectura generativa.",
+      "llm1": "Gemini con modelo fijado por manifiesto. Política actual de nuevos manifiestos: gemini-3.1-flash-lite para <=20 páginas preparadas y gemini-2.5-flash-lite para >20; no modifica retrospectivamente lotes congelados."
+    },
+    "historical_status_limit": {
+      "report": "docs/prod2-all-keywords-chain-20261009.json",
+      "report_verified_at_utc": "2026-10-13T14:17:43.108488+00:00",
+      "software_metrics_observed_at_utc": "2026-10-13T14:16:09.990351+00:00",
+      "source_primary_keywords_verified": "166/166 en sus épocas; no equivale a todas las lecturas cerradas.",
+      "previous_groups": "IA/datos, licencias/cloud y soporte cerrados con revisiones preservadas en ese informe.",
+      "software": "El último corte guardado indica 59/223 outcomes y 162 queued/2 pending; es histórico y no una lectura fresca de Redis.",
+      "current_private_plan_and_state_present_in_this_checkout": false,
+      "conclusion": "No se encontró lote activo hoy. No se acredita cierre final de software ni estado actual de sus colas a partir de este informe histórico."
+    }
+  },
+  "prod6": {
+    "source": "Contratos menores SEACE",
+    "execution": "Servicio dedicado prod6-ingest con espera de 1800 segundos después de cada ciclo, mientras está ejecutándose.",
+    "entrypoint": "python -m buenapro_worker.prod6.runtime",
+    "queue": "PostgreSQL worker_jobs, namespace prod6-only-v1 y un lock asesor para evitar coordinadores duplicados.",
+    "concurrency_default": {"search_http": 3, "io": 2, "paid_reading": 1},
+    "current_configured_ingestion_profile": "VEYON, tres líneas comerciales y segmentos 43/81; no abarca automáticamente las once líneas y nueve segmentos de DIN.",
+    "steps": [
+      "Carga de PostgreSQL las líneas activas, segmentos CUBSO y keywords del perfil de ingesta autorizado.",
+      "Busca año actual, estado Vigente, bienes y servicios; valida año, cierre futuro o desconocido y coincidencia de keywords; deduplica por ID oficial.",
+      "process_contract actualiza ficha, etapas del cronograma e inventario; conserva lecturas existentes y encola documentos de requerimiento sin lectura.",
+      "download_file obtiene bytes temporales en memoria, comprueba SHA y tipo documental; no crea nuevos originales en R2.",
+      "extract_tdr reutiliza extracciones actuales cuando existen. Los nuevos PDF TDR/EETT elegibles pasan a Gemini con recibos durables y protección ante pagos inciertos.",
+      "derive_summary deriva resumen, requisitos, facets y evidencia en PostgreSQL; la web los consulta.",
+      "El runtime solo admite process_contract, download_file, extract_tdr y derive_summary. No ejecuta LLM2, matching ni notificaciones."
+    ],
+    "llm1_model_configured": "gemini-3.1-flash-lite",
+    "last_incidents_from_existing_diagnosis": {
+      "server": "Parada exit2 tras HTTP403 en trabajos IO el 16/10; restart=no.",
+      "local_fallback": "Terminó con OperationalError después del último ciclo completo del 16/10; fallo inicial PG fuera del manejo de error reproducido offline. Pérdida de sesión tras reposo es inferencia, no causa original demostrada.",
+      "reference": "docs/prod6-diagnostico-integral-20261019.json"
+    },
+    "local_fixes_not_deployed": "521442166e7b39315547669c2314b7c4b18da357"
+  },
+  "limits_and_actions": {
+    "fresh_pg_or_redis_business_query_this_check": false,
+    "fresh_seace_http_this_check": false,
+    "model_calls": 0,
+    "business_writes": 0,
+    "restarts": 0,
+    "deployments": 0,
+    "limitations": [
+      "Inventario de procesos y contenedores no acredita acceso actual de SEACE, cuota de modelos ni cierre de lecturas.",
+      "Exit137 aislado no acredita OOM; los servicios legacy estaban desactivados en operaciones anteriores.",
+      "Esta verificación no reactiva coordinadores, colas, perfiles ni análisis de pago."
+    ],
+    "cleanup_freed_bytes": 0,
+    "retained": "Solo este informe compacto; entradas pendientes y recibos históricos intactos."
+  },
+  "code_references": [
+    "scripts/run_prod2_selected.py",
+    "scripts/run_prod2_keyword_chain.py",
+    "workers/seace/src/buenapro_worker/prod2/accepted_runner.py",
+    "workers/seace/src/buenapro_worker/prod2/embedding_runtime.py",
+    "workers/seace/src/buenapro_worker/prod2/model_routing.py",
+    "workers/seace/src/buenapro_worker/prod2/llm1_completion.py",
+    "infra/docker/prod6.compose.yml",
+    "workers/seace/src/buenapro_worker/prod6/runtime.py",
+    "workers/seace/src/buenapro_worker/jobs/process_contract.py",
+    "workers/seace/src/buenapro_worker/jobs/download_file.py",
+    "workers/seace/src/buenapro_worker/jobs/derive_summary.py"
+  ]
+}
