@@ -7,6 +7,7 @@ import { keywordTextFitLateralSql } from "./keywordTextScoring";
 import { savedOpportunityIds } from "./savedOpportunities";
 import { CommercialFilterError, normalizeCommercialClassification, parseCommercialFilters, prod2CommercialCategoryPresentation, type CommercialFilters } from "@/lib/commercialTaxonomy";
 import { appendCommercialPredicates, PROD2_COMMERCIAL_SELECT, hasCommercialFilters, PROD2_COMMERCIAL_JOIN, PROD2_TITLE_CATEGORY_JOIN } from "./commercialClassification";
+import { prod2CommercialAffinityJoin, prod2CommercialContext } from "./prod2CommercialAffinity";
 
 export class Prod2RequestError extends Error {
   constructor(message: string, public status = 400) { super(message); }
@@ -26,6 +27,7 @@ type Prod2Row = Record<string, any> & {
   participation_extraction: unknown;
   commercial_categories?: unknown; commercial_classification_source?: unknown; commercial_classification_state?: unknown;
   has_official_detail?: boolean; publication_status?: string | null;
+  commercial_jev_result?: unknown; commercial_affinity_index?: number | null;
 };
 type Prod2DocumentRow = {
   codigo_alfresco: string; name: string; document_type: string; stage_name: string; published_at: string | null;
@@ -65,6 +67,15 @@ async function resolveProfile(tenantId: string, profileId: string | null) {
      ORDER BY created_at, id LIMIT 1`, [tenantId, profileId]);
   if (profileId && !result.rows[0]) throw new Prod2RequestError("Perfil no disponible en tu empresa.", 404);
   return result.rows[0] ?? null;
+}
+
+async function currentCommercialContext(tenantId: string, profileId: string | null) {
+  if (!profileId) return null;
+  const result = await query<{ profile_hash: string | null; commercial_description: string; active_business_lines: string[] }>(
+    `SELECT cp.profile_hash, COALESCE(cp.identity_json->>'descripcion', '') AS commercial_description,
+      ARRAY(SELECT bl.nombre FROM business_lines bl WHERE bl.profile_id = cp.id AND bl.is_active = true) AS active_business_lines
+     FROM company_profiles cp WHERE cp.id = $1::uuid AND cp.tenant_id = $2::uuid AND cp.is_active = true`, [profileId, tenantId]);
+  return result.rows[0] ? prod2CommercialContext(result.rows[0]) : null;
 }
 
 const BASE = `p.id_convocatoria::text, p.id_procedimiento::text, p.opportunity_id::text,
@@ -150,7 +161,8 @@ function provisionalScore(row: Prod2Row) {
 }
 
 function processRow(row: Prod2Row) {
-  const { schedule_json, jev_result, document_publication_events: _publicationEvents, ...process } = row;
+  const { schedule_json, jev_result, commercial_jev_result: _commercialJev, commercial_affinity_index: _commercialIndex,
+    document_publication_events: _publicationEvents, ...process } = row;
   const classification = normalizeCommercialClassification(row.commercial_classification);
   return { ...process, commercial_classification: classification, ...prod2CommercialCategoryPresentation(classification, row),
     has_official_detail: row.has_official_detail !== false,
@@ -161,6 +173,9 @@ function processRow(row: Prod2Row) {
     fit_score: null, fit_level: row.fit_level ?? null, business_line_name: row.business_line_name ?? null,
     keyword_hits: row.keyword_hits ?? [], fit_basis: "profile_keywords" as const,
     source_window_status: "observed" as const, source_presence_label: row.has_official_detail === false ? "Datos del listado PROD2" : "Consultada en PROD2",
+    commercial_affinity: typeof row.commercial_affinity_index === "number" && Number.isFinite(row.commercial_affinity_index)
+      && row.commercial_affinity_index >= 0 && row.commercial_affinity_index <= 100
+      ? { index: row.commercial_affinity_index, label: "Afinidad comercial", basis: "title" as const } : null,
     affinity: prod2Affinity(jev_result), official_schedule: normalizeProd2Schedule(schedule_json) };
 }
 
@@ -181,6 +196,7 @@ function publicationHistory(events: unknown, document: Prod2DocumentRow): Prod2P
 
 export async function listProd2OpportunitiesForTenant(tenantId: string, params: Prod2ListParams) {
   const profile = await resolveProfile(tenantId, params.profileId);
+  const commercialContext = await currentCommercialContext(tenantId, profile?.id ?? null);
   const values: unknown[] = [profile?.id ?? null];
   // Include explicitly published selections without pretending a ficha exists.
   const where = [PUBLISHED_VISIBILITY];
@@ -196,15 +212,18 @@ export async function listProd2OpportunitiesForTenant(tenantId: string, params: 
     ${params.analysis === "done" || params.withScore ? MATCH_JOIN : ""}
     ${hasCommercialFilters(params.commercial) ? `${PROD2_COMMERCIAL_JOIN} ${PROD2_TITLE_CATEGORY_JOIN}` : ""}
     WHERE ($1::uuid IS NULL OR $1::uuid IS NOT NULL) AND ${predicate}`, values);
+  const pageValues = [...values];
+  const commercialAffinityJoin = prod2CommercialAffinityJoin(pageValues, commercialContext, tenantId);
   const rows = await query<Prod2Row>(`SELECT ${BASE}, ${KEYWORD_FIT_SELECT}, ${PROD2_COMMERCIAL_SELECT}, jev.result_json AS jev_result,
+    commercial_jev.result_json AS commercial_jev_result, commercial_jev.affinity_index AS commercial_affinity_index,
     ${MATCH_STATUS_SELECT}, ${PUBLISHED_MATCH_SCORE} AS match_score, ${PUBLISHED_MATCH_VERDICT} AS match_verdict
     FROM ${PUBLISHED_FROM}
-    ${MATCH_JOIN} ${JEV_JOIN} ${KEYWORD_FIT_JOIN} ${PROD2_COMMERCIAL_JOIN} ${PROD2_TITLE_CATEGORY_JOIN}
+    ${MATCH_JOIN} ${JEV_JOIN} ${commercialAffinityJoin} ${KEYWORD_FIT_JOIN} ${PROD2_COMMERCIAL_JOIN} ${PROD2_TITLE_CATEGORY_JOIN}
     WHERE ${predicate}
-    ORDER BY ${AVAILABLE_MATCH_SCORE} DESC NULLS LAST, fit.keyword_points DESC NULLS LAST,
+    ORDER BY ${AVAILABLE_MATCH_SCORE} DESC NULLS LAST, commercial_jev.affinity_index DESC NULLS LAST, fit.keyword_points DESC NULLS LAST,
       ${PUBLISHED_MATCH_SCORE} DESC NULLS LAST,
       p.published_at DESC NULLS LAST, p.id_convocatoria DESC
-    LIMIT $${values.length + 1} OFFSET $${values.length + 2}`, [...values, params.pageSize, (params.page - 1) * params.pageSize]);
+    LIMIT $${pageValues.length + 1} OFFSET $${pageValues.length + 2}`, [...pageValues, params.pageSize, (params.page - 1) * params.pageSize]);
   const saved = await savedOpportunityIds(tenantId, rows.rows.map(row => row.opportunity_id));
   return { data: rows.rows.map(row => ({ ...processRow(row), is_saved: saved.has(row.opportunity_id) })), total: count.rows[0]?.total ?? 0, page: params.page, page_size: params.pageSize,
     profile: profile ? { id: profile.id, name: profile.razon_social } : null };
@@ -213,14 +232,18 @@ export async function listProd2OpportunitiesForTenant(tenantId: string, params: 
 export async function getProd2OpportunityForTenant(tenantId: string, id: string, profileId: string | null = null) {
   if (profileId && !uuidPattern.test(profileId)) throw new Prod2RequestError("profile_id must be a UUID");
   const profile = await resolveProfile(tenantId, profileId);
+  const commercialContext = await currentCommercialContext(tenantId, profile?.id ?? null);
+  const values: unknown[] = [profile?.id ?? null, id];
+  const commercialAffinityJoin = prod2CommercialAffinityJoin(values, commercialContext, tenantId);
   const result = await query<Prod2Row>(`SELECT ${BASE}, ${KEYWORD_FIT_SELECT}, ${PROD2_COMMERCIAL_SELECT}, jev.result_json AS jev_result,
+    commercial_jev.result_json AS commercial_jev_result, commercial_jev.affinity_index AS commercial_affinity_index,
     ${MATCH_STATUS_SELECT}, matched.profile_id::text AS match_profile_id,
     ${PUBLISHED_MATCH_SCORE} AS match_score, ${PUBLISHED_MATCH_VERDICT} AS match_verdict,
     matched.breakdown_json, matched.missing_actions_json,
     matched.matched_at::text, matched.updated_at::text AS match_updated_at, matched.evaluated_profile_hash
     FROM ${PUBLISHED_FROM}
-    ${MATCH_JOIN} ${JEV_JOIN} ${KEYWORD_FIT_JOIN} ${PROD2_COMMERCIAL_JOIN} ${PROD2_TITLE_CATEGORY_JOIN}
-    WHERE ${PUBLISHED_VISIBILITY} AND p.id_convocatoria = $2::bigint`, [profile?.id ?? null, id]);
+    ${MATCH_JOIN} ${JEV_JOIN} ${commercialAffinityJoin} ${KEYWORD_FIT_JOIN} ${PROD2_COMMERCIAL_JOIN} ${PROD2_TITLE_CATEGORY_JOIN}
+    WHERE ${PUBLISHED_VISIBILITY} AND p.id_convocatoria = $2::bigint`, values);
   const row = result.rows[0];
   if (!row) return null;
   const [documents, extraction] = await Promise.all([

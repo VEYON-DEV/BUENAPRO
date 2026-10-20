@@ -11,11 +11,13 @@ function load(file, mocks = {}) {
   const compiled = ts.transpileModule(fs.readFileSync(absolute, 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
   }).outputText;
-  vm.runInNewContext(compiled, { exports, URLSearchParams, Response, process: { env: {} }, require(name) {
+  vm.runInNewContext(compiled, { exports, URLSearchParams, Response, Buffer, process: { env: {} }, require(name) {
     if (name in mocks) return mocks[name];
     if (name.endsWith('.json')) return require(path.resolve(path.dirname(absolute), name));
     if (name === '@/lib/commercialTaxonomy') return load('../../lib/commercialTaxonomy.ts');
     if (name === './commercialClassification') return load('commercialClassification.ts');
+    if (name === './prod2CommercialAffinity') return load('prod2CommercialAffinity.ts');
+    if (name === 'node:crypto') return require(name);
     throw new Error(`Unexpected offline test module: ${name}`);
   } });
   if (!Object.keys(mocks).length) cache.set(absolute, exports);

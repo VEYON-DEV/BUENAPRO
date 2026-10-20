@@ -167,6 +167,18 @@ test("legacy PROD2 zero displays its ring instead of a retained-score label", ()
   assert.doesNotMatch(html, /Puntaje por validar/);
 });
 
+test("commercial DIN JEV is a title-affinity number and cannot masquerade as a documentary score", () => {
+  for (const index of [0, 75, 100]) {
+    const html = render(Prod4OpportunityList, { rows: [procedure({ match_id: null, match_score: null, commercial_affinity: { index, label: "Afinidad comercial", basis: "title" } })], source: "prod2" });
+    assert.match(html, new RegExp(`${index} / 100`));
+    assert.match(html, /Afinidad comercial/); assert.match(html, /Por título/);
+    assert.doesNotMatch(html, /Analizado|Puntaje provisional|Evaluación de requisitos|scoreRing/);
+  }
+  const evaluated = render(Prod4OpportunityList, { rows: [procedure({ match_score: 42, match_verdict: "ambar", commercial_affinity: { index: 100, label: "Afinidad comercial", basis: "title" } })], source: "prod2" });
+  assert.match(evaluated, /Evaluación de requisitos: 42 de 100/);
+  assert.doesNotMatch(evaluated, />100 \/ 100</);
+});
+
 test("minor row and inspector show the existing analysis instead of a prompt to rerun IA", () => {
   const html = render(OpportunityList, { rows: [minor({ match_id: "916", match_review_required: true })] });
   assert.equal((html.match(/Puntaje por validar/g) ?? []).length, 2);

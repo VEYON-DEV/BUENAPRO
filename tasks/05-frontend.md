@@ -387,3 +387,5 @@ Referencia: [Admin tecnico](../docs/frontend/08-admin-tecnico.md)
 - [x] Actualizar screenshots o evidencia de QA.
 - [x] Probar onboarding inicial en desktop 1440×1000 y mobile 390×844. Build de producción y endpoint de sugerencias con Gemini validados; bloqueo de URL privada verificado. Evidencia: `docs/qa/screenshots/onboarding-company-desktop-2026-07-10.png`, `onboarding-company-mobile-2026-07-10.png`.
 - [x] Probar clasificación CUBSO del onboarding con rubros distintos: VEYON → `43,81`; restaurante/catering → `50,90`. Revisar editor de segmentos desktop/mobile y confirmar que ninguna línea existente quede sin segmento.
+
+- [ ] Verificar con capturas desktop/laptop/mobile y en producción la afinidad comercial DIN 0–100 por título, preservando el análisis documental y los estados de metadatos de los 157 seleccionados (2026-10-20).

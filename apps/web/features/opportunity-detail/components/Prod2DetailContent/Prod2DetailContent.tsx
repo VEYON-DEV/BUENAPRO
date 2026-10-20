@@ -61,6 +61,7 @@ export function Prod2DetailContent({ detail }: { detail: Detail }) {
   const actions = Array.isArray(breakdown.acciones_recomendadas) ? breakdown.acciones_recomendadas.filter((value: unknown) => typeof value === "string") as string[] : [];
   const feedUrl = `/feed?source=prod2${profile ? `&profile_id=${encodeURIComponent(profile.id)}` : ""}`;
   const affinity = keywordAffinitySummary(process);
+  const commercialAffinity = process.commercial_affinity;
   const renderGap = (requirement: RecordValue, index: number) => {
     const fullText = requirementFullText(requirement, analysis.facets);
     const title = text(requirement.requisito) || text(requirement.label);
@@ -81,12 +82,12 @@ export function Prod2DetailContent({ detail }: { detail: Detail }) {
       {process.publication_status_label ? <p className={styles.muted}>{process.publication_status_label}. Estado conservado de la última revisión.</p> : null}
     </header>
     <DecisionOverview analyzed={evaluation.hasEvaluation} score={match?.score} provisionalScore={match?.provisional_score} scoreUnderReview={evaluation.scoreUnderReview || Boolean(process.match_review_required)} verdict={match ? verdictShortLabels[match.verdict] ?? match.verdict : "Evaluación pendiente"}
-      verdictTone={tone(match?.verdict ?? "")} fit={affinity ? `${affinity.label} · ${affinity.pointLabel} puntos` : "Sin afinidad calculada"}
+      verdictTone={tone(match?.verdict ?? "")} fit={commercialAffinity ? `${commercialAffinity.index} / 100 · Afinidad comercial por título` : affinity ? `${affinity.label} · ${affinity.pointLabel} puntos` : "Sin afinidad calculada"}
       deadline="Presentación de ofertas" deadlineDate={stageDate(proposals)} requirementsTotal={evaluation.substantive.length} coveredCount={evaluation.coveredCount} missingCount={missing.length} requirementsLabel="Requisitos clave cubiertos"
       actions={<>{primary?.download_url ? <a className={styles.primaryAction} href={primary.download_url} target="_blank" rel="noopener noreferrer"><FileText aria-hidden="true" size={16} /> Abrir bases en PDF</a>
         : process.source_url ? <a className={styles.primaryAction} href={process.source_url} target="_blank" rel="noopener noreferrer">Consultar bases en SEACE <ExternalLink aria-hidden="true" size={16} /></a> : <span>Documento pendiente</span>}
         <SaveButton code={process.nomenclatura} idContrato={process.id_convocatoria} endpoint={`/api/prod2/opportunities/${process.id_convocatoria}/saved`} initialSaved={Boolean(process.is_saved)} showLabel /></>} />
-    <p className={styles.notice}><ShieldCheck aria-hidden="true" size={18} /><span>{affinity ? <><strong>{affinity.lineName}</strong> · {affinity.pointLabel} de 45 puntos por palabras clave. {affinity.hits.length ? `Coincidencias: ${affinity.hits.join(", ")}. ` : "Sin coincidencias de palabras clave. "}</> : null}{contextNames ? "Convenio declarado; participación conjunta pendiente de verificar. " : "La evaluación usa el perfil registrado. "}
+    <p className={styles.notice}><ShieldCheck aria-hidden="true" size={18} /><span>{commercialAffinity ? <><strong>Afinidad comercial: {commercialAffinity.index} / 100.</strong> Comparación del título con el perfil comercial actual de tu empresa. </> : affinity ? <><strong>{affinity.lineName}</strong> · {affinity.pointLabel} de 45 puntos por palabras clave. {affinity.hits.length ? `Coincidencias: ${affinity.hits.join(", ")}. ` : "Sin coincidencias de palabras clave. "}</> : null}{contextNames ? "Convenio declarado; participación conjunta pendiente de verificar. " : "La evaluación usa el perfil registrado. "}
       {extraction?.requires_human_review ? "Las bases requieren revisión humana. " : ""}La afinidad comercial y el puntaje no acreditan elegibilidad ni son probabilidades de adjudicación.</span></p>
     <div className={styles.layout}>
       <DetailSectionNavigator tabs={[{ id: "decision", label: "Decisión y requisitos", count: evaluated.length || evaluation.substantiveFacets.length },

@@ -152,6 +152,9 @@
 .finalAffinity strong { font-weight: 650; line-height: 1.3; }
 .preliminaryAffinity strong { flex: none; white-space: nowrap; }
 .keywordAffinity strong { white-space: normal; }
+.commercialAffinity { align-items: flex-start; flex-direction: column; gap: 3px; line-height: 1.35; }
+.commercialAffinity strong { color: var(--bp-color-brand); font-variant-numeric: tabular-nums; }
+.commercialAffinity small { color: var(--bp-color-text-2); font-size: 11px; }
 .preliminaryAffinity > span:last-child { min-width: 0; overflow-wrap: anywhere; }
 .rowMain .preliminaryAffinity { align-items: flex-start; flex-direction: column; gap: 4px; }
 .rowMain .preliminaryAffinity > span:last-child { overflow-wrap: normal; }

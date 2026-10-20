@@ -46,6 +46,7 @@ export type Prod4OpportunitySummary = Partial<CommercialCategoryPresentation> & 
   source_window_status: "current" | "exited" | "observed";
   official_schedule?: ProcurementScheduleStage[];
   affinity?: { index: number | null; label: string };
+  commercial_affinity?: { index: number; label: string; basis: "title" } | null;
   actionability: string;
   fit_points: number | null;
   keyword_points?: number | null;
@@ -127,6 +128,13 @@ function AffinityMark({ row, source }: { row: Prod4OpportunitySummary; source: "
     );
   }
   if (source === "prod2") {
+    const commercial = row.commercial_affinity;
+    if (commercial?.basis === "title" && Number.isFinite(commercial.index) && commercial.index >= 0 && commercial.index <= 100) {
+      const label = `${commercial.index} de 100 de afinidad comercial con tu empresa, por título. No evalúa requisitos ni acredita elegibilidad.`;
+      return <span aria-label={label} className={[styles.preliminaryAffinity, styles.commercialAffinity].join(" ")} title={label}>
+        <strong>{commercial.index} / 100</strong><span>Afinidad comercial</span><small>Por título</small>
+      </span>;
+    }
     const affinity = keywordAffinitySummary(row);
     if (!affinity) return <span className={styles.noAffinity}>Sin afinidad calculada</span>;
     return <span aria-label={affinity.description} className={[styles.preliminaryAffinity, styles.keywordAffinity].join(" ")} title={affinity.description}>
@@ -268,7 +276,7 @@ export function Prod4OpportunityList({ rows, source = "prod4", profileId }: { ro
           <div className={styles.previewAffinityGroup}>
             <div className={styles.previewAffinity}><span>{previewAnalysis !== "none" ? "Análisis de requisitos" : "Afinidad con tu empresa"}</span><AffinityMark row={detail?.process ?? primary} source={source} /></div>
             {previewAnalysis === "review" ? <p className={styles.analysisContext}>El análisis está disponible en el detalle. El puntaje sigue por validar.</p> : null}
-            {previewAffinity ? <p className={styles.keywordContext} title={previewAffinity.description}>
+            {previewAffinity && !previewRow?.commercial_affinity ? <p className={styles.keywordContext} title={previewAffinity.description}>
               <strong>{previewAffinity.lineName}</strong><span>{previewAffinity.pointLabel} de 45 puntos por palabras clave</span>
               <span>{previewAffinity.hits.length ? `Coincidencias: ${previewAffinity.hits.join(", ")}` : "Sin coincidencias de palabras clave"}</span>
             </p> : null}

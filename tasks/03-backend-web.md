@@ -215,3 +215,5 @@
 - [x] Crear vista de `pipeline_events`.
 - [x] Crear vista de `requires_review`.
 - [x] Crear vista de contract tests SEACE.
+
+- [x] Proyectar afinidad comercial JEV exclusiva del perfil DIN vigente en feed/detalle PROD2 mediante política e identidad de título/fila/perfil/tenant; campo separado de matches documentales y orden global antes de paginar. 72 pruebas Node, cuatro fixtures SQL reales, TypeScript y arquitectura aprobados; despliegue y capturas se verifican por separado (2026-10-20).

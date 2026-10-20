@@ -74,6 +74,17 @@ test('published listing metadata never claims a ficha, documents, deadline or ev
   assert.doesNotMatch(html, /Abrir bases en PDF|<strong>0<\/strong>/);
 });
 
+test('DIN commercial title affinity is distinct from a pending documentary evaluation in the detail', () => {
+  const detail = fixture(null, []);
+  detail.analysis.extraction = null;
+  detail.process.commercial_affinity = { index: 0, label: 'Afinidad comercial', basis: 'title' };
+  const html = render(detail);
+  assert.match(html, /0 \/ 100 · Afinidad comercial por título/);
+  assert.match(html, /Comparación del título con el perfil comercial actual de tu empresa/);
+  assert.match(html, /Evaluación documental pendiente/);
+  assert.doesNotMatch(html, /Puntaje provisional|<strong>0<\/strong>/);
+});
+
 test("PROD2 detail uses the explicit provisional score while keeping documentary review visible", () => {
   const detail = fixture({ meta: { score_validated: false }, resumen: "Experiencia por confirmar", requisitos: [
     { requisito: "Experiencia", source_index: 1, source_facet: "economic_experience", estado: "requiere_revision" },

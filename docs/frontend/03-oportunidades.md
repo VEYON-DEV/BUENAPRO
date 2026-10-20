@@ -172,6 +172,16 @@ El motor comparte las reglas léxicas de menores: raíces españolas, frase en o
 
 El orden global se aplica en PostgreSQL antes de paginar: primero el puntaje documental guardado válido de 0 a 100, de mayor a menor, incluyendo provisionales y cero. Después se conservan las palabras clave y fecha/identidad como desempate estable. Las filas sin puntaje siguen disponibles después; la afinidad comercial no se usa como puntaje ni acredita requisitos. El Jev histórico se conserva en la API, pero no dirige los puntos visibles.
 
+Desde el 20/10/2026, las evaluaciones JEV individuales del perfil DIN con política
+`din_title_commercial_affinity_v1` pueden aportar `commercial_affinity` como señal
+separada: **0–100 · Afinidad comercial · Por título**. Se valida el perfil activo
+actual, tenant, hash comercial, versión, recibo conocido, convocatoria y hash del
+título/fila antes de presentarla. Los resultados históricos conjuntos no se
+reutilizan como afinidad individual de DIN. El orden pasa a puntaje documental
+válido, afinidad comercial JEV individual y palabras clave; todos antes de paginar.
+El número JEV no crea análisis documental, nota de cumplimiento, match ni
+elegibilidad. **Con puntaje** y `analysis=done` mantienen sus condiciones de LLM2.
+
 Desde el 15/10/2026, la cápsula existente se llama **Con puntaje** (`with_score=true`) y selecciona únicamente números documentales válidos de 0 a 100, antes del conteo y paginación. Conserva búsqueda, tipo, perfil y plazo; los menores vencidos requieren «Cualquier cierre». Ambos listados resuelven un único perfil activo del tenant y rechazan perfiles ajenos o inactivos. Las pestañas, búsqueda, paginación, inspector y detalle conservan ese perfil. En menores también se limita afinidad y selección del match al mismo perfil. No se considera «Por leer» como analizado ni se inventa una nota desde afinidad.
 
 El parámetro legacy `analysis=done` continúa disponible en ambas APIs con su semántica original: análisis guardado aunque el número no exista. El nuevo control migra ese parámetro a `with_score`; no modifica resultados ni flags de validación. `with_score=false` u omitido conserva todas las filas con las demás restricciones. Valores distintos de true/false reciben400.

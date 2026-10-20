@@ -15,6 +15,7 @@ function load(file, mocks = {}, environment = {}) {
     fetch: async () => { throw new Error('Unexpected network call in offline test'); }, process: { env: environment },
     require(name) { return name in mocks ? mocks[name] : name === '@/lib/commercialTaxonomy' ? commercial
       : name === './commercialClassification' ? commercialSql : name === './prod2OfficialDocument' ? official
+      : name === './prod2CommercialAffinity' ? load('prod2CommercialAffinity.ts')
       : name === './prod2DocumentStorage' ? defaultStorage
       : name === './keywordTextScoring' ? load('keywordTextScoring.ts')
       : name === './savedOpportunities' ? load('savedOpportunities.ts', mocks) : require(name); } });
@@ -92,7 +93,7 @@ test('pagination uses convocatoria identity and preserves source provenance with
   assert.match(selection.sql, /'seace_prod2'::text AS source_key/);
   assert.match(selection.sql, /prod2_match_provenance/);
   assert.match(selection.sql, /document_sha256/);
-  assert.match(selection.sql, /ORDER BY CASE WHEN matched\.id IS NOT NULL AND matched\.score BETWEEN 0 AND 100 THEN matched\.score ELSE NULL END DESC NULLS LAST, fit\.keyword_points DESC NULLS LAST/);
+  assert.match(selection.sql, /ORDER BY CASE WHEN matched\.id IS NOT NULL AND matched\.score BETWEEN 0 AND 100 THEN matched\.score ELSE NULL END DESC NULLS LAST, commercial_jev\.affinity_index DESC NULLS LAST, fit\.keyword_points DESC NULLS LAST/);
   assert.ok(selection.sql.indexOf('ORDER BY CASE WHEN matched.id IS NOT NULL AND matched.score BETWEEN') < selection.sql.lastIndexOf('LIMIT $'));
   assert.doesNotMatch(selection.sql, /prod4_processes|seace_contracts|worker_jobs/);
   const count = statements.find(statement => statement.sql.includes('count(*)::int AS total FROM prod2_discoveries'));
@@ -610,7 +611,7 @@ test('PROD2 scores precede keyword affinity globally, including zero/provisional
       assert.doesNotMatch(sql, /matched\.score > 0|COALESCE\(matched\.score, 0\)/);
     }
     const page = selections[1];
-    assert.match(page.sql, /ORDER BY CASE WHEN matched\.id IS NOT NULL AND matched\.score BETWEEN 0 AND 100 THEN matched\.score ELSE NULL END DESC NULLS LAST, fit\.keyword_points DESC NULLS LAST/);
+    assert.match(page.sql, /ORDER BY CASE WHEN matched\.id IS NOT NULL AND matched\.score BETWEEN 0 AND 100 THEN matched\.score ELSE NULL END DESC NULLS LAST, commercial_jev\.affinity_index DESC NULLS LAST, fit\.keyword_points DESC NULLS LAST/);
     assert.ok(page.sql.indexOf('ELSE NULL END IS NOT NULL') < page.sql.lastIndexOf('LIMIT $4 OFFSET $5'));
     assert.deepEqual(Array.from(page.values), [profileId, 'service', '%software%', 5, 5]);
   }
