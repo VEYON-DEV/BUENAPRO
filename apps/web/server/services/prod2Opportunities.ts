@@ -5,12 +5,14 @@ import { prod2StorageAvailable, signedProd2DocumentUrl, validProd2PreviewKey } f
 import { prod2OfficialDocumentReference, resolveProd2OfficialDocument } from "./prod2OfficialDocument";
 import { keywordTextFitLateralSql } from "./keywordTextScoring";
 import { savedOpportunityIds } from "./savedOpportunities";
+import { CommercialFilterError, normalizeCommercialClassification, parseCommercialFilters, type CommercialFilters } from "@/lib/commercialTaxonomy";
+import { appendCommercialPredicates, COMMERCIAL_SELECT, hasCommercialFilters, PROD2_COMMERCIAL_JOIN } from "./commercialClassification";
 
 export class Prod2RequestError extends Error {
   constructor(message: string, public status = 400) { super(message); }
 }
 
-export type Prod2ListParams = { object: "good" | "service" | null; q: string; page: number; pageSize: number; profileId: string | null; analysis?: "done" | null; withScore?: boolean };
+export type Prod2ListParams = { object: "good" | "service" | null; q: string; page: number; pageSize: number; profileId: string | null; analysis?: "done" | null; withScore?: boolean; commercial?: CommercialFilters };
 type Prod2Row = Record<string, any> & {
   id_convocatoria: string; id_procedimiento: string; opportunity_id: string; source_key: "seace_prod2";
   nomenclatura: string; title: string; description: string; object_type: "good" | "service";
@@ -48,7 +50,10 @@ export function parseProd2ListParams(params: URLSearchParams): Prod2ListParams {
   if (analysis && analysis !== "done") throw new Prod2RequestError("analysis must be done");
   const withScore = params.get("with_score");
   if (withScore && withScore !== "true" && withScore !== "false") throw new Prod2RequestError("with_score must be true or false");
-  return { object: object as Prod2ListParams["object"], q, page, pageSize, profileId, analysis: analysis ? "done" : null, withScore: withScore === "true" };
+  let commercial: CommercialFilters;
+  try { commercial = parseCommercialFilters(params); }
+  catch (error) { if (error instanceof CommercialFilterError) throw new Prod2RequestError(error.message); throw error; }
+  return { object: object as Prod2ListParams["object"], q, page, pageSize, profileId, analysis: analysis ? "done" : null, withScore: withScore === "true", commercial };
 }
 
 async function resolveProfile(tenantId: string, profileId: string | null) {
@@ -131,7 +136,8 @@ function provisionalScore(row: Prod2Row) {
 
 function processRow(row: Prod2Row) {
   const { schedule_json, jev_result, document_publication_events: _publicationEvents, ...process } = row;
-  return { ...process, provisional_score: provisionalScore(row), region: null, technology_segments: [], technology_match_reason: [], items_count: 0,
+  return { ...process, commercial_classification: normalizeCommercialClassification(row.commercial_classification),
+    provisional_score: provisionalScore(row), region: null, technology_segments: [], technology_match_reason: [], items_count: 0,
     fit_points: row.fit_points ?? null, keyword_points: row.keyword_points ?? null,
     fit_score: null, fit_level: row.fit_level ?? null, business_line_name: row.business_line_name ?? null,
     keyword_hits: row.keyword_hits ?? [], fit_basis: "profile_keywords" as const,
@@ -165,14 +171,16 @@ export async function listProd2OpportunitiesForTenant(tenantId: string, params: 
   // and the chosen tenant-owned profile establish availability, never score > 0.
   if (params.analysis === "done") where.push("matched.id IS NOT NULL");
   if (params.withScore) where.push(`${AVAILABLE_MATCH_SCORE} IS NOT NULL`);
+  appendCommercialPredicates(params.commercial, values, where);
   const predicate = where.join(" AND ");
   const count = await query<{ total: number }>(`SELECT count(*)::int AS total FROM prod2_discoveries p JOIN prod2_details d USING(id_convocatoria)
     ${params.analysis === "done" || params.withScore ? MATCH_JOIN : ""}
+    ${hasCommercialFilters(params.commercial) ? PROD2_COMMERCIAL_JOIN : ""}
     WHERE ($1::uuid IS NULL OR $1::uuid IS NOT NULL) AND ${predicate}`, values);
-  const rows = await query<Prod2Row>(`SELECT ${BASE}, ${KEYWORD_FIT_SELECT}, jev.result_json AS jev_result,
+  const rows = await query<Prod2Row>(`SELECT ${BASE}, ${KEYWORD_FIT_SELECT}, ${COMMERCIAL_SELECT}, jev.result_json AS jev_result,
     ${MATCH_STATUS_SELECT}, ${PUBLISHED_MATCH_SCORE} AS match_score, ${PUBLISHED_MATCH_VERDICT} AS match_verdict
     FROM prod2_discoveries p JOIN prod2_details d USING(id_convocatoria)
-    ${MATCH_JOIN} ${JEV_JOIN} ${KEYWORD_FIT_JOIN}
+    ${MATCH_JOIN} ${JEV_JOIN} ${KEYWORD_FIT_JOIN} ${PROD2_COMMERCIAL_JOIN}
     WHERE ${predicate}
     ORDER BY ${AVAILABLE_MATCH_SCORE} DESC NULLS LAST, fit.keyword_points DESC NULLS LAST,
       ${PUBLISHED_MATCH_SCORE} DESC NULLS LAST,
@@ -186,13 +194,13 @@ export async function listProd2OpportunitiesForTenant(tenantId: string, params: 
 export async function getProd2OpportunityForTenant(tenantId: string, id: string, profileId: string | null = null) {
   if (profileId && !uuidPattern.test(profileId)) throw new Prod2RequestError("profile_id must be a UUID");
   const profile = await resolveProfile(tenantId, profileId);
-  const result = await query<Prod2Row>(`SELECT ${BASE}, ${KEYWORD_FIT_SELECT}, jev.result_json AS jev_result,
+  const result = await query<Prod2Row>(`SELECT ${BASE}, ${KEYWORD_FIT_SELECT}, ${COMMERCIAL_SELECT}, jev.result_json AS jev_result,
     ${MATCH_STATUS_SELECT}, matched.profile_id::text AS match_profile_id,
     ${PUBLISHED_MATCH_SCORE} AS match_score, ${PUBLISHED_MATCH_VERDICT} AS match_verdict,
     matched.breakdown_json, matched.missing_actions_json,
     matched.matched_at::text, matched.updated_at::text AS match_updated_at, matched.evaluated_profile_hash
     FROM prod2_discoveries p JOIN prod2_details d USING(id_convocatoria)
-    ${MATCH_JOIN} ${JEV_JOIN} ${KEYWORD_FIT_JOIN} WHERE p.id_convocatoria = $2::bigint`, [profile?.id ?? null, id]);
+    ${MATCH_JOIN} ${JEV_JOIN} ${KEYWORD_FIT_JOIN} ${PROD2_COMMERCIAL_JOIN} WHERE p.id_convocatoria = $2::bigint`, [profile?.id ?? null, id]);
   const row = result.rows[0];
   if (!row) return null;
   const [documents, extraction] = await Promise.all([

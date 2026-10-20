@@ -1,6 +1,9 @@
 import { query } from "@/server/db/client";
+import { normalizeCommercialClassification, parseCommercialFilters } from "@/lib/commercialTaxonomy";
+import { appendCommercialPredicates, COMMERCIAL_SELECT, PROD6_COMMERCIAL_JOIN } from "./commercialClassification";
 
 export async function getFeed(tenantId: string, params: URLSearchParams) {
+  const commercial = parseCommercialFilters(params);
   const verdict = params.get("verdict");
   const q = params.get("q");
   const objeto = params.get("objeto");
@@ -92,6 +95,7 @@ export async function getFeed(tenantId: string, params: URLSearchParams) {
     where.push(`c.fec_fin_cotizacion <= $${values.length}::timestamptz`);
   }
 
+  appendCommercialPredicates(commercial, values, where);
   values.push(limit, offset);
   const result = await query(
     `
@@ -127,6 +131,7 @@ export async function getFeed(tenantId: string, params: URLSearchParams) {
       fi.roles_requeridos,
       fi.facets,
       te.summary_json,
+      ${COMMERCIAL_SELECT},
       (sc.id_contrato IS NOT NULL) AS is_saved,
       sc.created_at AS saved_at,
       count(*) OVER()::int AS total_count
@@ -146,6 +151,7 @@ export async function getFeed(tenantId: string, params: URLSearchParams) {
       ORDER BY tx.created_at DESC
       LIMIT 1
     ) te ON true
+    ${PROD6_COMMERCIAL_JOIN}
     WHERE ${where.join(" AND ")}
     ORDER BY ${saved === "true" ? "sc.created_at DESC," : ""} m.score DESC, c.fec_fin_cotizacion ASC NULLS LAST
     LIMIT $${values.length - 1}
@@ -155,7 +161,8 @@ export async function getFeed(tenantId: string, params: URLSearchParams) {
   );
   const total = Number(result.rows[0]?.total_count ?? 0);
   return {
-    data: result.rows.map(({ total_count: _totalCount, ...row }) => row),
+    data: result.rows.map(({ total_count: _totalCount, ...row }) => ({ ...row,
+      commercial_classification: normalizeCommercialClassification(row.commercial_classification) })),
     meta: { page, page_size: limit, count: result.rows.length, total },
   };
 }

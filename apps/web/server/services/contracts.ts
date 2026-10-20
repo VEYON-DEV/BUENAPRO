@@ -1,6 +1,8 @@
 import { query } from "@/server/db/client";
 import { pagination } from "@/server/services/crud";
 import { keywordFitLateralSql } from "@/server/services/keywordScoring";
+import { CommercialFilterError, normalizeCommercialClassification, parseCommercialFilters } from "@/lib/commercialTaxonomy";
+import { appendCommercialPredicates, COMMERCIAL_SELECT, PROD6_COMMERCIAL_JOIN } from "./commercialClassification";
 
 // Read the current document extraction; canonical participation may belong to another source or revision.
 const PARTICIPATION_EXTRACTION = `jsonb_build_object(
@@ -74,6 +76,7 @@ export async function getContractForTenant(tenantId: string, idContrato: number,
       te.raw_extraction_json,
       te.extraction_id,
       te.participation_extraction,
+      ${COMMERCIAL_SELECT},
       m.id AS match_id,
       ${MATCH_REVIEW_REQUIRED} AS match_review_required,
       ${PROVISIONAL_MATCH_SCORE} AS provisional_score,
@@ -115,12 +118,14 @@ export async function getContractForTenant(tenantId: string, idContrato: number,
     ) te ON true
     ${keywordFitLateralSql(2, 3)}
     ${ECON_LATERAL_SQL}
+    ${PROD6_COMMERCIAL_JOIN}
     WHERE c.id_contrato = $1
     LIMIT 1
     `,
     [idContrato, tenantId, profile?.id ?? null],
   );
-  const contract: Record<string, any> | null = result.rows[0] ? { ...result.rows[0], provisional_score: provisionalScore(result.rows[0]) } : null;
+  const contract: Record<string, any> | null = result.rows[0] ? { ...result.rows[0], provisional_score: provisionalScore(result.rows[0]),
+    commercial_classification: normalizeCommercialClassification(result.rows[0].commercial_classification) } : null;
   if (!contract) return null;
 
   const facets = await query(
@@ -157,6 +162,9 @@ const ECON_LATERAL_SQL = `
 
 export async function listContractsForTenant(tenantId: string, params: URLSearchParams) {
   const { limit, offset, page, pageSize } = pagination(params);
+  let commercial;
+  try { commercial = parseCommercialFilters(params); }
+  catch (error) { if (error instanceof CommercialFilterError) throw new ContractRequestError(error.message); throw error; }
   const withScore = params.get("with_score");
   if (withScore && withScore !== "true" && withScore !== "false") throw new ContractRequestError("with_score must be true or false");
   const profile = await resolveListProfile(tenantId, params.get("profile_id"));
@@ -263,6 +271,7 @@ export async function listContractsForTenant(tenantId: string, params: URLSearch
     values.push(closingBefore);
     where.push(`c.fec_fin_cotizacion <= $${values.length}::timestamptz`);
   }
+  appendCommercialPredicates(commercial, values, where);
 
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
   values.push(limit, offset);
@@ -306,6 +315,7 @@ export async function listContractsForTenant(tenantId: string, params: URLSearch
       fi.facets,
       te.summary_json,
       te.participation_extraction,
+      ${COMMERCIAL_SELECT},
       m.id AS match_id,
       m.profile_id::text AS profile_id,
       ${MATCH_REVIEW_REQUIRED} AS match_review_required,
@@ -346,6 +356,7 @@ export async function listContractsForTenant(tenantId: string, params: URLSearch
     ) m ON true
     ${keywordFitLateralSql(1, 2)}
     ${ECON_LATERAL_SQL}
+    ${PROD6_COMMERCIAL_JOIN}
     ${whereSql}
     ORDER BY
       ${AVAILABLE_MATCH_SCORE} DESC NULLS LAST,
@@ -364,7 +375,8 @@ export async function listContractsForTenant(tenantId: string, params: URLSearch
 
   const total = Number(result.rows[0]?.total_count ?? 0);
   return {
-    data: result.rows.map(({ total_count: _totalCount, ...row }) => ({ ...row, provisional_score: provisionalScore(row) })),
+    data: result.rows.map(({ total_count: _totalCount, ...row }) => ({ ...row, provisional_score: provisionalScore(row),
+      commercial_classification: normalizeCommercialClassification(row.commercial_classification) })),
     meta: { page, page_size: pageSize, count: result.rows.length, total },
     profile: profile ? { id: profile.id, name: profile.razon_social } : null,
   };

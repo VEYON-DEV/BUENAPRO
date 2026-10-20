@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const ts = require('typescript');
+const { commercial, commercialSql } = require('./commercialClassification.test-support.cjs');
 
 function load(file, mocks = {}, environment = {}) {
   const exports = {};
@@ -12,7 +13,8 @@ function load(file, mocks = {}, environment = {}) {
   }).outputText;
   vm.runInNewContext(compiled, { exports, URL, URLSearchParams, Response, Buffer, Date, AbortSignal, TextDecoder,
     fetch: async () => { throw new Error('Unexpected network call in offline test'); }, process: { env: environment },
-    require(name) { return name in mocks ? mocks[name] : name === './prod2OfficialDocument' ? official
+    require(name) { return name in mocks ? mocks[name] : name === '@/lib/commercialTaxonomy' ? commercial
+      : name === './commercialClassification' ? commercialSql : name === './prod2OfficialDocument' ? official
       : name === './prod2DocumentStorage' ? defaultStorage
       : name === './keywordTextScoring' ? load('keywordTextScoring.ts')
       : name === './savedOpportunities' ? load('savedOpportunities.ts', mocks) : require(name); } });
@@ -326,7 +328,9 @@ test('participation in PROD2 list and detail comes only from the current convoca
     assert.match(sql, /'requires_human_review', ex\.requires_human_review/);
     assert.match(sql, /ex\.summary_json->'participation'.*ex\.raw_extraction_json->'participation'/);
     assert.match(sql, /'page_scope', 'combined'/);
-    assert.doesNotMatch(sql, /subcontracting_status|consortium_status|ex\.raw_extraction_json\s*[,)]/);
+    assert.doesNotMatch(sql, /subcontracting_status|consortium_status/);
+    assert.doesNotMatch(sql.slice(0, sql.indexOf('FROM prod2_discoveries p')), /ex\.raw_extraction_json\s*[,)]/,
+      'raw extraction may be used inside the classification join but is never projected publicly');
   }
   assert.doesNotMatch(statements.join('\n'), /\b(?:INSERT|UPDATE|DELETE)\b/);
 });

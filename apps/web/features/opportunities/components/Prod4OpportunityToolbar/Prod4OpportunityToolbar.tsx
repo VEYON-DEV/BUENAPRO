@@ -1,7 +1,11 @@
 "use client";
 
-import { FileCheck2, Search } from "lucide-react";
+import { useState } from "react";
+import { FileCheck2, Search, SlidersHorizontal } from "lucide-react";
 import { Input } from "@/components/ui/Input";
+import { CommercialFilterFields, CommercialFilterHiddenInputs } from "../CommercialFilterFields";
+import { COMMERCIAL_FILTER_KEYS } from "@/lib/commercialTaxonomy";
+import { commercialDefaultsKey, commercialSelectionCount } from "../../model/commercialFilters";
 import { scoreFilterHref } from "../../model/analysisPresentation";
 import styles from "./Prod4OpportunityToolbar.module.css";
 
@@ -16,9 +20,12 @@ function filterHref(defaults: Record<string, string>, object: string, source: "p
 
 export function Prod4OpportunityToolbar({ defaults, source = "prod4" }: { defaults: Record<string, string>; source?: "prod2" | "prod4" }) {
   const object = defaults.object ?? "";
+  const count = commercialSelectionCount(defaults);
+  const [filtersOpen, setFiltersOpen] = useState(count > 0);
   return (
     <section className={styles.toolbar}>
       <form action="/feed" className={styles.searchForm}>
+        {source === "prod2" ? <CommercialFilterHiddenInputs defaults={defaults} /> : null}
         <input name="source" type="hidden" value={source} />
         {source === "prod2" && defaults.profile_id ? <input name="profile_id" type="hidden" value={defaults.profile_id} /> : null}
         {object ? <input name="object" type="hidden" value={object} /> : null}
@@ -43,7 +50,18 @@ export function Prod4OpportunityToolbar({ defaults, source = "prod4" }: { defaul
           href={scoreFilterHref(defaults, source)}>
           <FileCheck2 aria-hidden="true" size={16} />Con puntaje
         </a> : null}
+        {source === "prod2" ? <button aria-controls="prod2-commercial-filters" aria-expanded={filtersOpen} className={styles.analysisFilter}
+          onClick={() => setFiltersOpen(previous => !previous)} type="button">
+          <SlidersHorizontal aria-hidden="true" size={16} />Filtros{count ? ` (${count})` : ""}
+        </button> : null}
       </div>
+      {source === "prod2" && filtersOpen ? <form action="/feed" className={styles.filtersPanel} id="prod2-commercial-filters">
+        {Object.entries(defaults).filter(([key]) => ![...COMMERCIAL_FILTER_KEYS, "page", "open_only", "closing_before"].includes(key)).map(([key, value]) =>
+          <input key={key} name={key} type="hidden" value={value} />)}
+        {!defaults.source ? <input name="source" type="hidden" value="prod2" /> : null}
+        <CommercialFilterFields defaults={defaults} key={commercialDefaultsKey(defaults)} />
+        <div className={styles.filterActions}><button className={styles.searchButton} type="submit">Aplicar filtros</button></div>
+      </form> : null}
     </section>
   );
 }

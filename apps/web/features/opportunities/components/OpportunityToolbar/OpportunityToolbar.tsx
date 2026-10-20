@@ -4,12 +4,15 @@ import { Bookmark, Clock3, FileCheck2, Search, SlidersHorizontal, Sparkles } fro
 import { useState } from "react";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
+import { CommercialFilterFields, CommercialFilterHiddenInputs } from "../CommercialFilterFields";
+import { COMMERCIAL_FILTER_KEYS } from "@/lib/commercialTaxonomy";
+import { commercialDefaultsKey, commercialSelectionCount } from "../../model/commercialFilters";
 import { scoreFilterHref } from "../../model/analysisPresentation";
 import styles from "./OpportunityToolbar.module.css";
 
 function hrefFor(entries: Record<string, string>, defaults: Record<string, string>) {
   const params = new URLSearchParams({ estado: "2", has_extraction: "true", deadline: "open" });
-  ["source", "profile_id", "q", "analysis", "with_score"].forEach(key => { if (defaults[key]) params.set(key, defaults[key]); });
+  ["source", "profile_id", "q", "analysis", "with_score", ...COMMERCIAL_FILTER_KEYS].forEach(key => { if (defaults[key]) params.set(key, defaults[key]); });
   if (defaults.objeto === "1" || defaults.objeto === "2") params.set("objeto", defaults.objeto);
   Object.entries(entries).forEach(([key, value]) => { if (value) params.set(key, value); else params.delete(key); });
   return `/feed?${params.toString()}`;
@@ -33,11 +36,12 @@ function isActive(defaults: Record<string, string>, key: "forYou" | "closing" | 
 
 export function OpportunityToolbar({ defaults }: { defaults: Record<string, string> }) {
   const deadline = defaults.deadline ?? "open";
-  const [filtersOpen, setFiltersOpen] = useState(Boolean(defaults.objeto || defaults.verdict || defaults.cotizar || deadline === "closed" || deadline === "week"));
+  const [filtersOpen, setFiltersOpen] = useState(Boolean(defaults.objeto || defaults.verdict || defaults.cotizar || deadline === "closed" || deadline === "week" || commercialSelectionCount(defaults) > 0));
   return (
     <section className={styles.toolbar}>
-      <button aria-controls="opportunity-filters" aria-expanded={filtersOpen} className={styles.filterToggle} onClick={() => setFiltersOpen((value) => !value)} type="button"><SlidersHorizontal aria-hidden="true" size={17} /> Filtros</button>
+      <button aria-controls="opportunity-filters" aria-expanded={filtersOpen} className={styles.filterToggle} onClick={() => setFiltersOpen((value) => !value)} type="button"><SlidersHorizontal aria-hidden="true" size={17} /> Filtros{commercialSelectionCount(defaults) > 0 ? ` (${commercialSelectionCount(defaults)})` : ""}</button>
       <form className={styles.main} action="/feed">
+        <CommercialFilterHiddenInputs defaults={defaults} />
         <input name="has_extraction" type="hidden" value="true" />
         <input name="estado" type="hidden" value={defaults.estado ?? "2"} />
         <input name="deadline" type="hidden" value={deadline} />
@@ -81,7 +85,8 @@ export function OpportunityToolbar({ defaults }: { defaults: Record<string, stri
           <label><span>Cierre</span><Select defaultValue={deadline} name="deadline"><option value="open">No cerradas</option><option value="24h">Proximas 24 h</option><option value="week">Esta semana</option><option value="closed">Ya cerradas</option><option value="all">Cualquier cierre</option></Select></label>
           <label><span>Afinidad</span><Select defaultValue={defaults.verdict ?? ""} name="verdict"><option value="">Todas</option><option value="verde">Alta</option><option value="ambar">Media</option><option value="gris">Por revisar</option></Select></label>
           <label><span>Cotizacion</span><Select defaultValue={defaults.cotizar ?? ""} name="cotizar"><option value="">Todas</option><option value="true">Cotizacion habilitada</option><option value="false">No habilitada</option></Select></label>
-          <button type="submit">Aplicar</button>
+          <CommercialFilterFields defaults={defaults} key={commercialDefaultsKey(defaults)} />
+          <button type="submit">Aplicar filtros</button>
           <a href="/feed">Limpiar</a>
         </form>
       </div> : null}

@@ -1,0 +1,115 @@
+{
+  "version": "commercial_taxonomy_v1",
+  "areas": [
+    {
+      "id": "software_ti",
+      "label": "Software y TI"
+    },
+    {
+      "id": "inteligencia_artificial",
+      "label": "Inteligencia artificial"
+    },
+    {
+      "id": "automatizacion_procesos",
+      "label": "Automatización de procesos"
+    },
+    {
+      "id": "industrial_electrica",
+      "label": "Industrial y eléctrico"
+    },
+    {
+      "id": "infraestructura_cloud",
+      "label": "Infraestructura y cloud"
+    },
+    {
+      "id": "otro",
+      "label": "Otro rubro"
+    },
+    {
+      "id": "sin_clasificar",
+      "label": "Sin clasificar"
+    }
+  ],
+  "work_types": [
+    {
+      "id": "licencias_suscripciones",
+      "label": "Licencias y suscripciones"
+    },
+    {
+      "id": "desarrollo_software",
+      "label": "Desarrollo de software"
+    },
+    {
+      "id": "implementacion_integracion",
+      "label": "Implementación e integración"
+    },
+    {
+      "id": "suministro_equipos",
+      "label": "Suministro de equipos"
+    },
+    {
+      "id": "instalacion_montaje",
+      "label": "Instalación y montaje"
+    },
+    {
+      "id": "soporte_mantenimiento",
+      "label": "Soporte y mantenimiento"
+    },
+    {
+      "id": "consultoria",
+      "label": "Consultoría"
+    },
+    {
+      "id": "capacitacion",
+      "label": "Capacitación"
+    }
+  ],
+  "specialties": [
+    {
+      "id": "chatbot",
+      "label": "Chatbots"
+    },
+    {
+      "id": "agentes_ia",
+      "label": "Agentes de IA"
+    },
+    {
+      "id": "rpa",
+      "label": "RPA"
+    },
+    {
+      "id": "plc_scada",
+      "label": "PLC y SCADA"
+    },
+    {
+      "id": "instrumentacion",
+      "label": "Instrumentación"
+    },
+    {
+      "id": "tableros_electricos",
+      "label": "Tableros eléctricos"
+    },
+    {
+      "id": "robotica",
+      "label": "Robótica"
+    },
+    {
+      "id": "equipamiento_electromecanico",
+      "label": "Equipamiento electromecánico"
+    }
+  ],
+  "support_statuses": [
+    {
+      "id": "evidence_backed",
+      "label": "Con evidencia documental"
+    },
+    {
+      "id": "preliminary",
+      "label": "Preliminar"
+    },
+    {
+      "id": "needs_review",
+      "label": "Por revisar"
+    }
+  ]
+}

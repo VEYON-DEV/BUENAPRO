@@ -66,7 +66,7 @@ export async function OpportunitiesPage({ tenantId, params }: { tenantId: string
       return <AppShell title="Oportunidades">
         <PageHeader title="Oportunidades" meta={`${result.total} procedimientos consultados en SEACE`}
           description="Afinidad comercial y requisitos con evidencia. Confirma la modalidad y las fechas oficiales antes de participar." />
-        <OpportunitySourceTabs source="prod2" profileId={result.profile?.id} withScore={params.get("with_score") === "true"} />
+        <OpportunitySourceTabs source="prod2" profileId={result.profile?.id} withScore={params.get("with_score") === "true"} commercialFilters={Object.fromEntries(params.entries())} />
         <Prod4OpportunityToolbar source="prod2" defaults={{ ...Object.fromEntries(params.entries()), ...(result.profile ? { profile_id: result.profile.id } : {}) }} />
         <Prod4OpportunityList source="prod2" profileId={result.profile?.id} rows={result.data as unknown as Prod4OpportunitySummary[]} />
         <div className={styles.pagination}><Pagination page={result.page} totalPages={totalPages}
@@ -137,7 +137,7 @@ export async function OpportunitiesPage({ tenantId, params }: { tenantId: string
           ? `Primero las oportunidades con puntaje para ${context.razon_social}, de mayor a menor.`
           : "Configura tus líneas de negocio para priorizar las mejores coincidencias."}
       />
-      <OpportunitySourceTabs source="prod6" profileId={contracts.profile?.id} withScore={params.get("with_score") === "true"} />
+      <OpportunitySourceTabs source="prod6" profileId={contracts.profile?.id} withScore={params.get("with_score") === "true"} commercialFilters={Object.fromEntries(params.entries())} />
       <OpportunityToolbar defaults={Object.fromEntries(params.entries())} />
       <OpportunityList rows={rows} profileId={contracts.profile?.id} />
       <div className={styles.pagination}>

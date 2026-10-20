@@ -42,6 +42,9 @@ function loadSource(filename) {
     if (specifier === "../SaveButton") return { SaveButton: () => null };
     if (specifier === "../../api/seaceDetail") return { seaceDetailRequest: () => { throw new Error("SSR must not fetch"); } };
     if (specifier === "../../model/analysisPresentation") return loadSource(path.join(__dirname, "analysisPresentation.ts"));
+    if (specifier === "@/lib/commercialTaxonomy") return loadSource(path.resolve(feature, "../../lib/commercialTaxonomy.ts"));
+    if (specifier === "../../model/commercialFilters") return loadSource(path.join(__dirname, "commercialFilters.ts"));
+    if (specifier === "../CommercialFilterFields") return loadSource(path.join(feature, "components/CommercialFilterFields/CommercialFilterFields.tsx"));
     return normalRequire(specifier);
   };
   loaded.set(filename, local);
