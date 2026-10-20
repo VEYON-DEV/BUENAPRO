@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "status": "running_reader015_after_fourteen_approved_batches",
+  "status": "operationally_complete_with_reviews",
   "scope": "DIN: IA/automatización e industrial; lectura por IDs del mapeo PROD2 cerrado",
   "selection": {
     "ids": 157,
@@ -42,7 +42,7 @@
     "started_at_utc": "2026-10-20T16:11:26.049916+00:00",
     "plan_sha256": "25922f5da9f518064543ca875db33b541e6fe778606a0606175a53793a51c061",
     "parent_pid": 85202,
-    "last_child_pid": 44308,
+    "last_child_pid": 58039,
     "initial_run": {
       "code_commit": "d880953a0bd4a9c6db677c538639300a1310533a",
       "plan_sha256": "bdf829ca6e28db773de4a4b811cdf071b7be43ff637d0b28e7db91e6d6957500",
@@ -51,8 +51,10 @@
       "started_at_utc": "2026-10-20T15:15:45.113005+00:00"
     },
     "chain_folder": "tmp/ia-industrial-execution-20261020/chain-runtime-recovery-002",
-    "current_stage": "reader-015",
-    "completed_batches": 14
+    "current_stage": "matching-execute",
+    "completed_batches": 16,
+    "completed_at_utc": "2026-10-20T17:38:23.739169+00:00",
+    "processes_finished_verified": true
   },
   "policy": {
     "history_before_source_and_affinity": true,
@@ -77,7 +79,7 @@
     "actual157_dry_run": true,
     "runtime_embedding_schema": "fresh verified; earlier nonexistent table probe corrected in schema-preflight receipt",
     "production_writes_so_far": "Only0042 CHECK/registry and normal selected reader; no unrelated services/data changes",
-    "new_paid_calls_so_far": 69,
+    "new_paid_calls_so_far": 73,
     "focused_final": {
       "passed": 169,
       "seconds": 1.93,
@@ -88,7 +90,7 @@
       "sha256": "2debceb680a0934878265826c6e2335f64d591ab852786329c026d6eea92573a",
       "offline_smoke": "positive, zero results and five negatives; no real PG",
       "runtime_not_changed": true,
-      "executed_against_production": false
+      "executed_against_production": true
     },
     "runtime_recovery_offline": {
       "passed": 4286,
@@ -103,7 +105,7 @@
       "log_sha256": "bc25aa88c37f3ecb5d52dce6712d5ca2819b8afa2f3d1a8f88ae80f508c1ecdb"
     },
     "runtime_recovery_independent_review": "approved; offline only",
-    "paid_calls_cutoff_utc": "2026-10-20T17:29:51.686465+00:00",
+    "paid_calls_cutoff_utc": "2026-10-20T17:53:49.551738+00:00",
     "metadata_recovery_offline": {
       "passed": 4327,
       "skipped": 67,
@@ -115,20 +117,20 @@
     "unexpected_local_stop": "durable sanitized STOP; no outcome/ACK; typed reviews/limits preserved; in-flight known responses persist"
   },
   "costs": {
-    "new_known_usd": "0.014144248",
+    "new_known_usd": "0.014445514",
     "new_uncertain_attempts": 0,
     "historical_uncertain_attempts": "preserved, outside this lot; never set to zero",
     "limits_note": "Call/document limits are finite; not an implemented hard USD cap. No credit purchase or spend-limit changes authorized.",
-    "cutoff_utc": "2026-10-20T17:29:51.686465+00:00",
-    "final": false,
-    "scope": "Local run receipts at health cut; may include in-flight work; not final"
+    "cutoff_utc": "2026-10-20T17:53:49.551738+00:00",
+    "final": true,
+    "scope": "Exact local provider-usage receipts for this finite reader; matching zero. Invoice not reconciled."
   },
   "pending": [
-    "Complete current reader batches and fresh PG/Redis readback",
-    "DIN matching only ready new readings",
-    "Seven typed document context reviews and one selector review retained; no context expansion or automatic paid resend",
-    "48 sector-boundary title holds",
-    "PROD6 legitimate source access recovery"
+    "26 selected cases retained: 17 unconfirmed openings, eight context reviews and one selector review",
+    "Three historical readings retain their review requirements; not new matching eligibility",
+    "48 sector-boundary title holds outside runtime",
+    "PROD6 legitimate source-access recovery; no repeat probe authorized",
+    "Six prior uncertain paid attempts outside this lot remain unknown and preserved"
   ],
   "cleanup": {
     "freed_bytes": 318473818,
@@ -140,8 +142,11 @@
       "principal_recovery_synthetic_tests": 211380387,
       "principal_metadata_recovery_synthetic_tests": 106799011
     },
-    "retained": "Active PDFs/OCR/cache, selected IDs, source mapping cache, unique receipts, uncertainty/history and48holds",
-    "active_inputs_removed": false
+    "retained": "Nine pending review cases keep PDFs/DOC/RAR, OCR/conversions and receipts; recovery history/48holds retained",
+    "active_inputs_removed": false,
+    "closure_freed_bytes": 0,
+    "retained_document_files": 43,
+    "retained_document_bytes": 345826389
   },
   "evidence_root": "tmp/ia-industrial-execution-20261020/activation",
   "prepayment_recovery": {
@@ -160,21 +165,21 @@
     "paid_retries": 0
   },
   "latest_cut": {
-    "at_utc": "2026-10-20T17:29:51.686465+00:00",
+    "at_utc": "2026-10-20T17:45:14.008975+00:00",
     "plan_sha256": "25922f5da9f518064543ca875db33b541e6fe778606a0606175a53793a51c061",
     "code_commit": "7dccbc6ec92543455cf856054d8b00a2f7ce327b",
-    "chain_status": "running_child",
-    "stage": "reader-015",
+    "chain_status": "complete",
+    "stage": "matching-execute",
     "parent_pid": 85202,
-    "child_pid": 44308,
+    "child_pid": 58039,
     "outcomes": {
-      "total": 149,
+      "total": 157,
       "statuses": {
-        "rejected_below_60": 67,
+        "rejected_below_60": 71,
         "closed_without_reading": 57,
         "selection_needs_review": 1,
-        "needs_review": 7,
-        "opening_not_confirmed": 14,
+        "needs_review": 8,
+        "opening_not_confirmed": 17,
         "llm1_complete": 3
       },
       "llm1_preserved": 3,
@@ -182,8 +187,8 @@
     },
     "dispatch_stop_marker": false,
     "cost_audit_may_include_in_flight": {
-      "attempts": 69,
-      "jev_calls": 51,
+      "attempts": 73,
+      "jev_calls": 55,
       "llm1_calls": 0,
       "openai_calls": 0,
       "embedding_attempts": 18,
@@ -194,30 +199,30 @@
       "embedding_receipt_conflicts": 0,
       "embedding_input_tokens": 490988,
       "embedding_cost_usd": 0.00981976,
-      "known_cost_usd": 0.014144248,
+      "known_cost_usd": 0.014445514000000001,
       "usage_unknown_attempts": 0,
-      "elapsed_seconds": 17.242225832102122
+      "elapsed_seconds": 18.568648289103294
     },
     "pg": {
-      "coordinator_locks": 1,
-      "own_run_members": 76
+      "coordinator_locks": 0,
+      "own_run_members": 80
     },
     "redis": {
-      "queued": 6,
-      "pending": 2,
-      "payloads": 8,
+      "queued": 0,
+      "pending": 0,
+      "payloads": 0,
       "seen": 157
-    },
-    "sampling_note": "Live filesystem and PG/Redis samples are not atomic; final closure is not claimed."
+    }
   },
   "followup": {
     "automation_id": "completar-lote-din-ia-e-industrial",
-    "status": "ACTIVE",
+    "status": "PAUSED",
     "interval_minutes": 15,
-    "purpose": "Watch authorized long-running reader/matching to verified closure; quiet during healthy progress",
+    "purpose": "Finite chain closed with verified queues; pending reviews retained without automatic replay",
     "old_mapping_followup": "remains PAUSED",
     "current_plan_sha256": "25922f5da9f518064543ca875db33b541e6fe778606a0606175a53793a51c061",
-    "current_chain_folder": "tmp/ia-industrial-execution-20261020/chain-runtime-recovery-002"
+    "current_chain_folder": "tmp/ia-industrial-execution-20261020/chain-runtime-recovery-002",
+    "completed_at_utc": "2026-10-20T17:53:49.551738+00:00"
   },
   "local_contract_incident": {
     "at_utc": "2026-10-20T15:33:58.552313+00:00",
@@ -451,6 +456,151 @@
       },
       "total": 157
     },
-    "runtime_bindings_verified": 204
+    "runtime_bindings_verified": 204,
+    "final_closure_receipt": "activation/principal-final-closure-20261020.private.json"
+  },
+  "closure": {
+    "status": "operationally_complete_with_reviews",
+    "verified_at_utc": "2026-10-20T17:53:49.551738+00:00",
+    "chain_completed_at_utc": "2026-10-20T17:38:23.739169+00:00",
+    "selected_ids": 157,
+    "statuses": {
+      "closed_without_reading": 57,
+      "rejected_below_60": 71,
+      "llm1_complete": 3,
+      "opening_not_confirmed": 17,
+      "needs_review": 8,
+      "selection_needs_review": 1
+    },
+    "new_llm1_readings": 0,
+    "preserved_historical_readings": 3,
+    "new_matches": 0,
+    "existing_match_metadata_verified": 2,
+    "pending_within_selected": {
+      "opening_not_confirmed": 17,
+      "document_context_reviews": 8,
+      "document_selection_reviews": 1,
+      "total": 26
+    },
+    "historical_reviews_preserved": 3,
+    "held_outside_selected": 48,
+    "prod6_access_hold_preserved": true,
+    "reader_redis": {
+      "queued": 0,
+      "pending": 0,
+      "payloads": 0,
+      "seen": 157
+    },
+    "redis_terminal_done_reservations_verified": 157,
+    "reader_pg_members_verified": 80,
+    "no_active_reader_or_matching_coordinator": true,
+    "metadata_verified": {
+      "historical_completed_readings": {
+        "details": 3,
+        "facets_current_for_completed_readings": 23,
+        "facets_historical_for_completed_readings": 0,
+        "official_document_references_listed": 8,
+        "official_document_references_total": 8,
+        "read_ids": 3,
+        "schedule_stages": 20
+      },
+      "accepted_pending": {
+        "details_verified": 9,
+        "schedule_stages": 72,
+        "official_document_references_verified": 14,
+        "canonical_opportunity_identity_verified": 9,
+        "new_prod2_discovery_rows_created_by_reader": 6,
+        "existing_matches_metadata_verified": 2
+      },
+      "accepted_detail_total": 12,
+      "accepted_schedule_stages_total": 92,
+      "accepted_official_reference_total": 22,
+      "new_uuid_claimed": false,
+      "semantic_qa_approved": false
+    },
+    "costs": {
+      "jev_calls": 55,
+      "jev_affinity_calls": 47,
+      "jev_selector_calls": 8,
+      "jev_input_tokens": 110137,
+      "jev_known_usd": "0.004625754",
+      "embedding_calls": 18,
+      "embedding_input_tokens": 490988,
+      "embedding_known_usd": "0.00981976",
+      "known_reader_total_usd": "0.014445514",
+      "matching_total_usd": "0",
+      "new_uncertain_attempts": 0,
+      "historical_uncertain_attempts_outside_this_lot": 6,
+      "historical_uncertain_cost": "unknown; preserved",
+      "provider_invoice_reconciled": false,
+      "four_initial_run_jev_attempts_included_once": true
+    },
+    "independent_offline_review": {
+      "partition_outcomes_and_state": 157,
+      "frozen_source_caches_rehashed": 153,
+      "source_rows": 205,
+      "selected": 157,
+      "held": 48,
+      "document_snapshots_and_lifecycle_observations": 9,
+      "local_captures_detail_hash_reproduced": 15,
+      "original_files_and_sha_verified": 14,
+      "runtime_bindings_verified": 204,
+      "paid_receipts_known_unique_and_conciled": 73,
+      "semantic_qa_approved": false
+    },
+    "cleanup": {
+      "freed_bytes_this_closure": 0,
+      "previously_freed_bytes": 318473818,
+      "retained_document_files": 43,
+      "retained_document_bytes": 345826389,
+      "retained_original_files": 14,
+      "retained_original_bytes": 87647420,
+      "reason": "All owned document binaries belong to the eight context reviews and one selector review; preserve OCR/conversions/provider receipts and recovery history. No abandoned bytecode/partial/writing temporary files found. Legacy cleanup script not run because incompatible R2 protocol.",
+      "pending_inputs_removed": false
+    },
+    "followup": {
+      "id": "completar-lote-din-ia-e-industrial",
+      "status": "PAUSED",
+      "reason": "Finite automatic chain finished; unresolved document/source/title reviews are retained and cannot advance by routine polling."
+    },
+    "verification_actions": {
+      "source_calls": 0,
+      "model_calls": 0,
+      "pg_writes": 0,
+      "redis_writes": 0,
+      "relaunches": 0
+    },
+    "new_r2_original_uploads": 0,
+    "full_semantic_reading_complete": false,
+    "receipt": {
+      "path": "tmp/ia-industrial-execution-20261020/activation/principal-final-closure-20261020.private.json",
+      "sha256": "7eecac6b74a5a137cd377e9f1247d5012d425ca67513a32c1c86928f477ad042"
+    },
+    "evidence": {
+      "reader_final": {
+        "path": "activation/principal-final-reader-readback-20261020.private.json",
+        "sha256": "26bbc04060215588d2cbb519a6454f657aefb59199fe6de2d4c005f80f4ab4a8"
+      },
+      "matching_final": {
+        "path": "activation/matching-final-readback-20261020T174516Z.private.json",
+        "sha256": "4161c56d72a745a7a3969a6e5d3031ac928de6bfadd3513d1d2e1ad8b72668c0"
+      },
+      "pending_metadata_final": {
+        "path": "activation/principal-final-pending-metadata-20261020.private.json",
+        "sha256": "50c0a6687a6a2737223c2303129081e8d3482bffc5b264d8f914a8bb78c2c6e6"
+      },
+      "health_final": {
+        "path": "activation/health-20261020T174517Z.private.json",
+        "sha256": "3c4d139ec5900e2b074b1f2badc9a99658f94f4649028c4880194ffd57641c40"
+      },
+      "state": {
+        "path": "chain-runtime-recovery-002/state.private.json",
+        "sha256": "08fc86a67e8d563d1cde7694e15a4412b579b1832822b624879d75be5ec67ef4"
+      },
+      "report": {
+        "path": "runs/prod2-din-ia-industrial-20261020/report-1792517788058940000.private.json",
+        "sha256": "2ac4110475fb061899441938731df4ae6159d9b08ec81b04407e94ae795e8f9e"
+      }
+    }
   }
 }
