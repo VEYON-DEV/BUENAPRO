@@ -82,7 +82,7 @@ def token_count(text):
 def _config(value):
     result = deepcopy(DEFAULT_CONFIG)
     if value is not None:
-        if not isinstance(value, dict) or set(value) - (set(result) | {"page_failure_policy"}):
+        if not isinstance(value, dict) or set(value) - (set(result) | {"page_failure_policy", "partial_ocr_psm"}):
             raise CorpusError("Unknown corpus configuration field")
         result.update(deepcopy(value))
     if result["policy_version"] != CORPUS_POLICY or result["tokenizer"] != "cl100k_base":
@@ -127,6 +127,8 @@ def _config(value):
             result["page_failure_policy"] != PAGE_FAILURE_POLICY
             or result["ocr_textual_scan_policy"] != "prod2_confident_text_layout_review_v3"):
         raise CorpusError("Partial page failure policy requires its explicit V3 OCR contract")
+    if "partial_ocr_psm" in result and (result["partial_ocr_psm"] != "1" or not is_partial_corpus(result)):
+        raise CorpusError("Explicit partial OCR orientation mode requires V5 and PSM1")
     return result
 
 
@@ -425,14 +427,14 @@ def _ocr_page(pdf, number, private, config):
         # Catch only an engine/render failure here. Source and cache integrity
         # checks in _cached_ocr_page remain outside this boundary and still abort.
         try:
-            result = _ocr_page_once(pdf, number, private, config)
+            result = _ocr_page_once(pdf, number, private, config, psm=config.get("partial_ocr_psm", "3"))
         except CorpusStopped:
             raise
         except (OSError, ValueError, TimeoutError, KeyError) as error:
             result = {"text": "", "acceptable": False,
                 "reasons": ["local_ocr_" + type(error).__name__.lower()]}
         result["ocr_attempts"] = [{"dpi": config["ocr_dpi"],
-            "maximum_dimension": config["ocr_max_dimension"], "psm": "3",
+            "maximum_dimension": config["ocr_max_dimension"], "psm": config.get("partial_ocr_psm", "3"),
             "word_count": result.get("word_count", 0),
             "mean_confidence": result.get("mean_confidence"),
             "confident_word_ratio": result.get("confident_word_ratio", 0),

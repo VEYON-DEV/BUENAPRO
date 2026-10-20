@@ -6,6 +6,7 @@ probability. No providers, PG writes, full-PDF fallback or legal classification.
 from __future__ import annotations
 
 from copy import deepcopy
+from functools import lru_cache
 import math
 import re
 import unicodedata
@@ -15,6 +16,7 @@ from .embedding_corpus import (canonical_hash, canonical_json, token_count, text
 from .partial_reading import is_partial_corpus, source_capture, compact_source_capture
 
 RETRIEVAL_POLICY = "prod2_qualification_retrieval_v1"
+EXPANDED_CONTEXT_POLICY = "prod2_explicit_expanded_context_v1"
 DEFAULT_CONFIG = {
     "policy_version": RETRIEVAL_POLICY,
     "semantic_seed_top_k_per_query": 6,
@@ -66,16 +68,23 @@ class RetrievalError(ValueError):
 def _config(config):
     result = deepcopy(DEFAULT_CONFIG)
     if config is not None:
-        if not isinstance(config, dict) or set(config) - set(result):
+        if not isinstance(config, dict) or set(config) - (set(result) | {"context_expansion_policy"}):
             raise RetrievalError("Unknown retrieval configuration field")
         result.update(deepcopy(config))
+    # The absent flag preserves every historical config/hash and the original
+    # 100k hard bound. An explicit, separately frozen recovery may admit the
+    # complete expanded context up to 350k; this does not relax source coverage.
+    if ("context_expansion_policy" in result
+            and result["context_expansion_policy"] != EXPANDED_CONTEXT_POLICY):
+        raise RetrievalError("Unsupported explicit expanded context policy")
+    maximum_context = 350000 if result.get("context_expansion_policy") == EXPANDED_CONTEXT_POLICY else 100000
     if result["policy_version"] != RETRIEVAL_POLICY:
         raise RetrievalError("Unsupported retrieval policy")
     for name in ("semantic_seed_top_k_per_query", "context_target_tokens", "context_maximum_tokens", "neighbor_pages"):
         if type(result[name]) is not int or result[name] < (0 if name == "neighbor_pages" else 1):
             raise RetrievalError("Invalid retrieval bounded configuration")
     if not (result["semantic_seed_top_k_per_query"] <= 50
-            and result["context_target_tokens"] <= result["context_maximum_tokens"] <= 100000
+            and result["context_target_tokens"] <= result["context_maximum_tokens"] <= maximum_context
             and result["neighbor_pages"] <= 3):
         raise RetrievalError("Retrieval limits exceed their hard bounds")
     # These are invariants, not switches that allow an inexpensive omission.
@@ -112,11 +121,12 @@ def _normal(text):
                             if not unicodedata.combining(char)).split())
 
 
-def _literal_matches(blocks, query):
-    patterns = [re.compile(r"(?<!\w)" + re.escape(_normal(anchor)) + r"(?!\w)")
+def _literal_matches(blocks, query, *, memo=None):
+    normal = memo.normal if memo is not None else _normal
+    patterns = [re.compile(r"(?<!\w)" + re.escape(normal(anchor)) + r"(?!\w)")
                 for anchor in query["literal_anchors"]]
     return {block["id"] for block in blocks
-            if any(pattern.search(_normal(block["text"])) for pattern in patterns)}
+            if any(pattern.search(normal(block["text"])) for pattern in patterns)}
 
 
 def _vector(value):
@@ -158,16 +168,45 @@ def _named_refs(text):
     return refs
 
 
-def _reference_heading(block, kind, number):
+def _reference_heading(block, kind, number, *, normal=None):
     # A mention alone is not a resolved target. Require an actual heading line.
+    normal = _normal if normal is None else normal
     target = re.compile(r"^\s*" + re.escape(kind) + r"\s+" + re.escape(number) + r"(?:\W|$)", re.I)
     numerical = re.compile(r"^\s*" + re.escape(number) + r"(?:[.)]\s*|\s+)", re.I)
-    return any(target.search(_normal(line)) or (kind in {"numeral", "seccion", "capitulo"}
-               and numerical.search(_normal(line))) for line in block["text"].splitlines())
+    return any(target.search(normal(line)) or (kind in {"numeral", "seccion", "capitulo"}
+               and numerical.search(normal(line))) for line in block["text"].splitlines())
 
 
-def _expand(seed_ids, blocks, config):
+class _ExpansionMemo:
+    """Finite caches of pure decisions, owned by exactly one retrieval call.
+
+    No cache crosses a corpus, request, thread, or retrieval-policy boundary.
+    Eviction repeats the original function; it never omits evidence or changes
+    expansion. Standard LRU locking also permits safe concurrent lookups.
+    """
+    def __init__(self, blocks):
+        self.normal = lru_cache(maxsize=32768)(_normal)
+        self.page_refs = lru_cache(maxsize=8192)(_page_refs)
+        self.named_refs = lru_cache(maxsize=8192)(_named_refs)
+        by_id = {block["id"]: block for block in blocks}
+        normal = self.normal
+
+        @lru_cache(maxsize=65536)
+        def heading(block_id, kind, number):
+            return _reference_heading(by_id[block_id], kind, number, normal=normal)
+
+        self._heading = heading
+
+    def reference_heading(self, block, kind, number):
+        return self._heading(block["id"], kind, number)
+
+
+def _expand(seed_ids, blocks, config, *, memo=None):
     by_id = {block["id"]: block for block in blocks}
+    normal = memo.normal if memo is not None else _normal
+    page_refs = memo.page_refs if memo is not None else _page_refs
+    named_refs = memo.named_refs if memo is not None else _named_refs
+    reference_heading = memo.reference_heading if memo is not None else _reference_heading
     selected = set(seed_ids)
     reasons, references, unresolved = {}, [], set()
     for identifier in selected:
@@ -202,12 +241,12 @@ def _expand(seed_ids, blocks, config):
             rows = table.get("table_rows") or []
             if not rows:
                 continue
-            header = _normal(" | ".join(rows[0]))
+            header = normal(" | ".join(rows[0]))
             for other in blocks:
                 other_rows = other.get("table_rows") or []
                 if (other["kind"] == "table" and other["candidate_id"] == table["candidate_id"]
                         and abs(other["source_page"] - table["source_page"]) == 1
-                        and other_rows and _normal(" | ".join(other_rows[0])) == header):
+                        and other_rows and normal(" | ".join(other_rows[0])) == header):
                     selected.add(other["id"])
                     reasons.setdefault(other["id"], set()).add("complete_continued_table")
     # Follow references from the resulting context, including a reference inside
@@ -219,7 +258,7 @@ def _expand(seed_ids, blocks, config):
         new_targets = set()
         for identifier in wave:
             source = by_id[identifier]
-            for page in _page_refs(source["text"]):
+            for page in page_refs(source["text"]):
                 key = (source["candidate_id"], "page", str(page))
                 if key in seen_refs:
                     continue
@@ -232,12 +271,12 @@ def _expand(seed_ids, blocks, config):
                     new_targets.update(block["id"] for block in targets)
                 else:
                     unresolved.add(canonical_hash(key))
-            for kind, number in _named_refs(source["text"]):
+            for kind, number in named_refs(source["text"]):
                 key = (source["candidate_id"], kind, number)
                 if key in seen_refs:
                     continue
                 seen_refs.add(key)
-                targets = [block for block in blocks if _reference_heading(block, kind, number)]
+                targets = [block for block in blocks if reference_heading(block, kind, number)]
                 # An annex may be a different selected official document. Keep
                 # every candidate/version match; do not guess authority.
                 references.append({"from_block_id": identifier, "kind": kind, "reference": number,
@@ -287,16 +326,22 @@ def _marked_context(blocks, visual_coverage_warnings=None, partial_capture=None)
     return "\n\n".join(parts)
 
 
-def retrieve_context(corpus, chunk_vectors, query_vectors, *, config=None):
+def retrieve_context(corpus, chunk_vectors, query_vectors, *, config=None, memoize_expansion=False):
     """Build a provenance-bound LLM subset without cutting requirements to save tokens.
 
     Top-k is a seed count, not a context cap. If the complete expanded evidence
     exceeds the configured budget, return it with needs_review rather than
     silently truncate it or fall back to the costly full PDF.
+
+    Optional per-call memoization accelerates repeated text/reference checks;
+    it does not change policy, limits, selected text, coverage, or result hashes.
     """
+    if type(memoize_expansion) is not bool:
+        raise RetrievalError("Retrieval memoization requires an explicit boolean")
     validate_corpus(corpus)
     limits = _config(config)
     chunks, blocks, queries = corpus["chunks"], corpus["blocks"], limits["queries"]
+    memo = _ExpansionMemo(blocks) if memoize_expansion else None
     vectors = _vectors(chunk_vectors, [chunk["chunk_id"] for chunk in chunks])
     questions = _vectors(query_vectors, [query["id"] for query in queries])
     dimensions = {len(vector) for vector in [*vectors, *questions]}
@@ -310,8 +355,8 @@ def retrieve_context(corpus, chunk_vectors, query_vectors, *, config=None):
                           for index, vector in enumerate(vectors)), key=lambda row: (-row[0], row[1]))
         seeds = ranking[:limits["semantic_seed_top_k_per_query"]]
         semantic = {identifier for _, index in seeds for identifier in chunks[index]["block_ids"]}
-        literal = _literal_matches(blocks, query)
-        selected, expansions, references, unresolved = _expand(semantic | literal, blocks, limits)
+        literal = _literal_matches(blocks, query, memo=memo)
+        selected, expansions, references, unresolved = _expand(semantic | literal, blocks, limits, memo=memo)
         union.update(selected)
         unresolved_refs.update(unresolved)
         for key, values in expansions.items():

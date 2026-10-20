@@ -122,7 +122,7 @@ def embedding_permission(limits, *, stop_requested=lambda: False):
 
 
 def prepare_retrieved_input(conn, settings, prepared, folder, limits, config, *,
-                            convocation_id, stop_requested=lambda: False):
+                            convocation_id, stop_requested=lambda: False, memoize_expansion=False):
     from .embedding_client import EmbeddingClient
     from .embedding_corpus import build_corpus
     from .embedding_retrieval import retrieve_context
@@ -179,7 +179,8 @@ def prepare_retrieved_input(conn, settings, prepared, folder, limits, config, *,
     vectors = vector_result["vectors"]
     if len(vectors) != size + len(queries):
         raise ValueError("The exact corpus and query vectors were not confirmed")
-    retrieval = retrieve_context(corpus, vectors[:size], vectors[size:], config=config["retrieval"])
+    retrieval = retrieve_context(corpus, vectors[:size], vectors[size:], config=config["retrieval"],
+        **({"memoize_expansion": True} if memoize_expansion else {}))
     if (not retrieval.get("context_text") or retrieval.get("context_tokens", 0) >
             config["retrieval"].get("context_maximum_tokens", 30000)):
         _write_verified_once(folder / "embedding-preparation-review.private.json", {
