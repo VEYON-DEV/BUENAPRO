@@ -1,0 +1,124 @@
+{
+  "status": "prepared_awaiting_human_go",
+  "branch": "codex/prod2-parallel-discovery-prep",
+  "scope": "PROD2 listing metadata only; no PROD6 activation",
+  "architecture": {
+    "maximum_workers": 10,
+    "ramp": [
+      1,
+      4,
+      10
+    ],
+    "default_global_request_interval_seconds": 2,
+    "isolated_jsf_sessions": true,
+    "single_coordinator_pg_lock": "prod2_accepted_executor/0",
+    "batch_rows_max": 100,
+    "identity": [
+      "convocation_id",
+      "procedure_id"
+    ],
+    "comparison": "versioned listing hash",
+    "classes": [
+      "new_id",
+      "unchanged",
+      "changed",
+      "known_baseline_missing"
+    ],
+    "automatic_paid_authorization": false
+  },
+  "plans": [
+    {
+      "name": "new-2026",
+      "run_id": "prod2-map-new-20261020",
+      "plan_sha256": "183b65e818581c015a0f3b7e6f7968e7c865ae98f620da1b7bc253155ebb1013",
+      "keywords": 183,
+      "queries": 366,
+      "publication_window": [
+        "2026-10-04",
+        "2026-10-20"
+      ]
+    },
+    {
+      "name": "wide-2004-2026",
+      "run_id": "prod2-map-wide-20261020",
+      "plan_sha256": "13ed875c36abf097262c817141bf6c07662232f96afdefb4b1e7370a52b4ffd4",
+      "keywords": 183,
+      "queries": 8418,
+      "publication_window": [
+        "2026-10-04",
+        "2026-10-20"
+      ]
+    }
+  ],
+  "runtime_code_bindings": {
+    "db/migrations/0045_prod2_discovery_registry.sql": "1ce48ca7d2565539e77a212b38cec5c4dc1a7913e12d01b2b17b9025fe59c0a1",
+    "scripts/run_prod2_parallel_discovery.py": "994be2b3077cf1c7e0a2998c1425a3b53429005a350ca6750098bb8650490f7a",
+    "workers/seace/src/buenapro_worker/prod2/batch_plan.py": "9ae8c404c04717ede5d65a86706fc8d6ba70db05908b8d4c4dbc13d7c206819b",
+    "workers/seace/src/buenapro_worker/prod2/client.py": "1d226a1fab45b21789bd7ad820bf2d3559a91d0309f1659f66142b2b410eaa4b",
+    "workers/seace/src/buenapro_worker/prod2/discovery.py": "0022f41527c67eb563aa268742cfb137a917b14e48346890e84a838657699195",
+    "workers/seace/src/buenapro_worker/prod2/discovery_registry.py": "a7cd6dc0b9ecfa2d1ad46f2d23d3b069963deb24ab283c8f7f0ce33ae8a7cb38",
+    "workers/seace/src/buenapro_worker/prod2/discovery_transport.py": "7c23ffbd4c76165e0950ab886f13250b290c2d319d37579e88700095b9f8aab7",
+    "workers/seace/src/buenapro_worker/prod2/empty_scope_probe.py": "6b3a4880187fc86d971be8b7d1bd82e7d134a3ec786cbf4651197473d6fa7231",
+    "workers/seace/src/buenapro_worker/prod2/keyword_sweep.py": "c9164be013cea61e6a4390f64b18280669aa9580401a643db6a759cc86c6d1cc",
+    "workers/seace/src/buenapro_worker/prod2/keyword_tracking.py": "d0ab21f46d664382e9bb802b14260b3adfc626b7c9e2dfb0ac24546c4aa3ebc9",
+    "workers/seace/src/buenapro_worker/prod2/parallel_discovery.py": "e663c43498da569e8fb5547e50f3ec07f355aed0c4a83394c7fa9b64cc5111ad",
+    "workers/seace/src/buenapro_worker/prod2/service.py": "69e9e0e6cf8a29e7c90f7845ca6e4c7917dd41020603af98c011a811c44bdf28"
+  },
+  "schema": {
+    "migration": "0045_prod2_discovery_registry.sql",
+    "new_metadata_tables": 6,
+    "historical_lookup_indexes": 2,
+    "existing_ledger_data_modified": false,
+    "production_applied": false
+  },
+  "validation": {
+    "command": "BUENAPRO_DISCOVERY_TEST_DATABASE_URL=<loopback-only-QA> PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider workers/seace/tests/test_prod2*.py",
+    "passed": 3104,
+    "skipped": 30,
+    "seconds": 62.59,
+    "real_postgresql": 16,
+    "concurrent_overlap": {
+      "connections": 10,
+      "ids_per_connection": 100,
+      "unique_members": 100,
+      "observations": 1000
+    },
+    "compose_config": "passed offline, no daemon/services",
+    "offline_plans": "both prepared and validated against immutable plan SHA and runtime hashes",
+    "source_latency_measured": false
+  },
+  "side_effects": {
+    "real_source_calls": 0,
+    "model_calls": 0,
+    "production_migrations": 0,
+    "production_writes": 0,
+    "workers_started": 0,
+    "deployments": 0
+  },
+  "outstanding": [
+    "human go selecting scope and updated cutoff if needed",
+    "fresh legitimate source access recovery: previous VM403 remains untested",
+    "explicit reviewed schema application and code image build only on activation",
+    "real source benchmark and final coverage/candidate validation after execution",
+    "document reading/semantic evaluation remains a separate stage"
+  ],
+  "evidence": {
+    "runbook": "docs/prod2-parallel-discovery.md",
+    "private_folder": "tmp/prod2-parallel-discovery-20261020/",
+    "qa_cluster_receipt_sha256": "05867fbf927305dc87d6385fdee4d22e7d586ce08680277735e475b21ceba1ce"
+  },
+  "cleanup": {
+    "qa_postgresql_bytes_removed": 119090222,
+    "compose_qa_bytes_removed": 138,
+    "own_new_bytecode_bytes_removed": 75675,
+    "total_logical_bytes_removed": 119166035,
+    "retained": [
+      "immutable private plans",
+      "readiness and validation receipts",
+      "historical inputs/queues/payment receipts",
+      "PostgreSQL16 development binaries"
+    ],
+    "postgres_qa_stopped": true,
+    "global_cluster_created": false
+  }
+}

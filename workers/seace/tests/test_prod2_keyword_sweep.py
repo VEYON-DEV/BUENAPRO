@@ -125,6 +125,168 @@ def test_batch_is_not_used_for_fresh_native_pages(tmp_path):
     assert report["cached_pages_reemitted"] == 0
 
 
+def test_fresh_batch_matches_serial_payload_order_counters_and_persisted_pages(tmp_path):
+    rows = [row(index) for index in range(5)]
+    rows[0]["amount_text"] = "Reservado"
+    serial_items, batches = [], []
+    serial_folder, batch_folder = tmp_path / "serial", tmp_path / "batch"
+
+    def admitted(item):
+        return item["row"]["convocation_id"] not in {2001, 2004}
+
+    def emit(item):
+        serial_items.append(deepcopy(item))
+        return admitted(item)
+
+    serial, _ = run(serial_folder, Factory(rows), emit=emit)
+
+    def emit_many(items):
+        batches.append(deepcopy(items))
+        page = next(batch_folder.rglob(f"page-{items[0]['page_number']:06d}.private.json"))
+        saved = json.loads(page.read_bytes())
+        assert saved["page_hash"] == sweep.validate_capture(saved["capture"], now=NOW).page_hash
+        assert [r["convocation_id"] for r in saved["capture"]["rows"]] == [
+            item["row"]["convocation_id"] for item in items]
+        assert not list(batch_folder.rglob("complete.private.json"))
+        return [admitted(item) for item in items]
+
+    factory = Factory(rows)
+    batched, _ = run(batch_folder, factory,
+        emit=lambda _: (_ for _ in ()).throw(AssertionError("Opt-in pages must batch")),
+        emit_many=emit_many, batch_fresh_pages=True)
+    assert [item for batch in batches for item in batch] == serial_items
+    assert [len(batch) for batch in batches] == [2, 2, 1]
+    for key in ("version", "query", "query_hash", "status", "coverage_complete", "coverage_kind",
+                "source_atomic_snapshot", "pages_processed", "cached_pages_reemitted", "rows_offered",
+                "emit_returned_true", "emit_returned_false", "http_searches", "http_pages",
+                "windows_visited", "leaf_windows", "errors"):
+        assert batched[key] == serial[key]
+    assert batched["emit_returned_true"] == 3 and batched["emit_returned_false"] == 2
+    assert factory.sessions == 2 and factory.active == 0
+    assert {p.name: p.read_bytes() for p in serial_folder.rglob("page-*.private.json")} == {
+        p.name: p.read_bytes() for p in batch_folder.rglob("page-*.private.json")}
+    root_manifest = next(batch_folder.glob("sweep-*/manifest.private.json"))
+    assert json.loads(root_manifest.read_bytes()) == json.loads(
+        next(serial_folder.glob("sweep-*/manifest.private.json")).read_bytes())
+    pages_before = {p: p.read_bytes() for p in batch_folder.rglob("page-*.private.json")}
+    replayed = []
+    replay, _ = run(batch_folder, no_http,
+        emit_many=lambda items: replayed.extend(deepcopy(items)) or [False] * len(items),
+        batch_fresh_pages=True)
+    assert replay["coverage_complete"] and replay["http_searches"] == replay["http_pages"] == 0
+    assert replayed == serial_items and replay["cached_pages_reemitted"] == 3
+    assert pages_before == {p: p.read_bytes() for p in pages_before}
+
+
+def test_fresh_empty_batch_still_requires_independent_zero_reconciliation(tmp_path):
+    batches = []
+    factory = Factory([])
+    report, offered = run(tmp_path, factory,
+        emit_many=lambda items: batches.append(deepcopy(items)) or [], batch_fresh_pages=True)
+    assert report["coverage_complete"] and offered == [] and batches == [[]]
+    assert report["rows_offered"] == report["emit_returned_true"] == report["emit_returned_false"] == 0
+    assert report["http_searches"] == factory.sessions == 2
+
+
+def test_stop_during_fresh_batch_retains_page_and_stops_before_more_http(tmp_path):
+    stopped, batches = [False], []
+
+    def emit_many(items):
+        batches.append(deepcopy(items))
+        stopped[0] = True
+        return [True] * len(items)
+
+    factory = Factory([row(index) for index in range(3)])
+    report, offered = run(tmp_path, factory, emit_many=emit_many, batch_fresh_pages=True,
+        stop_requested=lambda: stopped[0])
+    assert report["status"] == "stopped" and not report["coverage_complete"] and offered == []
+    assert report["errors"][0]["code"] == "stop_requested"
+    assert [len(batch) for batch in batches] == [2]
+    assert report["rows_offered"] == report["emit_returned_true"] == 2
+    assert report["emit_returned_false"] == report["cached_pages_reemitted"] == report["http_pages"] == 0
+    assert [event[0] for event in factory.events] == ["search"]
+    assert factory.sessions == 1 and factory.active == 0
+    assert len(list(tmp_path.rglob("page-*.private.json"))) == 1
+    assert not list(tmp_path.rglob("complete.private.json"))
+
+
+def test_fresh_batch_lost_response_preserves_applied_prefix_and_resumes_with_dedup(tmp_path):
+    rows, seen = [row(index) for index in range(3)], set()
+
+    def lost(items):
+        seen.add(items[0]["row"]["convocation_id"])
+        raise ConnectionError("Sensitive callback transport detail")
+
+    factory = Factory(rows)
+    first, _ = run(tmp_path, factory, emit_many=lost, batch_fresh_pages=True)
+    assert first["status"] == "partial" and not first["coverage_complete"]
+    assert first["errors"][0]["code"] == "emit_callback_error"
+    assert "Sensitive callback" not in json.dumps(first)
+    assert seen == {2000} and first["rows_offered"] == 2
+    assert first["emit_returned_true"] == first["emit_returned_false"] == 0
+    assert factory.sessions == 1 and factory.active == 0
+    pages = {p: p.read_bytes() for p in tmp_path.rglob("page-*.private.json")}
+    assert len(pages) == 1 and not list(tmp_path.rglob("complete.private.json"))
+
+    def dedup(items):
+        returned = []
+        for item in items:
+            identity = item["row"]["convocation_id"]
+            returned.append(identity not in seen)
+            seen.add(identity)
+        return returned
+
+    resumed, offered = run(tmp_path, Factory(rows), emit_many=dedup, batch_fresh_pages=True)
+    assert resumed["coverage_complete"] and offered == [] and seen == {2000, 2001, 2002}
+    assert resumed["rows_offered"] == 3 and resumed["emit_returned_true"] == 2
+    assert resumed["emit_returned_false"] == resumed["cached_pages_reemitted"] == 1
+    assert resumed["http_searches"] == 2 and resumed["http_pages"] == 1
+    assert pages == {p: p.read_bytes() for p in pages}
+
+
+@pytest.mark.parametrize("returned", [[True], [True, 1], [True, False, True], None, True])
+def test_fresh_batch_invalid_response_never_confirms_rows_or_coverage(tmp_path, returned):
+    factory = Factory([row(index) for index in range(3)])
+    report, offered = run(tmp_path, factory, emit_many=lambda _: returned, batch_fresh_pages=True)
+    assert report["status"] == "partial" and not report["coverage_complete"] and offered == []
+    assert report["errors"][0]["code"] == "emit_must_return_bool"
+    assert report["rows_offered"] == 2 and report["emit_returned_true"] == report["emit_returned_false"] == 0
+    assert factory.sessions == 1 and not list(tmp_path.rglob("complete.private.json"))
+    assert len(list(tmp_path.rglob("page-*.private.json"))) == 1
+
+
+def test_fresh_batch_cannot_complete_after_failed_independent_reconciliation(tmp_path):
+    stable = [row(index) for index in range(3)]
+    changed = [row(index, description="UPDATED SOFTWARE") for index in range(3)]
+    factory = Factory(lambda session: stable if session == 1 else changed)
+    batches = []
+    report, offered = run(tmp_path, factory,
+        emit_many=lambda items: batches.append(deepcopy(items)) or [True] * len(items),
+        batch_fresh_pages=True)
+    assert report["status"] == "partial" and not report["coverage_complete"] and offered == []
+    assert report["errors"][0]["code"] == "first_page_reconciliation_changed"
+    assert [len(batch) for batch in batches] == [2, 1] and report["rows_offered"] == 3
+    assert report["emit_returned_true"] == 3 and factory.sessions == 2 and factory.active == 0
+    assert len(list(tmp_path.rglob("page-*.private.json"))) == 2
+    assert not list(tmp_path.rglob("complete.private.json"))
+
+
+@pytest.mark.parametrize("value", [None, 0, 1, "true", [], {}])
+def test_fresh_batch_flag_requires_strict_boolean_before_private_writes(tmp_path, value):
+    folder = tmp_path / "not-created"
+    with pytest.raises(ValueError, match="batch_fresh_pages must be a boolean"):
+        run(folder, no_http, emit_many=lambda _: [], batch_fresh_pages=value)
+    assert not folder.exists()
+
+
+@pytest.mark.parametrize("callback", [None, True, []])
+def test_fresh_batch_requires_callable_before_private_writes(tmp_path, callback):
+    folder = tmp_path / "not-created"
+    with pytest.raises(ValueError):
+        run(folder, no_http, emit_many=callback, batch_fresh_pages=True)
+    assert not folder.exists()
+
+
 @pytest.mark.parametrize("returned", [[True], [True, 1], None, True])
 def test_cached_batch_invalid_response_cannot_establish_coverage(tmp_path, returned):
     run(tmp_path, Factory([row(index) for index in range(5)]))
@@ -217,10 +379,17 @@ def test_zero_is_verified_and_reconciled_not_inferred_from_http_failure(tmp_path
 
 
 @pytest.mark.parametrize("count", [499, 500])
-def test_result_boundary_splits_inclusive_dates_and_paginates_every_child(tmp_path, count):
+@pytest.mark.parametrize("batch_fresh_pages", [False, True])
+def test_result_boundary_splits_inclusive_dates_and_paginates_every_child(tmp_path, count, batch_fresh_pages):
     rows = [row(index, "2026-10-01" if index % 2 else "2026-10-02") for index in range(count)]
     query = {**QUERY, "published_to": "2026-10-02"}
-    report, offered = run(tmp_path, Factory(rows, size=100), query=query)
+    batched = []
+    def emit_many(items):
+        batched.extend(deepcopy(items))
+        return [True] * len(items)
+    report, serial = run(tmp_path, Factory(rows, size=100), query=query,
+        emit_many=emit_many if batch_fresh_pages else None, batch_fresh_pages=batch_fresh_pages)
+    offered = batched if batch_fresh_pages else serial
     assert report["coverage_complete"] and len(offered) == count
     assert {item["query"]["published_from"] for item in offered} == {"2026-10-01", "2026-10-02"}
     assert all(item["query"]["published_from"] == item["query"]["published_to"] for item in offered)
@@ -344,7 +513,8 @@ def test_midnight_does_not_make_observation_timestamp_part_of_first_page_hash(tm
 
 
 @pytest.mark.parametrize("mutation", ["unverified", "filter", "counter", "origin", "rows", "object"])
-def test_first_page_invalid_context_never_emits(tmp_path, mutation):
+@pytest.mark.parametrize("batch_fresh_pages", [False, True])
+def test_first_page_invalid_context_never_emits(tmp_path, mutation, batch_fresh_pages):
     def mutate(raw, number):
         if mutation == "unverified":
             raw["search_verified"] = False
@@ -358,8 +528,14 @@ def test_first_page_invalid_context_never_emits(tmp_path, mutation):
             raw["rows"].pop()
         else:
             raw["rows"][0]["object"] = "Bien"
-    report, offered = run(tmp_path, Factory([row(0)], mutate=mutate))
+    batches = []
+    def emit_many(items):
+        batches.append(deepcopy(items))
+        return [True] * len(items)
+    report, offered = run(tmp_path, Factory([row(0)], mutate=mutate),
+        emit_many=emit_many if batch_fresh_pages else None, batch_fresh_pages=batch_fresh_pages)
     assert not report["coverage_complete"] and report["errors"] and offered == []
+    assert batches == []
     assert not list(tmp_path.rglob("page-*.private.json"))
 
 

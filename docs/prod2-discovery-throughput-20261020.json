@@ -1,0 +1,74 @@
+{
+  "request": "Revisar propuesta de diez búsquedas PROD2 en paralelo y tiempo de mapeo/deduplicación.",
+  "scope": "Revisión local de código y pruebas offline; sin cambios de runtime ni medición de latencia real SEACE.",
+  "native_flow": {
+    "fresh_one_page_query": {
+      "discovery_session": [
+        "GET formulario",
+        "POST tabChange",
+        "POST búsqueda"
+      ],
+      "independent_first_page_verifier": [
+        "GET formulario",
+        "POST tabChange",
+        "POST búsqueda"
+      ],
+      "minimum_http_requests": 6
+    },
+    "keyword_good_and_service_one_year_minimum_requests": 12
+  },
+  "current_configuration": {
+    "search_workers_default": 1,
+    "search_workers_allowed": [
+      1,
+      4
+    ],
+    "request_start_interval_default_seconds": 2,
+    "request_start_interval_configured_bounds_seconds": [
+      1,
+      60
+    ],
+    "global_pacer_shared_across_workers": true,
+    "sessions_isolated_per_query": true,
+    "source_403_or_429_requests_stop": true
+  },
+  "arithmetic_scenario": {
+    "keywords": 166,
+    "objects": 2,
+    "years": 1,
+    "query_count": 332,
+    "requests_if_all_fresh_single_page_no_splits": 1992,
+    "minimum_start_span_seconds_at_2s": 3982,
+    "minimum_start_span_seconds_at_1s": 1991,
+    "formula": "(requests - 1) * global_interval; agregar latencia de última petición y esperas por dependencias.",
+    "limitations": "Cotas de escenario, no benchmark ni SLA. Probes/selector, páginas, particiones, redirecciones, latencia y otros años suman; evidencia completa en caché y pruebas de ámbito vacío pueden evitar consultas."
+  },
+  "deduplication": {
+    "same_id_staging": "Redis verifica/encola atómicamente; pipelines mantienen los mismos Lua por ID.",
+    "repeated_paid_inputs": "JEV reutiliza decisión PG por hash de entrada/perfil/modelo/política. Revisar cambios además del ID; no reintentar pagos inciertos.",
+    "concurrency": "Un coordinador y sesiones independientes; no compartir ViewState de una sesión entre búsquedas simultáneas."
+  },
+  "conclusion": "Diez workers no están admitidos por configuración actual y no multiplicarían diez veces el límite global. Separar mapeo de documentos/modelos y medir capacidad con acceso recuperado antes de aumentar tasa o concurrencia.",
+  "validation": {
+    "principal_offline_tests_passed": 101,
+    "opt_in_skipped": 1,
+    "independent_static_review": "Conteo de6requests, hash/estado por sesión, SharedPacer y aritmética confirmados."
+  },
+  "source_calls": 0,
+  "model_calls": 0,
+  "business_writes": 0,
+  "runtime_changes": 0,
+  "workers_started": 0,
+  "cleanup": {
+    "bytes_removed": 0,
+    "retained": "Informe compacto; ninguna descarga, cola o entrada histórica modificada."
+  },
+  "references": [
+    "scripts/run_prod2_selected.py",
+    "workers/seace/src/buenapro_worker/prod2/client.py",
+    "workers/seace/src/buenapro_worker/prod2/keyword_sweep.py",
+    "workers/seace/src/buenapro_worker/prod2/selected_control.py",
+    "workers/seace/src/buenapro_worker/prod2/staging.py",
+    "docs/sources/prod2-http-flow-20261005.md"
+  ]
+}

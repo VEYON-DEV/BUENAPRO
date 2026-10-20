@@ -1,0 +1,38 @@
+# Optional one-shot mapping, never enable through a generic compose up.
+# Requires a freshly reviewed image, private plan/digest and explicit --go.
+services:
+  prod2-discovery:
+    profiles: ["prod2-discovery-only"]
+    image: ${PROD2_DISCOVERY_IMAGE:?Set the reviewed committed image}
+    restart: "no"
+    init: true
+    stop_signal: SIGTERM
+    stop_grace_period: 5m
+    env_file:
+      - ${PROD2_DISCOVERY_DATABASE_ENV:?Private DATABASE_URL only; no provider keys}
+    command:
+      - python
+      - /app/scripts/run_prod2_parallel_discovery.py
+      - run
+      - --plan
+      - /run/prod2-discovery/plan.private.json
+      - --expected-sha256
+      - ${PROD2_DISCOVERY_PLAN_SHA256:?Set the canonical reviewed plan digest}
+      - --folder
+      - /var/lib/buenapro/prod2-discovery/${PROD2_DISCOVERY_RUN_ID:?Set the exact new run ID}
+      - --go
+    volumes:
+      - type: bind
+        source: ${PROD2_DISCOVERY_PLAN:?Set private immutable plan}
+        target: /run/prod2-discovery/plan.private.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${PROD2_DISCOVERY_STATE:?Set private persistent mapping root}
+        target: /var/lib/buenapro/prod2-discovery
+        bind:
+          create_host_path: false
+    depends_on:
+      postgres:
+        condition: service_healthy

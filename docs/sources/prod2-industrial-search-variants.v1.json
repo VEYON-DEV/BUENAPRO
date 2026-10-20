@@ -1,0 +1,25 @@
+{
+  "version": "prod2-industrial-search-variants-v1",
+  "status": "pilot_only",
+  "scope": "Search aliases only; does not change commercial profiles or frozen plans",
+  "evidence": "docs/prod2-industrial-keyword-improvements-20261020.json",
+  "keywords": [
+    "sistema scada",
+    "controlador lógico programable",
+    "programación plc",
+    "tablero de mando",
+    "tableros de protección",
+    "tableros eléctricos de distribución",
+    "centro de control de motores",
+    "medidores de caudal",
+    "sensores de presión",
+    "instrumentos para medición",
+    "puesta en funcionamiento",
+    "puesta en marcha",
+    "mantenimiento eléctrico",
+    "capacitación plc",
+    "comunicaciones industriales",
+    "monitoreo de condiciones",
+    "robot industrial"
+  ]
+}

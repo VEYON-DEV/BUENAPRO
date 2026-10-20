@@ -1,0 +1,276 @@
+{
+  "status": "proposal_only_not_activated",
+  "scope": "Mejora de consultas industriales de descubrimiento; no modifica perfil comercial, pagos, planes congelados ni decisiones existentes.",
+  "baseline": {
+    "industrial_keywords": 93,
+    "zero_matches": 68,
+    "positive_matches": 25,
+    "publication_window": [
+      "2026-04-07",
+      "2026-10-07"
+    ],
+    "source": "docs/prod2-keyword-yield-20261020.json"
+  },
+  "historical_contrasts": [
+    {
+      "long_keyword": "programación de plc",
+      "long_matches": 0,
+      "short_keyword_already_configured": "plc",
+      "short_matches": 10
+    },
+    {
+      "long_keyword": "sistemas scada",
+      "long_matches": 0,
+      "short_keyword_already_configured": "scada",
+      "short_matches": 4
+    },
+    {
+      "long_keyword": "tableros de control industrial",
+      "long_matches": 0,
+      "short_keyword_already_configured": "tableros eléctricos",
+      "short_matches": 26
+    },
+    {
+      "long_keyword": "centros de control de motores",
+      "long_matches": 0,
+      "short_keyword_already_configured": "ccm",
+      "short_matches": 21
+    },
+    {
+      "long_keyword": "planos unifilares",
+      "long_matches": 0,
+      "short_keyword_already_configured": "unifilar",
+      "short_matches": 1
+    },
+    {
+      "long_keyword": "mantenimiento industrial",
+      "long_matches": 0,
+      "short_keyword_already_configured": "electromecánico",
+      "short_matches": 62
+    }
+  ],
+  "candidate_variants": [
+    {
+      "family": "control",
+      "keyword": "sistema scada",
+      "already_in_166": false,
+      "source_search_tested": false,
+      "support": "saved_title_wording",
+      "saved_title_subset_matches": 1,
+      "saved_title_example_convocations": [
+        1017006
+      ],
+      "interpretation": "Coincidencias textuales locales normalizadas en muestra de81 títulos ya aceptados; no estima cobertura ni resultados nuevos de SEACE."
+    },
+    {
+      "family": "control",
+      "keyword": "controlador lógico programable",
+      "already_in_166": false,
+      "source_search_tested": false,
+      "support": "untested_wording_hypothesis",
+      "saved_title_subset_matches": 0,
+      "saved_title_example_convocations": [],
+      "interpretation": "Coincidencias textuales locales normalizadas en muestra de81 títulos ya aceptados; no estima cobertura ni resultados nuevos de SEACE."
+    },
+    {
+      "family": "control",
+      "keyword": "programación plc",
+      "already_in_166": false,
+      "source_search_tested": false,
+      "support": "untested_wording_hypothesis",
+      "saved_title_subset_matches": 0,
+      "saved_title_example_convocations": [],
+      "interpretation": "Coincidencias textuales locales normalizadas en muestra de81 títulos ya aceptados; no estima cobertura ni resultados nuevos de SEACE."
+    },
+    {
+      "family": "electrica",
+      "keyword": "tablero de mando",
+      "already_in_166": false,
+      "source_search_tested": false,
+      "support": "saved_title_wording",
+      "saved_title_subset_matches": 2,
+      "saved_title_example_convocations": [
+        1033711,
+        1038485
+      ],
+      "interpretation": "Coincidencias textuales locales normalizadas en muestra de81 títulos ya aceptados; no estima cobertura ni resultados nuevos de SEACE."
+    },
+    {
+      "family": "electrica",
+      "keyword": "tableros de protección",
+      "already_in_166": false,
+      "source_search_tested": false,
+      "support": "saved_title_wording",
+      "saved_title_subset_matches": 1,
+      "saved_title_example_convocations": [
+        1033338
+      ],
+      "interpretation": "Coincidencias textuales locales normalizadas en muestra de81 títulos ya aceptados; no estima cobertura ni resultados nuevos de SEACE."
+    },
+    {
+      "family": "electrica",
+      "keyword": "tableros eléctricos de distribución",
+      "already_in_166": false,
+      "source_search_tested": false,
+      "support": "saved_title_wording",
+      "saved_title_subset_matches": 8,
+      "saved_title_example_convocations": [
+        1006848,
+        1014454,
+        1021813
+      ],
+      "interpretation": "Coincidencias textuales locales normalizadas en muestra de81 títulos ya aceptados; no estima cobertura ni resultados nuevos de SEACE."
+    },
+    {
+      "family": "electrica",
+      "keyword": "centro de control de motores",
+      "already_in_166": false,
+      "source_search_tested": false,
+      "support": "untested_wording_hypothesis",
+      "saved_title_subset_matches": 0,
+      "saved_title_example_convocations": [],
+      "interpretation": "Coincidencias textuales locales normalizadas en muestra de81 títulos ya aceptados; no estima cobertura ni resultados nuevos de SEACE."
+    },
+    {
+      "family": "instrumentacion",
+      "keyword": "medidores de caudal",
+      "already_in_166": false,
+      "source_search_tested": false,
+      "support": "saved_title_wording",
+      "saved_title_subset_matches": 1,
+      "saved_title_example_convocations": [
+        1033338
+      ],
+      "interpretation": "Coincidencias textuales locales normalizadas en muestra de81 títulos ya aceptados; no estima cobertura ni resultados nuevos de SEACE."
+    },
+    {
+      "family": "instrumentacion",
+      "keyword": "sensores de presión",
+      "already_in_166": false,
+      "source_search_tested": false,
+      "support": "saved_title_wording",
+      "saved_title_subset_matches": 1,
+      "saved_title_example_convocations": [
+        1033338
+      ],
+      "interpretation": "Coincidencias textuales locales normalizadas en muestra de81 títulos ya aceptados; no estima cobertura ni resultados nuevos de SEACE."
+    },
+    {
+      "family": "instrumentacion",
+      "keyword": "instrumentos para medición",
+      "already_in_166": false,
+      "source_search_tested": false,
+      "support": "saved_title_wording",
+      "saved_title_subset_matches": 1,
+      "saved_title_example_convocations": [
+        1042453
+      ],
+      "interpretation": "Coincidencias textuales locales normalizadas en muestra de81 títulos ya aceptados; no estima cobertura ni resultados nuevos de SEACE."
+    },
+    {
+      "family": "mantenimiento",
+      "keyword": "puesta en funcionamiento",
+      "already_in_166": false,
+      "source_search_tested": false,
+      "support": "saved_title_wording",
+      "saved_title_subset_matches": 3,
+      "saved_title_example_convocations": [
+        1023046,
+        1037627,
+        1038667
+      ],
+      "interpretation": "Coincidencias textuales locales normalizadas en muestra de81 títulos ya aceptados; no estima cobertura ni resultados nuevos de SEACE."
+    },
+    {
+      "family": "mantenimiento",
+      "keyword": "puesta en marcha",
+      "already_in_166": false,
+      "source_search_tested": false,
+      "support": "untested_wording_hypothesis",
+      "saved_title_subset_matches": 0,
+      "saved_title_example_convocations": [],
+      "interpretation": "Coincidencias textuales locales normalizadas en muestra de81 títulos ya aceptados; no estima cobertura ni resultados nuevos de SEACE."
+    },
+    {
+      "family": "mantenimiento",
+      "keyword": "mantenimiento eléctrico",
+      "already_in_166": false,
+      "source_search_tested": false,
+      "support": "untested_wording_hypothesis",
+      "saved_title_subset_matches": 0,
+      "saved_title_example_convocations": [],
+      "interpretation": "Coincidencias textuales locales normalizadas en muestra de81 títulos ya aceptados; no estima cobertura ni resultados nuevos de SEACE."
+    },
+    {
+      "family": "capacitacion",
+      "keyword": "capacitación plc",
+      "already_in_166": false,
+      "source_search_tested": false,
+      "support": "untested_wording_hypothesis",
+      "saved_title_subset_matches": 0,
+      "saved_title_example_convocations": [],
+      "interpretation": "Coincidencias textuales locales normalizadas en muestra de81 títulos ya aceptados; no estima cobertura ni resultados nuevos de SEACE."
+    },
+    {
+      "family": "redes",
+      "keyword": "comunicaciones industriales",
+      "already_in_166": false,
+      "source_search_tested": false,
+      "support": "untested_wording_hypothesis",
+      "saved_title_subset_matches": 0,
+      "saved_title_example_convocations": [],
+      "interpretation": "Coincidencias textuales locales normalizadas en muestra de81 títulos ya aceptados; no estima cobertura ni resultados nuevos de SEACE."
+    },
+    {
+      "family": "digitalizacion",
+      "keyword": "monitoreo de condiciones",
+      "already_in_166": false,
+      "source_search_tested": false,
+      "support": "untested_wording_hypothesis",
+      "saved_title_subset_matches": 0,
+      "saved_title_example_convocations": [],
+      "interpretation": "Coincidencias textuales locales normalizadas en muestra de81 títulos ya aceptados; no estima cobertura ni resultados nuevos de SEACE."
+    },
+    {
+      "family": "robotica",
+      "keyword": "robot industrial",
+      "already_in_166": false,
+      "source_search_tested": false,
+      "support": "untested_wording_hypothesis",
+      "saved_title_subset_matches": 0,
+      "saved_title_example_convocations": [],
+      "interpretation": "Coincidencias textuales locales normalizadas en muestra de81 títulos ya aceptados; no estima cobertura ni resultados nuevos de SEACE."
+    }
+  ],
+  "precision_observation": {
+    "local_substring_scada_in_cascada": true,
+    "local_example_convocations": [
+      1037627
+    ],
+    "source_search_false_positive_confirmed": false,
+    "first_discovery_keywords": [
+      "electromecánico"
+    ],
+    "conclusion": "Cascada contiene scada en comparación local de substrings; el caso fue descubierto por electromecánico. No prueba un falso positivo de búsqueda SEACE. Verificar palabras/contexto antes de atribuir semántica a siglas.",
+    "other_caution": "CCM/PLC y otros acrónimos requieren contexto. Keyword industrial y JEV conjunto no acreditan clasificación industrial; RPA no equivale a robot físico."
+  },
+  "recommendation": "Conservar términos específicos para baja frecuencia, priorizar los existentes con rendimiento probado y pilotear variantes. Medir IDs únicos adicionales, repetidos, aceptación y motivos. No ampliar automáticamente aMES/FAT/SAT ni borrar términos por un cero histórico.",
+  "evidence": {
+    "titles_readback_at_utc": "2026-10-20T06:14:33.469047+00:00",
+    "titles_sample_count": 81,
+    "sample": "Títulos ya aceptados cuya primera consulta pertenece a93keywords industriales; no todos los resultados ni oportunidades nuevas.",
+    "titles_snapshot": "tmp/prod2-industrial-keyword-review-20261020/titles.private.json",
+    "titles_sha256": "acb00288764fc6f6a98ce3230550fb2b660b329416f429068b0472e27356c90f",
+    "yield_report": "docs/prod2-keyword-yield-20261020.json",
+    "yield_report_sha256": "f40a968f1ac63c172c821c6f06011889bde5529e2b54645e5d6fbc49ca5937e7"
+  },
+  "source_calls": 0,
+  "model_calls": 0,
+  "business_writes": 0,
+  "config_changes": 0,
+  "workers_started": 0,
+  "cleanup": {
+    "removed_bytes": 0,
+    "retained": "Snapshot pequeño de títulos públicos y helpers para trazabilidad. Entradas pendientes anteriores intactas."
+  }
+}

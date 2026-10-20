@@ -1,0 +1,3318 @@
+{
+  "request": "Identificar keywords PROD2 con fallo de consulta o pocas coincidencias en el barrido guardado.",
+  "database_readback_at_utc": "2026-10-20T06:10:36.575437+00:00",
+  "scope": "166 keywords del convenio, Bien/Servicio, épocas históricas 06/04–06/10/2026 digital y 07/04–07/10/2026 industrial. No resultados actuales ni censo nacional vigente.",
+  "summary": {
+    "keywords": 166,
+    "queries_recorded_complete": 7636,
+    "keywords_incomplete_at_readback": 0,
+    "queries_with_current_error_codes": 0,
+    "keywords_zero_matches": 82,
+    "keywords_1_to_5_matches": 30,
+    "keywords_above_5_matches": 54,
+    "digital_zero": 14,
+    "industrial_zero": 68,
+    "digital_low": 13,
+    "industrial_low": 17
+  },
+  "zero_match_keywords": [
+    "agentes de ia",
+    "agentes ia",
+    "analítica de datos",
+    "aprendizaje automático industrial",
+    "arquitectura de comunicación industrial",
+    "asistentes virtuales",
+    "automatización de procesos",
+    "automatización de procesos industriales",
+    "automatización industrial",
+    "braumat",
+    "capacitación en automatización industrial",
+    "capacitación redes industriales",
+    "capacitación scada",
+    "cemat",
+    "centros de control de motores",
+    "ciencia de datos",
+    "cobots",
+    "comisionamiento",
+    "comisionamiento de equipos industriales",
+    "commissioning",
+    "comunicación industrial",
+    "configuración de redes industriales",
+    "configuración de sistemas industriales",
+    "control de nivel industrial",
+    "control de procesos industriales",
+    "cursos de plc",
+    "cámaras industriales",
+    "dcs",
+    "desarrollo de sistema",
+    "devicenet",
+    "diseño eléctrico industrial",
+    "entrenamiento industrial",
+    "ethernet industrial",
+    "gemelos digitales industriales",
+    "iiot",
+    "inspección visual industrial",
+    "instrumentación industrial",
+    "integración de sensores industriales",
+    "integración erp industrial",
+    "internet industrial",
+    "lazos de control industrial",
+    "licencias informáticas",
+    "machinelearning",
+    "mantenimiento de tableros eléctricos",
+    "mantenimiento industrial",
+    "medición de caudal",
+    "medición de temperatura industrial",
+    "modbus",
+    "modelos predictivos",
+    "monitoreo de condiciones industriales",
+    "montaje eléctrico industrial",
+    "operación de equipos industriales",
+    "optimización de procesos industriales",
+    "pcs7",
+    "planos unifilares",
+    "powerbi",
+    "profibus",
+    "profinet",
+    "programación de plc",
+    "pruebas fat",
+    "pruebas sat",
+    "puesta en marcha industrial",
+    "página web",
+    "realidad aumentada industrial",
+    "redes industriales",
+    "redes profibus",
+    "redes profinet",
+    "robots colaborativos",
+    "robótica colaborativa",
+    "salas eléctricas",
+    "servomotores",
+    "sistemas de control distribuido",
+    "sistemas de control industrial",
+    "sistemas mes",
+    "sistemas scada",
+    "software empresarial",
+    "soluciones cloud",
+    "soporte remoto industrial",
+    "supervisión industrial",
+    "switch industrial",
+    "tableros de control industrial",
+    "visión artificial industrial"
+  ],
+  "low_match_keywords": [
+    {
+      "keyword": "analítica industrial",
+      "source_appearances": 1,
+      "family": "industrial"
+    },
+    {
+      "keyword": "aplicación web",
+      "source_appearances": 1,
+      "family": "digital"
+    },
+    {
+      "keyword": "aprendizaje automático",
+      "source_appearances": 1,
+      "family": "digital"
+    },
+    {
+      "keyword": "caudalímetros",
+      "source_appearances": 1,
+      "family": "industrial"
+    },
+    {
+      "keyword": "desarrollo de aplicaciones",
+      "source_appearances": 1,
+      "family": "digital"
+    },
+    {
+      "keyword": "flujometro",
+      "source_appearances": 1,
+      "family": "industrial"
+    },
+    {
+      "keyword": "frontend",
+      "source_appearances": 1,
+      "family": "digital"
+    },
+    {
+      "keyword": "hmi",
+      "source_appearances": 1,
+      "family": "industrial"
+    },
+    {
+      "keyword": "integración de sistemas",
+      "source_appearances": 1,
+      "family": "digital"
+    },
+    {
+      "keyword": "licencias microsoft",
+      "source_appearances": 1,
+      "family": "digital"
+    },
+    {
+      "keyword": "mantenimiento electromecánico",
+      "source_appearances": 1,
+      "family": "industrial"
+    },
+    {
+      "keyword": "python",
+      "source_appearances": 1,
+      "family": "digital"
+    },
+    {
+      "keyword": "sensores industriales",
+      "source_appearances": 1,
+      "family": "industrial"
+    },
+    {
+      "keyword": "transmisores de presión",
+      "source_appearances": 1,
+      "family": "industrial"
+    },
+    {
+      "keyword": "unifilar",
+      "source_appearances": 1,
+      "family": "industrial"
+    },
+    {
+      "keyword": "whatsapp",
+      "source_appearances": 1,
+      "family": "digital"
+    },
+    {
+      "keyword": "arrancadores",
+      "source_appearances": 2,
+      "family": "industrial"
+    },
+    {
+      "keyword": "backend",
+      "source_appearances": 2,
+      "family": "digital"
+    },
+    {
+      "keyword": "contactores",
+      "source_appearances": 2,
+      "family": "industrial"
+    },
+    {
+      "keyword": "mantenimiento de software",
+      "source_appearances": 2,
+      "family": "digital"
+    },
+    {
+      "keyword": "manufactura",
+      "source_appearances": 2,
+      "family": "industrial"
+    },
+    {
+      "keyword": "variadores de velocidad",
+      "source_appearances": 2,
+      "family": "industrial"
+    },
+    {
+      "keyword": "variadores",
+      "source_appearances": 3,
+      "family": "industrial"
+    },
+    {
+      "keyword": "actuadores",
+      "source_appearances": 4,
+      "family": "industrial"
+    },
+    {
+      "keyword": "implementación de sistemas",
+      "source_appearances": 4,
+      "family": "digital"
+    },
+    {
+      "keyword": "scada",
+      "source_appearances": 4,
+      "family": "industrial"
+    },
+    {
+      "keyword": "aplicativo",
+      "source_appearances": 5,
+      "family": "digital"
+    },
+    {
+      "keyword": "chatbot",
+      "source_appearances": 5,
+      "family": "digital"
+    },
+    {
+      "keyword": "mantenimiento predictivo",
+      "source_appearances": 5,
+      "family": "industrial"
+    },
+    {
+      "keyword": "telemetría",
+      "source_appearances": 5,
+      "family": "industrial"
+    }
+  ],
+  "highest_volume_keywords": [
+    {
+      "keyword": "ia",
+      "source_appearances": 23575
+    },
+    {
+      "keyword": "implementación",
+      "source_appearances": 698
+    },
+    {
+      "keyword": "api",
+      "source_appearances": 505
+    },
+    {
+      "keyword": "soporte",
+      "source_appearances": 339
+    },
+    {
+      "keyword": "plataforma",
+      "source_appearances": 336
+    },
+    {
+      "keyword": "digital",
+      "source_appearances": 279
+    },
+    {
+      "keyword": "software",
+      "source_appearances": 265
+    },
+    {
+      "keyword": "servidor",
+      "source_appearances": 252
+    },
+    {
+      "keyword": "suscripción",
+      "source_appearances": 248
+    },
+    {
+      "keyword": "datos",
+      "source_appearances": 246
+    }
+  ],
+  "definitions": {
+    "source_appearances": "Suma de rows_offered de las consultas completas de una keyword. No equivale a procedimientos únicos globales; keywords distintas pueden devolver el mismo ID.",
+    "zero": "Consulta histórica completa sin coincidencias observadas en su alcance. No es fallo técnico ni rechazo de JEV.",
+    "low": "Umbral descriptivo elegido para esta auditoría: entre 1 y 5 coincidencias en la ventana de seis meses.",
+    "current_errors": "Estado y códigos guardados del último intento, no un historial de todos los intentos. Errores anteriores recuperados pudieron existir.",
+    "complete": "Estado durable y resumen por consulta leídos en PostgreSQL. No se reabrieron caches privados ausentes ni se volvió a consultar SEACE; no acredita lectura completa de PDFs, vigencia ni relevancia."
+  },
+  "verification": {
+    "exact_config_keyword_set": true,
+    "all_queries_bind_manifest_and_last_complete_summary": true,
+    "industrial93_counts_equal_frozen_report": true,
+    "software25_counts_equal_frozen_report": true,
+    "raw_readback_sha256": "383f69ae85537470291c49f9ab498c89d4628514e2b11ed08bbac45cd9442993",
+    "keyword_config_sha256": "9613229df8097a0e2f1e9d45d68a0a1a65efce5bfd5a0223d093340c3bebc37f",
+    "compressed_readback_sha256": "4369feb734ad51d4a67a771ba901680f50f4ef9f506d148071704845ce1b34bb",
+    "independent_review": "166 identidades/matrices, hashes query/scope, result_json==last_complete_json, evidence hash formats y rows_offered=true+false verificados offline sobre el mismo recibo."
+  },
+  "keyword_rows": [
+    {
+      "keyword": "agentes de ia",
+      "family": "digital",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-09T04:23:50.559370+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "agentes ia",
+      "family": "digital",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-09T04:43:26.705780+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "analítica de datos",
+      "family": "digital",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-09T04:27:02.629795+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "aprendizaje automático industrial",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T06:46:17.385552+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "arquitectura de comunicación industrial",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T06:21:59.446523+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "asistentes virtuales",
+      "family": "digital",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-09T04:31:51.237651+00:00",
+      "coverage_kinds": {
+        "observed_pass": 7,
+        "verified_empty_scope_observed": 39
+      }
+    },
+    {
+      "keyword": "automatización de procesos",
+      "family": "digital",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-09T04:30:15.046795+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "automatización de procesos industriales",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T06:39:48.485505+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "automatización industrial",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-07T22:53:00.285858+00:00",
+      "coverage_kinds": {
+        "observed_pass": 7,
+        "verified_empty_scope_observed": 39
+      }
+    },
+    {
+      "keyword": "braumat",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-07T23:20:58.378218+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "capacitación en automatización industrial",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T05:20:22.386750+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "capacitación redes industriales",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T05:28:28.112683+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "capacitación scada",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T05:23:36.841395+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "cemat",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-07T23:18:59.476412+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "centros de control de motores",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T00:30:12.572539+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "ciencia de datos",
+      "family": "digital",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-09T04:28:38.827416+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "cobots",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T06:49:31.834315+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "comisionamiento",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T05:44:39.211963+00:00",
+      "coverage_kinds": {
+        "observed_pass": 7,
+        "verified_empty_scope_observed": 39
+      }
+    },
+    {
+      "keyword": "comisionamiento de equipos industriales",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T05:36:33.689083+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "commissioning",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T05:46:16.076893+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "comunicación industrial",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T06:18:45.184231+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "configuración de redes industriales",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T06:23:36.621083+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "configuración de sistemas industriales",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T05:26:50.956981+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "control de nivel industrial",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T03:38:26.171359+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "control de procesos industriales",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-07T23:00:56.916406+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "cursos de plc",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T05:21:59.905659+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "cámaras industriales",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T06:43:02.889533+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "dcs",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-07T23:15:03.111530+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "desarrollo de sistema",
+      "family": "digital",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T18:21:07.959170+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "devicenet",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T06:33:19.338841+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "diseño eléctrico industrial",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T00:39:49.596860+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "entrenamiento industrial",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T05:25:13.835923+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "ethernet industrial",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T06:20:22.407463+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "gemelos digitales industriales",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T05:52:46.559800+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "iiot",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T06:02:30.866216+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "inspección visual industrial",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T06:41:25.629063+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "instrumentación industrial",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T03:30:04.726498+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "integración de sensores industriales",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T06:09:01.618313+00:00",
+      "coverage_kinds": {
+        "observed_pass": 7,
+        "verified_empty_scope_observed": 39
+      }
+    },
+    {
+      "keyword": "integración erp industrial",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T05:59:16.794100+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "internet industrial",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T05:49:31.475508+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "lazos de control industrial",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T03:31:44.511334+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "licencias informáticas",
+      "family": "digital",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-12T03:19:38.031069+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "machinelearning",
+      "family": "digital",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-09T04:38:16.065202+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "mantenimiento de tableros eléctricos",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T05:43:02.039686+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "mantenimiento industrial",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T05:38:10.749279+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "medición de caudal",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T03:36:46.393529+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "medición de temperatura industrial",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T06:07:24.218662+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "modbus",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T06:34:56.807364+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "modelos predictivos",
+      "family": "digital",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-09T04:33:27.382323+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "monitoreo de condiciones industriales",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T06:00:53.736331+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "montaje eléctrico industrial",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T00:35:58.885953+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "operación de equipos industriales",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T05:30:05.186507+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "optimización de procesos industriales",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T06:44:40.171012+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "pcs7",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-07T23:17:02.142192+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "planos unifilares",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T00:34:03.501911+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "powerbi",
+      "family": "digital",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-12T03:35:08.473125+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "profibus",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T06:31:42.037205+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "profinet",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T06:30:05.036424+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "programación de plc",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-07T22:54:58.771574+00:00",
+      "coverage_kinds": {
+        "observed_pass": 7,
+        "verified_empty_scope_observed": 39
+      }
+    },
+    {
+      "keyword": "pruebas fat",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T05:33:19.353843+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "pruebas sat",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T05:34:56.617557+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "puesta en marcha industrial",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T05:31:42.105187+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "página web",
+      "family": "digital",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T18:24:21.472499+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "realidad aumentada industrial",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T06:47:54.692609+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "redes industriales",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T06:17:08.033762+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "redes profibus",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T06:25:13.792334+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "redes profinet",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T06:26:50.882499+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "robots colaborativos",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T06:38:11.121754+00:00",
+      "coverage_kinds": {
+        "observed_pass": 7,
+        "verified_empty_scope_observed": 39
+      }
+    },
+    {
+      "keyword": "robótica colaborativa",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T06:36:33.968813+00:00",
+      "coverage_kinds": {
+        "observed_pass": 7,
+        "verified_empty_scope_observed": 39
+      }
+    },
+    {
+      "keyword": "salas eléctricas",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T00:32:07.906925+00:00",
+      "coverage_kinds": {
+        "observed_pass": 7,
+        "verified_empty_scope_observed": 39
+      }
+    },
+    {
+      "keyword": "servomotores",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-07T23:22:56.638248+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "sistemas de control distribuido",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-07T23:03:01.388680+00:00",
+      "coverage_kinds": {
+        "observed_pass": 7,
+        "verified_empty_scope_observed": 39
+      }
+    },
+    {
+      "keyword": "sistemas de control industrial",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-07T22:58:58.554579+00:00",
+      "coverage_kinds": {
+        "observed_pass": 7,
+        "verified_empty_scope_observed": 39
+      }
+    },
+    {
+      "keyword": "sistemas mes",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T05:56:02.708819+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "sistemas scada",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-07T22:56:57.954141+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "software empresarial",
+      "family": "digital",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-12T03:21:14.529086+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "soluciones cloud",
+      "family": "digital",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-12T03:24:27.446347+00:00",
+      "coverage_kinds": {
+        "observed_pass": 7,
+        "verified_empty_scope_observed": 39
+      }
+    },
+    {
+      "keyword": "soporte remoto industrial",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T05:41:24.909463+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "supervisión industrial",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-07T23:07:05.992302+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "switch industrial",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T06:28:28.055862+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "tableros de control industrial",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-07T23:05:05.386267+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "visión artificial industrial",
+      "family": "industrial",
+      "source_appearances": 0,
+      "yield_class": "zero",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T05:54:24.464537+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "analítica industrial",
+      "family": "industrial",
+      "source_appearances": 1,
+      "yield_class": "low_1_to_5",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T05:57:39.590643+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "aplicación web",
+      "family": "digital",
+      "source_appearances": 1,
+      "yield_class": "low_1_to_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T18:22:44.691792+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "aprendizaje automático",
+      "family": "digital",
+      "source_appearances": 1,
+      "yield_class": "low_1_to_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-09T04:25:26.669105+00:00",
+      "coverage_kinds": {
+        "observed_pass": 7,
+        "verified_empty_scope_observed": 39
+      }
+    },
+    {
+      "keyword": "caudalímetros",
+      "family": "industrial",
+      "source_appearances": 1,
+      "yield_class": "low_1_to_5",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T06:10:39.364641+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "desarrollo de aplicaciones",
+      "family": "digital",
+      "source_appearances": 1,
+      "yield_class": "low_1_to_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-06T21:38:04.390288+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "flujometro",
+      "family": "industrial",
+      "source_appearances": 1,
+      "yield_class": "low_1_to_5",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T06:15:31.070365+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "frontend",
+      "family": "digital",
+      "source_appearances": 1,
+      "yield_class": "low_1_to_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T18:14:24.403144+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "hmi",
+      "family": "industrial",
+      "source_appearances": 1,
+      "yield_class": "low_1_to_5",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-07T23:13:04.283136+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "integración de sistemas",
+      "family": "digital",
+      "source_appearances": 1,
+      "yield_class": "low_1_to_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-06T21:41:55.287809+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "licencias microsoft",
+      "family": "digital",
+      "source_appearances": 1,
+      "yield_class": "low_1_to_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-12T03:22:50.937889+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "mantenimiento electromecánico",
+      "family": "industrial",
+      "source_appearances": 1,
+      "yield_class": "low_1_to_5",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T05:39:47.790282+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "python",
+      "family": "digital",
+      "source_appearances": 1,
+      "yield_class": "low_1_to_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-09T04:39:52.240714+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "sensores industriales",
+      "family": "industrial",
+      "source_appearances": 1,
+      "yield_class": "low_1_to_5",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T03:33:25.574298+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "transmisores de presión",
+      "family": "industrial",
+      "source_appearances": 1,
+      "yield_class": "low_1_to_5",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T03:35:05.179431+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "unifilar",
+      "family": "industrial",
+      "source_appearances": 1,
+      "yield_class": "low_1_to_5",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T03:25:04.058042+00:00",
+      "coverage_kinds": {
+        "observed_pass": 7,
+        "verified_empty_scope_observed": 39
+      }
+    },
+    {
+      "keyword": "whatsapp",
+      "family": "digital",
+      "source_appearances": 1,
+      "yield_class": "low_1_to_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-09T04:45:02.885281+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "arrancadores",
+      "family": "industrial",
+      "source_appearances": 2,
+      "yield_class": "low_1_to_5",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T03:26:43.621924+00:00",
+      "coverage_kinds": {
+        "observed_pass": 7,
+        "verified_empty_scope_observed": 39
+      }
+    },
+    {
+      "keyword": "backend",
+      "family": "digital",
+      "source_appearances": 2,
+      "yield_class": "low_1_to_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T18:06:53.254748+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "contactores",
+      "family": "industrial",
+      "source_appearances": 2,
+      "yield_class": "low_1_to_5",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T03:28:25.063828+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "mantenimiento de software",
+      "family": "digital",
+      "source_appearances": 2,
+      "yield_class": "low_1_to_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-06T21:43:49.892233+00:00",
+      "coverage_kinds": {
+        "observed_pass": 7,
+        "verified_empty_scope_observed": 39
+      }
+    },
+    {
+      "keyword": "manufactura",
+      "family": "industrial",
+      "source_appearances": 2,
+      "yield_class": "low_1_to_5",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T06:05:45.742925+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "variadores de velocidad",
+      "family": "industrial",
+      "source_appearances": 2,
+      "yield_class": "low_1_to_5",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T00:37:54.382200+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "variadores",
+      "family": "industrial",
+      "source_appearances": 3,
+      "yield_class": "low_1_to_5",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T00:43:41.291235+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "actuadores",
+      "family": "industrial",
+      "source_appearances": 4,
+      "yield_class": "low_1_to_5",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T06:12:16.314882+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "implementación de sistemas",
+      "family": "digital",
+      "source_appearances": 4,
+      "yield_class": "low_1_to_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T17:54:58.328799+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "scada",
+      "family": "industrial",
+      "source_appearances": 4,
+      "yield_class": "low_1_to_5",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-07T23:11:04.186002+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "aplicativo",
+      "family": "digital",
+      "source_appearances": 5,
+      "yield_class": "low_1_to_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T17:59:19.590338+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "chatbot",
+      "family": "digital",
+      "source_appearances": 5,
+      "yield_class": "low_1_to_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-09T04:35:03.531054+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "mantenimiento predictivo",
+      "family": "industrial",
+      "source_appearances": 5,
+      "yield_class": "low_1_to_5",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T05:51:08.974462+00:00",
+      "coverage_kinds": {
+        "observed_pass": 7,
+        "verified_empty_scope_observed": 39
+      }
+    },
+    {
+      "keyword": "telemetría",
+      "family": "industrial",
+      "source_appearances": 5,
+      "yield_class": "low_1_to_5",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T06:04:08.348118+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "plataformas digitales",
+      "family": "digital",
+      "source_appearances": 6,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-06T21:45:44.518029+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "predictivo",
+      "family": "digital",
+      "source_appearances": 6,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-09T06:06:18.260827+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "saas",
+      "family": "digital",
+      "source_appearances": 6,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-12T03:43:12.902842+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "aws",
+      "family": "digital",
+      "source_appearances": 7,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-09T04:47:38.321475+00:00",
+      "coverage_kinds": {
+        "observed_pass": 7,
+        "verified_empty_scope_observed": 39
+      }
+    },
+    {
+      "keyword": "ingeniería eléctrica",
+      "family": "industrial",
+      "source_appearances": 7,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T00:26:19.025824+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "robótica",
+      "family": "industrial",
+      "source_appearances": 7,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T06:51:09.086611+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "workspace",
+      "family": "digital",
+      "source_appearances": 7,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-12T03:39:57.879038+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "ciberseguridad",
+      "family": "digital",
+      "source_appearances": 8,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-12T22:49:44.476605+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "desarrollo de software",
+      "family": "digital",
+      "source_appearances": 8,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-06T21:34:15.385807+00:00",
+      "coverage_kinds": {
+        "observed_pass": 7,
+        "verified_empty_scope_observed": 39
+      }
+    },
+    {
+      "keyword": "llm",
+      "family": "digital",
+      "source_appearances": 8,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-09T04:36:39.960000+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "vmware",
+      "family": "digital",
+      "source_appearances": 8,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-12T03:38:21.426920+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "herramientas colaborativas",
+      "family": "digital",
+      "source_appearances": 9,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-12T03:26:03.962094+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "sistemas de información",
+      "family": "digital",
+      "source_appearances": 9,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-06T21:36:09.794742+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "plc",
+      "family": "industrial",
+      "source_appearances": 10,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-07T23:09:05.160054+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "aplicaciones web",
+      "family": "digital",
+      "source_appearances": 11,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-06T21:40:00.520771+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "portal web",
+      "family": "digital",
+      "source_appearances": 11,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T18:25:58.323370+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "seguridad informática",
+      "family": "digital",
+      "source_appearances": 11,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-12T03:27:40.427702+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "app",
+      "family": "digital",
+      "source_appearances": 12,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T18:32:01.066034+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "automatización",
+      "family": "digital",
+      "source_appearances": 12,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-09T06:07:54.412674+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "macromedidores",
+      "family": "industrial",
+      "source_appearances": 12,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T06:13:53.258741+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "suscripción de software",
+      "family": "digital",
+      "source_appearances": 12,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-12T03:18:01.408109+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "electromecánica",
+      "family": "industrial",
+      "source_appearances": 14,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T05:47:53.337285+00:00",
+      "coverage_kinds": {
+        "observed_pass": 7,
+        "verified_empty_scope_observed": 39
+      }
+    },
+    {
+      "keyword": "analítica",
+      "family": "digital",
+      "source_appearances": 17,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-09T06:04:42.101530+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "antivirus",
+      "family": "digital",
+      "source_appearances": 18,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-12T03:36:44.966349+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "inteligencia artificial",
+      "family": "digital",
+      "source_appearances": 19,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-09T04:22:14.527575+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "sistema de información",
+      "family": "digital",
+      "source_appearances": 19,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T18:19:31.314896+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "ccm",
+      "family": "industrial",
+      "source_appearances": 21,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T00:41:45.988475+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "microsoft",
+      "family": "digital",
+      "source_appearances": 21,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-12T03:33:31.972619+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "mantenimiento de sistemas",
+      "family": "digital",
+      "source_appearances": 24,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-12T22:44:03.482390+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "cloud",
+      "family": "digital",
+      "source_appearances": 26,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-12T03:41:36.325195+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "tableros eléctricos",
+      "family": "industrial",
+      "source_appearances": 26,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T00:28:17.386715+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "licencias de software",
+      "family": "digital",
+      "source_appearances": 47,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-12T03:16:24.839898+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "base de datos",
+      "family": "digital",
+      "source_appearances": 54,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T18:27:41.243618+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "web",
+      "family": "digital",
+      "source_appearances": 54,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T18:16:07.503147+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "electromecánico",
+      "family": "industrial",
+      "source_appearances": 62,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-industrial-control-20261007",
+      "publication_from": "2026-04-07",
+      "publication_to": "2026-10-07",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T03:23:22.595205+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "informática",
+      "family": "digital",
+      "source_appearances": 78,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T18:17:52.617831+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "aplicación",
+      "family": "digital",
+      "source_appearances": 79,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T18:12:42.275409+00:00",
+      "coverage_kinds": {
+        "observed_pass": 7,
+        "verified_empty_scope_observed": 39
+      }
+    },
+    {
+      "keyword": "nube",
+      "family": "digital",
+      "source_appearances": 80,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-12T22:45:52.539399+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "soporte técnico",
+      "family": "digital",
+      "source_appearances": 104,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-12T22:42:21.405724+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "integración",
+      "family": "digital",
+      "source_appearances": 110,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-12T22:59:25.317935+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "erp",
+      "family": "digital",
+      "source_appearances": 144,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T18:05:13.744946+00:00",
+      "coverage_kinds": {
+        "observed_pass": 7,
+        "verified_empty_scope_observed": 39
+      }
+    },
+    {
+      "keyword": "tecnología",
+      "family": "digital",
+      "source_appearances": 145,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-12T23:01:23.576948+00:00",
+      "coverage_kinds": {
+        "observed_pass": 7,
+        "verified_empty_scope_observed": 39
+      }
+    },
+    {
+      "keyword": "rpa",
+      "family": "digital",
+      "source_appearances": 170,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-09T04:41:50.495625+00:00",
+      "coverage_kinds": {
+        "observed_pass": 7,
+        "verified_empty_scope_observed": 39
+      }
+    },
+    {
+      "keyword": "licencia",
+      "family": "digital",
+      "source_appearances": 234,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-12T03:29:44.954140+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "datos",
+      "family": "digital",
+      "source_appearances": 246,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-09T06:03:05.977896+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "suscripción",
+      "family": "digital",
+      "source_appearances": 248,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-12T03:31:53.477874+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "servidor",
+      "family": "digital",
+      "source_appearances": 252,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-12T22:48:04.433341+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "software",
+      "family": "digital",
+      "source_appearances": 265,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T17:57:42.363163+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "digital",
+      "family": "digital",
+      "source_appearances": 279,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-12T23:03:43.067910+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "plataforma",
+      "family": "digital",
+      "source_appearances": 336,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T18:03:17.250794+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "soporte",
+      "family": "digital",
+      "source_appearances": 339,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-12T22:54:16.089033+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "api",
+      "family": "digital",
+      "source_appearances": 505,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-08T18:30:24.273031+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    },
+    {
+      "keyword": "implementación",
+      "family": "digital",
+      "source_appearances": 698,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-12T22:57:32.534092+00:00",
+      "coverage_kinds": {
+        "observed_pass": 7,
+        "verified_empty_scope_observed": 39
+      }
+    },
+    {
+      "keyword": "ia",
+      "family": "digital",
+      "source_appearances": 23575,
+      "yield_class": "above_5",
+      "sweep_id": "inicial-digital-20261006",
+      "publication_from": "2026-04-06",
+      "publication_to": "2026-10-06",
+      "queries_complete": 46,
+      "queries_planned": 46,
+      "current_status_in_pg": "complete",
+      "current_error_codes": [],
+      "source_last_observed_at": "2026-10-09T06:00:59.766665+00:00",
+      "coverage_kinds": {
+        "verified_empty_scope_observed": 39,
+        "observed_pass": 7
+      }
+    }
+  ],
+  "evidence": [
+    "tmp/prod2-keyword-yield-20261020/tracking.private.json.gz",
+    "docs/prod2-industriales93-keyword-results-20261008.json",
+    "docs/prod2-software25-keyword-results-20261008.json",
+    "docs/sources/prod2-convenio-keywords.v3.json"
+  ],
+  "source_calls": 0,
+  "model_calls": 0,
+  "business_writes": 0,
+  "cleanup": {
+    "raw_snapshot_bytes_removed": 20102963,
+    "compressed_snapshot_bytes_retained": 1335563,
+    "net_logical_bytes_removed": 18767400,
+    "retained": "Snapshot comprimido con igualdad verificada y hashes; helpers e informe compactos. Sin cambios a entradas históricas."
+  }
+}

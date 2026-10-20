@@ -248,9 +248,10 @@ def _error_code(exc: Exception) -> str:
 
 
 class _Sweep:
-    def __init__(self, query, source_factory, emit, folder, stop_requested, max_pages, emit_many=None):
+    def __init__(self, query, source_factory, emit, folder, stop_requested, max_pages, emit_many=None,
+                 batch_fresh_pages=False):
         self.query, self.source_factory, self.emit, self.folder = query, source_factory, emit, folder
-        self.emit_many = emit_many
+        self.emit_many, self.batch_fresh_pages = emit_many, batch_fresh_pages
         self.stop_requested, self.max_pages = stop_requested, max_pages
         self.pages, self.offered, self.emit_true, self.emit_false, self.windows = 0, 0, 0, 0, 0
         self.cached_pages, self.http_searches, self.http_pages = 0, 0, 0
@@ -266,9 +267,9 @@ class _Sweep:
             raise SweepError("page_budget_exhausted")
         self.pages += 1
         self.cached_pages += int(cached)
-        if cached and self.emit_many is not None:
-            # Captures contain at most 100 rows. The callback retains the same
-            # per-row durable dedup operation, only combining its round trips.
+        if self.emit_many is not None and (cached or self.batch_fresh_pages):
+            # Captures contain at most 100 validated, already cached rows.
+            # Opt-in fresh batches share replay's page-level STOP boundary.
             items = [{"row": deepcopy(row), "query": deepcopy(capture.query),
                 "page_number": capture.page["number"], "observed_at": capture.observed_at.isoformat()}
                 for row in capture.rows]
@@ -454,7 +455,8 @@ class _Sweep:
 
 
 def sweep_query(query: dict, *, source_factory, emit, folder: Path | str,
-                stop_requested=False, max_pages: int = 10000, emit_many=None) -> dict:
+                stop_requested=False, max_pages: int = 10000, emit_many=None,
+                batch_fresh_pages: bool = False) -> dict:
     """Paginate one frozen keyword/object/year/publication window and emit rows.
 
     ``source_factory()`` yields an independent native Prod2HttpClient session.
@@ -462,8 +464,11 @@ def sweep_query(query: dict, *, source_factory, emit, folder: Path | str,
     discovery. Only ``stop_requested`` interrupts. No accepted/rejected decision,
     canonical discovery persistence, provider call or latest-snapshot guarantee is
     made here. Reusing the folder intentionally replays an existing observed pass.
-    Optional ``emit_many(items)`` replays cached pages only and must return one
-    strict bool per row in order; a failed batch never establishes coverage.
+    Optional ``emit_many(items)`` replays cached pages by default. Explicit
+    ``batch_fresh_pages=True`` also batches fresh pages after validation/cache
+    persistence and requires ``emit_many``. It must return one strict bool per
+    row in order; STOP is checked before/after each batch, and a failed batch
+    never establishes coverage or confirms an unknown applied prefix.
     """
     query = _query(deepcopy(query))
     if type(max_pages) is not int or max_pages <= 0:
@@ -472,6 +477,10 @@ def sweep_query(query: dict, *, source_factory, emit, folder: Path | str,
         raise ValueError("Invalid sweep callback")
     if emit_many is not None and not callable(emit_many):
         raise ValueError("Invalid batch sweep callback")
+    if type(batch_fresh_pages) is not bool:
+        raise ValueError("batch_fresh_pages must be a boolean")
+    if batch_fresh_pages and emit_many is None:
+        raise ValueError("Fresh page batching requires emit_many")
     folder = Path(folder)
     if folder.is_symlink():
         raise SweepError("unsafe_private_cache")
@@ -480,7 +489,8 @@ def sweep_query(query: dict, *, source_factory, emit, folder: Path | str,
     if root.is_symlink():
         raise SweepError("unsafe_private_cache")
     os.chmod(root, 0o700)
-    runner = _Sweep(query, source_factory, emit, root, stop_requested, max_pages, emit_many)
+    runner = _Sweep(query, source_factory, emit, root, stop_requested, max_pages, emit_many,
+                    batch_fresh_pages)
     lock_path = root / ".lock"
     fd = os.open(lock_path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     complete, owned = False, False
