@@ -123,7 +123,9 @@ def production_settings(*, ssh_host: str, ssh_key: str | Path):
     """Read credentials only into memory; never start retired workers or model jobs."""
     ssh = ["ssh", "-i", str(Path(ssh_key).resolve()), "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
            "-o", "ServerAliveInterval=20", "-o", "ServerAliveCountMax=3"]
-    remote = _remote_environment(ssh, ssh_host, "docker-worker-llm-1")
+    # Connection settings belong to the active application, not retired queue
+    # containers. Their removal must not disable either reader's PG transport.
+    remote = _remote_environment(ssh, ssh_host, "docker-web-1")
     if not remote.get("DATABASE_URL"):
         raise RuntimeError("Production database URL missing")
     with socket.socket() as candidate:
@@ -161,12 +163,10 @@ def production_staging_settings(*, ssh_host: str, ssh_key: str | Path):
     """
     ssh = ["ssh", "-i", str(Path(ssh_key).resolve()), "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
            "-o", "ServerAliveInterval=20", "-o", "ServerAliveCountMax=3"]
-    remote = _remote_environment(ssh, ssh_host, "docker-worker-llm-1")
+    remote = _remote_environment(ssh, ssh_host, "docker-web-1")
     if not remote.get("DATABASE_URL"):
         raise RuntimeError("Production database URL missing")
     redis_url = remote.get("REDIS_URL")
-    if not redis_url:
-        redis_url = _remote_environment(ssh, ssh_host, "docker-web-1").get("REDIS_URL")
     if not redis_url:
         raise RuntimeError("Production Redis URL missing")
     address = _redis_bridge(ssh, ssh_host, redis_url)

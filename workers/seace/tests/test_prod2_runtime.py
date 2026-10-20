@@ -51,7 +51,7 @@ def test_malformed_remote_environment_is_a_redacted_error(monkeypatch):
     monkeypatch.setattr(runtime.subprocess, "run", lambda *args, **kwargs:
                         SimpleNamespace(returncode=0, stdout="synthetic-do-not-emit-password"))
     with pytest.raises(RuntimeError) as error:
-        runtime._remote_environment(["ssh"], "synthetic-host", "docker-worker-llm-1")
+        runtime._remote_environment(["ssh"], "synthetic-host", "docker-web-1")
     assert "synthetic-do-not-emit-password" not in str(error.value)
 
 
@@ -72,7 +72,7 @@ class FakeTunnel:
         self.events.append("kill")
 
 
-def runtime_fixture(monkeypatch, *, redis_in_worker=True, failed=False):
+def runtime_fixture(monkeypatch, *, redis_configured=True, failed=False):
     events, commands, connects = [], [], []
     def inspect(command, **kwargs):
         commands.append(command)
@@ -80,9 +80,9 @@ def runtime_fixture(monkeypatch, *, redis_in_worker=True, failed=False):
         if ".NetworkSettings.Networks" in tail:
             value = {"bridge": {"Aliases": ["redis", "docker-redis-1"], "IPAddress": "172.19.0.2"}}
         elif "docker-web-1" in tail:
-            value = ["REDIS_URL=" + REDIS]
+            value = ["DATABASE_URL=" + PG] + (["REDIS_URL=" + REDIS] if redis_configured else [])
         else:
-            value = ["DATABASE_URL=" + PG] + (["REDIS_URL=" + REDIS] if redis_in_worker else [])
+            pytest.fail("Connection settings must not depend on retired worker containers")
         return SimpleNamespace(returncode=0, stdout=json.dumps(value))
     def launch(command, **kwargs):
         commands.append(command)
@@ -103,9 +103,8 @@ def runtime_fixture(monkeypatch, *, redis_in_worker=True, failed=False):
     return events, commands, connects
 
 
-@pytest.mark.parametrize("redis_in_worker", [True, False])
-def test_staging_settings_builds_two_private_forwards_and_closes_them(monkeypatch, redis_in_worker):
-    events, commands, connects = runtime_fixture(monkeypatch, redis_in_worker=redis_in_worker)
+def test_staging_settings_builds_two_private_forwards_and_closes_them(monkeypatch):
+    events, commands, connects = runtime_fixture(monkeypatch)
     with runtime.production_staging_settings(ssh_host="synthetic-host", ssh_key="synthetic-key") as (settings, url):
         assert url == runtime.redis_tunnel_url(REDIS, 16379)
         assert settings.database_url == runtime.tunnel_url(PG, 15432)
@@ -118,7 +117,17 @@ def test_staging_settings_builds_two_private_forwards_and_closes_them(monkeypatc
     assert all("synthetic%40password" not in str(command) for command in commands)
     assert connects == [("127.0.0.1", 15432), ("127.0.0.1", 16379)]
     assert events == ["terminate", ("wait", 10)]
-    assert any("docker-web-1" in command[-1] for command in commands) is (not redis_in_worker)
+    assert sum("docker-web-1" in command[-1] for command in commands) == 1
+    assert not any("docker-worker-" in str(command) for command in commands)
+
+
+def test_missing_redis_configuration_stops_before_opening_a_tunnel(monkeypatch):
+    events, commands, connects = runtime_fixture(monkeypatch, redis_configured=False)
+    with pytest.raises(RuntimeError, match="Production Redis URL missing"):
+        with runtime.production_staging_settings(ssh_host="synthetic-host", ssh_key="synthetic-key"):
+            pytest.fail("Missing configuration must never start a reader")
+    assert events == connects == []
+    assert len(commands) == 1 and "docker-web-1" in commands[0][-1]
 
 
 def test_failed_tunnel_is_closed_before_settings_are_yielded(monkeypatch):
@@ -143,7 +152,7 @@ def test_allocated_tunnel_ports_are_distinct_local_ephemeral_ports():
 
 
 def test_existing_pg_only_runtime_keeps_its_contract_and_closes_private_tunnel(monkeypatch):
-    events, commands, connects = runtime_fixture(monkeypatch)
+    events, commands, connects = runtime_fixture(monkeypatch, redis_configured=False)
     with runtime.production_settings(ssh_host="synthetic-host", ssh_key="synthetic-key") as settings:
         parsed = urlsplit(settings.database_url)
         assert parsed.hostname == "127.0.0.1" and parsed.password == urlsplit(PG).password
@@ -153,4 +162,6 @@ def test_existing_pg_only_runtime_keeps_its_contract_and_closes_private_tunnel(m
     assert len(commands) == 2 and "127.0.0.1:" + str(parsed.port) + ":127.0.0.1:5432" in commands[-1]
     assert "ServerAliveInterval=20" in commands[-1] and "ServerAliveCountMax=3" in commands[-1]
     assert not any("NetworkSettings" in str(command) for command in commands)
+    assert "docker-web-1" in commands[0][-1]
+    assert not any("docker-worker-" in str(command) for command in commands)
     assert events == ["terminate", ("wait", 10)]

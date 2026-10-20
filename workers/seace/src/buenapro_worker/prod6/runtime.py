@@ -13,11 +13,13 @@ import os
 import signal
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import ExitStack
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import httpx
+import psycopg
 
 from buenapro_worker.db.connection import connect
 from buenapro_worker.jobs.derive_summary import derive_summary_job
@@ -61,6 +63,16 @@ def write_state(path: Path, value: dict[str, Any]) -> None:
         stream.flush()
         os.fsync(stream.fileno())
     os.replace(temporary, path)
+
+
+def failure_diagnostic(error: Exception) -> dict[str, str]:
+    """Keep structured failure codes without provider messages or connection secrets."""
+    diagnostic = {"error_type": type(error).__name__}
+    sqlstate = error.sqlstate if isinstance(error, psycopg.Error) else None
+    if (isinstance(sqlstate, str) and len(sqlstate) == 5
+            and all(character in "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ" for character in sqlstate)):
+        diagnostic["sqlstate"] = sqlstate
+    return diagnostic
 
 
 class ScopedRepository(JobRepository):
@@ -275,30 +287,46 @@ def run(settings: Settings, *, profile_id: str, receipt_dir: Path, once: bool = 
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     worker_id = f"{NAMESPACE}:{profile_id}"
-    with connect(settings) as conn:
-        conn.commit()
-        conn.autocommit = True
-        locked = conn.execute("SELECT pg_try_advisory_lock(%s,%s) AS locked", LOCK).fetchone()
-        if not locked["locked"]:
-            raise RuntimeError("Another PROD6 coordinator holds the lock")
-        # Recovery owns only this namespace, after exclusive ownership is established.
-        with conn.transaction():
-            conn.execute("""UPDATE worker_jobs SET status='pending',claimed_by=NULL,claimed_at=NULL
-              WHERE status='claimed' AND claimed_by=%s AND payload->>'source_runtime'=%s
-              AND payload->>'scope_profile_id'=%s""", (worker_id, NAMESPACE, profile_id))
+    with ExitStack() as connections:
+        startup_phase = "database_connect"
+        try:
+            conn = connections.enter_context(connect(settings))
+            conn.commit()
+            conn.autocommit = True
+            startup_phase = "coordinator_lock"
+            locked = conn.execute("SELECT pg_try_advisory_lock(%s,%s) AS locked", LOCK).fetchone()
+            if not locked["locked"]:
+                raise RuntimeError("Another PROD6 coordinator holds the lock")
+            startup_phase = "claim_recovery"
+            # Recovery owns only this namespace, after exclusive ownership is established.
+            with conn.transaction():
+                conn.execute("""UPDATE worker_jobs SET status='pending',claimed_by=NULL,claimed_at=NULL
+                  WHERE status='claimed' AND claimed_by=%s AND payload->>'source_runtime'=%s
+                  AND payload->>'scope_profile_id'=%s""", (worker_id, NAMESPACE, profile_id))
+        except psycopg.Error as error:
+            failed_at = datetime.now(timezone.utc)
+            startup = {"runtime": NAMESPACE, "profile_id": profile_id,
+                "status": "attention_required", "phase": startup_phase,
+                "failed_at": failed_at.isoformat(), **failure_diagnostic(error)}
+            # Without a live exclusive lock, state.json may belong to another coordinator.
+            write_state(receipt_dir / f"startup-{failed_at.strftime('%Y%m%dT%H%M%S%f')}-{os.getpid()}.json",
+                        startup)
+            print(json.dumps(startup), flush=True)
+            return 2
         while not stopping:
             batch_id = f"prod6-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}-{os.getpid()}"
             repo = ScopedRepository(conn, profile_id=profile_id, batch_id=batch_id)
             state: dict[str, Any] = {"runtime": NAMESPACE, "profile_id": profile_id,
                 "batch_id": batch_id, "started_at": datetime.now(timezone.utc).isoformat(),
-                "status": "sweeping", "done": {}, "suppressed": {},
+                "status": "sweeping", "phase": "profile_check", "done": {}, "suppressed": {},
                 "parallelism": {"http": http_workers, "io": io_workers, "paid_reading": 1}}
             write_state(receipt_dir / "state.json", state)
-            if not profile_enabled(repo):
-                state["status"] = "profile_paused"
-                write_state(receipt_dir / "state.json", state)
-                return 2
             try:
+                if not profile_enabled(repo):
+                    state["status"] = "profile_paused"
+                    write_state(receipt_dir / "state.json", state)
+                    return 2
+                state["phase"] = "source_discovery"
                 source_started = time.monotonic()
                 try:
                     with conn.transaction():
@@ -323,6 +351,7 @@ def run(settings: Settings, *, profile_id: str, receipt_dir: Path, once: bool = 
                     continue
                 state["source_seconds"] = round(time.monotonic() - source_started, 3)
                 state["status"] = "processing"
+                state["phase"] = "processing"
                 write_state(receipt_dir / "state.json", state)
                 while not stopping:
                     if not profile_enabled(repo):
@@ -451,7 +480,9 @@ def run(settings: Settings, *, profile_id: str, receipt_dir: Path, once: bool = 
                 write_state(receipt_dir / "state.json", state)
                 print(json.dumps(state), flush=True)
             except Exception as error:
-                state.update(status="attention_required", error_type=type(error).__name__)
+                state.update(status="attention_required", failed_at=datetime.now(timezone.utc).isoformat(),
+                             **failure_diagnostic(error))
+                write_state(receipt_dir / f"{batch_id}.json", state)
                 write_state(receipt_dir / "state.json", state)
                 print(json.dumps(state), flush=True)
                 return 2

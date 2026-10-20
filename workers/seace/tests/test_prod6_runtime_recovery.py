@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import httpx
+import psycopg
 import pytest
 
 from buenapro_worker.prod6 import runtime
@@ -76,6 +77,116 @@ def offline_runtime(monkeypatch, tmp_path):
     return SimpleNamespace(conn=conn, connect=connect, poll=poll, dispatch=dispatch,
         execute_io=execute_io, claim=claim, wait=wait, states=states, run=run,
         stop=stop, queues=queues, folder=tmp_path)
+
+
+@pytest.mark.parametrize("error", [psycopg.OperationalError(SECRET),
+                                  psycopg.errors.AdminShutdown(SECRET)])
+def test_initial_profile_db_failure_is_recorded_before_source_or_paid_work(
+        offline_runtime, monkeypatch, capsys, error):
+    h = offline_runtime
+    enabled = MagicMock(side_effect=error)
+    monkeypatch.setattr(runtime, "profile_enabled", enabled)
+    assert h.run(once=False) == 2
+    enabled.assert_called_once()
+    h.connect.assert_called_once()
+    h.poll.assert_not_called()
+    h.claim.assert_not_called()
+    h.dispatch.assert_not_called()
+    h.execute_io.assert_not_called()
+    h.wait.assert_not_called()
+    state = json.loads((h.folder / "state.json").read_text())
+    assert state["status"] == "attention_required"
+    assert state["phase"] == "profile_check"
+    assert state["error_type"] == type(error).__name__
+    assert state["failed_at"] >= state["started_at"]
+    if error.sqlstate:
+        assert state["sqlstate"] == "57P01"
+    else:
+        assert "sqlstate" not in state
+    assert json.loads((h.folder / f"{state['batch_id']}.json").read_text()) == state
+    assert not (h.folder / "readings").exists()
+    assert SECRET not in json.dumps(h.states) + capsys.readouterr().out
+
+
+@pytest.mark.parametrize("failure_at,phase", [
+    ("connect", "database_connect"), ("setup", "database_connect"),
+    ("lock", "coordinator_lock"), ("recovery", "claim_recovery"),
+])
+def test_startup_db_failure_preserves_other_coordinator_state_without_retry(
+        offline_runtime, monkeypatch, capsys, failure_at, phase):
+    h = offline_runtime
+    active_state = b'{"status":"processing","owner":"another-coordinator"}\n'
+    (h.folder / "state.json").write_bytes(active_state)
+    error = psycopg.errors.AdminShutdown(SECRET)
+    if failure_at == "connect":
+        h.connect.return_value.__enter__.side_effect = error
+    elif failure_at == "setup":
+        h.conn.commit.side_effect = error
+    elif failure_at == "lock":
+        h.conn.execute.side_effect = error
+    else:
+        cursor = MagicMock()
+        cursor.fetchone.return_value = {"locked": True}
+        h.conn.execute.side_effect = [cursor, error]
+    enabled = MagicMock()
+    monkeypatch.setattr(runtime, "profile_enabled", enabled)
+    assert h.run(once=False) == 2
+    h.connect.assert_called_once()
+    enabled.assert_not_called()
+    h.poll.assert_not_called()
+    h.claim.assert_not_called()
+    h.dispatch.assert_not_called()
+    h.execute_io.assert_not_called()
+    h.wait.assert_not_called()
+    assert (h.folder / "state.json").read_bytes() == active_state
+    receipts = list(h.folder.glob("startup-*.json"))
+    assert len(receipts) == 1
+    state = json.loads(receipts[0].read_text())
+    assert state["status"] == "attention_required" and state["phase"] == phase
+    assert state["sqlstate"] == "57P01"
+    assert state["error_type"] == "AdminShutdown" and state["failed_at"]
+    assert not (h.folder / "readings").exists()
+    assert SECRET not in json.dumps(h.states) + capsys.readouterr().out
+
+
+def test_db_failure_after_a_completed_cycle_never_polls_or_claims_again(
+        offline_runtime, monkeypatch):
+    h = offline_runtime
+    enabled = MagicMock(side_effect=[True, True, psycopg.OperationalError(SECRET)])
+    monkeypatch.setattr(runtime, "profile_enabled", enabled)
+    assert h.run(once=False) == 2
+    assert any(state["status"] == "sweep_drained" for state in h.states)
+    assert h.states[-1]["status"] == "attention_required"
+    assert h.states[-1]["phase"] == "profile_check"
+    assert h.poll.call_count == 1 and h.wait.call_count == 1
+    h.connect.assert_called_once()
+    h.dispatch.assert_not_called()
+    h.execute_io.assert_not_called()
+
+
+def test_lock_contention_still_blocks_recovery_and_keeps_existing_state(offline_runtime):
+    h = offline_runtime
+    h.conn.execute.return_value.fetchone.return_value = {"locked": False}
+    active_state = b'{"status":"processing","owner":"another-coordinator"}\n'
+    (h.folder / "state.json").write_bytes(active_state)
+    with pytest.raises(RuntimeError, match="Another PROD6 coordinator"):
+        h.run(once=False)
+    assert h.conn.execute.call_count == 1
+    h.poll.assert_not_called()
+    h.claim.assert_not_called()
+    h.dispatch.assert_not_called()
+    assert (h.folder / "state.json").read_bytes() == active_state
+    assert not list(h.folder.glob("startup-*.json"))
+
+
+@pytest.mark.parametrize("code", [SECRET, "57p01", "57P01\n", "５７Ｐ０１", None])
+def test_failure_diagnostic_discards_invalid_sqlstate_and_private_messages(code):
+    class InvalidStateError(psycopg.OperationalError):
+        sqlstate = code
+
+    assert runtime.failure_diagnostic(InvalidStateError(SECRET)) == {
+        "error_type": "InvalidStateError",
+    }
 
 
 @pytest.mark.parametrize("status", [408, 425, 429, 500, 502, 503, 504])
