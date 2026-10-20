@@ -1,0 +1,246 @@
+{
+  "date": "2026-10-20",
+  "scope": "Offline analysis of the completed PROD2 listing mapping; publication 2026-10-04 through 2026-10-20, goods/services, convocatoria years 2004-2026.",
+  "source_report_sha256": "381b5b942f90aac3714328842db137876b7644a2f077755ce86a0481394ef9cf",
+  "plan_sha256": "13ed875c36abf097262c817141bf6c07662232f96afdefb4b1e7370a52b4ffd4",
+  "all_mapped_ids": 1736,
+  "count_unit": "convocation_id, deduplicated within each group; groups must not be added without union",
+  "industrial_keyword_candidates": {
+    "original_93_keywords": {
+      "unique_convocation_ids": 16,
+      "class_counts": {
+        "new_id": 11,
+        "known_baseline_missing": 5
+      },
+      "ids": [
+        1047065,
+        1047224,
+        1047247,
+        1047582,
+        1047763,
+        1048156,
+        1048163,
+        1048194,
+        1048369,
+        1048805,
+        1049539,
+        1049583,
+        1049746,
+        1050007,
+        1050027,
+        1050151
+      ]
+    },
+    "variant_17_keywords": {
+      "unique_convocation_ids": 17,
+      "class_counts": {
+        "new_id": 15,
+        "known_baseline_missing": 2
+      },
+      "ids": [
+        1047330,
+        1047341,
+        1047463,
+        1047675,
+        1047767,
+        1047891,
+        1048026,
+        1048088,
+        1048151,
+        1048373,
+        1049069,
+        1049880,
+        1050007,
+        1050048,
+        1050058,
+        1050096,
+        1050207
+      ]
+    },
+    "overlap_ids": [
+      1050007
+    ],
+    "union": {
+      "unique_convocation_ids": 32,
+      "class_counts": {
+        "new_id": 25,
+        "known_baseline_missing": 7
+      },
+      "ids": [
+        1047065,
+        1047224,
+        1047247,
+        1047330,
+        1047341,
+        1047463,
+        1047582,
+        1047675,
+        1047763,
+        1047767,
+        1047891,
+        1048026,
+        1048088,
+        1048151,
+        1048156,
+        1048163,
+        1048194,
+        1048369,
+        1048373,
+        1048805,
+        1049069,
+        1049539,
+        1049583,
+        1049746,
+        1049880,
+        1050007,
+        1050027,
+        1050048,
+        1050058,
+        1050096,
+        1050151,
+        1050207
+      ]
+    },
+    "interpretation": "32 keyword candidates, not 32 verified industrial opportunities or an exhaustive sector census. Relevant industrial titles also exist outside these keyword lanes."
+  },
+  "precise_ai_keyword_candidates": {
+    "keywords": [
+      "inteligencia artificial",
+      "chatbot",
+      "llm",
+      "agentes de ia",
+      "agentes ia",
+      "aprendizaje automático",
+      "machinelearning",
+      "asistentes virtuales"
+    ],
+    "unique_convocation_ids": 3,
+    "class_counts": {
+      "new_id": 3
+    },
+    "ids": [
+      1047579,
+      1048101,
+      1050293
+    ]
+  },
+  "explicit_ai_title_evidence": {
+    "count": 1,
+    "id": 1047579,
+    "description": "Servicio de suscripción al software del asistente integral - Chatbot con inteligencia artificial en la nube en modo PaaS de la marca AIVO",
+    "buyer": "REGISTRO NACIONAL DE IDENTIFICACION Y ESTADO CIVIL",
+    "explicit_agent_keyword_matches": 0,
+    "note": "RENIEC subscription to AIVO chatbot. Not evidence of custom agent development, availability to DIN or current open status."
+  },
+  "automation_keyword_candidates": {
+    "keywords": [
+      "automatización",
+      "automatización de procesos",
+      "rpa"
+    ],
+    "unique_convocation_ids": 11,
+    "class_counts": {
+      "new_id": 10,
+      "known_baseline_missing": 1
+    },
+    "ids": [
+      1047199,
+      1048193,
+      1048501,
+      1048854,
+      1049347,
+      1049760,
+      1049927,
+      1049949,
+      1050013,
+      1050110,
+      1050217
+    ]
+  },
+  "automation_title_review": {
+    "process_consultancy": {
+      "id": 1047199,
+      "classification": "known_baseline_missing",
+      "title": "CONTRATACIÓN DE CONSULTORÍA PARA LA AUTOMATIZACIÓN DEL ACONDICIONAMIENTO DE LA BASE GRÁFICA PARA LA CONSOLIDACIÓN DEL CATASTRO FISCAL"
+    },
+    "medical_automated_equipment_ids": [
+      1047233,
+      1047876,
+      1047921,
+      1048449,
+      1048655,
+      1049192,
+      1050131
+    ],
+    "agroindustrial_lab_automated_equipment": {
+      "id": 1047519,
+      "title": "ADQUISICIÓN DE UN (01) SISTEMA DE ANÁLISIS DE LABORATORIO AUTOMATIZADO PARA EL CITE AGROINDUSTRIAL MAJES, EN EL MARCO DEL PROYECTO: FORTALECIMIENTO DE LA COMPETITIVIDAD TÉCNICA DE LAS UNIDADES PRODUCTIVAS DE LA CADENA AGROINDUSTRIAL DE AREQUIPA A TRAVÉS DE SERVICIOS DE CAPACITACIÓN Y DIFUSIÓN TECNOL"
+    },
+    "note": "An automated analyzer or medical supply does not establish a software/process-automation project or DIN fit."
+  },
+  "known_lexical_noise": {
+    "ia": {
+      "query_matches": 1633,
+      "interpretation": "Short substring appears inside many unrelated terms, e.g. vigilancia. Not 1,633 AI projects."
+    },
+    "llm": {
+      "ids": [
+        1048101,
+        1050293
+      ],
+      "interpretation": "Both titles contain company name ILLMU; not language-model projects."
+    },
+    "rpa": {
+      "ids": [
+        1048193,
+        1048501,
+        1048854,
+        1049347,
+        1049760,
+        1049927,
+        1049949,
+        1050013,
+        1050110,
+        1050217
+      ],
+      "interpretation": "Carpas, locations and CORPAC; no explicit robotic-process-automation project in these titles."
+    },
+    "ccm": {
+      "ids": [
+        1048163,
+        1050151
+      ],
+      "interpretation": "LLACHOCCMAYO, not motor control center."
+    },
+    "plc": {
+      "ids": [
+        1048194,
+        1049539
+      ],
+      "interpretation": "HPLC chromatography software and COPLCAS locality, not evidence of PLC automation."
+    },
+    "scada": {
+      "ids": [
+        1050007
+      ],
+      "interpretation": "CASCADA; the same case has a genuine electromechanical title but does not establish SCADA."
+    }
+  },
+  "limits": [
+    "Title/keyword evidence only; no new PDF reading or semantic approval.",
+    "Current eligibility, closure dates, procurement modality and company requirements remain unchecked.",
+    "The industrial candidate union is not exhaustive; no regex alone establishes the full true sector population.",
+    "No JEV rejection rate or downstream final billing is inferred. The previous cost estimate assumed processing every case; actual selected workload must be counted after filters."
+  ],
+  "actions": {
+    "source_queries": 0,
+    "provider_inference_calls": 0,
+    "postgres_queries_or_mutations": 0,
+    "redis_actions": 0,
+    "worker_restarts": 0,
+    "runtime_changes": 0,
+    "temporary_files_created": 0,
+    "cleanup_bytes_freed": 0,
+    "pending_inputs_preserved": true
+  }
+}
