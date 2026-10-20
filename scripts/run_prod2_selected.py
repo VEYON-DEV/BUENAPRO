@@ -101,6 +101,9 @@ def parser():
                    help="Explicit ID mode: complete metadata-only mapping handoff; never repeat its sweep")
     p.add_argument("--selection", type=Path, help="Frozen prod2_handoff_selection_v1 JSON")
     p.add_argument("--selection-sha256", help="Exact SHA256 of the approved selection file")
+    p.add_argument("--runtime-recovery", type=Path,
+                   help="ID mode only: externally reviewed runtime compatibility receipt; never rewrite the frozen manifest")
+    p.add_argument("--runtime-recovery-sha256", help="Exact SHA256 of the runtime recovery receipt")
     p.add_argument("--max-new-documents", type=int,
                    help="ID mode only: cumulative unique official sources/archive members, separate from LLM1 calls")
     p.add_argument("--selector-high", type=float, default=80)
@@ -164,6 +167,15 @@ def execution_policy(args):
         value.update(max_new_documents=args.max_new_documents,
             candidate_limit_unit="cumulative_processed_ID_admissions", limit_expansion_requires_readback=True)
     return value
+
+
+def runtime_recovery_report_context(args, reader_folder):
+    """Audit approved running code separately from immutable paid/source inputs."""
+    if getattr(args, "runtime_recovery", None) is None:
+        return None
+    from buenapro_worker.prod2.handoff_runtime_recovery import report_context
+    return report_context(args.runtime_recovery, args.runtime_recovery_sha256,
+        root=ROOT, reader_folder=reader_folder)
 
 
 def completion_exit_code(report, policy):
@@ -405,6 +417,12 @@ def requested_archive_policy(args):
 
 def plan(args):
     from buenapro_worker.prod2.document_previews import parse_preview_anchor_specs, ANCHORED_PREVIEW_POLICY
+    recovery_path, recovery_sha = getattr(args, "runtime_recovery", None), getattr(args, "runtime_recovery_sha256", None)
+    if (recovery_path is None) != (recovery_sha is None):
+        raise ValueError("Runtime recovery requires both receipt path and SHA256")
+    if recovery_path is not None and (not getattr(args, "mapping_handoff", None)
+            or not isinstance(recovery_sha, str) or not re.fullmatch(r"[0-9a-f]{64}", recovery_sha)):
+        raise ValueError("Runtime recovery requires explicit ID import and a valid receipt SHA256")
     anchors = parse_preview_anchor_specs(getattr(args, "preview_anchor", []))
     if anchors and (not args.document_previews or args.selector_policy != "v3"):
         raise ValueError("Explicit preview anchors require document previews and selector V3")
@@ -445,8 +463,9 @@ def plan(args):
             raise ValueError("ID import cannot sweep, preflight source, adopt an old queue or remove finite caps")
         if not args.preserve_prior_readings or not 1 <= (args.max_new_documents or 0) <= 100000:
             raise ValueError("ID import requires historical preservation and a finite document ceiling")
-        from buenapro_worker.prod2.handoff_selection import load_selection
-        imported = load_selection(args.mapping_handoff, args.selection, args.selection_sha256, root=ROOT)
+        from buenapro_worker.prod2.handoff_runtime_recovery import load_selection
+        imported = load_selection(args.mapping_handoff, args.selection, args.selection_sha256, root=ROOT,
+            recovery_path=recovery_path, recovery_sha256=recovery_sha, reader_folder=args.folder)
         if args.folder.resolve() == args.mapping_handoff.resolve().parent:
             raise ValueError("ID import requires a new reading folder, not the mapping folder")
         if args.folder.exists() and not (args.folder / "manifest.private.json").exists() and any(args.folder.iterdir()):
@@ -1417,8 +1436,9 @@ def main():
         published_from=requested["from_date"], published_to=requested["to_date"])
     handoff_import = None
     if requested.get("handoff_selection"):
-        from buenapro_worker.prod2.handoff_selection import load_selection
-        handoff_import = load_selection(args.mapping_handoff, args.selection, args.selection_sha256, root=ROOT)
+        from buenapro_worker.prod2.handoff_runtime_recovery import load_selection
+        handoff_import = load_selection(args.mapping_handoff, args.selection, args.selection_sha256, root=ROOT,
+            recovery_path=args.runtime_recovery, recovery_sha256=args.runtime_recovery_sha256, reader_folder=args.folder)
         if handoff_import["binding"] != requested["handoff_selection"]:
             raise ValueError("ID handoff inputs changed while planning")
     resume_binding = embedding_resume_binding(requested, args.folder)
@@ -1663,6 +1683,9 @@ def main():
                         "elapsed_this_execution_seconds": time.monotonic() - began,
                         "search_workers": args.search_workers, "processing_workers": args.processing_workers,
                         "model_workers": args.model_workers, "records": outcomes}
+                    recovery_context = runtime_recovery_report_context(args, folder)
+                    if recovery_context is not None:
+                        report["runtime_recovery"] = recovery_context
                     if resume_binding is not None:
                         report["source_resume"] = {"policy": resume_binding["version"],
                             "source_folder": resume_binding["source_folder"],

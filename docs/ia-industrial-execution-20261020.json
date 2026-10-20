@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "status": "running_pilot",
+  "status": "technical_recovery_preparing",
   "scope": "DIN: IA/automatización e industrial; lectura por IDs del mapeo PROD2 cerrado",
   "selection": {
     "ids": 157,
@@ -67,7 +67,7 @@
     "actual157_dry_run": true,
     "runtime_embedding_schema": "fresh verified; earlier nonexistent table probe corrected in schema-preflight receipt",
     "production_writes_so_far": "Only0042 CHECK/registry and normal selected reader; no unrelated services/data changes",
-    "new_paid_calls_so_far": 0,
+    "new_paid_calls_so_far": 4,
     "focused_final": {
       "passed": 169,
       "seconds": 1.93,
@@ -75,18 +75,32 @@
     },
     "final_matching_helper": {
       "path": "tmp/ia-industrial-execution-20261020/activation/verify-matching-final.private.py",
-      "sha256": "6664a2375fe4b3f411cc2413f2abe355a6dd88c858eaf3e58823eb8bbd1717a3",
+      "sha256": "2debceb680a0934878265826c6e2335f64d591ab852786329c026d6eea92573a",
       "offline_smoke": "positive, zero results and five negatives; no real PG",
       "runtime_not_changed": true,
       "executed_against_production": false
-    }
+    },
+    "runtime_recovery_offline": {
+      "passed": 4286,
+      "skipped": 67,
+      "seconds": 110.64,
+      "external_calls": 0,
+      "log_sha256": "321b3df8df9660f1f466c3e1c7456086da8c09d53d692a9c23f00e1763f40c9a"
+    },
+    "runtime_recovery_principal_focused": {
+      "passed": 165,
+      "seconds": 3.64,
+      "log_sha256": "bc25aa88c37f3ecb5d52dce6712d5ca2819b8afa2f3d1a8f88ae80f508c1ecdb"
+    },
+    "runtime_recovery_independent_review": "approved; offline only",
+    "paid_calls_cutoff_utc": "2026-10-20T15:29:40.326942+00:00"
   },
   "costs": {
-    "new_known_usd": "0",
+    "new_known_usd": "0.000295176",
     "new_uncertain_attempts": 0,
     "historical_uncertain_attempts": "preserved, outside this lot; never set to zero",
     "limits_note": "Call/document limits are finite; not an implemented hard USD cap. No credit purchase or spend-limit changes authorized.",
-    "cutoff_utc": "2026-10-20T15:16:29.275997+00:00",
+    "cutoff_utc": "2026-10-20T15:29:40.326942+00:00",
     "final": false
   },
   "pending": [
@@ -96,11 +110,13 @@
     "PROD6 legitimate source access recovery"
   ],
   "cleanup": {
-    "freed_bytes": 112368,
+    "freed_bytes": 211674807,
     "components": {
       "preparation_agent_bytecode": 59928,
       "principal_temporary_helpers": 22989,
-      "matching_audit_agent_bytecode": 29451
+      "matching_audit_agent_bytecode": 29451,
+      "recovery_test_fixture_owner": 182052,
+      "principal_recovery_synthetic_tests": 211380387
     },
     "retained": "Active PDFs/OCR/cache, selected IDs, source mapping cache, unique receipts, uncertainty/history and48holds",
     "active_inputs_removed": false
@@ -122,40 +138,80 @@
     "paid_retries": 0
   },
   "latest_cut": {
-    "at_utc": "2026-10-20T15:16:29.275997+00:00",
-    "chain_status": "running_child",
+    "at_utc": "2026-10-20T15:29:40.326942+00:00",
+    "chain_status": "attention_required",
     "stage": "reader-001",
     "outcomes": {
-      "total": 2,
+      "total": 6,
       "statuses": {
-        "llm1_complete": 1,
-        "closed_without_reading": 1
+        "closed_without_reading": 2,
+        "needs_review": 1,
+        "llm1_complete": 2,
+        "opening_not_confirmed": 1
       },
       "ids": [
+        1047521,
+        1048448,
+        1047247,
         1047199,
-        1047579
+        1047579,
+        1050105
       ],
-      "llm1_preserved": 1,
+      "llm1_preserved": 2,
       "matching_eligible": 0
     },
     "pg": {
-      "coordinator_locks": 1,
-      "own_run_members": 0,
-      "member_ids": []
+      "coordinator_locks": 0,
+      "own_run_members": 3,
+      "member_ids": [
+        1047330,
+        1048448,
+        1049583
+      ]
     },
     "redis": {
-      "queued": 153,
-      "pending": 2,
-      "payloads": 155,
+      "queued": 151,
+      "pending": 0,
+      "payloads": 151,
       "seen": 157
     },
     "dispatch_stop_marker": false
   },
   "followup": {
     "automation_id": "completar-lote-din-ia-e-industrial",
-    "status": "ACTIVE",
+    "status": "PAUSED_during_active_diagnosis",
     "interval_minutes": 15,
     "purpose": "Watch authorized long-running reader/matching to verified closure; quiet during healthy progress",
     "old_mapping_followup": "remains PAUSED"
+  },
+  "local_contract_incident": {
+    "at_utc": "2026-10-20T15:33:58.552313+00:00",
+    "status": "controlled_stop_local_contract_bug_recovery_preparing",
+    "original_error_type": "AttributeError",
+    "original_error_id": 1048448,
+    "diagnosis": "Real EmbeddingStore reads model/dimensions/price_per_million before any vector claim/send; GuardedClient lacked them. Reproduced offline. Original sanitized outcome has no attribute name or traceback.",
+    "fix": "Three explicit read-only delegated properties; provider payload/callback/close unchanged",
+    "validation": {
+      "principal_focused_passed": 124,
+      "seconds": 2.88,
+      "external_calls": 0
+    },
+    "health_receipt": "activation/health-20261020T152943Z.private.json",
+    "health_sha256": "1bc17e804195244f41fd3ae5df1ea475e3c0db9248c53dad0d6055a4267abab3",
+    "coordinators_after_stop": 0,
+    "redis_after_stop": {
+      "queued": 151,
+      "pending": 0,
+      "payloads": 151,
+      "seen": 157
+    },
+    "known_cost_usd": 0.000295176,
+    "new_uncertain_attempts": 0,
+    "new_llm1_calls": 0,
+    "new_embedding_calls": 0,
+    "source_or_provider_retries": 0,
+    "old_manifest_and_report_unchanged": true,
+    "pending": "Audit opt-in runtime compatibility, exact one-ID recovery and same-folder cache reuse; commit/push then go",
+    "recovery_validation": "Full principal4286passed/67skipped; focal165passed; independent review approved. Apply/restart pending committed code."
   }
 }

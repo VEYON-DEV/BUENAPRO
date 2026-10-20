@@ -23,6 +23,7 @@ import time
 
 from .keyword_chain import _count, _number, _COST_COUNT_FIELDS, _COST_NUMBER_FIELDS
 from .service import _canonical, _literal, _read, _write, _selected
+from .handoff_runtime_recovery import RecoveryError
 
 VERSION = "din_sector_chain_v1"
 PROFILE = "e11f2610-eb56-457a-97eb-bbd24dd6f1a1"
@@ -116,7 +117,7 @@ def load_plan(path, expected_sha256, root):
     keys = {"version", "scope_id", "planning_only", "mapping_handoff", "selection",
             "selection_review", "reader_folder", "matching_folder", "embedding_config",
             "runtime", "runtime_bindings", "code_commit", "caffeinate", "extra_batches", "budget_note"}
-    require(isinstance(plan, dict) and set(plan) == keys and plan["version"] == VERSION,
+    require(isinstance(plan, dict) and set(plan) in (keys, keys | {"runtime_recovery"}) and plan["version"] == VERSION,
             "invalid_chain_plan")
     require(type(plan["planning_only"]) is bool and type(plan["caffeinate"]) is bool,
             "invalid_chain_plan")
@@ -128,8 +129,13 @@ def load_plan(path, expected_sha256, root):
     config = bound_file(plan["embedding_config"])
     require(file_hash(config) == file_hash(root / "docs/sources/prod2-embedding-reading.runtime.v5.json"),
             "embedding_v5_required")
-    from .handoff_selection import load_selection
-    imported = load_selection(handoff_path, selection_path, plan["selection"]["sha256"], root=root)
+    from .handoff_runtime_recovery import load_selection
+    recovery = plan.get("runtime_recovery")
+    if recovery is not None:
+        bound_file(recovery)
+    imported = load_selection(handoff_path, selection_path, plan["selection"]["sha256"], root=root,
+        recovery_path=recovery["path"] if recovery else None,
+        recovery_sha256=recovery["sha256"] if recovery else None, reader_folder=plan["reader_folder"])
     selection, review = _read(selection_path), _read(review_path)
     ids = [item["row"]["convocation_id"] for item in imported["items"]]
     budget(1, len(ids), plan["extra_batches"])
@@ -430,7 +436,19 @@ def fresh_readback(plan, imported, report_path=None, *, now=utcnow, expected_lim
     report = _read(report_path) if report_path else None
     records = {row["convocation_id"]: row for row in report["records"]} if report else {}
     if report:
-        require(_literal(report_path).parent == folder, "report_outside_reader_folder")
+        recovery_baseline = False
+        if _literal(report_path).parent != folder:
+            from .handoff_runtime_recovery import validate_applied
+            require(plan.get("runtime_recovery") is not None and plan.get("_recovery_chain_folder") is not None,
+                    "report_outside_reader_folder")
+            require(_literal(report_path) == validate_applied(plan, plan["_recovery_chain_folder"], root=Path(__file__).resolve().parents[5]),
+                    "report_outside_reader_folder")
+            recovery_baseline = True
+        if plan.get("runtime_recovery") and not recovery_baseline:
+            from .handoff_runtime_recovery import report_context
+            recovery = plan["runtime_recovery"]
+            require(report.get("runtime_recovery") == report_context(recovery["path"], recovery["sha256"],
+                root=Path(__file__).resolve().parents[5], reader_folder=folder), "recovery_execution_runtime_not_reported")
         require(expected_limits is not None and expected_limits in [budget(n, len(ids), plan["extra_batches"])
             for n in range(1, math.ceil(len(ids) / 10) + plan["extra_batches"] + 1)], "explicit_finite_readback_limits_required")
         assess_batch(report, folder.name, ids, expected_limits)
@@ -531,6 +549,9 @@ def reader_argv(plan, root, limits):
         "--ssh-key", plan["runtime"]["ssh_key"]]
     for key, value in limits.items():
         argv.extend(["--" + key.replace("_", "-"), str(value)])
+    if plan.get("runtime_recovery"):
+        argv += ["--runtime-recovery", plan["runtime_recovery"]["path"],
+                 "--runtime-recovery-sha256", plan["runtime_recovery"]["sha256"]]
     return argv
 
 
@@ -597,6 +618,8 @@ def run(plan_path, expected_sha256, folder, *, project_root, go=False, now=utcno
         readback=fresh_readback, popen=subprocess.Popen):
     root, folder = _literal(project_root), _literal(folder)
     plan, imported, review = load_plan(plan_path, expected_sha256, root)
+    if plan.get("runtime_recovery"):
+        plan = {**plan, "_recovery_chain_folder": str(folder), "_recovery_plan_sha256": expected_sha256}
     if not go:
         return {"status": "prepared", "plan_sha256": expected_sha256,
                 "selected_ids": len(imported["items"]), "runtime_started": False}
@@ -660,6 +683,14 @@ def run(plan_path, expected_sha256, folder, *, project_root, go=False, now=utcno
                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             ids = imported["binding"]["candidate_ids"]
             last_path = Path(state["report_path"]) if state.get("report_path") else None
+            if plan.get("runtime_recovery") and last_path is None:
+                from .handoff_runtime_recovery import validate_applied
+                last_path = validate_applied(plan, folder, root=root)
+                limits = budget(1, len(ids), plan["extra_batches"])
+                state.update(report_path=str(last_path), report_sha256=file_hash(last_path),
+                    reader_manifest_sha256=file_hash(Path(plan["reader_folder"]) / "manifest.private.json"),
+                    limits=limits, gate=assess_batch(_read(last_path), Path(plan["reader_folder"]).name, ids, limits),
+                    completed_batches=0, runtime_recovery=plan["runtime_recovery"])
             if last_path:
                 require(file_hash(last_path) == state["report_sha256"], "approved_report_changed")
                 require(file_hash(Path(plan["reader_folder"]) / "manifest.private.json") == state["reader_manifest_sha256"],
@@ -736,7 +767,7 @@ def run(plan_path, expected_sha256, folder, *, project_root, go=False, now=utcno
                        held_outside_scope=len(review["held_ids"]))
             return {"status": "complete", "exit_code": 0}
         except Exception as error:
-            reason = str(error) if isinstance(error, ChainError) else type(error).__name__
+            reason = str(error) if isinstance(error, (ChainError, RecoveryError)) else type(error).__name__
             checkpoint("attention_required", reason=reason)
             return {"status": "attention_required", "reason": reason, "exit_code": 2}
         finally:
@@ -763,13 +794,33 @@ def main(*, project_root):
     parser.add_argument("--readback", type=Path, help="Only fresh PG/Redis readback of this report; still requires --go")
     parser.add_argument("--output", type=Path, help="Private readback receipt path")
     parser.add_argument("--limits-file", type=Path, help="Frozen reader-NNN.limits.private.json required for readback")
+    parser.add_argument("--apply-recovery", action="store_true", help="Explicit nonpaid recovery only; never starts a reader")
     args = parser.parse_args()
     os.umask(0o077)
     try:
-        if args.readback:
+        require(not (args.readback and args.apply_recovery), "choose_readback_or_recovery")
+        if args.apply_recovery:
+            from .handoff_runtime_recovery import apply_recovery
+            require(args.go, "explicit_recovery_go_required")
+            plan, imported, _ = load_plan(args.plan, args.expected_sha256, project_root)
+            require(plan["planning_only"] is False, "planning_only_requires_explicit_new_plan")
+            committed_runtime(project_root, plan)
+            owned = _literal(args.folder)
+            require(owned.is_relative_to(_literal(project_root) / "tmp") and all(
+                not owned.is_relative_to(Path(plan[key])) and not Path(plan[key]).is_relative_to(owned)
+                for key in ("reader_folder", "matching_folder")), "invalid_recovery_chain_folder")
+            owned.mkdir(mode=0o700, parents=True, exist_ok=True)
+            with instance_lock(owned):
+                receipt = apply_recovery(plan, imported, owned, root=project_root,
+                    plan_sha256=args.expected_sha256, go=True)
+            result = {"status": "recovery_applied_no_reader_started", "exit_code": 0,
+                      "baseline_sha256": receipt["baseline"]["sha256"]}
+        elif args.readback:
             require(args.go and args.output is not None and args.limits_file is not None,
                     "explicit_readback_go_output_limits_required")
             plan, imported, _ = load_plan(args.plan, args.expected_sha256, project_root)
+            if plan.get("runtime_recovery"):
+                plan = {**plan, "_recovery_chain_folder": str(args.folder), "_recovery_plan_sha256": args.expected_sha256}
             value = fresh_readback(plan, imported, args.readback, expected_limits=_read(args.limits_file))
             check_readback(value, plan, args.readback, imported["binding"]["candidate_ids"], utcnow())
             _write(args.output, value)
@@ -777,7 +828,7 @@ def main(*, project_root):
         else:
             result = run(args.plan, args.expected_sha256, args.folder, project_root=project_root, go=args.go)
     except Exception as error:
-        result = {"status": "attention_required", "reason": str(error) if isinstance(error, ChainError) else type(error).__name__, "exit_code": 2}
+        result = {"status": "attention_required", "reason": str(error) if isinstance(error, (ChainError, RecoveryError)) else type(error).__name__, "exit_code": 2}
     import json
     print(json.dumps(result))
     return result.get("exit_code", 0)

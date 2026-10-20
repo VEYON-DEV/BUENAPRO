@@ -264,6 +264,15 @@ class HandoffGuards:
     def embedding_client(self, client):
         guard = self
         class GuardedClient:
+            @property
+            def model(self):
+                return client.model
+            @property
+            def dimensions(self):
+                return client.dimensions
+            @property
+            def price_per_million(self):
+                return client.price_per_million
             def embed(self, *args, **kwargs):
                 from .embedding_client import EmbeddingRequestError
                 try:

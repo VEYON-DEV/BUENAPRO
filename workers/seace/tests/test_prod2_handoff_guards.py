@@ -118,6 +118,46 @@ def test_embedding_wrapper_stops_before_uncertain_payment_persistence(tmp_path, 
     assert control.stop.is_set() is sent
 
 
+def test_real_embedding_store_accepts_guarded_client_contract_and_cached_vectors_without_io(tmp_path, monkeypatch):
+    from hashlib import sha256
+    from psycopg.pq import TransactionStatus
+    from buenapro_worker.prod2.embedding_store import EmbeddingStore
+    control = guard(tmp_path)
+    text = "synthetic cached source text"
+    closed = []
+    client = SimpleNamespace(model="text-embedding-3-small", dimensions=3, price_per_million=0.02,
+        embed=lambda *a, **k: pytest.fail("cache hit must not call a provider"), close=lambda: closed.append(True))
+    wrapped = control.embedding_client(client)
+    conn = SimpleNamespace(info=SimpleNamespace(transaction_status=TransactionStatus.IDLE))
+    store = EmbeddingStore(conn, model=client.model, dimensions=client.dimensions,
+        price_per_million=client.price_per_million)
+    cache = {sha256(text.encode()).hexdigest(): {"exact_text": text, "status": "done", "vector": [1., 0., 0.]}}
+    monkeypatch.setattr(store, "_rows", lambda keys: cache)
+    monkeypatch.setattr(store, "_recover_owned", lambda rows, folder: None)
+    result = store.ensure_vectors([text], client=wrapped, folder=tmp_path)
+    assert result["vectors"] == [[1., 0., 0.]] and result["cached_count"] == 1
+    assert result["known_cost_usd"] == 0 and result["attempt_ids"] == []
+    assert not control.stop.is_set()
+    wrapped.close()
+    assert closed == [True]
+
+
+@pytest.mark.parametrize("field,value", [("model", "different"), ("dimensions", 4), ("price_per_million", 1.0)])
+def test_guarded_client_does_not_hide_embedding_store_contract_mismatch(tmp_path, field, value):
+    from psycopg.pq import TransactionStatus
+    from buenapro_worker.prod2.embedding_store import EmbeddingStore, EmbeddingPersistenceError
+    client = SimpleNamespace(model="text-embedding-3-small", dimensions=3, price_per_million=0.02,
+        embed=lambda *a, **k: pytest.fail("mismatched client must not call a provider"), close=lambda: None)
+    wrapped = guard(tmp_path).embedding_client(client)
+    # The properties must expose the actual contract, including a changed
+    # underlying client; snapshotting would hide this safety mismatch.
+    setattr(client, field, value)
+    store = EmbeddingStore(SimpleNamespace(info=SimpleNamespace(transaction_status=TransactionStatus.IDLE)),
+        model="text-embedding-3-small", dimensions=3, price_per_million=0.02)
+    with pytest.raises(EmbeddingPersistenceError, match="client/cache contract differs"):
+        store.ensure_vectors(["synthetic"], client=wrapped, folder=tmp_path)
+
+
 def test_deadline_is_literal_aware_and_future_not_invented():
     assessment = {"state": "registration_open", "confirmed_open": True,
         "as_of": "2026-10-20T08:00:00+00:00", "reason_codes": [],

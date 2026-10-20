@@ -28,13 +28,21 @@ def stops(monkeypatch):
     monkeypatch.setattr(subject, "HANDOFF_GUARD", None)
 
 
+def fixture_binding_key(path):
+    # Mirror the importer's canonical key convention for both pytest's system
+    # temp directory and an explicit --basetemp located inside this checkout.
+    path = path.resolve()
+    try:
+        return str(path.relative_to(subject.ROOT.resolve()))
+    except ValueError:
+        return str(path)
+
+
 def options(package, *extra):
-    # The synthetic package is outside this real repository. Bind its absolute
-    # source paths just as an externally located, explicitly approved map would.
     inventory = json.loads(package["inventory"].read_text())
     inventory["input_bindings"] = {
-        str(package["report"]): file_sha(package["report"]),
-        str(package["handoff"]): file_sha(package["handoff"])}
+        fixture_binding_key(package["report"]): file_sha(package["report"]),
+        fixture_binding_key(package["handoff"]): file_sha(package["handoff"])}
     sha = write(package["inventory"], inventory)
     update_selection(package, lambda value: value.update(inventory_sha256=sha))
     return ["--folder", str(package["root"] / "reading-new"),
@@ -42,6 +50,13 @@ def options(package, *extra):
         "--selection-sha256", package["selection_sha"], "--max-new-documents", "10",
         "--max-candidates", "10", "--max-accepted", "10", "--max-jev-calls", "30",
         "--max-llm1-calls", "10", "--llm1-fallback", "none", "--preserve-prior-readings", *extra]
+
+
+def test_fixture_bindings_match_importer_for_inside_and_outside_checkout():
+    assert fixture_binding_key(subject.ROOT / "tmp/synthetic-mapping/report.private.json") == (
+        "tmp/synthetic-mapping/report.private.json")
+    outside = subject.ROOT.parent / "synthetic-external-mapping/report.private.json"
+    assert fixture_binding_key(outside) == str(outside.resolve())
 
 
 def test_id_plan_and_finite_budget_expansion_preserve_frozen_paid_inputs(package):
@@ -80,6 +95,76 @@ def test_id_dry_run_has_zero_sweeps_and_no_runtime_or_embedding_warmup(package, 
     report = json.loads(capsys.readouterr().out)
     assert report["base_queries"] == 0 and report["dry_run"]
     assert report["handoff_selection"]["candidate_ids"] == [123]
+
+
+@pytest.mark.parametrize("extra", [["--runtime-recovery", "/offline/receipt.json"],
+    ["--runtime-recovery-sha256", "a" * 64],
+    ["--runtime-recovery", "/offline/receipt.json", "--runtime-recovery-sha256", "a" * 64]])
+def test_runtime_recovery_requires_the_pair_and_explicit_id_mode(extra):
+    args = subject.parser().parse_args(["--folder", "tmp/offline-reader", *extra])
+    with pytest.raises(ValueError, match="Runtime recovery requires"):
+        subject.plan(args)
+
+
+@pytest.mark.parametrize("sha", ["", "not-a-sha", "A" * 64])
+def test_runtime_recovery_rejects_malformed_sha_before_loading_handoff(package, sha):
+    args = subject.parser().parse_args(options(package, "--runtime-recovery", "/offline/receipt.json",
+        "--runtime-recovery-sha256", sha))
+    with pytest.raises(ValueError, match="Runtime recovery requires"):
+        subject.plan(args)
+
+
+@pytest.mark.parametrize("use_recovery", [False, True])
+def test_both_cli_loads_delegate_exact_recovery_args_without_changing_frozen_inputs(
+        package, monkeypatch, capsys, use_recovery):
+    from buenapro_worker.prod2.handoff_selection import load_selection as original_load
+    calls = []
+    def load(*args, **kwargs):
+        calls.append((args, kwargs.copy()))
+        return original_load(*args, root=kwargs["root"])
+    # The CLI contract is isolated from the compatibility validator's own tests;
+    # the real helper validates authorization and approved code/receipt hashes.
+    monkeypatch.setitem(sys.modules, "buenapro_worker.prod2.handoff_runtime_recovery", SimpleNamespace(load_selection=load))
+    argv = options(package)
+    baseline = subject.plan(subject.parser().parse_args(argv))
+    folder = package["root"] / "reading-new"
+    frozen = {**baseline, "requested": baseline, "run_id": folder.name}
+    frozen_path = folder / "manifest.private.json"
+    write(frozen_path, frozen)
+    before = frozen_path.read_bytes()
+    extra = (["--runtime-recovery", str(package["root"] / "approved-recovery.private.json"),
+        "--runtime-recovery-sha256", "b" * 64] if use_recovery else [])
+    monkeypatch.setattr(sys, "argv", ["selected", *argv, *extra, "--dry-run"])
+    monkeypatch.setattr(subject, "runtime", lambda *a, **k: pytest.fail("dry-run must remain offline"))
+    calls.clear()
+    assert subject.main() == 0
+    report = json.loads(capsys.readouterr().out)
+    assert len(calls) == 2
+    for args, kwargs in calls:
+        assert args == (package["handoff"], package["selection"], package["selection_sha"])
+        assert kwargs == {"root": subject.ROOT, "reader_folder": folder,
+            "recovery_path": package["root"] / "approved-recovery.private.json" if use_recovery else None,
+            "recovery_sha256": "b" * 64 if use_recovery else None}
+    assert all(report[key] == value for key, value in baseline.items())
+    assert "runtime_recovery" not in report and "runtime_recovery_sha256" not in report
+    assert frozen_path.read_bytes() == before
+
+
+def test_recovery_report_context_is_separate_opt_in_metadata(monkeypatch, tmp_path):
+    calls = []
+    expected = {"authorization_sha256": "a" * 64, "new_code_commit": "b" * 40,
+        "runtime_bindings": {"synthetic.py": "c" * 64}, "frozen_binding_identity_only": True}
+    def report_context(*args, **kwargs):
+        calls.append((args, kwargs))
+        return expected
+    monkeypatch.setitem(sys.modules, "buenapro_worker.prod2.handoff_runtime_recovery",
+        SimpleNamespace(report_context=report_context))
+    absent = subject.parser().parse_args(["--folder", str(tmp_path)])
+    assert subject.runtime_recovery_report_context(absent, tmp_path) is None and not calls
+    args = subject.parser().parse_args(["--folder", str(tmp_path), "--runtime-recovery",
+        str(tmp_path / "authorization.private.json"), "--runtime-recovery-sha256", "a" * 64])
+    assert subject.runtime_recovery_report_context(args, tmp_path) == expected
+    assert calls == [((args.runtime_recovery, "a" * 64), {"root": subject.ROOT, "reader_folder": tmp_path})]
 
 
 class Stage:
