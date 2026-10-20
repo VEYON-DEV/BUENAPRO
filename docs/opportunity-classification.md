@@ -42,16 +42,17 @@ enlace a una oportunidad existente solo se realiza con identificadores
 cruzados oficiales o revisión humana, nunca por similitud textual automática.
 
 
-## Clasificación comercial para el filtro interno (diseño del 20/10/2026)
+## Clasificación comercial para el filtro interno (20/10/2026)
 
-Estado: contrato propuesto tras revisar código y el mapeo completo; todavía no
-implementa un campo nuevo en LLM1, persistencia, endpoints ni pantalla. No modifica
-los seis ejes canónicos anteriores. «Licencias», «desarrollo» o «industrial» son
+Estado: catálogo y filtros implementados localmente en web/API; LLM1 seleccionado
+PROD2 incorpora el bloque mediante opt-in explícito para carpetas nuevas. La
+validación y publicación se registran por separado en tasks/. No modifica los seis
+ejes canónicos anteriores. «Licencias», «desarrollo» o «industrial» son
 clasificaciones comerciales, no modalidades jurídicas de contratación.
 
 ### Dos ejes que se pueden combinar
 
-| Eje comercial | Valores iniciales propuestos |
+| Eje comercial | Valores del catálogo v1 |
 | --- | --- |
 | Rubro (`primary_area`, con `secondary_areas` cuando haya entregables mixtos) | `software_ti`, `inteligencia_artificial`, `automatizacion_procesos`, `industrial_electrica`, `infraestructura_cloud`, `otro`, `sin_clasificar` |
 | Qué trabajo se compra (`work_types`, uno o varios) | `licencias_suscripciones`, `desarrollo_software`, `implementacion_integracion`, `suministro_equipos`, `instalacion_montaje`, `soporte_mantenimiento`, `consultoria`, `capacitacion` |
@@ -59,8 +60,8 @@ clasificaciones comerciales, no modalidades jurídicas de contratación.
 Las especialidades son etiquetas controladas y versionadas: por ejemplo `chatbot`,
 `agentes_ia`, `rpa`, `plc_scada`, `instrumentacion`, `tableros_electricos`,
 `robotica`, `equipamiento_electromecanico`. No inferir `agentes_ia` de cualquier
-chatbot ni `plc_scada` de una cascada o de software para HPLC. La lista necesita
-catálogo y validación, no strings inventados por el proveedor.
+chatbot ni `plc_scada` de una cascada o de software para HPLC. La lista vive en `workers/seace/src/buenapro_worker/extraction/commercial_taxonomy.v1.json`;
+Python y web importan el mismo catálogo, sin strings inventados por el proveedor.
 
 Un rubro principal describe el entregable dominante. Los rubros secundarios se
 justifican por otros entregables efectivamente contratados; no por el nombre de
@@ -91,7 +92,7 @@ catastro se identificaron solo por el listado; aún requieren fuentes vigentes.
    Esa salida es preliminar y ya tiene su propio hash de pago; no cambiarla ni
    repetir decisiones guardadas solo para introducir etiquetas nuevas.
 3. **Ficha y LLM1:** comprobar participación/fechas y seleccionar documentos
-   vigentes. En la misma futura lectura LLM1 que extrae requisitos, devolver
+   vigentes. En la misma lectura LLM1 nueva que extrae requisitos, devolver
    `commercial_classification` con rubro, trabajos y especialidades. Se analiza
    el objeto y los entregables efectivamente comprados; las keywords sirven de
    contexto y no ordenan la respuesta. La salida compacta añade tokens, pero no
@@ -106,7 +107,7 @@ catastro se identificaron solo por el listado; aún requieren fuentes vigentes.
    «Industrial + Mantenimiento» encuentra mantenimiento industrial. Los no
    clasificados siguen consultables mediante su propio estado, sin borrarse.
 
-Contrato mínimo propuesto, con versión `commercial_taxonomy_v1`:
+Contrato implementado, con versión `commercial_taxonomy_v1`:
 
 - `primary_area`, `secondary_areas`, `work_types`, `specialties`.
 - `support_status`: `preliminary`, `evidence_backed` o `needs_review`.
@@ -134,18 +135,20 @@ completar clasificación con procedencia distinta. De lo contrario, queda sin
 clasificar. Versionar prompt/schema/política solamente para lecturas nuevas y
 no mutar manifiestos, bindings ni claves de caché de corridas congeladas.
 
-**Persistencia prevista:** las extracciones actuales conservan `raw_extraction_json`
-y `summary_json`; `derive_summary` reconstruye el resumen y deberá conservar el
-nuevo bloque explícitamente. Para filtrar antes de paginar, preparar un índice
-comercial consultable por oportunidad/extracción vigente, con migración y
-backfill local independientes; no basta clasificar en React los resultados de
-una página. Esta sección no aplica migración ni decide un despliegue.
+**Persistencia:** las extracciones actuales conservan `raw_extraction_json`
+y `summary_json`; `derive_summary` conserva el bloque válido explícitamente y
+omite extras históricos inválidos sin romper la lectura original. La consulta
+SQL selecciona primero la extracción vigente elegible más reciente, valida el
+bloque y filtra antes de contar/paginar. No rescata etiquetas de una extracción
+anterior si la actual no las tiene. Se usan las columnas JSONB existentes, sin
+migración ni backfill automático. Un futuro índice debe justificarse por medición
+y aprobarse/publicarse aparte. No se clasifica una página de resultados en React.
 
 ### Orden del siguiente lote solicitado
 
 El usuario pidió procesar IA/agentes/chatbots, automatización e industrial, y
-pidió definir este filtro antes de esa ejecución. Primero implementar/validar el
-contrato comercial y preparar selección deduplicada desde el mapeo, incluyendo
+pidió definir este filtro antes de esa ejecución. El contrato comercial ya está
+implementado localmente; queda preparar selección deduplicada desde el mapeo, incluyendo
 candidatos relevantes fuera de las 32 coincidencias industriales. Conservar
 ambiguos y revisar vigencia/modalidad; no usar una lista de títulos como prueba
 de elegibilidad. El procesamiento posterior reutiliza decisiones y lecturas
@@ -153,3 +156,64 @@ previas y recorre JEV → ficha/documentos → LLM1 → evaluación de DIN y exp
 según el alcance aplicable, con recibos y presupuesto propios. La autorización
 del lote no modifica el plan metadata-only ya cerrado ni autoriza repetir pagos
 inciertos. Este diseño no ejecuta el lote, modelos, migraciones ni workers.
+
+
+### Opciones de filtro disponibles
+
+En ambas fuentes, abrir **Filtros → Clasificación comercial**. Rubro, trabajo y
+especialidad admiten selección múltiple. El botón Aplicar filtros envía CSV en la
+URL; las búsquedas, tipos, vistas rápidas, fuente y paginación conservan las
+selecciones aplicadas. **Quitar clasificación** limpia solo estos criterios y
+conserva los demás filtros y el perfil. Los grupos se pliegan para mantener la
+primera pantalla y el inspector del patrón Glass.
+
+| Parámetro común | Valores |
+| --- | --- |
+| `commercial_area` | IDs del catálogo `areas` (rubro principal o secundario; Sin clasificar se ofrece mediante estado) |
+| `commercial_work` | IDs de `work_types` |
+| `commercial_specialty` | IDs de `specialties` |
+| `commercial_status` | `evidence_backed`, `preliminary`, `needs_review`, `unclassified` |
+
+Disponibles en `GET /api/prod2/opportunities`, `GET /api/contracts` y `GET /api/feed`.
+Listas/detalles exponen `commercial_classification`; el helper comercial usa un
+objeto `unclassified` para datos ausentes, desconocidos o inválidos. Se rechazan
+valores de filtro desconocidos con 400. No cambia el puntaje ni su orden global.
+Cita comercial no verificable en V5 degrada `support_status` a `needs_review` antes
+del filtro/conteo; conserva el raw pagado y sus etiquetas, sin convertir la
+revisión de fuente en aprobación semántica.
+
+Para una **carpeta nueva** de lectura seleccionada PROD2, el CLI acepta:
+
+```text
+--llm1-commercial-taxonomy commercial_taxonomy_v1
+```
+
+`auto` es el valor por defecto: conserva la carpeta congelada y no activa la
+clasificación en una nueva. `none` mantiene la lectura sin etiquetas comerciales.
+El flag queda en manifest/contexto e identidades de preparación, cola, prompt,
+schema y caché; cambiarlo en una carpeta existente se rechaza. No agregarlo a las
+corridas históricas. Gemini general ofrece el mismo adaptador explícito mediante
+`policy_context`; el lector dedicado **PROD6 Guarded no activa esta salida** y
+requiere integración/cableado de su política en una tarea posterior. Los filtros
+web ya admiten documentos de ambas fuentes que tengan el bloque válido.
+
+Esta implementación no llama JEV/Gemini, no etiqueta automáticamente históricos,
+no ejecuta el lote IA/industrial y no despliega web ni reactiva lectores. Esas
+operaciones conservan sus tareas y verificaciones propias.
+
+### Validación local y rendimiento
+
+Código web/catálogo `20dea69`, lector seleccionado `c827802` y cortocircuito SQL
+`2a0f646`. Las pruebas incluyen catálogo/evidencias/identidad inmutable, ausencia
+de opt-in histórico, filtro antes de paginar y paridad SQL real de 35 fixtures por
+fuente. El CASE exterior evita descomprimir y revalidar repetidamente extracciones
+sin bloque comercial: en la muestra read-only, el conteo combinado pasó de
+7979 a 445 ms, con los mismos resultados y cero subplanes comerciales ejecutados
+en históricos sin etiquetas. Son mediciones puntuales, no un SLA de la página.
+
+QA de interfaz: 18 capturas locales con datos existentes (dos fuentes, tres
+resoluciones y tres estados), navegación/búsqueda/tipo/paginación/fuente y limpieza
+selectiva de criterios; revisión visual representativa del principal. Sin tags
+fabricados para llenar resultados, escrituras de negocio, PDFs, modelos o cambios
+productivos. Recibo compacto de alcance, pruebas, evidencias y pendientes:
+`docs/commercial-classification-20261020.json`.

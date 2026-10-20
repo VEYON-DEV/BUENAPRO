@@ -167,3 +167,23 @@ El parámetro legacy `analysis=done` continúa disponible en ambas APIs con su s
 Por solicitud explícita del usuario del 13/10/2026, ambos listados e inspectores muestran el número guardado de 0 a 100 con etiqueta «Provisional / Por validar» cuando `provisional_score` es finito, está en rango y pertenece al análisis vigente en revisión. El anillo usa rojo para menos de 30, amarillo para 30–80 inclusive y verde para más de 80; `scoreTone` aplica el mismo criterio a notas finales y provisionales, independiente del veredicto documental. «Por validar» permanece incluso en verde, sin afirmar aprobación. El puntaje final `score` conserva su protección y no se modifica `score_validated`, fuente, resultado ni orden. Si falta el número, muestra «Analizado · Puntaje por validar»; una oportunidad sin análisis conserva solo afinidad preliminar. Un cero provisional real se muestra como cero y nunca se inventa desde null. Los ceros validados y resultados legacy publicados mantienen su anillo. El inspector ofrece el enlace al análisis completo y conserva el perfil seleccionado. En PROD2, el toolbar fija también el perfil resuelto cuando la URL inicial no lo incluía. El feed sin filtro continúa mostrando todas las fichas consultadas.
 
 La vista rápida consulta `GET /api/prod2/opportunities/:id?profile_id=...`. Incluye cronograma con precisión original, documentos y acceso al detalle. No usa CUBSO o regiones inferidos de palabras ni encola análisis manuales. El enlace oficial abre el buscador estable de PROD2: SEACE requiere una sesión para abrir una ficha, por lo que no se promete un permalink del procedimiento.
+
+
+### Clasificación comercial (implementación local del 20/10/2026)
+
+Ambas fuentes comparten **Filtros → Clasificación comercial**, con rubro, tipo de
+trabajo y especialidad de selección múltiple y estado de clasificación. Catálogo y
+contrato: [Clasificación comercial](../opportunity-classification.md). No mezclar
+estas etiquetas con el objeto Bien/Servicio, modalidad jurídica o afinidad.
+
+Los grupos son expansiones en el panel existente; no agregan columnas ni cards al
+listado. El buscador SEACE incorpora el mismo control Filtros. Parámetros CSV
+`commercial_area`, `commercial_work`, `commercial_specialty` y `commercial_status`;
+OR dentro de cada grupo y AND entre grupos. Aplicar reinicia la página; búsquedas,
+tipos, vistas rápidas y cambio de fuente conservan las selecciones aplicadas.
+Quitar clasificación conserva perfil y filtros ajenos a esta clasificación.
+
+Las etiquetas se consultan en PostgreSQL antes de count/paginación y se obtienen
+de la extracción vigente elegible más reciente. Los registros viejos no reciben
+etiquetas inventadas: siguen disponibles como Sin clasificar. Evidencia documental
+no equivale a vigencia, QA humano o elegibilidad. Publicación se verifica aparte.

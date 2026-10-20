@@ -1,0 +1,348 @@
+{
+  "version": 1,
+  "date": "2026-10-20",
+  "status": "locally_implemented_and_validated_not_deployed",
+  "taxonomy_version": "commercial_taxonomy_v1",
+  "code_commits": {
+    "web_catalog": "20dea690dc917fc3d4488f147398c94c6e037718",
+    "selected_prod2_reader": "c827802294f1e4c927c36dca825af84c82733e1a",
+    "final_sql_guard": "2a0f6465598b306694d6cbb185fb6c0201bdb8dc"
+  },
+  "sources": [
+    "Buscador SEACE (PROD2)",
+    "Contratos menores"
+  ],
+  "catalog_reference": "workers/seace/src/buenapro_worker/extraction/commercial_taxonomy.v1.json",
+  "filters": {
+    "commercial_area": "Rubro principal o secundario; multiselección",
+    "commercial_work": "Tipo de trabajo; multiselección",
+    "commercial_specialty": "Especialidad; multiselección",
+    "commercial_status": [
+      "evidence_backed",
+      "preliminary",
+      "needs_review",
+      "unclassified"
+    ]
+  },
+  "filter_semantics": {
+    "same_axis": "OR",
+    "different_axes": "AND",
+    "before_count_and_pagination": true,
+    "preserves_profile_and_other_criteria": true
+  },
+  "persistence": {
+    "columns": "Existing raw_extraction_json/summary_json JSONB",
+    "current_extraction_selected_before_tag_validation": true,
+    "raw_authoritative": true,
+    "invalid_missing_historical": "unclassified",
+    "older_tag_fallback": false,
+    "migration": false,
+    "automatic_backfill": false,
+    "scores_changed": false
+  },
+  "new_reading_policy": {
+    "selected_prod2": "Explicit --llm1-commercial-taxonomy commercial_taxonomy_v1 for a new folder only",
+    "default": "auto preserves frozen folder policy and leaves new runs disabled",
+    "bindings": [
+      "manifest",
+      "selection_context",
+      "preparation",
+      "queue",
+      "schema",
+      "prompt",
+      "cache"
+    ],
+    "general_gemini": "Explicit policy_context adapter",
+    "dedicated_prod6_guarded": "Pending immutable policy/receipt/reuse integration; not enabled",
+    "historical_fingerprints_preserved": 12,
+    "paid_raw_retained": true,
+    "v5_unverified_citation": "needs_review derived status; no automatic paid repair"
+  },
+  "validation": {
+    "suites_overlap_do_not_sum": true,
+    "worker_principal_final": {
+      "passed": 262,
+      "files": [
+        "test_commercial_classification.py",
+        "test_prod2_selected_script.py",
+        "test_prod2_selected_extractor.py"
+      ],
+      "mode": "offline"
+    },
+    "web_service_suite": {
+      "passed": 119,
+      "skipped": 1,
+      "skip_reason": "Existing affinity PostgreSQL test without its explicit fixture URL"
+    },
+    "postgresql_final": {
+      "passed": 6,
+      "mode": "Disposable loopback PostgreSQL16",
+      "parity_fixtures_per_source": 35,
+      "sources": 2,
+      "includes_missing_tag_subplans_zero_loops": true
+    },
+    "ui_model_suite": {
+      "passed": 26
+    },
+    "principal_final_web_smoke": {
+      "passed": 23,
+      "mode": "Node offline; overlapping commercial service/UI cases"
+    },
+    "typescript": "passed",
+    "frontend_architecture": {
+      "passed": true,
+      "domains": 16
+    },
+    "build": {
+      "passed": true,
+      "seconds": 27,
+      "commit": "20dea690dc917fc3d4488f147398c94c6e037718",
+      "isolated_checkout": true,
+      "production_credentials": false
+    },
+    "visual": {
+      "capture_count": 18,
+      "sources": 2,
+      "viewports": [
+        [
+          1600,
+          1000
+        ],
+        [
+          1024,
+          900
+        ],
+        [
+          390,
+          844
+        ]
+      ],
+      "states": [
+        "default",
+        "selected",
+        "applied"
+      ],
+      "functional_check_groups": 10,
+      "browser_errors": 0,
+      "overflow": false,
+      "principal_review": "Representative desktop/laptop/mobile captures accepted against approved Glass04; unchanged UI after web commit",
+      "not_claimed": [
+        "physical device testing",
+        "full WCAG certification"
+      ]
+    },
+    "static_ui_detector_findings": 0,
+    "final_code_readonly_smoke": {
+      "status": "passed",
+      "commit": "2a0f6465598b306694d6cbb185fb6c0201bdb8dc",
+      "api_requests": 9,
+      "ssr_requests": 2,
+      "same_default_unclassified_payload_order": true,
+      "prod2": {
+        "default_total": 1126,
+        "rows": 20,
+        "combined_total": 0,
+        "combined_ssr_status": 200,
+        "combined_ssr_seconds": 5.117
+      },
+      "minor_contracts_ui_scope": {
+        "open_only": true,
+        "default_total": 2,
+        "rows": 2,
+        "combined_total": 0,
+        "combined_ssr_status": 200,
+        "combined_ssr_seconds": 0.251
+      },
+      "scope_note": "First minor API round without open_only had228; supplementary3 GETs checked the exact visible-open UI scope. No data was changed.",
+      "snapshots_do_not_claim_current_vigency_or_semantic_approval": true,
+      "new_screenshots": 0,
+      "new_build": false
+    }
+  },
+  "performance": {
+    "method": "One read-only EXPLAIN ANALYZE sample per variant, not latency SLA",
+    "change": "Outer CASE avoids costly evidence-validation subplans for historical missing blocks",
+    "count_unclassified_ms": {
+      "before": 3908.854,
+      "after": 213.848
+    },
+    "count_combined_ms": {
+      "before": 7978.602,
+      "after": 445.221
+    },
+    "default_page_sql_ms": {
+      "before": 7747.353,
+      "after": 3450.818
+    },
+    "validation_subplan_loops": {
+      "before": [
+        9008,
+        18016
+      ],
+      "after": 0
+    },
+    "remaining_latency": "Existing joins and affinity ordering; no architecture or score change"
+  },
+  "operations": {
+    "model_calls": 0,
+    "source_http_calls": 0,
+    "paid_retries": 0,
+    "pdf_downloads": 0,
+    "new_r2_originals": 0,
+    "business_database_writes": 0,
+    "migrations_applied": 0,
+    "redis_work": 0,
+    "deployed": false,
+    "workers_started": 0,
+    "spending_limits_changed": false,
+    "external_lookups": "Only skill setup/guidelines; Next dev update-check request blocked before network",
+    "historical_uncertain_payments": "preserved"
+  },
+  "mapping_preservation": {
+    "report_sha256": "381b5b942f90aac3714328842db137876b7644a2f077755ce86a0481394ef9cf",
+    "verified_unchanged": true,
+    "frozen_plan": "tmp/prod2-parallel-discovery-20261020/plans/wide-2004-2026.private.json",
+    "plan_canonical_sha256": "13ed875c36abf097262c817141bf6c07662232f96afdefb4b1e7370a52b4ffd4"
+  },
+  "cleanup": {
+    "logical_bytes_freed_total": 588510490,
+    "temporary_postgresql_clusters_bytes": [
+      48428736,
+      48481173
+    ],
+    "qa_clone_without_next_bytes": 92135219,
+    "qa_next_build_cache_bytes": 394419793,
+    "redundant_screenshots_bytes": 5045569,
+    "redundant_screenshots_count": 6,
+    "scope": "Only own disposable PostgreSQL clusters, isolated checkout/build and redundant PNGs after hashing. Logical file sizes, not a physical disk-usage delta.",
+    "final_screenshot_count": 18,
+    "final_screenshot_hashes_unchanged": true,
+    "dependency_symlinks_targets": "untouched",
+    "next_and_tunnels": "stopped",
+    "port3017": "free",
+    "foreign_services": "untouched",
+    "retained": [
+      "scripts",
+      "diagnostic logs/JSON",
+      "build logs/receipts",
+      "final18PNG",
+      "frozen mapping plans/caches/report",
+      "pending or uncertain paid inputs"
+    ]
+  },
+  "pending": [
+    "Publish and verify web from clean Git only when requested",
+    "Dedicated PROD6 Guarded immutable reading-policy integration",
+    "Populate classifications only through explicit new readings or separately traced local review; no historic paid re-read",
+    "Prepare deduplicated IA/agents/chatbot/automation/industrial selection and verify source/participation/budget before its separate execution"
+  ],
+  "evidence": [
+    {
+      "path": "tmp/commercial-filters-20261020/qa-review.private.json",
+      "sha256": "a743eda6ccab4a39e64bbd6bb213b215fa63fafd4c4fd1929c9a9d866019429e",
+      "bytes": 7585
+    },
+    {
+      "path": "tmp/commercial-filters-20261020/perf-readonly-results.private.json",
+      "sha256": "d3403dfc68da8a7ac3c45bd05f396806bf6e66b37b83ea8ab9c00afe521791d3",
+      "bytes": 217430
+    },
+    {
+      "path": "tmp/commercial-filters-20261020/final-smoke-cleanup.private.json",
+      "sha256": "a180ee4d737e8b5529aa78fa57d98f71a18fe3f54b86c5ebce5bce81a0904679",
+      "bytes": 5159
+    }
+  ],
+  "screenshots": [
+    {
+      "path": "tmp/commercial-filters-20261020/qa-reviewed-real/commercial-prod2-desktop-applied.png",
+      "sha256": "4dbf72d6dbda91b223a083872388442d663901c7c17665f531ea11a961bbd889",
+      "bytes": 260118
+    },
+    {
+      "path": "tmp/commercial-filters-20261020/qa-reviewed-real/commercial-prod2-desktop-default.png",
+      "sha256": "e6969fa51d1148d8dc11112f72f5681d6561608fd6230a180398bb9de8b4e974",
+      "bytes": 942604
+    },
+    {
+      "path": "tmp/commercial-filters-20261020/qa-reviewed-real/commercial-prod2-desktop-selected.png",
+      "sha256": "7f608dd142d7d89aad57d81928fe11f6e7cd94f62a5eefeb8062f1a5a6b28afe",
+      "bytes": 1015035
+    },
+    {
+      "path": "tmp/commercial-filters-20261020/qa-reviewed-real/commercial-prod2-laptop-applied.png",
+      "sha256": "80a9d975bca633e3cf2c7409f11f2df0ff963e587f729c4dee7a31c4ad98000a",
+      "bytes": 218740
+    },
+    {
+      "path": "tmp/commercial-filters-20261020/qa-reviewed-real/commercial-prod2-laptop-default.png",
+      "sha256": "3326fa6f7678174a7ebb97da9a0878e3b5b94c6d03f0932a816a1bbee6d5d37b",
+      "bytes": 694120
+    },
+    {
+      "path": "tmp/commercial-filters-20261020/qa-reviewed-real/commercial-prod2-laptop-selected.png",
+      "sha256": "21957ae5cba841918cf144b83f59df535eab097e03a283a9be96a80882836781",
+      "bytes": 774554
+    },
+    {
+      "path": "tmp/commercial-filters-20261020/qa-reviewed-real/commercial-prod2-mobile-applied.png",
+      "sha256": "3de363e9fe52044b08d5ad563332bf2927c66a4c1d9725a8e78ac682e4f69921",
+      "bytes": 179342
+    },
+    {
+      "path": "tmp/commercial-filters-20261020/qa-reviewed-real/commercial-prod2-mobile-default.png",
+      "sha256": "bf899bfac9e567a2f6b83ae844feb57b12c23da1289c03ad73d219b6dafea859",
+      "bytes": 690540
+    },
+    {
+      "path": "tmp/commercial-filters-20261020/qa-reviewed-real/commercial-prod2-mobile-selected.png",
+      "sha256": "c91a190454b53edb7e6fce9a17a819910d244c5eaf081fe59b52d8482302fbd6",
+      "bytes": 767783
+    },
+    {
+      "path": "tmp/commercial-filters-20261020/qa-reviewed-real/commercial-prod6-desktop-applied.png",
+      "sha256": "d3c7f1d5d9d7f370def61fe27db382d692a357e1f917676265f960b7b0b3cfbd",
+      "bytes": 270614
+    },
+    {
+      "path": "tmp/commercial-filters-20261020/qa-reviewed-real/commercial-prod6-desktop-default.png",
+      "sha256": "179a0687f10f77ace14191aeb8cf57d3019e943c04165be72bb66f5ee4a218d6",
+      "bytes": 384450
+    },
+    {
+      "path": "tmp/commercial-filters-20261020/qa-reviewed-real/commercial-prod6-desktop-selected.png",
+      "sha256": "03d2f132e12724565507eacd996643b71797d77bfd168bea318b99dbc5e3d581",
+      "bytes": 405411
+    },
+    {
+      "path": "tmp/commercial-filters-20261020/qa-reviewed-real/commercial-prod6-laptop-applied.png",
+      "sha256": "6603166002d1a7079a331c6a5e2f39055897e169d8f0585c6c1d537783e8c543",
+      "bytes": 237895
+    },
+    {
+      "path": "tmp/commercial-filters-20261020/qa-reviewed-real/commercial-prod6-laptop-default.png",
+      "sha256": "842f50c4975241fb49f4ef07d273d10537851ef4b3eff5d72f307e4b6578e8bb",
+      "bytes": 208772
+    },
+    {
+      "path": "tmp/commercial-filters-20261020/qa-reviewed-real/commercial-prod6-laptop-selected.png",
+      "sha256": "5dcb1443cac02f05c6e70657131f05a14e71da768f8b88d8acaf0bffc5646179",
+      "bytes": 298656
+    },
+    {
+      "path": "tmp/commercial-filters-20261020/qa-reviewed-real/commercial-prod6-mobile-applied.png",
+      "sha256": "e3d2be3cf0ed94177c44f798588d8e95609ea91616d67e3e9cf479bde11f0b99",
+      "bytes": 197488
+    },
+    {
+      "path": "tmp/commercial-filters-20261020/qa-reviewed-real/commercial-prod6-mobile-default.png",
+      "sha256": "7d6cc3e9cf139af8bd5d755174a831124648801819cea1f2da9ce0a4bb8d9313",
+      "bytes": 148829
+    },
+    {
+      "path": "tmp/commercial-filters-20261020/qa-reviewed-real/commercial-prod6-mobile-selected.png",
+      "sha256": "932ead8b498261e2f61f3ceb57f9deb851ba4efa4a7ce28bc9d01327789a04bc",
+      "bytes": 240597
+    }
+  ]
+}
