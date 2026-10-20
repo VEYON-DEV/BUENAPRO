@@ -1,6 +1,6 @@
 {
-  "status": "running_coverage_not_complete",
-  "cut_at_utc": "2026-10-20T07:21:43.228955+00:00",
+  "status": "complete_metadata_mapping_verified",
+  "cut_at_utc": "2026-10-20T10:14:37.304363+00:00",
   "runtime_code_commit": "d4eb8877b5cc62f60b6866ea4b7626ab9d029340",
   "execution_location": "Mac committed CLI; production PostgreSQL via private SSH tunnel",
   "new_image": "not_applicable_no_new_image_or_service_deployment",
@@ -204,29 +204,1435 @@
     "redis_mutations": 0,
     "published_opportunities": 0,
     "prod6_activated": false,
-    "source_coverage_complete": false,
+    "source_coverage_complete": true,
     "native_lifecycle_filter": null,
     "qa_semantic_approved": false
   },
   "monitor": {
     "automation_id": "completar-mapeo-paralelo-prod2",
-    "status": "ACTIVE",
+    "status": "PAUSED",
     "interval_minutes": 15,
-    "notifications": "completion or actionable failure only"
+    "notifications": "completion or actionable failure only",
+    "reason": "mapping complete and final PG/cache verification passed"
   },
   "evidence": {
     "private_root": "tmp/prod2-parallel-discovery-20261020/activation/",
-    "exact_run_folder": "tmp/prod2-parallel-discovery-20261020/runs/prod2-map-wide-20261020/"
+    "exact_run_folder": "tmp/prod2-parallel-discovery-20261020/runs/prod2-map-wide-20261020/",
+    "final_pg_snapshot": "tmp/prod2-parallel-discovery-20261020/activation/final-pg.private.json.gz",
+    "report_sha256": "381b5b942f90aac3714328842db137876b7644a2f077755ce86a0481394ef9cf",
+    "handoff_sha256": "45e6ee68c1b3cdb2350a77840a9ba6dd2c5c71d28c7009df3fdaa95849ad5575",
+    "cleanup_receipt": "tmp/prod2-parallel-discovery-20261020/activation/closure-cleanup.private.json"
   },
   "remaining": [
-    "finish all scopes and planned keyword/year/object queries",
-    "fresh PG final readback against report/handoff",
-    "count unique IDs, classifications and preserved observations",
-    "document real remaining items and safe cleanup",
-    "disable completion monitor at closure"
+    "Review the 302 historical IDs without a comparable listing baseline; do not classify them as unchanged.",
+    "Validate current lifecycle and reuse/read the required evidence before publishing or scoring candidates; those document/model stages were not authorized by this metadata mapping go.",
+    "Historical input queues and uncertain payments remain preserved outside this completed run."
   ],
   "cleanup": {
-    "bytes_removed_this_execution": 0,
-    "retained": "all active run caches, logs, plan, preflight and launch receipts are necessary for completion/recovery"
+    "logical_bytes_freed": 41218155,
+    "action": "Lossless verified gzip of closed PG snapshot and duplicate immutable report; canonical report retained.",
+    "retained": "All source caches/proofs, plan, state, handoff, canonical report, historical queues and payment receipts.",
+    "archive_roundtrip_verified": true,
+    "private_cache_parent_modes": "0700 (content unchanged)",
+    "old_uncertain_inputs_deleted": false
+  },
+  "startup_cut_at_utc": "2026-10-20T07:21:43.228955+00:00",
+  "completion": {
+    "last_task_complete_at_utc": "2026-10-20T10:03:55.755254+00:00",
+    "verified_at_utc": "2026-10-20T10:14:37.304363+00:00",
+    "wall_seconds_launch_to_last_task": 9862.928,
+    "queries_complete": 8418,
+    "keywords_complete": 183,
+    "years_complete": 23,
+    "objects_complete": 2,
+    "coverage_kinds": {
+      "observed_pass": 732,
+      "verified_empty_scope_observed": 7686
+    },
+    "attempt_counts": {
+      "1": 8418
+    },
+    "ids": 1736,
+    "classes": {
+      "changed": 0,
+      "known_baseline_missing": 302,
+      "new_id": 1434,
+      "unchanged": 0
+    },
+    "listing_versions": 2093,
+    "associations": 2093,
+    "duplicate_associations": 357,
+    "duplicates_explanation": "Same convocatoria can match several keyword queries; 357 extra associations preserve matches without creating extra IDs.",
+    "changed_during_run_count": 0,
+    "candidate_ids_for_review": 1736,
+    "historical_without_comparable_baseline": 302,
+    "automatic_paid_authorization": false,
+    "coordinators_remaining": 0,
+    "mapping_process_ended": true,
+    "caffeinate_ended": true,
+    "metadata_pg_equals_report": true,
+    "cache_integrity_errors": 0,
+    "http_driver": {
+      "elapsed_seconds": 9857.424,
+      "methods": {
+        "GET": 1557,
+        "POST": 3232
+      },
+      "requests": 4789,
+      "responses": 4789,
+      "status_codes": {
+        "200": 4789
+      },
+      "stop_reason": null
+    },
+    "http_pre_schema_pilot": {
+      "elapsed_seconds": 5.462,
+      "methods": {
+        "GET": 1,
+        "POST": 2
+      },
+      "requests": 3,
+      "responses": 3,
+      "status_codes": {
+        "200": 3
+      },
+      "stop_reason": null
+    },
+    "http_total_all_200": 4792,
+    "http_total_scope_note": "Driver reused the pilot scope proof; add the three pre-schema requests once.",
+    "model_calls": 0,
+    "document_downloads": 0,
+    "published_opportunities": 0,
+    "redis_mutations": 0,
+    "provider_cost_for_new_model_calls_usd": 0,
+    "historical_uncertain_payments": "untouched; not reevaluated or converted to zero"
+  },
+  "yield_summary": {
+    "keywords_with_matches": 51,
+    "keywords_without_matches": 132,
+    "original_inventory_unique_ids": 1734,
+    "industrial_variant_unique_ids": 17,
+    "additional_ids_found_only_by_variants": 2,
+    "lanes": [
+      {
+        "lane": "prioritarias",
+        "keywords": 14,
+        "planned_queries": 644,
+        "unique_matched_ids": 101,
+        "keywords_with_matches": 13,
+        "id_class_counts": {
+          "new_id": 83,
+          "known_baseline_missing": 18
+        },
+        "overlap_note": "IDs can match several lanes; do not sum as unique total"
+      },
+      {
+        "lane": "complementarias",
+        "keywords": 28,
+        "planned_queries": 1288,
+        "unique_matched_ids": 47,
+        "keywords_with_matches": 8,
+        "id_class_counts": {
+          "new_id": 42,
+          "known_baseline_missing": 5
+        },
+        "overlap_note": "IDs can match several lanes; do not sum as unique total"
+      },
+      {
+        "lane": "exploracion",
+        "keywords": 7,
+        "planned_queries": 322,
+        "unique_matched_ids": 71,
+        "keywords_with_matches": 6,
+        "id_class_counts": {
+          "known_baseline_missing": 12,
+          "new_id": 59
+        },
+        "overlap_note": "IDs can match several lanes; do not sum as unique total"
+      },
+      {
+        "lane": "digitales_adicionales",
+        "keywords": 24,
+        "planned_queries": 1104,
+        "unique_matched_ids": 1687,
+        "keywords_with_matches": 14,
+        "id_class_counts": {
+          "new_id": 1395,
+          "known_baseline_missing": 292
+        },
+        "overlap_note": "IDs can match several lanes; do not sum as unique total"
+      },
+      {
+        "lane": "industriales",
+        "keywords": 93,
+        "planned_queries": 4278,
+        "unique_matched_ids": 16,
+        "keywords_with_matches": 7,
+        "id_class_counts": {
+          "new_id": 11,
+          "known_baseline_missing": 5
+        },
+        "overlap_note": "IDs can match several lanes; do not sum as unique total"
+      },
+      {
+        "lane": "variantes_industriales",
+        "keywords": 17,
+        "planned_queries": 782,
+        "unique_matched_ids": 17,
+        "keywords_with_matches": 3,
+        "id_class_counts": {
+          "new_id": 15,
+          "known_baseline_missing": 2
+        },
+        "overlap_note": "IDs can match several lanes; do not sum as unique total"
+      }
+    ],
+    "counting_note": "Matches overlap across keywords and lanes; sums are not unique opportunity totals. Zero means no matches observed within this frozen publication window, not a failure."
+  },
+  "keyword_yield": [
+    {
+      "keyword": "software",
+      "queries_complete": 46,
+      "unique_matched_ids": 27,
+      "id_class_counts": {
+        "new_id": 22,
+        "known_baseline_missing": 5
+      }
+    },
+    {
+      "keyword": "licencia",
+      "queries_complete": 46,
+      "unique_matched_ids": 26,
+      "id_class_counts": {
+        "new_id": 24,
+        "known_baseline_missing": 2
+      }
+    },
+    {
+      "keyword": "suscripción",
+      "queries_complete": 46,
+      "unique_matched_ids": 27,
+      "id_class_counts": {
+        "new_id": 23,
+        "known_baseline_missing": 4
+      }
+    },
+    {
+      "keyword": "aplicativo",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "plataforma",
+      "queries_complete": 46,
+      "unique_matched_ids": 38,
+      "id_class_counts": {
+        "known_baseline_missing": 8,
+        "new_id": 30
+      }
+    },
+    {
+      "keyword": "informática",
+      "queries_complete": 46,
+      "unique_matched_ids": 5,
+      "id_class_counts": {
+        "new_id": 4,
+        "known_baseline_missing": 1
+      }
+    },
+    {
+      "keyword": "nube",
+      "queries_complete": 46,
+      "unique_matched_ids": 16,
+      "id_class_counts": {
+        "new_id": 15,
+        "known_baseline_missing": 1
+      }
+    },
+    {
+      "keyword": "cloud",
+      "queries_complete": 46,
+      "unique_matched_ids": 2,
+      "id_class_counts": {
+        "new_id": 2
+      }
+    },
+    {
+      "keyword": "microsoft",
+      "queries_complete": 46,
+      "unique_matched_ids": 2,
+      "id_class_counts": {
+        "new_id": 2
+      }
+    },
+    {
+      "keyword": "inteligencia artificial",
+      "queries_complete": 46,
+      "unique_matched_ids": 1,
+      "id_class_counts": {
+        "new_id": 1
+      }
+    },
+    {
+      "keyword": "chatbot",
+      "queries_complete": 46,
+      "unique_matched_ids": 1,
+      "id_class_counts": {
+        "new_id": 1
+      }
+    },
+    {
+      "keyword": "ciberseguridad",
+      "queries_complete": 46,
+      "unique_matched_ids": 2,
+      "id_class_counts": {
+        "new_id": 2
+      }
+    },
+    {
+      "keyword": "sistema de información",
+      "queries_complete": 46,
+      "unique_matched_ids": 2,
+      "id_class_counts": {
+        "known_baseline_missing": 1,
+        "new_id": 1
+      }
+    },
+    {
+      "keyword": "sistemas de información",
+      "queries_complete": 46,
+      "unique_matched_ids": 2,
+      "id_class_counts": {
+        "new_id": 2
+      }
+    },
+    {
+      "keyword": "desarrollo de aplicaciones",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "desarrollo de sistema",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "aplicación",
+      "queries_complete": 46,
+      "unique_matched_ids": 1,
+      "id_class_counts": {
+        "new_id": 1
+      }
+    },
+    {
+      "keyword": "aplicación web",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "aplicaciones web",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "página web",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "portal web",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "base de datos",
+      "queries_complete": 46,
+      "unique_matched_ids": 6,
+      "id_class_counts": {
+        "new_id": 5,
+        "known_baseline_missing": 1
+      }
+    },
+    {
+      "keyword": "mantenimiento de sistemas",
+      "queries_complete": 46,
+      "unique_matched_ids": 2,
+      "id_class_counts": {
+        "new_id": 2
+      }
+    },
+    {
+      "keyword": "implementación de sistemas",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "integración de sistemas",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "servidor",
+      "queries_complete": 46,
+      "unique_matched_ids": 22,
+      "id_class_counts": {
+        "new_id": 20,
+        "known_baseline_missing": 2
+      }
+    },
+    {
+      "keyword": "antivirus",
+      "queries_complete": 46,
+      "unique_matched_ids": 2,
+      "id_class_counts": {
+        "new_id": 2
+      }
+    },
+    {
+      "keyword": "vmware",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "workspace",
+      "queries_complete": 46,
+      "unique_matched_ids": 1,
+      "id_class_counts": {
+        "new_id": 1
+      }
+    },
+    {
+      "keyword": "aws",
+      "queries_complete": 46,
+      "unique_matched_ids": 1,
+      "id_class_counts": {
+        "new_id": 1
+      }
+    },
+    {
+      "keyword": "erp",
+      "queries_complete": 46,
+      "unique_matched_ids": 13,
+      "id_class_counts": {
+        "new_id": 11,
+        "known_baseline_missing": 2
+      }
+    },
+    {
+      "keyword": "saas",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "herramientas colaborativas",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "agentes de ia",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "agentes ia",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "analítica de datos",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "ciencia de datos",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "aprendizaje automático",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "asistentes virtuales",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "automatización de procesos",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "modelos predictivos",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "powerbi",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "automatización",
+      "queries_complete": 46,
+      "unique_matched_ids": 1,
+      "id_class_counts": {
+        "known_baseline_missing": 1
+      }
+    },
+    {
+      "keyword": "soporte técnico",
+      "queries_complete": 46,
+      "unique_matched_ids": 8,
+      "id_class_counts": {
+        "new_id": 7,
+        "known_baseline_missing": 1
+      }
+    },
+    {
+      "keyword": "integración",
+      "queries_complete": 46,
+      "unique_matched_ids": 3,
+      "id_class_counts": {
+        "new_id": 3
+      }
+    },
+    {
+      "keyword": "implementación",
+      "queries_complete": 46,
+      "unique_matched_ids": 48,
+      "id_class_counts": {
+        "known_baseline_missing": 8,
+        "new_id": 40
+      }
+    },
+    {
+      "keyword": "analítica",
+      "queries_complete": 46,
+      "unique_matched_ids": 7,
+      "id_class_counts": {
+        "new_id": 7
+      }
+    },
+    {
+      "keyword": "whatsapp",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "tecnología",
+      "queries_complete": 46,
+      "unique_matched_ids": 8,
+      "id_class_counts": {
+        "new_id": 5,
+        "known_baseline_missing": 3
+      }
+    },
+    {
+      "keyword": "api",
+      "queries_complete": 46,
+      "unique_matched_ids": 46,
+      "id_class_counts": {
+        "new_id": 40,
+        "known_baseline_missing": 6
+      }
+    },
+    {
+      "keyword": "app",
+      "queries_complete": 46,
+      "unique_matched_ids": 1,
+      "id_class_counts": {
+        "known_baseline_missing": 1
+      }
+    },
+    {
+      "keyword": "backend",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "datos",
+      "queries_complete": 46,
+      "unique_matched_ids": 25,
+      "id_class_counts": {
+        "new_id": 24,
+        "known_baseline_missing": 1
+      }
+    },
+    {
+      "keyword": "desarrollo de software",
+      "queries_complete": 46,
+      "unique_matched_ids": 1,
+      "id_class_counts": {
+        "known_baseline_missing": 1
+      }
+    },
+    {
+      "keyword": "digital",
+      "queries_complete": 46,
+      "unique_matched_ids": 26,
+      "id_class_counts": {
+        "new_id": 20,
+        "known_baseline_missing": 6
+      }
+    },
+    {
+      "keyword": "frontend",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "ia",
+      "queries_complete": 46,
+      "unique_matched_ids": 1633,
+      "id_class_counts": {
+        "new_id": 1347,
+        "known_baseline_missing": 286
+      }
+    },
+    {
+      "keyword": "licencias de software",
+      "queries_complete": 46,
+      "unique_matched_ids": 5,
+      "id_class_counts": {
+        "new_id": 4,
+        "known_baseline_missing": 1
+      }
+    },
+    {
+      "keyword": "licencias informáticas",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "licencias microsoft",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "llm",
+      "queries_complete": 46,
+      "unique_matched_ids": 2,
+      "id_class_counts": {
+        "new_id": 2
+      }
+    },
+    {
+      "keyword": "machinelearning",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "mantenimiento de software",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "plataformas digitales",
+      "queries_complete": 46,
+      "unique_matched_ids": 1,
+      "id_class_counts": {
+        "new_id": 1
+      }
+    },
+    {
+      "keyword": "predictivo",
+      "queries_complete": 46,
+      "unique_matched_ids": 1,
+      "id_class_counts": {
+        "known_baseline_missing": 1
+      }
+    },
+    {
+      "keyword": "python",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "rpa",
+      "queries_complete": 46,
+      "unique_matched_ids": 10,
+      "id_class_counts": {
+        "new_id": 10
+      }
+    },
+    {
+      "keyword": "seguridad informática",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "software empresarial",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "soluciones cloud",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "soporte",
+      "queries_complete": 46,
+      "unique_matched_ids": 28,
+      "id_class_counts": {
+        "new_id": 24,
+        "known_baseline_missing": 4
+      }
+    },
+    {
+      "keyword": "suscripción de software",
+      "queries_complete": 46,
+      "unique_matched_ids": 3,
+      "id_class_counts": {
+        "new_id": 3
+      }
+    },
+    {
+      "keyword": "web",
+      "queries_complete": 46,
+      "unique_matched_ids": 3,
+      "id_class_counts": {
+        "new_id": 3
+      }
+    },
+    {
+      "keyword": "actuadores",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "analítica industrial",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "aprendizaje automático industrial",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "arquitectura de comunicación industrial",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "arrancadores",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "automatización de procesos industriales",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "automatización industrial",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "braumat",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "cámaras industriales",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "capacitación en automatización industrial",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "capacitación redes industriales",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "capacitación scada",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "caudalímetros",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "ccm",
+      "queries_complete": 46,
+      "unique_matched_ids": 2,
+      "id_class_counts": {
+        "new_id": 2
+      }
+    },
+    {
+      "keyword": "cemat",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "centros de control de motores",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "cobots",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "comisionamiento",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "comisionamiento de equipos industriales",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "commissioning",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "comunicación industrial",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "configuración de redes industriales",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "configuración de sistemas industriales",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "contactores",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "control de nivel industrial",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "control de procesos industriales",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "cursos de plc",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "dcs",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "devicenet",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "diseño eléctrico industrial",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "electromecánica",
+      "queries_complete": 46,
+      "unique_matched_ids": 1,
+      "id_class_counts": {
+        "known_baseline_missing": 1
+      }
+    },
+    {
+      "keyword": "electromecánico",
+      "queries_complete": 46,
+      "unique_matched_ids": 7,
+      "id_class_counts": {
+        "new_id": 5,
+        "known_baseline_missing": 2
+      }
+    },
+    {
+      "keyword": "entrenamiento industrial",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "ethernet industrial",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "flujometro",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "gemelos digitales industriales",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "hmi",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "iiot",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "ingeniería eléctrica",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "inspección visual industrial",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "instrumentación industrial",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "integración de sensores industriales",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "integración erp industrial",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "internet industrial",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "lazos de control industrial",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "macromedidores",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "mantenimiento de tableros eléctricos",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "mantenimiento electromecánico",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "mantenimiento industrial",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "mantenimiento predictivo",
+      "queries_complete": 46,
+      "unique_matched_ids": 1,
+      "id_class_counts": {
+        "known_baseline_missing": 1
+      }
+    },
+    {
+      "keyword": "manufactura",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "medición de caudal",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "medición de temperatura industrial",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "modbus",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "monitoreo de condiciones industriales",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "montaje eléctrico industrial",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "operación de equipos industriales",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "optimización de procesos industriales",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "pcs7",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "planos unifilares",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "plc",
+      "queries_complete": 46,
+      "unique_matched_ids": 2,
+      "id_class_counts": {
+        "new_id": 2
+      }
+    },
+    {
+      "keyword": "profibus",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "profinet",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "programación de plc",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "pruebas fat",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "pruebas sat",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "puesta en marcha industrial",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "realidad aumentada industrial",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "redes industriales",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "redes profibus",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "redes profinet",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "robótica",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "robótica colaborativa",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "robots colaborativos",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "salas eléctricas",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "scada",
+      "queries_complete": 46,
+      "unique_matched_ids": 1,
+      "id_class_counts": {
+        "new_id": 1
+      }
+    },
+    {
+      "keyword": "sensores industriales",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "servomotores",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "sistemas de control distribuido",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "sistemas de control industrial",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "sistemas mes",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "sistemas scada",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "soporte remoto industrial",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "supervisión industrial",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "switch industrial",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "tableros de control industrial",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "tableros eléctricos",
+      "queries_complete": 46,
+      "unique_matched_ids": 3,
+      "id_class_counts": {
+        "new_id": 2,
+        "known_baseline_missing": 1
+      }
+    },
+    {
+      "keyword": "telemetría",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "transmisores de presión",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "unifilar",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "variadores",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "variadores de velocidad",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "visión artificial industrial",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "sistema scada",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "controlador lógico programable",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "programación plc",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "tablero de mando",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "tableros de protección",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "tableros eléctricos de distribución",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "centro de control de motores",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "medidores de caudal",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "sensores de presión",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "instrumentos para medición",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "puesta en funcionamiento",
+      "queries_complete": 46,
+      "unique_matched_ids": 13,
+      "id_class_counts": {
+        "new_id": 11,
+        "known_baseline_missing": 2
+      }
+    },
+    {
+      "keyword": "puesta en marcha",
+      "queries_complete": 46,
+      "unique_matched_ids": 3,
+      "id_class_counts": {
+        "new_id": 3
+      }
+    },
+    {
+      "keyword": "mantenimiento eléctrico",
+      "queries_complete": 46,
+      "unique_matched_ids": 1,
+      "id_class_counts": {
+        "new_id": 1
+      }
+    },
+    {
+      "keyword": "capacitación plc",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "comunicaciones industriales",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "monitoreo de condiciones",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    },
+    {
+      "keyword": "robot industrial",
+      "queries_complete": 46,
+      "unique_matched_ids": 0,
+      "id_class_counts": {}
+    }
+  ],
+  "verification": {
+    "fresh_pg_readback_at_utc": "2026-10-20T10:08:16.052413+00:00",
+    "snapshot_original_sha256": "f638a898bbe9a0ddde4417255be7a630d6d147da9f961aff6bcb5f605c0a8706",
+    "independent_offline_reviews": [
+      "final-offline-review.private.json",
+      "final-pg-offline-review.private.json"
+    ],
+    "checks": {
+      "matrix_exact": true,
+      "manifest_runtime_bindings_exact": true,
+      "pg_report_handoff_exact": true,
+      "all_8418_cache_checks_passed": true,
+      "source_capture_associations_exact": true,
+      "no_identity_contradictions": true,
+      "all_source_inputs_retained": true
+    },
+    "notes": [
+      "Coverage is observed for the configured keywords/years/objects/date window, not an atomic national snapshot.",
+      "new_id is absent from the registry and the three baseline ledgers consulted, not proof it was newly published nationally.",
+      "No current lifecycle, deadline, PDF equality, DIN company score or award eligibility was established."
+    ]
   }
 }

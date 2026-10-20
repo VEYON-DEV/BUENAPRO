@@ -1,10 +1,16 @@
 # Mapeo paralelo PROD2
 
-El go humano se recibió el 20/10/2026 y arrancó la alternativa amplia del mismo
-paquete: 183 keywords, años 2004–2026, 8.418 combinaciones. El
-[informe de ejecución](prod2-parallel-discovery-execution-20261020.json) registra
-el corte operativo; el arranque no acredita cobertura terminada. Los planes
-privados y los hashes runtime del commit `d4eb887` se mantienen intactos.
+El mapeo autorizado el 20/10/2026 terminó a las **10:03:55 UTC** y se verificó
+en PostgreSQL: **183 keywords × 23 años × 2 objetos = 8.418 combinaciones
+completas**. Conservó 1.736 IDs únicos (1.434 nuevos frente a los registros
+históricos consultados y 302 conocidos sin baseline comparable) y 2.093
+asociaciones; 357 coincidencias adicionales no duplican IDs.
+
+El [informe de ejecución](prod2-parallel-discovery-execution-20261020.json)
+registra las verificaciones, el rendimiento por keyword y los pendientes reales.
+Los planes privados y los hashes runtime del commit `d4eb887` permanecen intactos.
+El seguimiento de finalización quedó desactivado. La lectura de documentos,
+la vigencia y el puntaje empresarial corresponden a etapas posteriores.
 
 Este flujo consulta metadatos del Buscador SEACE, compara identidades y versiones,
 y produce un informe revisable. No descarga documentos, llama modelos, usa Redis,
