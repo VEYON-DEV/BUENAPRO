@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "status": "authorized_preparing_not_started",
+  "status": "running_pilot",
   "scope": "DIN: IA/automatización e industrial; lectura por IDs del mapeo PROD2 cerrado",
   "selection": {
     "ids": 157,
@@ -35,10 +35,14 @@
     "pilot_document_units": 10,
     "finite_extra_batches": 8,
     "max_cumulative_stages": 24,
-    "code_commit": null,
+    "code_commit": "d880953a0bd4a9c6db677c538639300a1310533a",
     "image": null,
     "deployment": false,
-    "started": false
+    "started": true,
+    "started_at_utc": "2026-10-20T15:15:45.113005+00:00",
+    "plan_sha256": "bdf829ca6e28db773de4a4b811cdf071b7be43ff637d0b28e7db91e6d6957500",
+    "parent_pid": 46708,
+    "last_child_pid": 46725
   },
   "policy": {
     "history_before_source_and_affinity": true,
@@ -62,7 +66,7 @@
     },
     "actual157_dry_run": true,
     "runtime_embedding_schema": "fresh verified; earlier nonexistent table probe corrected in schema-preflight receipt",
-    "production_writes_so_far": 0,
+    "production_writes_so_far": "Only0042 CHECK/registry and normal selected reader; no unrelated services/data changes",
     "new_paid_calls_so_far": 0,
     "focused_final": {
       "passed": 169,
@@ -74,11 +78,12 @@
     "new_known_usd": "0",
     "new_uncertain_attempts": 0,
     "historical_uncertain_attempts": "preserved, outside this lot; never set to zero",
-    "limits_note": "Call/document limits are finite; not an implemented hard USD cap. No credit purchase or spend-limit changes authorized."
+    "limits_note": "Call/document limits are finite; not an implemented hard USD cap. No credit purchase or spend-limit changes authorized.",
+    "cutoff_utc": "2026-10-20T15:16:29.275997+00:00",
+    "final": false
   },
   "pending": [
-    "Finish validation and commit/push before launch",
-    "Execute pilot and expansion with fresh scoped PG/Redis readback",
+    "Complete current reader batches and fresh PG/Redis readback",
     "DIN matching only ready new readings",
     "48 sector-boundary title holds",
     "PROD6 legitimate source access recovery"
@@ -87,5 +92,50 @@
     "freed_bytes": 59928,
     "retained": "Private selected IDs, mapping cache, receipts, pending/history/payment inputs"
   },
-  "evidence_root": "tmp/ia-industrial-execution-20261020/activation"
+  "evidence_root": "tmp/ia-industrial-execution-20261020/activation",
+  "prepayment_recovery": {
+    "first_attempt_exit": 1,
+    "first_attempt_source_calls": 0,
+    "first_attempt_provider_calls": 0,
+    "cause": "migration0042 absent; legacy four-format CHECK",
+    "resolved": "Applied only dedicated0042; download formats permit7z",
+    "migration_sha256": "873940f07365e6174ea775f9a1988aa30b2789b62ef6577da75642cac86b07c1",
+    "download_rows_before_after": [
+      4891,
+      4891
+    ],
+    "old_failure_evidence_preserved": true,
+    "plan_and_code_unchanged": true,
+    "paid_retries": 0
+  },
+  "latest_cut": {
+    "at_utc": "2026-10-20T15:16:29.275997+00:00",
+    "chain_status": "running_child",
+    "stage": "reader-001",
+    "outcomes": {
+      "total": 2,
+      "statuses": {
+        "llm1_complete": 1,
+        "closed_without_reading": 1
+      },
+      "ids": [
+        1047199,
+        1047579
+      ],
+      "llm1_preserved": 1,
+      "matching_eligible": 0
+    },
+    "pg": {
+      "coordinator_locks": 1,
+      "own_run_members": 0,
+      "member_ids": []
+    },
+    "redis": {
+      "queued": 153,
+      "pending": 2,
+      "payloads": 155,
+      "seen": 157
+    },
+    "dispatch_stop_marker": false
+  }
 }

@@ -4,7 +4,9 @@ El usuario autorizó la ejecución completa de los rubros IA/automatización e i
 
 ## Estado inicial
 
-Preparación autorizada; aún no lanzado. La prueba nativa de PROD2 desde Mac respondió 200 y encontró el chatbot 1047579. Una única comprobación nueva de PROD6 volvió a dar **403**: no se reintenta ni se activa ese lector. Es un pendiente real, independiente del avance PROD2.
+Lote iniciado y verificado a las **15:16 UTC**: supervisor46708, lector46725 y un único lock PG. Importados los157IDs en cola propia. Primer corte: dos outcomes (una lectura histórica preservada y un cerrado),153queued/2pending; cero llamadas pagadas nuevas en ese corte, sin considerarlo cierre. La prueba nativa de PROD2 desde Mac respondió 200 y encontró el chatbot 1047579. Una única comprobación nueva de PROD6 volvió a dar **403**: no se reintenta ni se activa ese lector. Es un pendiente real, independiente del avance PROD2.
+
+El primer arranque se detuvo antes del manifest y de fuente/modelos porque faltaba0042. Se aplicó únicamente su CHECK de formato7z y registro, conservando4.891filas de descargas. Readback fresco verificó cero coordinadores/colas propias antes de reanudar el mismo plan y commit; estado y logs del fallo retenidos. Sin reintentos pagados.
 
 ## Flujo y paralelismo
 
@@ -16,7 +18,7 @@ La lectura conserva la reserva canónica heredada del alcance comercial conjunto
 
 ## Verificación y cierre
 
-El supervisor exige un solo coordinador, plan/runtime/carpeta inmutables, recibos de costos y partición exacta de los 157 IDs antes de ampliar. Usa únicamente su cola: las antiguas quedan intactas. El código se valida, se commitea y se pushea antes del lanzamiento; no requiere imagen nueva ni despliegue de web.
+El supervisor exige un solo coordinador, plan/runtime/carpeta inmutables, recibos de costos y partición exacta de los 157 IDs antes de ampliar. Usa únicamente su cola: las antiguas quedan intactas. Código validado, commit/push **d880953a0bd4a9c6db677c538639300a1310533a**; plan privado SHAbdf829ca6e28db773de4a4b811cdf071b7be43ff637d0b28e7db91e6d6957500. CLI desdeMac, sin imagen nueva ni despliegue de web. Una actualización posterior de documentación conserva ese commit runtime.
 
 El cierre exige lectura y matching con readback fresco, resultados nuevos/preservados/rechazados/revisiones separados, costos conocidos e inciertos, referencias/cronogramas y limpieza acotada. Un piloto iniciado o fuente completa no equivalen a cierre. Los límites por llamadas no son un tope USD implementado; no se compran créditos ni se cambian límites de gasto.
 
