@@ -72,6 +72,13 @@
       "passed": 169,
       "seconds": 1.93,
       "overlaps_full_suite": true
+    },
+    "final_matching_helper": {
+      "path": "tmp/ia-industrial-execution-20261020/activation/verify-matching-final.private.py",
+      "sha256": "6664a2375fe4b3f411cc2413f2abe355a6dd88c858eaf3e58823eb8bbd1717a3",
+      "offline_smoke": "positive, zero results and five negatives; no real PG",
+      "runtime_not_changed": true,
+      "executed_against_production": false
     }
   },
   "costs": {
@@ -89,8 +96,14 @@
     "PROD6 legitimate source access recovery"
   ],
   "cleanup": {
-    "freed_bytes": 59928,
-    "retained": "Private selected IDs, mapping cache, receipts, pending/history/payment inputs"
+    "freed_bytes": 112368,
+    "components": {
+      "preparation_agent_bytecode": 59928,
+      "principal_temporary_helpers": 22989,
+      "matching_audit_agent_bytecode": 29451
+    },
+    "retained": "Active PDFs/OCR/cache, selected IDs, source mapping cache, unique receipts, uncertainty/history and48holds",
+    "active_inputs_removed": false
   },
   "evidence_root": "tmp/ia-industrial-execution-20261020/activation",
   "prepayment_recovery": {
@@ -137,5 +150,12 @@
       "seen": 157
     },
     "dispatch_stop_marker": false
+  },
+  "followup": {
+    "automation_id": "completar-lote-din-ia-e-industrial",
+    "status": "ACTIVE",
+    "interval_minutes": 15,
+    "purpose": "Watch authorized long-running reader/matching to verified closure; quiet during healthy progress",
+    "old_mapping_followup": "remains PAUSED"
   }
 }

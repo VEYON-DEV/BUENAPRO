@@ -22,6 +22,8 @@ El supervisor exige un solo coordinador, plan/runtime/carpeta inmutables, recibo
 
 El cierre exige lectura y matching con readback fresco, resultados nuevos/preservados/rechazados/revisiones separados, costos conocidos e inciertos, referencias/cronogramas y limpieza acotada. Un piloto iniciado o fuente completa no equivalen a cierre. Los límites por llamadas no son un tope USD implementado; no se compran créditos ni se cambian límites de gasto.
 
-Validación completa offline: **4.237 pruebas aprobadas y 67 omitidas**. La implementación y selección tienen revisiones independientes; el resultado del runtime aún se verificará en PG/Redis. Se liberaron 59.928 bytes de bytecode propio; las entradas únicas permanecen.
+Validación completa offline: **4.237 pruebas aprobadas y 67 omitidas**. La implementación y selección tienen revisiones independientes; el resultado del runtime aún se verificará en PG/Redis. Se liberaron112.368bytes propios (59.928debytecode de preparación,22.989dehelpers temporales y29.451debytecode deQA final). Las entradas únicas y activas permanecen.
 
 Métricas, hashes y estado detallado: `docs/ia-industrial-execution-20261020.json`. Entradas privadas y recibos: `tmp/ia-industrial-execution-20261020/`. Se conservan pendientes y pagos; limpieza acotada documentada en el JSON.
+
+Seguimiento del lote cada15min en este chat (`completar-lote-din-ia-e-industrial`), silencioso durante avance saludable y hasta verificar el cierre. El monitor antiguo del mapeo permanece pausado. Auditor final privado preparado con conexiónPGsololectura, probado offline con resultado normal/cero ycincofallos; se ejecutará al estado completo, sin acreditar QAsemántica.
