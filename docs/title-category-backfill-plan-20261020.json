@@ -1,0 +1,159 @@
+{
+  "date": "2026-10-20",
+  "status": "planning_only_no_model_calls_or_backfill",
+  "scope": "Current enriched Buscador SEACE rows at PG snapshot; not current/open accreditation. Not the full 1736-ID mapping.",
+  "snapshot_at_utc": "2026-10-20T17:24:51.241566+00:00",
+  "current_enriched_rows": 1134,
+  "documentary_categorized_rows_skipped": 0,
+  "rows_needing_title_classification": 1134,
+  "empty_titles": 0,
+  "unique_normalized_titles_to_classify": 1017,
+  "duplicate_title_rows_reused": 117,
+  "categories": [
+    {
+      "id": "licencias_suscripciones",
+      "label": "Licencias y suscripciones",
+      "match_any": {
+        "areas": [],
+        "work_types": [
+          "licencias_suscripciones"
+        ],
+        "specialties": []
+      }
+    },
+    {
+      "id": "desarrollo_software",
+      "label": "Desarrollo de software",
+      "match_any": {
+        "areas": [],
+        "work_types": [
+          "desarrollo_software"
+        ],
+        "specialties": []
+      }
+    },
+    {
+      "id": "ia_automatizacion",
+      "label": "IA y automatización",
+      "match_any": {
+        "areas": [
+          "inteligencia_artificial",
+          "automatizacion_procesos"
+        ],
+        "work_types": [],
+        "specialties": [
+          "chatbot",
+          "agentes_ia",
+          "rpa"
+        ]
+      }
+    },
+    {
+      "id": "industrial",
+      "label": "Industrial",
+      "match_any": {
+        "areas": [
+          "industrial_electrica"
+        ],
+        "work_types": [],
+        "specialties": [
+          "plc_scada",
+          "instrumentacion",
+          "tableros_electricos",
+          "robotica",
+          "equipamiento_electromecanico"
+        ]
+      }
+    },
+    {
+      "id": "cloud_infraestructura",
+      "label": "Cloud e infraestructura",
+      "match_any": {
+        "areas": [
+          "infraestructura_cloud"
+        ],
+        "work_types": [],
+        "specialties": []
+      }
+    },
+    {
+      "id": "soporte_mantenimiento",
+      "label": "Soporte y mantenimiento",
+      "match_any": {
+        "areas": [],
+        "work_types": [
+          "soporte_mantenimiento"
+        ],
+        "specialties": []
+      }
+    }
+  ],
+  "model": "jev-1.13.0",
+  "input_per_request": "Only complete tender title/object plus fixed taxonomy/questions; no PDFs, company profile, document text, embeddings or recommendations",
+  "prompt_strategy": "six independent category decisions plus one clarity choice; multiple labels allowed",
+  "category_source": "title_jev_preliminary; distinct from documentary commercial_taxonomy_v1",
+  "price": {
+    "input_usd_per_million": "0.042",
+    "output_usd_per_million": "0",
+    "source": "https://docs.typesafe.ai/models",
+    "checked_on": "2026-10-20"
+  },
+  "token_estimate": {
+    "method": "cl100k_base over compact full request JSON, includes repeated instructions/criteria. Proxy only, not provider tokenizer or billing quote.",
+    "request_proxy_min": 742,
+    "request_proxy_max": 935,
+    "total_proxy_input_tokens": 797557,
+    "proxy_calculated_usd": "0.033497394",
+    "planning_range_usd": [
+      "0.02512304550",
+      "0.0611808750"
+    ],
+    "range_method": "0.75x proxy to 1.5x proxy +256 tokens/request. Heuristic margin, not calibrated or a hard cap."
+  },
+  "alternative_counts_at_same_mean_request_size": {
+    "1000": {
+      "proxy_calculated_usd": "0.03293745722713864306784660767",
+      "planning_upper_usd": "0.06015818584070796460176991150"
+    },
+    "1736": {
+      "proxy_calculated_usd": "0.05717942574631268436578171093",
+      "planning_upper_usd": "0.1044346106194690265486725664"
+    },
+    "10000": {
+      "proxy_calculated_usd": "0.3293745722713864306784660767",
+      "planning_upper_usd": "0.6015818584070796460176991150"
+    }
+  },
+  "scope_selection": {
+    "first": "Current SEACE inventory only; deduplicate exact whitespace-normalized full title, preserve accents/numbers/brands. Existing documentary categories prevail.",
+    "later": "Mapping-only candidates and menores require separate explicit source/ID inventory before execution; no source HTTP needed for stored titles."
+  },
+  "replay_policy": "Cache/reserve by normalized full-title SHA + catalogue/prompt/model/version. Reuse identical titles; preserve sent-uncertain requests without automatic retries. Do not add model calls to active frozen runtime.",
+  "planned_storage": "Separate title classification per source/ID/title hash; provider response/usage, prompt/catalog/model/version, category probabilities and preliminary status. Never write invented PDF pages or overwrite raw extractions or matching scores.",
+  "planned_ui": "One Categoría column, one or more category labels; Otros / Por confirmar. Documentary categories override preliminary title labels. Filter/order/count before pagination needs explicit backend integration.",
+  "operations": {
+    "source_calls": 0,
+    "model_calls": 0,
+    "pg_writes": 0,
+    "redis_access": 0,
+    "migrations": 0,
+    "web_changes": 0,
+    "runtime_binding_mutations": 0,
+    "paid_execution_authorized_by_this_planning": false
+  },
+  "cleanup": {
+    "freed_bytes": 0,
+    "retained": "Compact PG title inventory and request template for proposed backfill; active DIN inputs and receipts untouched"
+  },
+  "prepared_artifacts": {
+    "private_inventory_sha256": "964da9596c33075e16b7e914c730c0c9fe5a84b5040cf65b7afcdba89064cc3a",
+    "request_template_sha256": "907d4193da66aca2ac3a2372768f47d394a7b2f04f7a4fcfe30116c1a8061746"
+  },
+  "evidence_root": "tmp/title-category-plan-20261020",
+  "validation": "Independent offline audit confirmed source IDs, title dedup and payload coverage; principal integrated development/configuration boundary fix and recomputed the full proxy. Zero inference or business writes. Provider tokenizer/billing not measured.",
+  "semantic_notes": [
+    "Development requires creating code; standalone implementation/configuration is not development.",
+    "Title support/maintenance question intentionally covers technology/industrial maintenance; broad documentary work-type alone is not area-restricted.",
+    "Per-category noul values are model signals, not validated domain confidence or tender-winning probability. Inclusion/unclear thresholds need pilot validation."
+  ]
+}
