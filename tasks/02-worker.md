@@ -1117,3 +1117,5 @@ Rediseno 2026-07-09: el motor deterministico fue reemplazado por analisis LLM ba
 
 - [x] Implementar el ejecutor finito de afinidad comercial DIN para los 157 títulos publicados: caché global de pagos, proyección versionada por perfil/fila, guard PG/leases por envío, parada ante incertidumbre y coste acumulado de peticiones únicas. 24 pruebas en PG desechable con HTTP simulado aprobadas; ejecución productiva pendiente de verificación separada (2026-10-20).
 - [ ] Ejecutar y verificar la afinidad comercial JEV de los 157 seleccionados para DIN y su presentación productiva.
+
+- [x] Preparar continuación explícita únicamente de los siete casos diferidos antes del pago tras el STOP de run-04: autorización append-only liga manifiesto/report/STOP/outcomes, conserva las dos respuestas pagadas excluidas, preflight PG de todos los selectores antes de despachar, máximo acumulado nueve LLM1 y nuevo cap de salida soportado 65536. 35 pruebas offline aprobadas; ejecución se verifica por separado (2026-10-20).
