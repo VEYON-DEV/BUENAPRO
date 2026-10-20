@@ -1114,3 +1114,6 @@ Rediseno 2026-07-09: el motor deterministico fue reemplazado por analisis LLM ba
 
 - [x] Preparar la recuperación explícita de nueve revisiones IA/industrial sin alterar el lote original: ampliar solo el presupuesto de contexto bajo flag, memoización equivalente, reutilización de vectores y selector pagados, OCR local de orientación opt-in y guard de propiedad PG por envío. Validado: 179 pruebas locales aprobadas/1 omitida; ocho contextos reales reproducen hashes exactos sin inferencias ni escrituras. La ejecución y LLM2 se verifican por separado (2026-10-20).
 - [ ] Completar y verificar las nueve lecturas recuperadas y su matching DIN autorizado; conservar revisiones documentales, originales, incertidumbres y pagos históricos.
+
+- [x] Implementar el ejecutor finito de afinidad comercial DIN para los 157 títulos publicados: caché global de pagos, proyección versionada por perfil/fila, guard PG/leases por envío, parada ante incertidumbre y coste acumulado de peticiones únicas. 24 pruebas en PG desechable con HTTP simulado aprobadas; ejecución productiva pendiente de verificación separada (2026-10-20).
+- [ ] Ejecutar y verificar la afinidad comercial JEV de los 157 seleccionados para DIN y su presentación productiva.
