@@ -45,6 +45,7 @@ function loadSource(filename) {
     if (specifier === "@/lib/commercialTaxonomy") return loadSource(path.resolve(feature, "../../lib/commercialTaxonomy.ts"));
     if (specifier === "../../model/commercialFilters") return loadSource(path.join(__dirname, "commercialFilters.ts"));
     if (specifier === "../CommercialFilterFields") return loadSource(path.join(feature, "components/CommercialFilterFields/CommercialFilterFields.tsx"));
+    if (specifier === "../CommercialCategoryLabel") return loadSource(path.join(feature, "components/CommercialCategoryLabel/CommercialCategoryLabel.tsx"));
     return normalRequire(specifier);
   };
   loaded.set(filename, local);

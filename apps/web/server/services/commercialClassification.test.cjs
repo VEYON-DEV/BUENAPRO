@@ -255,7 +255,7 @@ test('category filtering reaches PROD2 count/page before pagination and list/det
   assert.deepEqual(plain(detail.process.commercial_categories), plain(result.data[0].commercial_categories));
   const selections = statements.filter(row => row.text.includes('FROM prod2_discoveries'));
   for (const row of selections.slice(0, 2)) {
-    assert.match(row.text, /category\.id = ANY\(\$2::text\[\]\)/);
+    assert.match(row.text, /effective_commercial\.categories && \$2::text\[\]/);
     assert.match(row.text, /'unclassified'\) = ANY\(\$3::text\[\]\)/);
   }
   assert.deepEqual(plain(selections[0].values), [profileId, ['ia_automatizacion', 'industrial'], ['needs_review']]);

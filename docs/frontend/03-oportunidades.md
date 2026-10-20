@@ -171,6 +171,22 @@ La vista rápida consulta `GET /api/prod2/opportunities/:id?profile_id=...`. Inc
 
 ### Categoría: filtro simple (20/10/2026)
 
+En Buscador SEACE, la columna **Categoría** y la vista rápida muestran las categorías
+efectivas del procedimiento. La clasificación documental válida más reciente tiene
+prioridad; únicamente cuando falta se usan etiquetas preliminares calculadas desde
+el título completo. Estas últimas llevan **Por título** y no acreditan requisitos,
+vigencia ni capacidad de la empresa. La fila muestra una etiqueta compacta y `+N`
+cuando existen más; el nombre accesible y la vista rápida conservan todas.
+`Otros`, `Por confirmar` y `Por clasificar` distinguen fuera de catálogo,
+ambigüedad y ausencia de clasificación. El filtro de las seis categorías usa esa
+misma selección antes del conteo y la paginación. Los filtros documentales avanzados
+siguen requiriendo evidencia documental y no aceptan etiquetas de título como respaldo.
+La API PROD2 añade `commercial_classification_source` (`document`, `title` o null)
+y `commercial_classification_state` (`classified`, `other`, `unclear`, `unclassified`)
+junto a `commercial_categories`; conserva la clasificación documental original
+normalizada en `commercial_classification`. Títulos cambiados o recibos incompletos,
+inciertos o de otra política/modelo/catálogo/prompt no habilitan el respaldo por título.
+
 Ambas fuentes comparten **Filtros → Categoría**: un único selector y el botón
 Aplicar filtros. Opciones: Todas, Licencias y suscripciones, Desarrollo de software,
 IA y automatización, Industrial, Cloud e infraestructura, Soporte y mantenimiento.

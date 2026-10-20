@@ -1,9 +1,12 @@
-import { commercialCategories, commercialTaxonomy, type CommercialFilters } from "@/lib/commercialTaxonomy";
+import { commercialCategories, commercialTaxonomy, PROD2_TITLE_CATEGORY_MODEL, PROD2_TITLE_CATEGORY_POLICY, type CommercialFilters } from "@/lib/commercialTaxonomy";
 
 // SQL values here come exclusively from the versioned catalog, never request text.
 const literal = (value: string) => `'${value.replaceAll("'", "''")}'`;
 const known = (items: { id: string }[]) => `ARRAY[${items.map(item => literal(item.id)).join(",")}]::text[]`;
 const labels = (items: string[]) => `ARRAY[${items.map(literal).join(",")}]::text[]`;
+// Mirrors Python str.split() used for deduplication, preserving all non-whitespace characters.
+const titleWhitespace = String.raw`U&'[\0009-\000d\001c-\0020\0085\00a0\1680\2000-\200a\2028\2029\202f\205f\3000]+'`;
+const titlePromptSha256 = "641d7969735a8359de2bd53c09224fb1bfa9f916e3884f8f42968882dfd11e35";
 const categoryRules = commercialCategories.categories.map(category => `(${literal(category.id)}, ${labels(category.match_any.areas)},
   ${labels(category.match_any.work_types)}, ${labels(category.match_any.specialties)})`).join(",\n");
 const safeArray = (field: string) => `CASE WHEN jsonb_typeof(cc_input.value->'${field}') = 'array' THEN cc_input.value->'${field}' ELSE '[]'::jsonb END`;
@@ -81,15 +84,60 @@ export const PROD2_COMMERCIAL_JOIN = classificationJoin(prod2Current);
 export const PROD6_COMMERCIAL_JOIN = classificationJoin(prod6Current);
 export const COMMERCIAL_SELECT = "commercial.classification AS commercial_classification";
 
+// Separate from documentary taxonomy: a title has no citation, page or eligibility evidence.
+// The latest valid documentary classification always wins, including one outside our six categories.
+export const PROD2_TITLE_CATEGORY_JOIN = `LEFT JOIN LATERAL (
+  SELECT tc.categories, tc.decision FROM prod2_title_classifications tc
+  JOIN prod2_title_category_receipts receipt ON receipt.request_hash = tc.request_hash
+  WHERE commercial.classification IS NULL AND tc.convocation_id = p.id_convocatoria
+    AND tc.source_title = p.description
+    AND tc.source_title_sha256 = encode(sha256(convert_to(p.description, 'UTF8')), 'hex')
+    AND tc.policy_version = ${literal(PROD2_TITLE_CATEGORY_POLICY)}
+    AND receipt.policy_version = tc.policy_version AND receipt.model = ${literal(PROD2_TITLE_CATEGORY_MODEL)}
+    AND receipt.status = 'done'
+    AND receipt.prompt_sha256 = ${literal(titlePromptSha256)}
+    AND receipt.catalog_sha256 = encode(sha256(convert_to(array_to_json(${known(commercialCategories.categories)})::text, 'UTF8')), 'hex')
+    AND receipt.request_json->>'model' = receipt.model
+    AND receipt.request_json->'state'->>'titulo' = receipt.normalized_title
+    AND receipt.normalized_title = btrim(regexp_replace(p.description, ${titleWhitespace}, ' ', 'g'))
+    AND receipt.title_sha256 = encode(sha256(convert_to(receipt.normalized_title, 'UTF8')), 'hex')
+    AND receipt.result_json->>'policy_version' = tc.policy_version
+    AND receipt.result_json->>'basis' = 'title_jev' AND receipt.result_json->'preliminary' = 'true'::jsonb
+    AND receipt.result_json->'categories' = to_jsonb(tc.categories)
+    AND receipt.result_json->>'decision' = tc.decision
+    AND tc.categories <@ ${known(commercialCategories.categories)} AND array_position(tc.categories, NULL) IS NULL
+    AND cardinality(tc.categories) = (SELECT count(DISTINCT category) FROM unnest(tc.categories) category)
+    AND ((tc.decision = 'classified' AND cardinality(tc.categories) > 0)
+      OR (tc.decision IN ('other', 'unclear') AND cardinality(tc.categories) = 0))
+) title_category ON true
+LEFT JOIN LATERAL (SELECT
+  CASE WHEN commercial.classification IS NOT NULL THEN ARRAY(
+    SELECT category.id FROM (VALUES ${categoryRules}) AS category(id, areas, work_types, specialties)
+    WHERE commercial.classification->>'primary_area' = ANY(category.areas)
+      OR commercial.classification->'secondary_areas' ?| category.areas
+      OR commercial.classification->'work_types' ?| category.work_types
+      OR commercial.classification->'specialties' ?| category.specialties
+  ) ELSE COALESCE(title_category.categories, ARRAY[]::text[]) END AS categories,
+  CASE WHEN commercial.classification IS NOT NULL THEN 'document'
+    WHEN title_category.decision IS NOT NULL THEN 'title' ELSE NULL END AS source,
+  title_category.decision
+) effective_commercial ON true`;
+
+export const PROD2_COMMERCIAL_SELECT = `${COMMERCIAL_SELECT},
+  effective_commercial.categories AS commercial_categories,
+  effective_commercial.source AS commercial_classification_source,
+  CASE WHEN effective_commercial.source = 'document' THEN CASE WHEN cardinality(effective_commercial.categories) > 0 THEN 'classified' ELSE 'other' END
+    ELSE COALESCE(effective_commercial.decision, 'unclassified') END AS commercial_classification_state`;
+
 export function hasCommercialFilters(filters: CommercialFilters | undefined) {
   return Boolean(filters && (filters.categories?.length || filters.areas.length || filters.workTypes.length || filters.specialties.length || filters.statuses.length));
 }
 
-export function appendCommercialPredicates(filters: CommercialFilters | undefined, values: unknown[], where: string[]) {
+export function appendCommercialPredicates(filters: CommercialFilters | undefined, values: unknown[], where: string[], categorySource: "document" | "prod2_effective" = "document") {
   if (!filters) return;
   if (filters.categories?.length) {
     values.push(filters.categories);
-    where.push(`(CASE WHEN commercial.classification IS NULL THEN false ELSE EXISTS (
+    where.push(categorySource === "prod2_effective" ? `effective_commercial.categories && $${values.length}::text[]` : `(CASE WHEN commercial.classification IS NULL THEN false ELSE EXISTS (
       SELECT 1 FROM (VALUES ${categoryRules}) AS category(id, areas, work_types, specialties)
       WHERE category.id = ANY($${values.length}::text[]) AND (
         commercial.classification->>'primary_area' = ANY(category.areas)

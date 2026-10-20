@@ -42,7 +42,8 @@
 
 /* Buscador SEACE rows carry a bookmark beside the row button (never nested inside it). */
 .withSave .row { align-items: center; display: grid; grid-template-columns: minmax(0, 1fr) 52px; }
-.withSave .listHead { grid-template-columns: minmax(180px, 1.8fr) minmax(115px, 1.1fr) 116px 110px minmax(100px, .9fr) minmax(90px, .8fr) 40px; }
+.withSave .rowMain { gap: 10px; grid-template-columns: minmax(150px, 1.6fr) minmax(106px, 1fr) minmax(105px, .9fr) 108px 100px minmax(94px, .9fr) minmax(85px, .8fr); }
+.withSave .listHead { gap: 10px; grid-template-columns: minmax(150px, 1.6fr) minmax(106px, 1fr) minmax(105px, .9fr) 108px 100px minmax(94px, .9fr) minmax(85px, .8fr) 40px; }
 .saveHeading { display: block; }
 .srOnly { clip: rect(0 0 0 0); clip-path: inset(50%); height: 1px; overflow: hidden; position: absolute; white-space: nowrap; width: 1px; }
 
@@ -78,7 +79,7 @@
 .buyerCell,
 .dateCell { min-width: 0; }
 .code { color: var(--bp-color-brand); display: block; font-size: 11px; font-weight: 650; margin-bottom: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.participationCell { min-width: 0; }
+.participationCell, .categoryCell { min-width: 0; }
 .participationCell [data-participation-label] { clip-path: inset(50%); height: 1px; overflow: hidden; position: absolute; white-space: nowrap; width: 1px; }
 
 .codeCell strong,
@@ -284,14 +285,24 @@
 }
 
 @media (min-width: 1401px) and (max-width: 1650px) {
-  .withSave .listHead { grid-template-columns: minmax(145px, 1.7fr) minmax(100px, 1fr) 112px 106px minmax(94px, .9fr) minmax(88px, .8fr) 40px; }
+  .withSave .listHead { grid-template-columns: minmax(125px, 1.5fr) minmax(92px, 1fr) minmax(105px, .95fr) 102px 100px minmax(85px, .9fr) minmax(75px, .8fr) 40px; }
+  .withSave .rowMain { grid-template-columns: minmax(125px, 1.5fr) minmax(92px, 1fr) minmax(105px, .95fr) 102px 100px minmax(85px, .9fr) minmax(75px, .8fr); }
 }
 @media (max-width: 1050px) {
-  .withSave .listHead { grid-template-columns: minmax(165px, 1.7fr) minmax(110px, 1fr) 112px 106px minmax(100px, .9fr) 40px; }
+  .withSave .listHead { grid-template-columns: minmax(165px, 1.7fr) minmax(100px, 1fr) minmax(105px, 1fr) 100px 94px 40px; }
+  .withSave .rowMain { grid-template-columns: minmax(165px, 1.7fr) minmax(100px, 1fr) minmax(105px, 1fr) 100px 94px; }
   .withSave .listHead > :last-child { display: block; }
   .withSave .listHead > :nth-last-child(2) { display: none; }
+  .withSave .listHead > :nth-last-child(3) { display: none; }
+  .withSave .dateCell { grid-column: 1 / 4; grid-row: 2; }
+  .withSave .rowMain > :last-child { grid-column: 4 / -1; grid-row: 2; }
 }
 @media (max-width: 700px) {
   .withSave .row { align-items: start; grid-template-columns: minmax(0, 1fr) 48px; }
   .withSave .row > :last-child { padding-top: 8px; }
+  .withSave .rowMain { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .withSave .categoryCell { grid-column: 1 / -1; grid-row: 3; }
+  .withSave .participationCell { grid-row: 4; }
+  .withSave .dateCell { grid-column: 1 / -1; grid-row: 5; }
+  .withSave .rowMain > :last-child { grid-column: 1 / -1; grid-row: 6; }
 }

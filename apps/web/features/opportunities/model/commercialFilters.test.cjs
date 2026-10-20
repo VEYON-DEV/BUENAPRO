@@ -18,6 +18,7 @@ function load(file) {
   mod.require = spec => {
     if (spec.endsWith('.module.css')) return new Proxy({}, { get: (_, key) => key === '__esModule' ? false : String(key) });
     if (spec === 'next/link') return ({ href, children, ...props }) => React.createElement('a', { href, ...props }, children);
+    if (spec === 'next/navigation') return { useRouter: () => ({ refresh() {} }) };
     if (spec.startsWith('@/')) return load(path.join(webRoot, spec.slice(2)));
     if (spec.startsWith('.') && !spec.endsWith('.json')) return load(path.resolve(path.dirname(file), spec));
     return native(spec);
@@ -32,6 +33,8 @@ const { CommercialFilterFields } = load(path.join(webRoot, 'features/opportuniti
 const { OpportunityToolbar } = load(path.join(webRoot, 'features/opportunities/components/OpportunityToolbar'));
 const { Prod4OpportunityToolbar } = load(path.join(webRoot, 'features/opportunities/components/Prod4OpportunityToolbar'));
 const { OpportunitySourceTabs } = load(path.join(webRoot, 'features/opportunities/components/OpportunitySourceTabs'));
+const { CommercialCategoryLabel } = load(path.join(webRoot, 'features/opportunities/components/CommercialCategoryLabel'));
+const { Prod4OpportunityList } = load(path.join(webRoot, 'features/opportunities/components/Prod4OpportunityList'));
 const selected = { source: 'prod2', profile_id: 'profile-1', q: 'tableros', page: '3', with_score: 'true',
   commercial_area: 'inteligencia_artificial,industrial_electrica', commercial_work: 'licencias_suscripciones',
   commercial_specialty: 'chatbot', commercial_status: 'needs_review' };
@@ -141,4 +144,25 @@ test('default filters stay collapsed; the retired PROD4 toolbar receives no new 
   assert.match(html, /aria-expanded="false"/); assert.doesNotMatch(html, /<h3>Clasificación comercial/);
   const old = render(Prod4OpportunityToolbar, { source: 'prod4', defaults: {} });
   assert.doesNotMatch(old, /prod2-commercial-filters|commercial_area|Filtros/);
+});
+
+test('title category is a compact neutral label with accessible complete labels and preliminary origin', () => {
+  const html = render(CommercialCategoryLabel, { commercial_categories: ['licencias_suscripciones', 'soporte_mantenimiento'],
+    commercial_classification_source: 'title', commercial_classification_state: 'classified', compact: true });
+  assert.match(html, />Licencias y suscripciones</); assert.match(html, />\+1</); assert.match(html, />Por título</);
+  assert.match(html, /aria-label="Licencias y suscripciones; Soporte y mantenimiento\. Por título: clasificación preliminar/);
+  const expanded = render(CommercialCategoryLabel, { commercial_categories: ['industrial', 'ia_automatizacion'], commercial_classification_source: 'document', commercial_classification_state: 'classified' });
+  assert.match(expanded, />Industrial</); assert.match(expanded, />IA y automatización</); assert.doesNotMatch(expanded, /Por título/);
+  for (const [state, label] of [['unclassified', 'Por clasificar'], ['other', 'Otros'], ['unclear', 'Por confirmar']]) {
+    assert.ok(render(CommercialCategoryLabel, { commercial_classification_state: state }).includes(label));
+  }
+});
+
+test('only PROD2 receives a category column; PROD4 retains its existing list contract', () => {
+  const row = { id_convocatoria: '123', id_procedimiento: '456', nomenclatura: 'LP-2026', title: 'Licencias completas', object_type: 'good',
+    commercial_categories: ['licencias_suscripciones'], commercial_classification_source: 'title', commercial_classification_state: 'classified' };
+  const current = render(Prod4OpportunityList, { rows: [row], source: 'prod2', profileId: 'DIN' });
+  assert.match(current, />Categoría</); assert.match(current, />Licencias y suscripciones</); assert.match(current, />Por título</);
+  const retired = render(Prod4OpportunityList, { rows: [row], source: 'prod4' });
+  assert.doesNotMatch(retired, />Categoría<|>Por título<|>Licencias y suscripciones</);
 });

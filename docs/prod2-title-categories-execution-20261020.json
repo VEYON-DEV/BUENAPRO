@@ -1,0 +1,24 @@
+{
+  "status": "implementation_validated_awaiting_pilot",
+  "scope": "existing_prod2_only",
+  "model": "jev-1.13.0",
+  "policy": "title_commercial_classification_v1",
+  "cases": 1135,
+  "unique_titles": 1018,
+  "reusable_duplicate_rows": 117,
+  "manifest_sha256": "ab39e5dd41647a424c9dfad90442fef21a1e00c96528c05b9e2ba6ce788808f9",
+  "proxy_input_tokens": 792220,
+  "proxy_cost_usd": "0.033273240",
+  "budget_guard_usd": "0.10",
+  "budget_is_invoice_guarantee": false,
+  "paid_requests_so_far": 0,
+  "qa": {
+    "python_pass": 29,
+    "node_pass": 195,
+    "node_skip": 2,
+    "frontend_domains": 16,
+    "impeccable_detector_findings": 0
+  },
+  "deployment": "pending",
+  "temporary_cleanup": "pending"
+}

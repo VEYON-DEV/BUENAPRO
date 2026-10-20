@@ -1,5 +1,7 @@
 # Tareas - Database
 
+- [ ] Aplicar y verificar únicamente0046 para categorías PROD2 por título: runs/recibos/categorías separados, título exacto, hashes y uso/costo; sin modificar extracciones ni matches. Pedido humano20/10/2026; cierre en docs/prod2-title-categories-execution-20261020.json.
+
 - [x] Crear, validar y aplicar0043 para corpus/chunks/vectores/retrieval y reservas embeddings PROD2 (08/10/2026): tablas aditivas sin extensión ni originalesR2; cuatro contratos PostgreSQL reales en schema aislado bajo executor, preparación exclusiva idempotente, columnas/PK/FK/status y recibos/pagos exactos verificados. Smoke integrado real confirma texto reducido durable y replay sin nueva llamada con API simulada. Cero proveedores/fuente durante migración; guía `docs/prod2-embeddings-runtime-20261008.md`.
 
 - [x] Crear `saved_opportunities` (migración `0044_saved_opportunities.sql`, 13/10/2026): marcadores por workspace sobre `opportunities.id`, PK `(tenant_id, opportunity_id)`, índice por fecha; aditiva. Aplicada a la BD de producción por solicitud del usuario solo esta versión (sin `migrate.py`, porque `0042` sigue pendiente a propósito) y registrada en `schema_migrations`; prueba real guardar→Gantt→quitar dejó la tabla en 0 filas.

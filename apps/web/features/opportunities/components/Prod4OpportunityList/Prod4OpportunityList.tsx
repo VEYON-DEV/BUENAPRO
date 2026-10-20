@@ -10,14 +10,16 @@ import { participationReading } from "@/lib/participationTerms";
 import { keywordAffinitySummary } from "@/lib/keywordAffinity";
 import { scoreTone } from "@/lib/scorePresentation";
 import type { ProcurementScheduleStage } from "@/lib/procurementSchedule";
+import type { CommercialCategoryPresentation } from "@/lib/commercialTaxonomy";
 import { verdictShortLabels } from "@/lib/extraction/opportunity";
 import { formatShortDateTime } from "@/lib/format/date";
 import { seaceDetailRequest } from "../../api/seaceDetail";
 import { SaveButton } from "../SaveButton";
+import { CommercialCategoryLabel } from "../CommercialCategoryLabel";
 import { analysisPresentation, provisionalAnalysisScore } from "../../model/analysisPresentation";
 import styles from "./Prod4OpportunityList.module.css";
 
-export type Prod4OpportunitySummary = {
+export type Prod4OpportunitySummary = Partial<CommercialCategoryPresentation> & {
   id_procedimiento: string;
   id_convocatoria?: string;
   opportunity_id: string;
@@ -217,7 +219,7 @@ export function Prod4OpportunityList({ rows, source = "prod4", profileId }: { ro
     <section className={[styles.board, primary ? "" : styles.noPreview, source === "prod2" ? styles.withSave : ""].join(" ")}>
       <div className={styles.list}>
         <div className={styles.listHead}>
-          <span>Procedimiento / objeto</span><span>Entidad</span><span>Subcontratación</span><span>Consorcio</span><span>Próxima fecha</span><span>Análisis / afinidad</span>
+          <span>Procedimiento / objeto</span><span>Entidad</span>{source === "prod2" ? <span>Categoría</span> : null}<span>Subcontratación</span><span>Consorcio</span><span>Próxima fecha</span><span>Análisis / afinidad</span>
           {source === "prod2" ? <span className={styles.saveHeading}><span className={styles.srOnly}>Guardar</span></span> : null}
         </div>
         <div className={styles.rows}>
@@ -233,6 +235,7 @@ export function Prod4OpportunityList({ rows, source = "prod4", profileId }: { ro
                   <span>{row.buyer_name || "Entidad no informada"}</span>
                   <span className={styles.meta}>{row.region || "Perú"}</span>
                 </div>
+                {source === "prod2" ? <div className={styles.categoryCell}><CommercialCategoryLabel {...row} compact /></div> : null}
                 <div className={styles.participationCell}><ParticipationStatus label="Subcontratación" term={participationReading(row.participation_extraction).subcontratacion} /></div>
                 <div className={styles.participationCell}><ParticipationStatus label="Consorcio" kind="consorcio" term={participationReading(row.participation_extraction).consorcio} /></div>
                 <div className={styles.dateCell}>
@@ -268,6 +271,7 @@ export function Prod4OpportunityList({ rows, source = "prod4", profileId }: { ro
           {source === "prod2" ? <SaveButton code={primary.nomenclatura} idContrato={rowId(primary)} endpoint={`/api/prod2/opportunities/${rowId(primary)}/saved`} initialSaved={Boolean(primary.is_saved)} showLabel /> : null}
           <p className={styles.eligibility}>Revisa el cronograma y la modalidad antes de participar. La afinidad comercial no confirma que puedas presentar una oferta.</p>
           <dl className={styles.facts}>
+            {source === "prod2" ? <div><dt>Categoría</dt><dd><CommercialCategoryLabel {...(previewRow ?? primary)} /></dd></div> : null}
             <div><dt>Entidad</dt><dd>{primary.buyer_name || "No informada"}</dd></div>
             <div><dt>Tipo de proceso</dt><dd>{primary.procedure_type || "Por confirmar"}</dd></div>
           </dl>
