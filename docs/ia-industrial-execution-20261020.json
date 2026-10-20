@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "status": "running_reader010_after_nine_approved_batches",
+  "status": "running_reader013_after_twelve_approved_batches",
   "scope": "DIN: IA/automatización e industrial; lectura por IDs del mapeo PROD2 cerrado",
   "selection": {
     "ids": 157,
@@ -42,7 +42,7 @@
     "started_at_utc": "2026-10-20T16:11:26.049916+00:00",
     "plan_sha256": "25922f5da9f518064543ca875db33b541e6fe778606a0606175a53793a51c061",
     "parent_pid": 85202,
-    "last_child_pid": 26025,
+    "last_child_pid": 36991,
     "initial_run": {
       "code_commit": "d880953a0bd4a9c6db677c538639300a1310533a",
       "plan_sha256": "bdf829ca6e28db773de4a4b811cdf071b7be43ff637d0b28e7db91e6d6957500",
@@ -51,8 +51,8 @@
       "started_at_utc": "2026-10-20T15:15:45.113005+00:00"
     },
     "chain_folder": "tmp/ia-industrial-execution-20261020/chain-runtime-recovery-002",
-    "current_stage": "reader-010",
-    "completed_batches": 9
+    "current_stage": "reader-013",
+    "completed_batches": 12
   },
   "policy": {
     "history_before_source_and_affinity": true,
@@ -77,7 +77,7 @@
     "actual157_dry_run": true,
     "runtime_embedding_schema": "fresh verified; earlier nonexistent table probe corrected in schema-preflight receipt",
     "production_writes_so_far": "Only0042 CHECK/registry and normal selected reader; no unrelated services/data changes",
-    "new_paid_calls_so_far": 32,
+    "new_paid_calls_so_far": 51,
     "focused_final": {
       "passed": 169,
       "seconds": 1.93,
@@ -103,7 +103,7 @@
       "log_sha256": "bc25aa88c37f3ecb5d52dce6712d5ca2819b8afa2f3d1a8f88ae80f508c1ecdb"
     },
     "runtime_recovery_independent_review": "approved; offline only",
-    "paid_calls_cutoff_utc": "2026-10-20T16:59:44.077921+00:00",
+    "paid_calls_cutoff_utc": "2026-10-20T17:14:41.665805+00:00",
     "metadata_recovery_offline": {
       "passed": 4327,
       "skipped": 67,
@@ -115,18 +115,18 @@
     "unexpected_local_stop": "durable sanitized STOP; no outcome/ACK; typed reviews/limits preserved; in-flight known responses persist"
   },
   "costs": {
-    "new_known_usd": "0.00764904",
+    "new_known_usd": "0.009951612",
     "new_uncertain_attempts": 0,
     "historical_uncertain_attempts": "preserved, outside this lot; never set to zero",
     "limits_note": "Call/document limits are finite; not an implemented hard USD cap. No credit purchase or spend-limit changes authorized.",
-    "cutoff_utc": "2026-10-20T16:59:44.077921+00:00",
+    "cutoff_utc": "2026-10-20T17:14:41.665805+00:00",
     "final": false,
     "scope": "Local run receipts at health cut; may include in-flight work; not final"
   },
   "pending": [
     "Complete current reader batches and fresh PG/Redis readback",
     "DIN matching only ready new readings",
-    "Six typed document context reviews retained; no context expansion or automatic paid resend",
+    "Seven typed document context reviews and one selector review retained; no context expansion or automatic paid resend",
     "48 sector-boundary title holds",
     "PROD6 legitimate source access recovery"
   ],
@@ -160,20 +160,21 @@
     "paid_retries": 0
   },
   "latest_cut": {
-    "at_utc": "2026-10-20T16:59:44.077921+00:00",
+    "at_utc": "2026-10-20T17:14:41.665805+00:00",
     "plan_sha256": "25922f5da9f518064543ca875db33b541e6fe778606a0606175a53793a51c061",
     "code_commit": "7dccbc6ec92543455cf856054d8b00a2f7ce327b",
-    "chain_status": "approved_batch",
-    "stage": "reader-009",
+    "chain_status": "running_child",
+    "stage": "reader-013",
     "parent_pid": 85202,
-    "child_pid": 22135,
+    "child_pid": 36991,
     "outcomes": {
-      "total": 90,
+      "total": 124,
       "statuses": {
-        "rejected_below_60": 31,
-        "closed_without_reading": 45,
-        "needs_review": 6,
-        "opening_not_confirmed": 5,
+        "rejected_below_60": 50,
+        "closed_without_reading": 55,
+        "selection_needs_review": 1,
+        "needs_review": 7,
+        "opening_not_confirmed": 8,
         "llm1_complete": 3
       },
       "llm1_preserved": 3,
@@ -181,32 +182,34 @@
     },
     "dispatch_stop_marker": false,
     "cost_audit_may_include_in_flight": {
-      "attempts": 32,
-      "jev_calls": 21,
+      "attempts": 51,
+      "jev_calls": 38,
       "llm1_calls": 0,
       "openai_calls": 0,
-      "embedding_attempts": 11,
-      "embedding_calls": 11,
+      "embedding_attempts": 13,
+      "embedding_calls": 13,
       "embedding_unknown_dispatch_attempts": 0,
       "embedding_pre_send_failures": 0,
       "embedding_usage_unknown_attempts": 0,
       "embedding_receipt_conflicts": 0,
-      "embedding_input_tokens": 288855,
-      "embedding_cost_usd": 0.0057771,
-      "known_cost_usd": 0.00764904,
+      "embedding_input_tokens": 338094,
+      "embedding_cost_usd": 0.0067618800000000005,
+      "known_cost_usd": 0.009951612,
       "usage_unknown_attempts": 0,
-      "elapsed_seconds": 7.632104874035576
+      "elapsed_seconds": 12.879919127124595
     },
     "pg": {
-      "coordinator_locks": 0,
-      "own_run_members": 37
+      "coordinator_locks": 1,
+      "own_run_members": 59
     },
     "redis": {
-      "queued": 67,
-      "pending": 0,
-      "payloads": 67,
+      "queued": 30,
+      "pending": 2,
+      "payloads": 32,
       "seen": 157
-    }
+    },
+    "sampling_note": "Live filesystem and PG/Redis samples are not atomic; final partition is not claimed.",
+    "sample_partition_delta": 1
   },
   "followup": {
     "automation_id": "completar-lote-din-ia-e-industrial",
@@ -428,18 +431,27 @@
     "full_scope_complete": false
   },
   "monitor_checkpoint": {
-    "health_receipt": "activation/health-20261020T165946Z.private.json",
-    "health_sha256": "c5265215bd6207e0f3823dc1ffff6be72868463bd7254f672741b545417ee992",
+    "health_receipt": "activation/health-20261020T171445Z.private.json",
+    "health_sha256": "dbf723ae433294d16e9f883b5024b7f481d6d91877b3ccaa8b8c0f18115b9e86",
     "later_state_observation": {
       "status": "running_child",
-      "child_stage": "reader-010",
-      "child_pid": 26025,
-      "completed_batches": 9,
-      "updated_at_utc": "2026-10-20T16:59:59.421963+00:00"
+      "child_stage": "reader-013",
+      "child_pid": 36991,
+      "completed_batches": 12,
+      "updated_at_utc": "2026-10-20T17:12:55.123377+00:00"
     },
-    "approved_report_sha256": "93c2007e7e33c43f8db4fa168994f180896b829df3481bc595dfbd4cc99dc42c",
-    "approved_readback_sha256": "bbc0fb75a8eb49ff51ac46b64cc8145a7907da409d69c25c30680680b2816871",
-    "runtime_bindings_verified": 204,
-    "normal_pg_zero_between_batches": true
+    "approved_report_sha256": "7106b3ad1325179c9edded537c67e955517bf8d62145b4f0ea063ba73cbe3823",
+    "approved_readback_sha256": "eb68276e3eaf09daf1e9d7f998fc7d45feddf7f4f5517e277fb9d394202a0e17",
+    "approved_partition": {
+      "processed": 120,
+      "redis": {
+        "payloads": 37,
+        "pending": 0,
+        "queued": 37,
+        "seen": 157
+      },
+      "total": 157
+    },
+    "runtime_bindings_verified": 204
   }
 }
