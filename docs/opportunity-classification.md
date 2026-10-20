@@ -44,13 +44,13 @@ cruzados oficiales o revisión humana, nunca por similitud textual automática.
 
 ## Clasificación comercial para el filtro interno (20/10/2026)
 
-Estado: catálogo y filtros implementados localmente en web/API; LLM1 seleccionado
-PROD2 incorpora el bloque mediante opt-in explícito para carpetas nuevas. La
-validación y publicación se registran por separado en tasks/. No modifica los seis
+Estado: un selector de seis categorías implementado localmente en web/API; la
+clasificación LLM1 está preparada con opt-in para lecturas nuevas en PROD2 y PROD6.
+Validación, publicación y activación se registran por separado en tasks/. No modifica los seis
 ejes canónicos anteriores. «Licencias», «desarrollo» o «industrial» son
 clasificaciones comerciales, no modalidades jurídicas de contratación.
 
-### Dos ejes que se pueden combinar
+### Ejes internos de la lectura LLM1
 
 | Eje comercial | Valores del catálogo v1 |
 | --- | --- |
@@ -155,32 +155,49 @@ de elegibilidad. El procesamiento posterior reutiliza decisiones y lecturas
 previas y recorre JEV → ficha/documentos → LLM1 → evaluación de DIN y explicaciones
 según el alcance aplicable, con recibos y presupuesto propios. La autorización
 del lote no modifica el plan metadata-only ya cerrado ni autoriza repetir pagos
-inciertos. Este diseño no ejecuta el lote, modelos, migraciones ni workers.
+inciertos. Esta entrega no ejecuta el lote, modelos, migraciones ni workers.
 
 
-### Opciones de filtro disponibles
+### Filtro simple aprobado: Categoría
 
-En ambas fuentes, abrir **Filtros → Clasificación comercial**. Rubro, trabajo y
-especialidad admiten selección múltiple. El botón Aplicar filtros envía CSV en la
-URL; las búsquedas, tipos, vistas rápidas, fuente y paginación conservan las
-selecciones aplicadas. **Quitar clasificación** limpia solo estos criterios y
-conserva los demás filtros y el perfil. Los grupos se pliegan para mantener la
-primera pantalla y el inspector del patrón Glass.
+El usuario sustituyó la selección visible de varios ejes por un único selector
+**Filtros → Categoría** en ambas fuentes. Catálogo compartido:
+`workers/seace/src/buenapro_worker/extraction/commercial_categories.v1.json`,
+versión `commercial_categories_v1`. La clasificación detallada sigue siendo
+interna; esta proyección no cambia prompt/schema de una lectura ya pagada.
 
-| Parámetro común | Valores |
+| Categoría | Regla sobre etiquetas válidas de LLM1 |
 | --- | --- |
-| `commercial_area` | IDs del catálogo `areas` (rubro principal o secundario; Sin clasificar se ofrece mediante estado) |
-| `commercial_work` | IDs de `work_types` |
-| `commercial_specialty` | IDs de `specialties` |
-| `commercial_status` | `evidence_backed`, `preliminary`, `needs_review`, `unclassified` |
+| Licencias y suscripciones | Trabajo licencias/suscripciones |
+| Desarrollo de software | Trabajo desarrollo de software |
+| IA y automatización | Rubro IA o automatización de procesos, o especialidad chatbot/agentes IA/RPA |
+| Industrial | Rubro industrial/eléctrico, o PLC/SCADA, instrumentación, tableros, robótica o equipamiento electromecánico |
+| Cloud e infraestructura | Rubro infraestructura/cloud |
+| Soporte y mantenimiento | Trabajo soporte/mantenimiento |
 
-Disponibles en `GET /api/prod2/opportunities`, `GET /api/contracts` y `GET /api/feed`.
-Listas/detalles exponen `commercial_classification`; el helper comercial usa un
-objeto `unclassified` para datos ausentes, desconocidos o inválidos. Se rechazan
-valores de filtro desconocidos con 400. No cambia el puntaje ni su orden global.
-Cita comercial no verificable en V5 degrada `support_status` a `needs_review` antes
-del filtro/conteo; conserva el raw pagado y sus etiquetas, sin convertir la
-revisión de fuente en aprobación semántica.
+Una oportunidad puede pertenecer a varias categorías. Todas no aplica restricción
+comercial e incluye históricos sin etiquetas. No deducir categorías desde nombre,
+keyword, afinidad o puntaje. La proyección no necesita otra llamada LLM ni
+relecturas; no rellena históricos automáticamente.
+
+`commercial_category` acepta un valor en UI y CSV/repeticiones OR en API. Se aplica
+antes de count/paginación, conservando perfil, permisos y scores. Listas/detalles y
+feed añaden `commercial_categories: string[]` derivado de la clasificación vigente
+válida; no se confía en una lista arbitraria guardada en resumen. Catálogo, SQL,
+normalizador TypeScript y proyección Python deben permanecer equivalentes.
+
+Los parámetros anteriores `commercial_area`, `commercial_work`,
+`commercial_specialty` y `commercial_status` permanecen compatibles en API y se
+combinan con AND frente a categoría. No aparecen como cuatro controles en UI.
+Una URL antigua conserva sus valores bajo Selección anterior; elegir una categoría
+o Todas elimina esos criterios previos del formulario. Quitar categoría conserva
+perfil y filtros ajenos. Búsqueda/tipo/vistas rápidas/fuente/paginación preservan
+la categoría. Los valores desconocidos se rechazan con 400, no se ignoran.
+
+Las APIs conservan `commercial_classification` sin alterar su forma, raw
+prioritario, selección de extracción elegible actual y ausencia de fallback a
+etiquetas viejas. Una cita comercial V5 no verificable mantiene revisión antes
+del conteo/filtro. Evidencia documental no equivale a elegibilidad o QA humano.
 
 Para una **carpeta nueva** de lectura seleccionada PROD2, el CLI acepta:
 
@@ -192,16 +209,37 @@ Para una **carpeta nueva** de lectura seleccionada PROD2, el CLI acepta:
 clasificación en una nueva. `none` mantiene la lectura sin etiquetas comerciales.
 El flag queda en manifest/contexto e identidades de preparación, cola, prompt,
 schema y caché; cambiarlo en una carpeta existente se rechaza. No agregarlo a las
-corridas históricas. Gemini general ofrece el mismo adaptador explícito mediante
-`policy_context`; el lector dedicado **PROD6 Guarded no activa esta salida** y
-requiere integración/cableado de su política en una tarea posterior. Los filtros
-web ya admiten documentos de ambas fuentes que tengan el bloque válido.
+corridas históricas. El servicio PROD2 admite el flag en su `base_argv` explícito y
+lo conserva en el plan/epoch congelado. Gemini general ofrece el adaptador mediante
+`policy_context`.
+
+El lector dedicado **PROD6 Guarded** también acepta
+`--llm1-commercial-taxonomy commercial_taxonomy_v1`. La ausencia del flag conserva
+prompt/schema/identidad y recibos legacy. El opt-in requiere un namespace nuevo de
+recibos: un marcador local inmutable congela política tras obtener el lock PG y
+bajo el lock de recibos. Una carpeta con recibos/guard legacy no se convierte a la
+nueva política. Los trabajos nuevos llevan el binding en payload; un trabajo IO
+con política incompatible se bloquea antes de conexión/fuente, y una lectura
+pendiente incompatible no se adopta para generar etiquetas.
+
+La reutilización PG de lecturas actuales/comerciales/legacy ocurre antes de otra
+lectura. Un trabajo ya intentado, o con otro intento registrado para ese documento
+en el mismo runtime, solo permite recuperación local: SHA original, modelo,
+clase/MIME, prompt/hash/schema y política deben acreditar la respuesta durable
+exacta. Carpeta vacía, recibo de otra identidad, solicitud sin respuesta o consumo
+incierto no habilitan descarga ni inferencia nueva. No se transforma incertidumbre
+en costo cero ni se repaga para conseguir categorías.
+
+Ambos normalizadores proyectan las seis categorías con el JSON compartido cuando
+hay clasificación válida. La lista derivada no altera raw, hash de pago, score,
+modalidad o requisitos. Los filtros web admiten documentos de ambas fuentes que
+tengan el bloque válido; esta preparación no ejecuta trabajos ni rellena históricos.
 
 Esta implementación no llama JEV/Gemini, no etiqueta automáticamente históricos,
 no ejecuta el lote IA/industrial y no despliega web ni reactiva lectores. Esas
 operaciones conservan sus tareas y verificaciones propias.
 
-### Validación local y rendimiento
+### Primera implementación: validación local y rendimiento
 
 Código web/catálogo `20dea69`, lector seleccionado `c827802` y cortocircuito SQL
 `2a0f646`. Las pruebas incluyen catálogo/evidencias/identidad inmutable, ausencia
@@ -217,3 +255,13 @@ selectiva de criterios; revisión visual representativa del principal. Sin tags
 fabricados para llenar resultados, escrituras de negocio, PDFs, modelos o cambios
 productivos. Recibo compacto de alcance, pruebas, evidencias y pendientes:
 `docs/commercial-classification-20261020.json`.
+
+
+### Simplificación y lectores preparados
+
+La entrega posterior `c1f1802` sustituye los cuatro grupos visibles por Categoría,
+sin modificar la clasificación LLM1 pagada. Pruebas de catálogo y SQL acreditan
+las seis reglas compartidas, combinaciones internas OR, compatibilidad de filtros
+anteriores y aislamiento de perfil/procedencia antes de paginar. Los lectores se
+preparan y prueban offline; publicación y ejecución conservan pasos propios.
+Cierre y evidencias: `docs/simple-categories-20261020.json`.

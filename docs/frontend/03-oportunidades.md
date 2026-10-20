@@ -169,21 +169,23 @@ Por solicitud explícita del usuario del 13/10/2026, ambos listados e inspectore
 La vista rápida consulta `GET /api/prod2/opportunities/:id?profile_id=...`. Incluye cronograma con precisión original, documentos y acceso al detalle. No usa CUBSO o regiones inferidos de palabras ni encola análisis manuales. El enlace oficial abre el buscador estable de PROD2: SEACE requiere una sesión para abrir una ficha, por lo que no se promete un permalink del procedimiento.
 
 
-### Clasificación comercial (implementación local del 20/10/2026)
+### Categoría: filtro simple (20/10/2026)
 
-Ambas fuentes comparten **Filtros → Clasificación comercial**, con rubro, tipo de
-trabajo y especialidad de selección múltiple y estado de clasificación. Catálogo y
-contrato: [Clasificación comercial](../opportunity-classification.md). No mezclar
-estas etiquetas con el objeto Bien/Servicio, modalidad jurídica o afinidad.
+Ambas fuentes comparten **Filtros → Categoría**: un único selector y el botón
+Aplicar filtros. Opciones: Todas, Licencias y suscripciones, Desarrollo de software,
+IA y automatización, Industrial, Cloud e infraestructura, Soporte y mantenimiento.
+Se conservan los controles existentes de vigencia, puntaje y guardadas; la
+clasificación comercial detallada deja de aparecer en el flujo normal.
 
-Los grupos son expansiones en el panel existente; no agregan columnas ni cards al
-listado. El buscador SEACE incorpora el mismo control Filtros. Parámetros CSV
-`commercial_area`, `commercial_work`, `commercial_specialty` y `commercial_status`;
-OR dentro de cada grupo y AND entre grupos. Aplicar reinicia la página; búsquedas,
-tipos, vistas rápidas y cambio de fuente conservan las selecciones aplicadas.
-Quitar clasificación conserva perfil y filtros ajenos a esta clasificación.
+El selector envía `commercial_category`. Búsqueda, tipo, vistas rápidas, cambio de
+fuente y paginación conservan categoría y perfil. Quitar categoría limpia solo los
+criterios comerciales. Un enlace antiguo con ejes detallados muestra Selección
+anterior y conserva sus valores; elegir una categoría o Todas los reemplaza.
 
-Las etiquetas se consultan en PostgreSQL antes de count/paginación y se obtienen
-de la extracción vigente elegible más reciente. Los registros viejos no reciben
-etiquetas inventadas: siguen disponibles como Sin clasificar. Evidencia documental
-no equivale a vigencia, QA humano o elegibilidad. Publicación se verifica aparte.
+Las seis categorías se derivan con reglas del catálogo JSON compartido por web y
+Python sobre la clasificación LLM1 válida. La API filtra en PostgreSQL antes de
+count/paginación; no clasifica una página en React ni llama un modelo adicional.
+Una oportunidad puede pertenecer a varias categorías. Todas conserva también
+casos históricos sin etiquetas; no se inventa su clasificación desde el título.
+No cambia puntaje, afinidad, modalidad jurídica ni guardadas. Publicación y
+activación de lectores se verifican aparte. Contrato: [Clasificación comercial](../opportunity-classification.md).

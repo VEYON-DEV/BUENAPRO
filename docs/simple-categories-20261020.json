@@ -1,0 +1,305 @@
+{
+  "version": 1,
+  "date": "2026-10-20",
+  "timezone": "America/Lima",
+  "status": "prepared_locally_tested_and_committed_not_deployed_or_activated",
+  "code_commits": {
+    "web_catalog_api": "c1f1802467c4085c0b1f4ba0a371841ceb4c82d6",
+    "both_readers_and_guard": "75eedc734b82c1c9994bacb0197cbfbffc77e9a4"
+  },
+  "catalog": {
+    "version": "commercial_categories_v1",
+    "file": {
+      "path": "workers/seace/src/buenapro_worker/extraction/commercial_categories.v1.json",
+      "sha256": "187854fcb8cae88ca3563e3baacb039cb8db6174aa81fad80951fa9519117463",
+      "bytes": 1436
+    },
+    "categories": [
+      {
+        "id": "licencias_suscripciones",
+        "label": "Licencias y suscripciones"
+      },
+      {
+        "id": "desarrollo_software",
+        "label": "Desarrollo de software"
+      },
+      {
+        "id": "ia_automatizacion",
+        "label": "IA y automatización"
+      },
+      {
+        "id": "industrial",
+        "label": "Industrial"
+      },
+      {
+        "id": "cloud_infraestructura",
+        "label": "Cloud e infraestructura"
+      },
+      {
+        "id": "soporte_mantenimiento",
+        "label": "Soporte y mantenimiento"
+      }
+    ]
+  },
+  "frontend": {
+    "sources": [
+      "Buscador SEACE",
+      "Contratos menores"
+    ],
+    "selector": "Categoría",
+    "all_option": "Todas",
+    "category_choices": 6,
+    "normal_flow": "Filtros → Categoría → Aplicar filtros",
+    "advanced_commercial_groups_visible": false,
+    "normal_existing_controls": "vigencia, puntaje, guardadas and other existing source filters preserved",
+    "legacy_urls": "Preserved as Selección anterior until a category or Todas is selected; no silent loss",
+    "navigation": "Search, type, quick links, source tabs and clear preserve the applied category/profile",
+    "screenshots_commit": "c1f1802467c4085c0b1f4ba0a371841ceb4c82d6",
+    "web_and_catalog_unchanged_at_worker_commit": true
+  },
+  "api": {
+    "parameter": "commercial_category",
+    "ui_selection": "single",
+    "api_selection": "CSV/repeated OR; existing advanced axes remain compatible AND constraints",
+    "public_field": "commercial_categories:string[]",
+    "filter_before_count_and_pagination": true,
+    "latest_eligible_extraction_first": true,
+    "raw_authoritative": true,
+    "older_tag_fallback": false,
+    "missing_invalid": "No invented categories; API returns []",
+    "scores_permissions_provenance_unchanged": true,
+    "unknown_filter": "400"
+  },
+  "workers": {
+    "projection": "Deterministic rules from shared JSON over valid commercial_taxonomy_v1; no additional model call or change to paid reading schema for category projection",
+    "prod2": {
+      "activation": "Explicit --llm1-commercial-taxonomy commercial_taxonomy_v1 only for new selected folder",
+      "service": "base_argv opt-in bound to epoch argv/requested/manifest",
+      "frozen_runs": "unchanged; auto preserves frozen policy and leaves new runs off"
+    },
+    "prod6": {
+      "activation": "Same explicit flag, absent keeps legacy default",
+      "receipt_namespace": "Fresh explicit namespace; immutable reading-policy.private.json after exclusive PG lock and under receipt lock",
+      "binding": [
+        "new job payload",
+        "prompt/hash",
+        "schema",
+        "model",
+        "original document SHA",
+        "docclass/MIME",
+        "policy",
+        "durable receipts"
+      ],
+      "incompatible_io": "blocked before connection/source",
+      "current_or_reusable_readings": "preserved/reused before a new read",
+      "prior_attempt": "Exact validated local recovery only, before source download; no provider send if durable response unavailable",
+      "empty_new_folder": "Does not authorize paying again",
+      "foreign_or_uncertain_receipt": "Does not authorize paying again"
+    },
+    "normalization": "Valid labels project six categories into summaries. Missing/invalid legacy blocks do not invent labels or force paid re-reading."
+  },
+  "validation": {
+    "suites_overlap_do_not_sum": true,
+    "principal_worker_full": {
+      "passed": 4060,
+      "skipped": 67,
+      "seconds": 76.4,
+      "integration_opt_in_env_disabled": [
+        "BUENAPRO_PG_SCRATCH_TEST",
+        "BUENAPRO_DISCOVERY_TEST_DATABASE_URL"
+      ],
+      "receipt": {
+        "path": "tmp/commercial-category-20261020/worker-full-offline.private.json",
+        "sha256": "6d28d38dbd672b3c8916997da1a07ea384b449dff7eaa4f286ef3dd25247d7d3",
+        "bytes": 308
+      }
+    },
+    "worker_focal": {
+      "passed": 581,
+      "seconds": 14.59
+    },
+    "backend_services": {
+      "passed": 128,
+      "skipped": 1,
+      "postgres_tests_included": 7,
+      "fixtures_per_source": 41,
+      "sources": 2,
+      "temporary_loopback_postgresql": true
+    },
+    "principal_web_focal": {
+      "passed": 32
+    },
+    "ui_model": {
+      "passed": 28
+    },
+    "typescript": "passed",
+    "frontend_architecture": {
+      "passed": true,
+      "domains": 16
+    },
+    "build": {
+      "count": 1,
+      "passed": true,
+      "seconds": 24.92,
+      "isolated_without_real_provider_or_DB_credentials": true
+    },
+    "static_detector_findings": 0,
+    "browser": {
+      "captures": 12,
+      "functional_groups": 11,
+      "viewports": [
+        [
+          1600,
+          1000
+        ],
+        [
+          1024,
+          900
+        ],
+        [
+          390,
+          844
+        ]
+      ],
+      "sources": 2,
+      "states": [
+        "default",
+        "category_applied"
+      ],
+      "errors": 0,
+      "overflow": false,
+      "keyboard_focus_labels": true,
+      "legacy_to_industrial_to_all": true,
+      "principal_visual_review": "Five representative desktop/laptop/mobile captures accepted against Glass04; no further UI changes",
+      "guard": "read-only real PG; source/model/auth/business writes blocked",
+      "limits": [
+        "No physical device or full WCAG certification",
+        "Existing historical concrete categories can be empty; no tags fabricated",
+        "Next-page navigation under a populated category not proven with live rows; SQL/links checked by fixtures/tests"
+      ]
+    },
+    "independent_worker_review": "Found and verified fix for new-folder repeated-payment path; final static review no further findings"
+  },
+  "operations": {
+    "real_model_calls": 0,
+    "real_source_http_calls": 0,
+    "pdf_downloads": 0,
+    "new_r2_originals": 0,
+    "business_database_writes": 0,
+    "redis_work": 0,
+    "migrations_applied": 0,
+    "deployed": false,
+    "readers_started_by_this_task": false,
+    "paid_uncertainties": "preserved",
+    "configuration_or_spending_limits_changed": false
+  },
+  "cleanup": {
+    "logical_bytes_freed_total": 540565447,
+    "temporary_postgresql_bytes": 48403335,
+    "qa_clone_without_next_bytes": 92170897,
+    "qa_next_build_cache_bytes": 399130234,
+    "redundant_png_bytes": 860981,
+    "canonical_pngs_retained": 12,
+    "canonical_hashes_unchanged": true,
+    "next_and_tunnel": "closed",
+    "port3017": "free",
+    "dependency_targets_root_next_foreign_services": "untouched",
+    "pending_inputs_mapping_caches_payment_receipts": "preserved",
+    "scope": "Only own closed disposable PostgreSQL cluster, isolated checkout/build and one redundant PNG after hashing; logical file sizes, not physical disk delta"
+  },
+  "mapping": {
+    "frozen_report_sha256": "381b5b942f90aac3714328842db137876b7644a2f077755ce86a0481394ef9cf",
+    "verified_unchanged": true,
+    "canonical_plan_sha256": "13ed875c36abf097262c817141bf6c07662232f96afdefb4b1e7370a52b4ffd4"
+  },
+  "pending": [
+    "Deploy and verify authorized services from clean Git when requested",
+    "Activation requires explicit fresh policy/receipt configuration and source-access preflight; this task did not start readers",
+    "Existing unclassified records remain available under Todas; no automatic paid backfill",
+    "Separate deduplicated IA/industrial batch remains unexecuted"
+  ],
+  "evidence": [
+    {
+      "path": "tmp/commercial-category-20261020/qa-review.private.json",
+      "sha256": "cb32a7c38f28c052eb2967531b6155075d0c340fc04cffda49cb52dab4d02556",
+      "bytes": 8904
+    },
+    {
+      "path": "tmp/commercial-category-20261020/final-cleanup.private.json",
+      "sha256": "f50a4da256f95a1a883a57cb0770285b4b202cc9c72a36f102087ec77aa5afc4",
+      "bytes": 2154
+    },
+    {
+      "path": "tmp/commercial-category-20261020/cleanup-manifest.private.json",
+      "sha256": "57f544b6410e37bf62b3cf4a2eae693a6cf951529b5348b5f39e9145b7c718f3",
+      "bytes": 9508
+    },
+    {
+      "path": "tmp/commercial-filters-20261020/category-backend-qa.private.json",
+      "sha256": "eeb4e8eacc1e777883f81b894c65a3185c097c0d0825e9400740606d3cc631a3",
+      "bytes": 1062
+    }
+  ],
+  "screenshots": [
+    {
+      "path": "tmp/commercial-category-20261020/qa-real-final/category-prod2-desktop-applied.png",
+      "sha256": "c03b50427eb8929feeb40242ad4149ac298725f56cef42e09f2e25995632a854",
+      "bytes": 242916
+    },
+    {
+      "path": "tmp/commercial-category-20261020/qa-real-final/category-prod2-desktop-default.png",
+      "sha256": "e6969fa51d1148d8dc11112f72f5681d6561608fd6230a180398bb9de8b4e974",
+      "bytes": 942604
+    },
+    {
+      "path": "tmp/commercial-category-20261020/qa-real-final/category-prod2-laptop-applied.png",
+      "sha256": "0939705daa44d0957d818c6c1cd0250ffa37c743e0755c25f47369c2fccc870e",
+      "bytes": 170404
+    },
+    {
+      "path": "tmp/commercial-category-20261020/qa-real-final/category-prod2-laptop-default.png",
+      "sha256": "3326fa6f7678174a7ebb97da9a0878e3b5b94c6d03f0932a816a1bbee6d5d37b",
+      "bytes": 694120
+    },
+    {
+      "path": "tmp/commercial-category-20261020/qa-real-final/category-prod2-mobile-applied.png",
+      "sha256": "d231d0270a8a9f128b447153b3513616ecd7a54016abf93f58f811ce5a3b0be4",
+      "bytes": 107683
+    },
+    {
+      "path": "tmp/commercial-category-20261020/qa-real-final/category-prod2-mobile-default.png",
+      "sha256": "bf899bfac9e567a2f6b83ae844feb57b12c23da1289c03ad73d219b6dafea859",
+      "bytes": 690540
+    },
+    {
+      "path": "tmp/commercial-category-20261020/qa-real-final/category-prod6-desktop-applied.png",
+      "sha256": "26cc5fa1dd9d06cf726a4ca15a2bbb7abef5c19af400ef83ae6b423933647ad6",
+      "bytes": 242052
+    },
+    {
+      "path": "tmp/commercial-category-20261020/qa-real-final/category-prod6-desktop-default.png",
+      "sha256": "aa3f5c737260da63570667dd91d9b6a570a732aecc52869095aab969d8ec364b",
+      "bytes": 380297
+    },
+    {
+      "path": "tmp/commercial-category-20261020/qa-real-final/category-prod6-laptop-applied.png",
+      "sha256": "4d1b7d8819d11b6b0ca6433a7923d5cff4020e364591eef04f8801628f1976a1",
+      "bytes": 171048
+    },
+    {
+      "path": "tmp/commercial-category-20261020/qa-real-final/category-prod6-laptop-default.png",
+      "sha256": "67f7e3cfa7569c54550012323a65a8d7204838236738ef28588d15b2d4085528",
+      "bytes": 188014
+    },
+    {
+      "path": "tmp/commercial-category-20261020/qa-real-final/category-prod6-mobile-applied.png",
+      "sha256": "b7e33ef6039f7843bd76f2925ebd7413c8cdbaa8d23acd4e7c923df6778ed97b",
+      "bytes": 129702
+    },
+    {
+      "path": "tmp/commercial-category-20261020/qa-real-final/category-prod6-mobile-default.png",
+      "sha256": "2d4a2bac74cc5d1ded8937e59a018a9a46d1823b3cce5ad7f31f0033a127cc5f",
+      "bytes": 116295
+    }
+  ]
+}
