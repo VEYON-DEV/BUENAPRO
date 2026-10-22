@@ -1,0 +1,52 @@
+{
+  "completed_at_utc": "2026-10-22T19:31:58.818164+00:00",
+  "source_commit": "5aa2294b765cd2b2ea097f17811dbacce25dc84b",
+  "source_branch": "codex/prod2-parallel-discovery-prep",
+  "destination": "/home/ubuntu/buenapro-docs/actual/FLUJOS_Y_TRABAJO_BUENAPRO.md",
+  "release_directory": "/home/ubuntu/buenapro-docs/flows-20261022-5aa2294b765c",
+  "manifest": "/home/ubuntu/buenapro-docs/flows-20261022-5aa2294b765c/manifest.json",
+  "files": {
+    "FLUJOS_Y_TRABAJO_BUENAPRO.md": {
+      "sha256": "7a1fc82e7a08a6c3a5429dc077d9ca6181ebe975721bf8e8dd81e983df7265f2",
+      "bytes": 20339
+    },
+    "docs/architecture/20261022/seace-prod2-flujo.png": {
+      "sha256": "56ceef7515be6d03161442df35a9baef47b7d7c9b8103cd33f104d45444caaad",
+      "bytes": 1518864
+    },
+    "docs/architecture/20261022/menores-prod6-flujo.png": {
+      "sha256": "8fda5f8b71710b6716ce9a0ae65e5c4d4c5283e89f8b829c364e58b6c2ab7876",
+      "bytes": 1533300
+    },
+    "docs/architecture/20261022/prompts.json": {
+      "sha256": "ec0f76b85713b076987463bb54d6e15e25397b8f27b914cded68f8c33ff05c39",
+      "bytes": 10449
+    }
+  },
+  "files_verified": 4,
+  "runtime_head_before": "60211db1aa35c75dbff53d94769ddef75b9939cb",
+  "runtime_head_after": "60211db1aa35c75dbff53d94769ddef75b9939cb",
+  "runtime_checkout_unchanged": true,
+  "existing_configuration_unchanged": true,
+  "containers_unchanged": true,
+  "containers_checked": 11,
+  "operation": "documentation-only Git archive on VM",
+  "vm_fetched_exact_pushed_commit": true,
+  "git_permissions_changed": false,
+  "git_credentials_changed": false,
+  "seace_http_calls": 0,
+  "business_model_calls": 0,
+  "business_writes": 0,
+  "service_restarts": 0,
+  "migrations": 0,
+  "new_source_originals_r2": 0,
+  "cleanup_bytes_freed": 0,
+  "temporary_archive_files_created": 0,
+  "pending_inputs_preserved": true,
+  "ordinary_user_readback": {
+    "ordinary_user_readback": true,
+    "verified_files": 4,
+    "relative_links_present": 3,
+    "title": "# BuenaPro: flujos completos y trabajo realizado"
+  }
+}
