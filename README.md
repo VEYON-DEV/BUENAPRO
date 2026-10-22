@@ -17,23 +17,28 @@ docs/              Documentacion tecnica
 - Next.js + TypeScript para la web.
 - PostgreSQL para datos relacionales y JSONB.
 - Python para workers de ingesta/extraccion.
-- Cloudflare R2 para PDFs preview/documentos.
+- Cloudflare R2 para usos auxiliares y archivos históricos existentes; los lectores nuevos analizan originales temporales de SEACE.
 - Gemini 3.1 Flash-Lite para extracción de TDRs, onboarding y copiloto.
 - Docker Compose para desarrollo/despliegue inicial.
 
-## Flujo del worker
+## Lectores de SEACE
+
+Hay dos servicios de ingesta independientes. Ambos guardan sus resultados en
+PostgreSQL para la web; la evaluación de capacidad DIN se ejecuta por separado.
 
 ```text
-poll_seace
-  -> fetch_detail
-  -> list_files
-  -> download_pdf
-  -> upload_preview_to_r2
-  -> extract_tdr_json
-  -> derive_summary
-  -> derive_facets
-  -> upsert_filter_index
+Buscador SEACE (PROD2)
+  -> búsqueda y selección -> ficha/cronograma -> documentos -> LLM1 -> PostgreSQL
+
+Contratos menores (PROD6)
+  -> búsqueda por perfil -> ficha/archivos -> PDF TDR/EETT -> LLM1 -> PostgreSQL
 ```
+
+La [guía de arquitectura de ambos lectores](./docs/guia-lectores-seace-menores.md)
+explica los ciclos automáticos, colas, modelos, filtros y evaluación DIN.
+Incluye el estado comprobado el 21/10/2026: ambos servicios preparados pero
+detenidos, con activación y validación de acceso pendientes. El mapeador
+paralelo de metadatos PROD2 es otra herramienta y no ejecuta lecturas.
 
 ## Evolucion multi-fuente
 

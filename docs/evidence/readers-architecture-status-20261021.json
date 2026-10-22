@@ -1,0 +1,25 @@
+{
+  "observed_at_utc": "2026-10-22T03:10:54.670566+00:00",
+  "observed_at_lima": "2026-10-21T22:10:54.670566-05:00",
+  "method": "read-only Docker status; no source request",
+  "readers": [
+    {
+      "container": "docker-prod2-ingest-1",
+      "status": "created",
+      "running": false,
+      "restart_policy": "no",
+      "image": "buenapro-worker-prod2:service-2b1b0d6"
+    },
+    {
+      "container": "docker-prod6-ingest-1",
+      "status": "created",
+      "running": false,
+      "restart_policy": "no",
+      "image": "buenapro-worker-prod6:pg-guard-5950706"
+    }
+  ],
+  "source_access_not_retested": true,
+  "model_calls": 0,
+  "business_writes": 0,
+  "coordinators_started": 0
+}
