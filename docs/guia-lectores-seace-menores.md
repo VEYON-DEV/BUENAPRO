@@ -4,6 +4,8 @@ BuenaPro tiene **dos lectores independientes**: PROD2 para Buscador SEACE y PROD
 
 **El código permite repetir ciclos automáticamente, pero los dos servicios de producción están detenidos.** La comprobación del **21/10/2026 a las 22:10, hora de Lima**, encontró ambos contenedores en estado `created`, sin ejecución. Esta guía explica lo implementado y distingue lo que todavía requiere activación.
 
+Para presentar el recorrido, hay [dos diagramas de flujo PNG](architecture/20261022/README.md), uno por fuente, con lectura y evaluación DIN separadas (22/10/2026).
+
 ## 1. El mapa completo
 
 ```mermaid
