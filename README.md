@@ -4,6 +4,8 @@ Plataforma de inteligencia para contrataciones publicas.
 
 El [contexto actual del proyecto](./CONTEXTO.md) reúne arquitectura, decisiones,
 despliegues registrados, resultados y pendientes para retomar el trabajo.
+La [guía completa de flujos y trabajo realizado](./FLUJOS_Y_TRABAJO_BUENAPRO.md)
+añade los recorridos LLM1/LLM2, diagramas y la entrega documental a la VM.
 
 ## Estructura
 
