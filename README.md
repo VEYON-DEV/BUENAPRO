@@ -2,6 +2,9 @@
 
 Plataforma de inteligencia para contrataciones publicas.
 
+El [contexto actual del proyecto](./CONTEXTO.md) reúne arquitectura, decisiones,
+despliegues registrados, resultados y pendientes para retomar el trabajo.
+
 ## Estructura
 
 ```text
