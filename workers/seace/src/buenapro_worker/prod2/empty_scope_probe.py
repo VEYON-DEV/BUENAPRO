@@ -20,7 +20,7 @@ from uuid import uuid4
 
 from .batch_plan import native_arguments, page_capture
 from .batch_runner import private_write, read_private
-from .client import Prod2ProtocolError
+from .client import Prod2EgressUnavailable, Prod2ProtocolError
 from .discovery import validate_capture
 
 
@@ -173,6 +173,8 @@ def inspect_zero_scope_cache(query: dict, folder: Path | str, proof_hash: str) -
 def _error_code(exc):
     if isinstance(exc, EmptyScopeProofError):
         return exc.code
+    if isinstance(exc, Prod2EgressUnavailable):
+        return "egress_unavailable"
     if isinstance(exc, Prod2ProtocolError):
         match = re.fullmatch(r"PROD2 HTTP status (403|429)", str(exc))
         if match:

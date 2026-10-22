@@ -19,7 +19,7 @@ from uuid import uuid4
 
 from .batch_plan import native_arguments, page_capture
 from .batch_runner import private_write, read_private
-from .client import Prod2ProtocolError
+from .client import Prod2EgressUnavailable, Prod2ProtocolError
 from .discovery import Capture, validate_capture
 
 
@@ -240,6 +240,8 @@ def _split(query: dict) -> list[dict]:
 def _error_code(exc: Exception) -> str:
     if isinstance(exc, SweepError):
         return exc.code
+    if isinstance(exc, Prod2EgressUnavailable):
+        return "egress_unavailable"
     if isinstance(exc, Prod2ProtocolError):
         status = re.fullmatch(r"PROD2 HTTP status (403|429)", str(exc))
         if status:
@@ -449,7 +451,8 @@ class _Sweep:
             self.leaves.append({"query": query, "status": status, "cached": False,
                 "pages": len(pages), "error_code": code})
             if code in {"stop_requested", "page_budget_exhausted", "search_budget_exhausted", "partition_budget_exhausted",
-                        "source_403", "source_429", "emit_callback_error", "emit_must_return_bool"}:
+                        "source_403", "source_429", "egress_unavailable", "emit_callback_error",
+                        "emit_must_return_bool"}:
                 raise SweepError(code) from None
             return False
 

@@ -15,6 +15,8 @@ from xml.etree import ElementTree as ET
 
 import httpx
 
+from buenapro_worker.seace.egress import EgressUnavailable, is_egress_failure
+
 SEARCH_URL = "https://prod2.seace.gob.pe/seacebus-uiwd-pub/buscadorPublico/buscadorPublico.xhtml"
 FORM = "tbBuscador:idFormBuscarProceso"
 TABLE = FORM + ":dtProcesos"
@@ -23,6 +25,10 @@ _COUNTER = re.compile(r"Mostrando de\s+(\d+)\s+a\s+(\d+)\s+del total\s+(\d+)\s*-
 
 class Prod2ProtocolError(ValueError):
     """Failure without response bodies, cookies, or opaque session values."""
+
+
+class Prod2EgressUnavailable(EgressUnavailable, Prod2ProtocolError):
+    """The SEACE egress proxy failed; SEACE itself never answered (not a 403)."""
 
 
 @dataclass
@@ -333,7 +339,9 @@ class Prod2HttpClient:
                 raise Prod2ProtocolError("JSF redirect is outside the official PROD2 HTTPS host")
             try:
                 response = self.client.request(method, url, data=data, headers=headers, follow_redirects=False)
-            except httpx.HTTPError:
+            except httpx.HTTPError as error:
+                if is_egress_failure(error):
+                    raise Prod2EgressUnavailable("PROD2 SEACE egress unavailable") from None
                 raise Prod2ProtocolError("PROD2 HTTP transport failed") from None
             if response.status_code in {301, 302, 303, 307, 308}:
                 location = response.headers.get("location")

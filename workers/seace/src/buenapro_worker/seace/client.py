@@ -6,12 +6,15 @@ from typing import Any
 import httpx
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
+from buenapro_worker.seace.egress import is_egress_failure, seace_http_client
 from buenapro_worker.seace.schemas import SearchResponse
 from buenapro_worker.settings import Settings
 
 
 def _temporary_source_failure(error: BaseException) -> bool:
-    """Retry remote/transient failures, never an access denial or local config error."""
+    """Retry remote/transient failures, never an access denial, egress outage or local config error."""
+    if is_egress_failure(error):
+        return False
     if isinstance(error, httpx.HTTPStatusError):
         return error.response.status_code in {408, 425, 429, 500, 502, 503, 504}
     return isinstance(error, (httpx.TimeoutException, httpx.NetworkError,
@@ -20,7 +23,7 @@ def _temporary_source_failure(error: BaseException) -> bool:
 
 class SeaceClient:
     def __init__(self, settings: Settings) -> None:
-        self._client = httpx.Client(
+        self._client = seace_http_client(
             base_url=settings.seace_base_url,
             timeout=settings.seace_timeout_seconds,
             headers={"User-Agent": settings.seace_user_agent},

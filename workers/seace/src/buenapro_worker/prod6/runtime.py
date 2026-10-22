@@ -28,6 +28,7 @@ from buenapro_worker.jobs.extract_tdr import enqueue_derive_summary, extract_tdr
 from buenapro_worker.jobs.poll_prod6_profile import poll_prod6_profile
 from buenapro_worker.jobs.process_contract import process_contract
 from buenapro_worker.queue.repository import Job, JobRepository
+from buenapro_worker.seace.egress import EgressUnavailable, check_egress, is_egress_failure, notify_ops
 from buenapro_worker.settings import Settings
 from buenapro_worker.extraction.commercial_classification import POLICY_KEY, TAXONOMY_VERSION, get_commercial_policy
 from buenapro_worker.prod6.reading import (
@@ -357,6 +358,22 @@ def run(settings: Settings, *, profile_id: str, receipt_dir: Path, once: bool = 
                         startup)
             print(json.dumps(startup), flush=True)
             return 2
+        egress_down = False
+
+        def egress_alert(reason: str) -> None:
+            nonlocal egress_down
+            if not egress_down:
+                notify_ops(f"BuenaPro PROD6: SEACE egress unavailable ({reason}); retrying every {interval_seconds}s.")
+                egress_down = True
+
+        def egress_backoff(state: dict[str, Any], reason: str) -> None:
+            """Egress outages are neither source failures nor manual review; alert once."""
+            egress_alert(reason)
+            state.update(status="egress_backoff", egress_error=reason, retry_after_seconds=interval_seconds)
+            write_state(receipt_dir / "state.json", state)
+            write_state(receipt_dir / f"{state['batch_id']}.json", state)
+            print(json.dumps(state), flush=True)
+
         while not stopping:
             batch_id = f"prod6-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}-{os.getpid()}"
             repo = ScopedRepository(conn, profile_id=profile_id, batch_id=batch_id,
@@ -372,6 +389,15 @@ def run(settings: Settings, *, profile_id: str, receipt_dir: Path, once: bool = 
                     state["status"] = "profile_paused"
                     write_state(receipt_dir / "state.json", state)
                     return 2
+                state["phase"] = "egress_check"
+                try:
+                    check_egress()
+                except EgressUnavailable as error:
+                    egress_backoff(state, type(error).__name__)
+                    if once:
+                        return 2
+                    _wait_for_poll(lambda: stopping, interval_seconds)
+                    continue
                 state["phase"] = "source_discovery"
                 source_started = time.monotonic()
                 try:
@@ -380,6 +406,12 @@ def run(settings: Settings, *, profile_id: str, receipt_dir: Path, once: bool = 
                             max_pages_per_segment=max_pages, max_candidates=max_candidates,
                             batch_id=batch_id, search_parallelism=http_workers)
                 except Exception as error:
+                    if is_egress_failure(error):
+                        egress_backoff(state, type(error).__name__)
+                        if once:
+                            return 2
+                        _wait_for_poll(lambda: stopping, interval_seconds)
+                        continue
                     source_error = free_http_failure(error)
                     if source_error is None:
                         if isinstance(error, httpx.HTTPStatusError):
@@ -395,6 +427,9 @@ def run(settings: Settings, *, profile_id: str, receipt_dir: Path, once: bool = 
                         return 2
                     _wait_for_poll(lambda: stopping, interval_seconds)
                     continue
+                if egress_down:
+                    notify_ops("BuenaPro PROD6: SEACE egress recovered.")
+                    egress_down = False
                 state["source_seconds"] = round(time.monotonic() - source_started, 3)
                 state["status"] = "processing"
                 state["phase"] = "processing"
@@ -444,6 +479,25 @@ def run(settings: Settings, *, profile_id: str, receipt_dir: Path, once: bool = 
                                             "file_id": io_job.payload["id_contrato_archivo"], **block})
                                         write_state(receipt_dir / "state.json", state)
                                         continue
+                                    if is_egress_failure(error):
+                                        # Not a source failure or manual review: defer for the next
+                                        # cycle and let that cycle's egress check gate the retry.
+                                        with conn.transaction():
+                                            changed = conn.execute("""UPDATE worker_jobs SET status='pending',
+                                               claimed_by=NULL,claimed_at=NULL,
+                                               run_after=now()+%s * interval '1 second',last_error=%s
+                                               WHERE id=%s AND status='claimed' AND claimed_by=%s
+                                               AND payload->>'source_runtime'=%s
+                                               AND payload->>'scope_profile_id'=%s""",
+                                               (interval_seconds, "PROD6 free IO deferred: egress unavailable; next polling cycle",
+                                                io_job.id, worker_id, NAMESPACE, profile_id))
+                                            if changed.rowcount != 1:
+                                                raise RuntimeError("Deferred IO job ownership changed")
+                                        state.setdefault("egress_deferred", []).append({"job_id": io_job.id,
+                                            "job_type": io_job.job_type, "error_type": type(error).__name__,
+                                            "retry_after_seconds": interval_seconds})
+                                        write_state(receipt_dir / "state.json", state)
+                                        continue
                                     source_error = free_http_failure(error)
                                     if source_error is not None:
                                         with conn.transaction():
@@ -484,6 +538,8 @@ def run(settings: Settings, *, profile_id: str, receipt_dir: Path, once: bool = 
                             write_state(receipt_dir / "state.json", state)
                             print(json.dumps(state), flush=True)
                             return 2
+                        if state.get("egress_deferred"):
+                            break  # Remaining IO waits for the next cycle's egress check.
                         continue
                     with conn.transaction():
                         job = repo.claim_scoped(worker_id)
@@ -516,7 +572,10 @@ def run(settings: Settings, *, profile_id: str, receipt_dir: Path, once: bool = 
                     write_state(receipt_dir / "state.json", state)
                 state["suppressed"] = repo.suppressed
                 incomplete = bool(state.get("blocked_documents") or repo.suppressed.get("source_document_blocked"))
+                if state.get("egress_deferred"):
+                    egress_alert("io_jobs")
                 state["status"] = ("stopped" if stopping else "sweep_blocked" if incomplete
+                                   else "egress_backoff" if state.get("egress_deferred")
                                    else "sweep_deferred" if state.get("deferred_io") else "sweep_drained")
                 if state["source"]["capped_segments"] or state["source"]["limit_reached"]:
                     state["source_coverage"] = "bounded_partial"
@@ -534,7 +593,7 @@ def run(settings: Settings, *, profile_id: str, receipt_dir: Path, once: bool = 
                 print(json.dumps(state), flush=True)
                 return 2
             if once or stopping:
-                return 2 if state.get("deferred_io") or incomplete else 0
+                return 2 if state.get("deferred_io") or state.get("egress_deferred") or incomplete else 0
             _wait_for_poll(lambda: stopping, interval_seconds)
     return 0
 

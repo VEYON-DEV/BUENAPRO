@@ -15,6 +15,8 @@ from uuid import UUID
 
 import httpx
 
+from buenapro_worker.seace.egress import EgressUnavailable, is_egress_failure
+
 METADATA_URL = "https://alfprod.seace.gob.pe/alfresco/service/osce/downloadDoc"
 CONTEXT_URL = "https://alfprod.seace.gob.pe/alfresco/"
 _CALLBACK = "buenaproDocument"
@@ -22,6 +24,10 @@ _CALLBACK = "buenaproDocument"
 
 class DocumentDownloadError(ValueError):
     """Sanitized error: never includes URLs, tickets, or server response bodies."""
+
+
+class DocumentEgressUnavailable(EgressUnavailable, DocumentDownloadError):
+    """The SEACE egress proxy failed before SEACE answered (not a source denial)."""
 
 
 def _official_url(url: str) -> str:
@@ -101,7 +107,9 @@ def download_document(client: httpx.Client, uuid: str | UUID, destination: str |
         else:
             url = urljoin(CONTEXT_URL, reference)
         content, content_type = _get(client, _official_url(url), max_bytes=max_bytes)
-    except httpx.HTTPError:
+    except httpx.HTTPError as error:
+        if is_egress_failure(error):
+            raise DocumentEgressUnavailable("SEACE egress unavailable") from None
         raise DocumentDownloadError("Official document transport failed") from None
     kind = next((kind for signature, kind in (
         (b"%PDF-", "pdf"), (b"PK\x03\x04", "zip"),

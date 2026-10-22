@@ -25,7 +25,6 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "workers/seace/src"))
 
 from dotenv import dotenv_values
-import httpx
 import psycopg
 from psycopg.rows import dict_row
 import redis
@@ -58,8 +57,11 @@ from buenapro_worker.prod2.selected_payments import AuditedJevClient, paid_docum
 from buenapro_worker.prod2.staging import RedisStage
 from buenapro_worker.prod2.storage_policy import OFFICIAL_LINKS_POLICY, official_links_only, verify_completed_storage
 from buenapro_worker.prod2.completed_read_reuse import reuse_completed_read
+from buenapro_worker.seace.egress import EGRESS_EXIT_CODE, EgressUnavailable, seace_http_client
 
 STOP = threading.Event()
+# The SEACE egress proxy failed (not a 403): stop without source_access_blocked, exit EGRESS_EXIT_CODE.
+EGRESS_DOWN = threading.Event()
 EMBEDDING_DISPATCH_STOP = threading.Event()
 HANDOFF_GUARD = None
 
@@ -201,6 +203,10 @@ def bounded_error_chain(error):
         visited.add(id(error))
         yield error
         error = error.__cause__ if error.__cause__ is not None else error.__context__
+
+
+def egress_failure(error):
+    return any(isinstance(cause, EgressUnavailable) for cause in bounded_error_chain(error))
 
 
 def safe_error_facts(error):
@@ -599,7 +605,7 @@ def runtime(args):
 
 @contextmanager
 def source_factory(pacer):
-    with httpx.Client(timeout=60, verify=True, event_hooks=source_hooks(pacer)) as http:
+    with seace_http_client(timeout=60, verify=True, event_hooks=source_hooks(pacer)) as http:
         yield Prod2HttpClient(http)
 
 
@@ -821,7 +827,7 @@ def download(conn, folder, conv, doc, manifest, pacer):
             if target.is_symlink():
                 raise ValueError("Source symlink is forbidden")
             target.rename(folder / (target.name + ".unreconciled-" + str(time.time_ns())))
-        with httpx.Client(timeout=90, verify=True, event_hooks=source_hooks(pacer)) as http:
+        with seace_http_client(timeout=90, verify=True, event_hooks=source_hooks(pacer)) as http:
             result = download_document(http, doc["document_uuid"], target, expected_format=kind,
                                        max_bytes=manifest["max_source_mib"] * 1024**2)
         private_write(receipt, result)
@@ -1370,6 +1376,13 @@ def consume(settings, staging, manifest, folder, pacer, limits, jev_key):
                     repo.record_run_member(conn, run_id=manifest["run_id"], convocation_id=conv,
                         request_hash=request_hash, accepted=False, result=result)
             except Exception as error:
+                if egress_failure(error):
+                    EGRESS_DOWN.set()
+                    STOP.set()
+                if EGRESS_DOWN.is_set() and (egress_failure(error) or isinstance(error, LimitReached)):
+                    # A proxy outage is not a case outcome or a source denial: keep the
+                    # payload pending and write no guard marker or needs_review result.
+                    return
                 handoff_guard = getattr(limits, "handoff_guard", None)
                 if handoff_guard is not None:
                     try:
@@ -1454,6 +1467,9 @@ def run_sweeps(manifest, folder, pacer, staging, limits, tracker=None):
                 proofs.append(proof)
                 if any(error["code"] in {"source_403", "source_429"} for error in proof["errors"]):
                     STOP.set()
+                if any(error["code"] == "egress_unavailable" for error in proof["errors"]):
+                    EGRESS_DOWN.set()
+                    STOP.set()
     queries = planned_queries(manifest)
     def staging_payload(item):
         business = manifest.get("business_plan", {}).get("keyword_index", {}).get(item["query"]["keyword"])
@@ -1486,6 +1502,9 @@ def run_sweeps(manifest, folder, pacer, staging, limits, tracker=None):
             folder=query_folder, stop_requested=lambda: STOP.is_set() or limits.sweep_stopped())
         if any(error["code"] in {"source_403", "source_429"} for error in result["errors"]):
             STOP.set()
+        if any(error["code"] == "egress_unavailable" for error in result["errors"]):
+            EGRESS_DOWN.set()
+            STOP.set()
         return result
     def sweep(query):
         if tracker:
@@ -1502,6 +1521,7 @@ def run_sweeps(manifest, folder, pacer, staging, limits, tracker=None):
 def main():
     global HANDOFF_GUARD
     HANDOFF_GUARD = None
+    EGRESS_DOWN.clear()
     args = parser().parse_args()
     os.umask(0o077)
     requested = plan(args)
@@ -1794,7 +1814,7 @@ def main():
                             for state in sorted({row["temporal_state"] for row in outcomes if row.get("temporal_state")})}
                     private_write(folder / ("report-" + str(time.time_ns()) + ".private.json"), report)
                     print(json.dumps({key: value for key, value in report.items() if key not in {"records", "coverage", "scope_proofs"}}, ensure_ascii=False), flush=True)
-                    return completion_exit_code(report, policy)
+                    return EGRESS_EXIT_CODE if EGRESS_DOWN.is_set() else completion_exit_code(report, policy)
                 finally:
                     redis_client.close()
             finally:
@@ -1808,5 +1828,8 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except Exception as error:
+        if egress_failure(error):
+            print(json.dumps({"status": "egress_unavailable", **safe_error_facts(error)}), file=sys.stderr)
+            raise SystemExit(EGRESS_EXIT_CODE)
         print(json.dumps({"status": "failed", **safe_error_facts(error)}), file=sys.stderr)
         raise SystemExit(1)

@@ -349,6 +349,35 @@ También se puede llamar `poll_prod6_profile(..., profile_id=..., anio=2026,
 max_pages_per_segment=10, max_candidates=200, batch_id=...)` para una corrida
 controlada. El payload del job recurrente admite los mismos límites y batch.
 
+## Salida peruana para SEACE (proxy egress)
+
+SEACE bloquea con 403 la IP de la VM. Los workers pueden enviar **solo** el tráfico
+a `seace.gob.pe` y `*.seace.gob.pe` por un proxy HTTP en Perú (tinyproxy, solo
+`CONNECT` a `*.seace.gob.pe:443`); LLM, Telegram, Redis y el resto salen directo.
+Se configura únicamente por entorno (no por `Settings`):
+
+- `SEACE_EGRESS_PROXY`: URL del proxy, p. ej. `http://10.161.181.75:8888`. Vacío = salida directa.
+- `SEACE_EGRESS_REQUIRED`: `1`/`true` hace obligatorio el proxy; si falta, el worker
+  falla al construir el cliente (`EgressNotConfigured`) en vez de salir por la IP de la VM.
+- `TELEGRAM_BOT_TOKEN` + `OPS_TELEGRAM_CHAT_ID`: alerta de operación al caer y al
+  recuperarse la salida (una vez por transición). Sin alguno de los dos no se alerta.
+
+Los clientes SEACE ignoran `HTTP_PROXY`/`HTTPS_PROXY` del entorno (`trust_env=False`).
+La caída del proxy (`httpx.ProxyError`, o no poder conectar con el proxy) no es un
+bloqueo de SEACE y nunca escribe `source_access_blocked` ni cuenta como 403/429:
+
+- **PROD2** (`prod2.service`): antes de cada ciclo abre una conexión TCP al proxy
+  (no envía nada a SEACE). Si falla, el estado pasa a `egress_unavailable`, alerta una vez,
+  espera `interval_seconds` y repite el chequeo. Si el ejecutor selected termina con
+  código `75` (`EGRESS_EXIT_CODE`), el servicio renombra la carpeta parcial del epoch
+  a `<epoch>.egress-<ns>` y reintenta con una carpeta nueva; no pasa por el gate. Un 403/429 real
+  sigue siendo `source_access_blocked` y `attention_required`.
+- **PROD6** (`prod6.runtime`): chequeo previo por ciclo y estado `egress_backoff` (sin contar
+  como `source_backoff` ni revisión manual). Los jobs de IO afectados quedan `pending` con
+  `run_after` del siguiente ciclo. Los 401/403/404/410 de descargas siguen en revisión manual.
+
+La imagen PROD6 (`infra/docker/prod6.Dockerfile`) copia también `seace/egress.py`.
+
 ## Pausa de emergencia
 
 ```bash

@@ -20,7 +20,6 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "workers/seace/src"))
 
 from dotenv import dotenv_values
-import httpx
 import psycopg
 from psycopg.rows import dict_row
 import redis
@@ -42,6 +41,7 @@ from buenapro_worker.prod2.previews import upload_preview
 from buenapro_worker.prod2.repository import persist_detail, record_document_download
 from buenapro_worker.prod2.runtime import production_staging_settings
 from buenapro_worker.prod2.staging import RedisStage
+from buenapro_worker.seace.egress import seace_http_client
 
 
 class Pacer:
@@ -119,7 +119,7 @@ def discover(folder, manifest, pacer):
     queries reaching 499 must be split in a future complete-load executor.
     """
     candidates, seen, pages = [], set(), []
-    with httpx.Client(timeout=60, verify=True, event_hooks={"request": [pacer]}) as http:
+    with seace_http_client(timeout=60, verify=True, event_hooks={"request": [pacer]}) as http:
         source = Prod2HttpClient(http)
         source.bootstrap()
         if set(manifest["years"]) - set(source.available_convocation_years()):
@@ -158,7 +158,7 @@ def get_detail(item, folder, pacer, event_hooks=None):
     path = folder / "detail.private.json"
     if path.exists():
         return read_private(path)
-    with httpx.Client(timeout=60, verify=True, event_hooks=event_hooks or {"request": [pacer]}) as http:
+    with seace_http_client(timeout=60, verify=True, event_hooks=event_hooks or {"request": [pacer]}) as http:
         source = Prod2HttpClient(http)
         query = item["query"]
         source.search(query["keyword"], **native_arguments(query))
@@ -217,7 +217,7 @@ def enrich(conn, settings, folder, item, manifest, pacer):
                         or hashlib.sha256(original.read_bytes()).hexdigest() != downloaded["sha256"]):
                     raise RuntimeError("Original hash changed")
             else:
-                with httpx.Client(timeout=90, verify=True, event_hooks={"request": [pacer]}) as http:
+                with seace_http_client(timeout=90, verify=True, event_hooks={"request": [pacer]}) as http:
                     downloaded = download_document(http, doc["uuid"], original, expected_format=kind)
                 private_write(receipt, downloaded)
             record_document_download(conn, conv, downloaded)

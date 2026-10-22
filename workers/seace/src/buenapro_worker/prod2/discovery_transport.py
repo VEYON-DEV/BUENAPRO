@@ -18,9 +18,9 @@ import threading
 import time
 from urllib.parse import parse_qsl, urlsplit
 
-import httpx
 from dotenv import dotenv_values
 
+from ..seace.egress import seace_http_client
 from .client import Prod2HttpClient
 from .runtime import _free_ports, _stop_tunnel, _wait_tunnel, tunnel_url
 
@@ -188,9 +188,10 @@ class SourceGate:
     def source_factory(self):
         with self._lock:
             self._check()
-        # No shared session, cookie export, redirects, retries or proxy override.
-        with httpx.Client(timeout=60, verify=True, trust_env=False,
-                          follow_redirects=False, event_hooks=self.hooks()) as client:
+        # No shared session, cookie export, redirects, retries or proxy override;
+        # the only proxy allowed is the configured SEACE egress (trust_env stays off).
+        with seace_http_client(timeout=60, verify=True, follow_redirects=False,
+                               event_hooks=self.hooks()) as client:
             yield Prod2HttpClient(client)
 
     def metrics(self):

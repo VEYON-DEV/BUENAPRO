@@ -160,7 +160,7 @@ def detail_source(monkeypatch):
             state.detail_calls.append((self.counter[3], index, dict(self.rows[index])))
             return {"description": self.rows[index]["description"], "documents": [],
                     "http_status": 200, "redirect_statuses": [302]}
-    monkeypatch.setattr(script.httpx, "Client", Http)
+    monkeypatch.setattr(script, "seace_http_client", Http)
     monkeypatch.setattr(script, "Prod2HttpClient", Source)
     return state
 
@@ -235,7 +235,7 @@ def test_detail_cached_capture_replays_without_fresh_search(tmp_path, monkeypatc
         pytest.fail("Existing immutable detail must not query the source again")
     saved = {"observed_at": "2026-10-06T12:00:00+00:00", "detail": {"documents": []}}
     script.private_write(tmp_path / "detail.private.json", saved)
-    monkeypatch.setattr(script.httpx, "Client", forbidden)
+    monkeypatch.setattr(script, "seace_http_client", forbidden)
     assert script.get_detail(detail_item(), tmp_path, None) == saved
 
 
@@ -260,7 +260,7 @@ def test_enrichment_sends_all_loose_attachments_and_never_downloads_zip(monkeypa
         def __init__(self, *args, **kwargs): pass
         def __enter__(self): return self
         def __exit__(self, *args): pass
-    monkeypatch.setattr(script.httpx, 'Client', Http)
+    monkeypatch.setattr(script, 'seace_http_client', Http)
     downloaded, paid = [], []
     def download(http, code, target, **kwargs):
         assert code != codes[2], 'Deferred ZIP must not be downloaded or inspected'

@@ -328,3 +328,102 @@ def test_old_first_window_never_creates_historical_epoch(paths, monkeypatch):
     children = fake_children(monkeypatch)
     assert service.run(config, state, project_root=ROOT, now=lambda: NOW) == 2
     assert children == []
+
+
+class Egress:
+    """Scripted egress checks and recorded ops alerts; never touches a socket or Telegram."""
+
+    def __init__(self, monkeypatch, outcomes):
+        self.outcomes, self.alerts, self.checks = list(outcomes), [], 0
+        monkeypatch.setattr(service, "check_egress", self.check)
+        monkeypatch.setattr(service, "notify_ops", self.alerts.append)
+
+    def check(self):
+        self.checks += 1
+        if self.outcomes and self.outcomes.pop(0) is False:
+            raise service.EgressUnavailable("proxy unreachable")
+
+
+def test_egress_check_failure_waits_in_egress_unavailable_and_alerts_once(paths, monkeypatch):
+    config, state = paths
+    write(config, configuration())
+    children = fake_children(monkeypatch)
+    egress = Egress(monkeypatch, [False, False, True])
+    clock, seen = Clock(), []
+    clock.on_wait = lambda: seen.append(service._read(state / "state.private.json"))
+    assert service.run(config, state, project_root=ROOT, now=clock.now, stop=clock) == 0
+    assert egress.checks == 3 and len(children) == 1
+    assert [value["status"] for value in seen] == ["egress_unavailable"] * 2
+    assert all(value["reason"] == "EgressUnavailable" for value in seen)
+    assert clock.current == NOW + timedelta(seconds=120)
+    assert len(egress.alerts) == 2 and "unavailable" in egress.alerts[0] and "recovered" in egress.alerts[1]
+    saved = service._read(state / "state.private.json")
+    assert saved["status"] == "complete" and "egress_down" not in saved
+
+
+def test_egress_check_failure_never_starts_a_child_or_blocks_the_source(paths, monkeypatch):
+    config, state = paths
+    write(config, configuration())
+    children = fake_children(monkeypatch)
+    Egress(monkeypatch, [False])
+    clock = Clock()
+    clock.on_wait = clock.set
+    assert service.run(config, state, project_root=ROOT, now=clock.now, stop=clock) == 2
+    assert children == [] and not (state / "runs").exists()
+    saved = service._read(state / "state.private.json")
+    assert saved["status"] == "attention_required" and saved["reason"] == "operator_stop_requires_review"
+    assert saved["egress_down"] == "check"
+
+
+def test_restart_during_an_outage_keeps_checking_without_a_second_alert(paths, monkeypatch):
+    config, state = paths
+    write(config, configuration())
+    children = fake_children(monkeypatch)
+    first = Egress(monkeypatch, [False])
+    clock = Clock()
+    clock.on_wait = clock.set
+    service.run(config, state, project_root=ROOT, now=clock.now, stop=clock)
+    state_file = state / "state.private.json"
+    service._write(state_file, {**service._read(state_file), "status": "egress_unavailable"})
+    second = Egress(monkeypatch, [True])
+    assert service.run(config, state, project_root=ROOT, now=lambda: NOW) == 0
+    assert len(first.alerts) == 1 and len(children) == 1
+    assert second.alerts == ["BuenaPro PROD2: SEACE egress recovered."]
+
+
+def test_child_exit_for_egress_is_not_a_gate_failure_or_source_block(paths, monkeypatch):
+    config, state = paths
+    write(config, configuration())
+    children = fake_children(monkeypatch)
+    codes = [service.EGRESS_EXIT_CODE, 0]
+    real_popen = service.subprocess.Popen
+
+    def popen(argv, **kwargs):
+        child = real_popen(argv, **kwargs)
+        child.returncode = codes.pop(0)
+        return child
+
+    monkeypatch.setattr(service.subprocess, "Popen", popen)
+    egress = Egress(monkeypatch, [])
+    clock, seen = Clock(), []
+    clock.on_wait = lambda: seen.append(service._read(state / "state.private.json"))
+    assert service.run(config, state, project_root=ROOT, now=clock.now, stop=clock) == 0
+    assert len(children) == 2 and children[0].folder == children[1].folder  # Same epoch name, fresh folder.
+    assert [value["status"] for value in seen] == ["egress_unavailable"]
+    assert seen[0]["reason"] == "child_exit_egress" and seen[0]["plan"] is None
+    runs = sorted(path.name for path in (state / "runs").iterdir())
+    assert runs[0] == children[0].folder.name and runs[1].startswith(runs[0] + ".egress-") and len(runs) == 2
+    assert service._read(state / "state.private.json")["status"] == "complete"
+    assert len(egress.alerts) == 2 and "recovered" in egress.alerts[1]
+
+
+def test_source_denial_exit_is_still_attention_required_without_egress_alert(paths, monkeypatch):
+    config, state = paths
+    write(config, configuration())
+    fake_children(monkeypatch, exit_code=2, mutate=lambda value: value["coverage"][0].update(
+        errors=[{"code": "source_403"}], coverage_complete=False))
+    egress = Egress(monkeypatch, [])
+    assert service.run(config, state, project_root=ROOT, now=lambda: NOW) == 2
+    saved = service._read(state / "state.private.json")
+    assert saved["status"] == "attention_required" and saved["reason"] == "final_report_source_access_blocked"
+    assert egress.alerts == []

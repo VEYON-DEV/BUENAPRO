@@ -609,7 +609,7 @@ def test_detail_helper_uses_source_hooks_for_search_detail_and_document_paginati
         requested.append(request)
         return httpx.Response(403)
     original_client = httpx.Client
-    monkeypatch.setattr(helper.httpx, "Client", lambda **kw: original_client(transport=httpx.MockTransport(respond), **kw))
+    monkeypatch.setattr(helper, "seace_http_client", lambda **kw: original_client(transport=httpx.MockTransport(respond), **kw))
     class Source:
         def __init__(self, client):
             self.client = client

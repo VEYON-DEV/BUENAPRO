@@ -5,6 +5,9 @@ to record a blocked deployment without importing any ingestion dependencies.
 Enabled configurations must explicitly authorize their first fresh epoch,
 rolling publication window, base arguments, interval and finite cycle budget.
 An interrupted child is never restarted or signaled by a later service process.
+A failed SEACE egress (proxy down, or a child exiting with EGRESS_EXIT_CODE) is
+not a source denial: the service waits one interval in ``egress_unavailable``
+and checks again; a child's partial epoch folder is kept renamed, never adopted.
 """
 from __future__ import annotations
 
@@ -26,6 +29,7 @@ import threading
 import time
 from zoneinfo import ZoneInfo
 
+from ..seace.egress import EGRESS_EXIT_CODE, EgressUnavailable, check_egress, notify_ops
 from .keyword_chain import assess_final_report
 
 VERSION = 1
@@ -233,6 +237,20 @@ def run(config_path, state_dir, *, project_root=Path("/app"), stop=None, now=Non
             state.update(version=VERSION, status=status, updated_at=now().isoformat(), **facts)
             _write(state_path, state)
 
+        def egress_outage(reason, origin, **facts):
+            """Alert once per outage; True when stopped while waiting for the next check."""
+            if not state.get("egress_down"):
+                notify_ops(f"BuenaPro PROD2: SEACE egress unavailable ({reason}); retrying every "
+                           f"{config['interval_seconds']}s.")
+            checkpoint("egress_unavailable", reason=reason, egress_down=state.get("egress_down") or origin,
+                       next_cycle_at=(now() + timedelta(seconds=config["interval_seconds"])).isoformat(),
+                       **facts)
+            return stop.wait(config["interval_seconds"])
+
+        def egress_recovered():
+            if state.pop("egress_down", None):
+                notify_ops("BuenaPro PROD2: SEACE egress recovered.")
+
         def stopping(*_):
             nonlocal termination_forwarded
             stop.set()
@@ -246,7 +264,8 @@ def run(config_path, state_dir, *, project_root=Path("/app"), stop=None, now=Non
                 checkpoint("blocked_source" if config.get("operator_hold") else "prepared",
                            reason=config.get("operator_hold") or "operator_disabled")
                 return 2
-            if state.get("status") not in (None, "waiting", "complete", "blocked_source", "prepared"):
+            if state.get("status") not in (None, "waiting", "complete", "blocked_source", "prepared",
+                                           "egress_unavailable"):
                 raise ServiceError("interrupted_epoch_requires_manual_review")
             if state.get("plan") and state.get("config_sha256") != _hash(config):
                 raise ServiceError("active_configuration_changed")
@@ -254,7 +273,7 @@ def run(config_path, state_dir, *, project_root=Path("/app"), stop=None, now=Non
                 _gate(state["plan"])
                 return 0
             # A hold may be lifted only with the full explicit enabled contract.
-            if state.get("plan") and state.get("status") != "waiting":
+            if state.get("plan") and state.get("status") not in ("waiting", "egress_unavailable"):
                 raise ServiceError("interrupted_epoch_requires_manual_review")
             if threading.current_thread() is threading.main_thread():
                 for sig in (signal.SIGTERM, signal.SIGINT):
@@ -270,6 +289,14 @@ def run(config_path, state_dir, *, project_root=Path("/app"), stop=None, now=Non
                     _gate(state["plan"])
                 if _hash(_config(config_path)) != _hash(config):
                     raise ServiceError("active_configuration_changed")
+                try:
+                    check_egress()
+                except EgressUnavailable as error:
+                    if egress_outage(type(error).__name__, "check"):
+                        break
+                    continue
+                if state.get("egress_down") == "check":
+                    egress_recovered()
                 plan = _plan(config, directory, number, now(), project_root)
                 folder = Path(plan["folder"])
                 folder.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -290,6 +317,15 @@ def run(config_path, state_dir, *, project_root=Path("/app"), stop=None, now=Non
                         time.sleep(0.2)  # SIGTERM is forwarded; never escalate or retry.
                     plan["exit_code"] = child.returncode
                     child = None
+                if plan["exit_code"] == EGRESS_EXIT_CODE and not stop.is_set():
+                    # Egress failed inside the child: keep its evidence out of the way
+                    # so the retry gets a fresh epoch folder (cycle number unchanged).
+                    folder.rename(folder.with_name(f"{folder.name}.egress-{time.time_ns()}"))
+                    if egress_outage("child_exit_egress", "child", plan=None):
+                        break
+                    continue
+                if plan["exit_code"] != EGRESS_EXIT_CODE:
+                    egress_recovered()  # The child reached SEACE through the egress.
                 checkpoint("validating", plan=plan)
                 if stop.is_set():
                     raise ServiceError("interrupted_epoch_requires_manual_review")

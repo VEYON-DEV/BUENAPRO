@@ -8,6 +8,7 @@ import httpx
 import pytest
 
 from buenapro_worker.prod2 import discovery_transport as transport
+from buenapro_worker.seace import egress
 
 
 class Clock:
@@ -266,7 +267,7 @@ def test_elapsed_response_sets_stop_and_keeps_sanitized_response_count():
 def test_stopped_gate_does_not_create_another_source_session(monkeypatch):
     source_gate, _ = gate()
     source_gate.stop.set()
-    monkeypatch.setattr(transport.httpx, "Client", lambda **kwargs: pytest.fail("no new session"))
+    monkeypatch.setattr(egress.httpx, "Client", lambda **kwargs: pytest.fail("no new session"))
     with pytest.raises(ValueError, match="source_stop_requested"):
         with source_gate.source_factory():
             pytest.fail("stopped gate yielded")
@@ -287,7 +288,7 @@ def test_independent_source_sessions_close_and_share_only_the_gate(monkeypatch):
         clients.append(client)
         return client
 
-    monkeypatch.setattr(transport.httpx, "Client", factory)
+    monkeypatch.setattr(egress.httpx, "Client", factory)
     with source_gate.source_factory() as first:
         first.client.get("https://prod2.seace.gob.pe/test")
         first.client.get("https://prod2.seace.gob.pe/test")

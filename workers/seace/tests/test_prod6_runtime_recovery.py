@@ -463,3 +463,111 @@ def test_lost_ownership_does_not_claim_to_have_held_the_document(offline_runtime
     assert "blocked_documents" not in h.states[-1]
     h.dispatch.assert_not_called()
     h.wait.assert_not_called()
+
+
+def proxy_failure():
+    request = httpx.Request("GET", "https://prod6.seace.gob.pe/v1/private")
+    return httpx.ProxyError("502 Bad Gateway", request=request)
+
+
+@pytest.fixture
+def egress(monkeypatch):
+    """Scripted egress checks (False = proxy down) and recorded ops alerts."""
+    outcomes, alerts = [], []
+
+    def check():
+        if outcomes and outcomes.pop(0) is False:
+            raise runtime.EgressUnavailable("proxy unreachable")
+
+    monkeypatch.setattr(runtime, "check_egress", check)
+    monkeypatch.setattr(runtime, "notify_ops", alerts.append)
+    return SimpleNamespace(outcomes=outcomes, alerts=alerts)
+
+
+def test_egress_check_failure_backs_off_before_any_source_call_and_alerts_once(offline_runtime, egress):
+    h = offline_runtime
+    egress.outcomes[:] = [False, False, True]
+    waits = []
+
+    def wait(should_stop, interval_seconds):
+        waits.append(interval_seconds)
+        if len(waits) == 3:
+            h.stop()
+
+    h.wait.side_effect = wait
+    assert h.run(once=False) == 0
+    backoffs = [state for state in h.states if state["status"] == "egress_backoff"]
+    assert backoffs and all(state["egress_error"] == "EgressUnavailable" and state["retry_after_seconds"] == 1800
+                            for state in backoffs)
+    assert not any(state["status"] in {"source_backoff", "attention_required"} for state in h.states)
+    assert h.poll.call_count == 1  # Only the cycle after the proxy came back.
+    assert len(egress.alerts) == 2 and "unavailable" in egress.alerts[0] and "recovered" in egress.alerts[1]
+
+
+def test_one_shot_egress_check_failure_is_incomplete_without_source_work(offline_runtime, egress):
+    h = offline_runtime
+    egress.outcomes[:] = [False]
+    assert h.run(once=True) == 2
+    h.poll.assert_not_called()
+    h.claim.assert_not_called()
+    h.wait.assert_not_called()
+    assert h.states[-1]["status"] == "egress_backoff"
+    assert len(egress.alerts) == 1
+
+
+def test_proxy_error_in_discovery_is_egress_backoff_not_source_backoff(offline_runtime, egress):
+    h = offline_runtime
+    h.poll.side_effect = [proxy_failure(), dict(SOURCE_STATS)]
+    waits = []
+
+    def wait(should_stop, interval_seconds):
+        waits.append(interval_seconds)
+        if len(waits) == 2:
+            h.stop()
+
+    h.wait.side_effect = wait
+    assert h.run(once=False) == 0
+    backoff = next(state for state in h.states if state["status"] == "egress_backoff")
+    assert backoff["egress_error"] == "ProxyError" and "source_error" not in backoff
+    assert not any(state["status"] == "source_backoff" for state in h.states)
+    assert len(egress.alerts) == 2 and "recovered" in egress.alerts[1]
+
+
+def test_io_egress_failure_defers_without_manual_review_and_stops_further_io(offline_runtime, egress):
+    h = offline_runtime
+    failing = Job(1, "download_file", "io", {"id_contrato": 42, "id_contrato_archivo": 31, "batch_id": "b"}, 1)
+    same_batch = Job(2, "process_contract", "io", {"id_contrato": 43, "batch_id": "b"}, 1)
+    later = Job(3, "download_file", "io", {"id_contrato": 44, "id_contrato_archivo": 32, "batch_id": "b"}, 1)
+    h.queues(io=[failing, same_batch, later])
+    h.execute_io.side_effect = proxy_failure()
+    assert h.run(once=True) == 2
+    assert h.execute_io.call_count == 2  # io_workers=2: the third job is not claimed during the outage.
+    state = h.states[-1]
+    assert state["status"] == "egress_backoff"
+    assert sorted((row["job_id"], row["job_type"], row["error_type"]) for row in state["egress_deferred"]) == [
+        (1, "download_file", "ProxyError"), (2, "process_contract", "ProxyError")]
+    assert not {"blocked_documents", "deferred_io", "io_errors"} & set(state)
+    deferrals = [call.args for call in h.conn.execute.call_args_list if "run_after=now()" in call.args[0]]
+    holds = [call for call in h.conn.execute.call_args_list if "run_after='infinity'" in call.args[0]]
+    assert len(deferrals) == 2 and deferrals[0][1][0] == 1800 and holds == []
+    assert len(egress.alerts) == 1
+
+
+def test_download_403_is_still_held_for_manual_review_with_the_proxy_configured(offline_runtime, egress, monkeypatch):
+    monkeypatch.setenv("SEACE_EGRESS_PROXY", "http://10.161.181.75:8888")
+    h = offline_runtime
+    h.queues(io=[Job(1, "download_file", "io", {"id_contrato": 42, "id_contrato_archivo": 31, "batch_id": "b"}, 1)])
+    h.execute_io.side_effect = http_failure(403)
+    assert h.run(once=True) == 2
+    state = h.states[-1]
+    assert state["status"] == "sweep_blocked"
+    assert state["blocked_documents"][0]["http_status"] == 403 and "egress_deferred" not in state
+    assert egress.alerts == []
+
+
+@pytest.mark.parametrize("error", [httpx.ConnectError("x"), httpx.ReadTimeout("x")])
+def test_plain_network_errors_without_a_proxy_keep_the_source_backoff(offline_runtime, egress, error):
+    h = offline_runtime
+    h.poll.side_effect = error
+    assert h.run(once=True) == 2
+    assert h.states[-1]["status"] == "source_backoff" and egress.alerts == []
