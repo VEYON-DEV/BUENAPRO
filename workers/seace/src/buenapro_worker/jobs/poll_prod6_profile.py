@@ -1,22 +1,17 @@
 """Bounded, profile-driven discovery; no tenant-wide historical sweep."""
 from __future__ import annotations
 
-import re
-import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any
 
-from buenapro_worker.jobs.poll_search import LIMA_TZ, canonical_hash, parse_lima_datetime, upsert_search_item
+from buenapro_worker.jobs.poll_search import LIMA_TZ, canonical_hash, upsert_search_item
+from buenapro_worker.prod6.screening import (
+    POLICY_VERSION, decide, line_matches, normalize, prefilter, profile_snapshot, record_decision,
+)
 from buenapro_worker.queue.repository import JobRepository
 from buenapro_worker.seace.client import SeaceClient
 from buenapro_worker.settings import Settings
-
-
-def normalize(value: str) -> str:
-    value = unicodedata.normalize("NFKD", value.lower())
-    value = "".join(char for char in value if not unicodedata.combining(char))
-    return " ".join(re.findall(r"[a-z0-9]+", value))
 
 
 def matches_profile_scope(description: str, lines: list[dict[str, Any]], segment: int) -> bool:
@@ -26,21 +21,11 @@ def matches_profile_scope(description: str, lines: list[dict[str, Any]], segment
     Matching stays within each business line instead of mixing unrelated words.
     """
     text = f" {normalize(description)} "
-    for line in lines:
-        if str(segment) not in [str(value) for value in line.get("cubso_segmentos", [])]:
-            continue
-        phrases = {normalize(value) for value in line.get("keyword_phrases", []) if value.strip()}
-        terms = {normalize(value) for value in line.get("keyword_terms", []) if value.strip()}
-        # Backward compatibility with lines populated before split keywords.
-        if not phrases and not terms:
-            for value in line.get("keywords", []):
-                normalized = normalize(value)
-                (phrases if " " in normalized else terms).add(normalized)
-        if any(phrase and f" {phrase} " in text for phrase in phrases):
-            return True
-        if sum(bool(term) and f" {term} " in text for term in terms) >= 2:
-            return True
-    return False
+    return any(
+        str(segment) in [str(value) for value in line.get("cubso_segmentos", [])]
+        and line_matches(text, line)
+        for line in lines
+    )
 
 
 def _search_pages(client: SeaceClient, *, year: int, objeto: int, segment: int,
@@ -81,23 +66,16 @@ def poll_prod6_profile(
         raise ValueError("Polling limits must be positive")
     if type(search_parallelism) is not int or not 1 <= search_parallelism <= 4:
         raise ValueError("Search parallelism must be an integer from 1 to 4")
-    profile = repo.conn.execute(
-        "SELECT id FROM company_profiles WHERE id = %s AND is_active = true", (profile_id,),
-    ).fetchone()
-    if not profile:
-        raise ValueError("Active company profile not found")
-    lines = list(repo.conn.execute(
-        """SELECT cubso_segmentos, keyword_phrases, keyword_terms, keywords
-           FROM business_lines WHERE profile_id = %s AND is_active = true""",
-        (profile_id,),
-    ).fetchall())
+    snapshot = profile_snapshot(repo.conn, profile_id)
+    lines = snapshot["lines"]
     segments = sorted({int(value) for line in lines for value in line["cubso_segmentos"] if str(value).isdigit()})
     if not segments or not any(line.get("keywords") or line.get("keyword_phrases") or line.get("keyword_terms") for line in lines):
         raise ValueError("Profile needs active segments and keywords")
     year = anio or datetime.now(LIMA_TZ).year
     stats = {"seen": 0, "candidates": 0, "changed": 0, "enqueued": 0, "skipped": 0,
              "pages": 0, "capped_segments": 0, "limit_reached": 0,
-             "http_requests": 0, "http_rows": 0}
+             "http_requests": 0, "http_rows": 0,
+             "decisions_recorded": 0, "decisions_reused": 0, "prefilter_rejected": 0}
     seen: set[int] = set()
 
     def apply_page(response, *, objeto: int, segment: int) -> bool:
@@ -106,13 +84,26 @@ def poll_prod6_profile(
         stats["pages"] += 1
         for item in response.data:
             stats["seen"] += 1
-            publication = parse_lima_datetime(item.fec_publica)
-            close = parse_lima_datetime(item.fec_fin_cotizacion)
-            # PROD6 sometimes ignores anio: enforce it against publication.
-            if (item.estado_codigo != 2 or item.objeto_codigo != objeto
-                    or publication is None or publication.astimezone(LIMA_TZ).year != year
-                    or (close is not None and close <= datetime.now(timezone.utc))
-                    or not matches_profile_scope(item.descripcion, lines, segment)):
+            passed, reasons, keyword_lines = prefilter(
+                item, snapshot, year=year, now=datetime.now(timezone.utc), segment=segment)
+            # PROD6 sometimes ignores anio: wrong-year/object rows are not stored.
+            if (item.objeto_codigo != objeto
+                    or {"object_out_of_scope", "publication_year_mismatch"} & set(reasons)):
+                stats["skipped"] += 1
+                continue
+            decision, decided_by = decide(passed, keyword_lines)
+            stats["prefilter_rejected"] += int(not passed)
+            contract_hash = canonical_hash(item.model_dump(mode="json", by_alias=True))
+            recorded = record_decision(
+                repo.conn, item=item, segment=segment, profile_id=profile_id,
+                contract_hash=contract_hash, profile_hash=snapshot["profile_hash"],
+                policy_version=POLICY_VERSION, prefilter_passed=passed,
+                prefilter_reasons=reasons, keyword_lines=keyword_lines,
+                decision=decision, decided_by=decided_by)
+            stats["decisions_recorded" if recorded else "decisions_reused"] += 1
+            # Only accepted contracts become seace_contracts / opportunities (the web
+            # lists them); rejected and pending ones live in the decisions table alone.
+            if decision != "accepted":
                 stats["skipped"] += 1
                 continue
             if item.id_contrato in seen:

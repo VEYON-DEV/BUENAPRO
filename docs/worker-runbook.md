@@ -349,6 +349,18 @@ También se puede llamar `poll_prod6_profile(..., profile_id=..., anio=2026,
 max_pages_per_segment=10, max_candidates=200, batch_id=...)` para una corrida
 controlada. El payload del job recurrente admite los mismos límites y batch.
 
+### Decisiones por empresa (`prod6_profile_decisions`)
+
+Cada contrato visto por `poll_prod6_profile` queda con una decisión por empresa,
+**aprobada o descartada**, clave `(id_contrato, profile_id, hash de la ficha de búsqueda,
+hash del perfil, versión de política)`: con la misma clave no se reevalúa ni se vuelve a
+guardar (`decisions_reused`). El prefiltro duro (vigente, bien/servicio, publicado en el
+año, no cerrado, segmento CUBSO de la empresa) descarta con motivos estables; las palabras
+clave solo se registran en `keyword_lines`. Política `prod6_screening_v1` (M1): pasa el
+prefiltro y hay frase/dos términos → `accepted` (se encola como antes); sin coincidencia →
+`pending`, a la espera de JEV en M2 (no es un descarte). Los rechazados y pendientes se
+guardan solo en `prod6_profile_decisions` (con su `listing_json` de la búsqueda), sin tocar `seace_contracts` ni `opportunities`: solo los `accepted` pasan por `upsert_search_item` y se encolan. Las columnas de score/modelo/costo son para JEV.
+
 ## Salida peruana para SEACE (proxy egress)
 
 SEACE bloquea con 403 la IP de la VM. Los workers pueden enviar **solo** el tráfico

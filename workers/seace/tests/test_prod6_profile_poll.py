@@ -3,8 +3,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from buenapro_worker.jobs import poll_prod6_profile as poll_module
 from buenapro_worker.jobs.poll_prod6_profile import matches_profile_scope, poll_prod6_profile
 from buenapro_worker.jobs.scheduler import enqueue_poll_search_jobs
+from buenapro_worker.prod6 import screening
 from buenapro_worker.seace.schemas import SearchResponse
 from buenapro_worker.settings import Settings
 
@@ -29,6 +31,39 @@ def item(id, text, obj=1, state=2, year=2026):
             "idEstadoContrato": state, "fecPublica": f"01/10/{year} 10:00:00"}
 
 
+class DecisionStore:
+    """In-memory stand-in for the PostgreSQL decision repository."""
+
+    def __init__(self):
+        self.rows = {}
+
+    def record(self, _conn, *, item, **fields):
+        key = (item.id_contrato, fields["profile_id"], fields["contract_hash"],
+               fields["profile_hash"], fields["policy_version"])
+        if key in self.rows:
+            return False
+        self.rows[key] = fields
+        return True
+
+    def by_contract(self):
+        return {key[0]: row for key, row in self.rows.items()}
+
+
+def fake_snapshot(conn, profile_id):
+    lines = [dict(line, nombre=f"line{number}", score_umbral=70)
+             for number, line in enumerate(conn.execute("lines").fetchall())]
+    return {"id": profile_id, "descripcion": "", "lines": lines, "profile_hash": "profile-hash"}
+
+
+@pytest.fixture(autouse=True)
+def decisions(monkeypatch):
+    """Keep these tests DB-free; the decision repository has its own PostgreSQL tests."""
+    store = DecisionStore()
+    monkeypatch.setattr(poll_module, "profile_snapshot", MagicMock(side_effect=fake_snapshot))
+    monkeypatch.setattr(poll_module, "record_decision", store.record)
+    return store
+
+
 def test_scope_specific_phrase_or_two_terms_and_boundaries():
     assert matches_profile_scope("Instalación de TABLEROS ELÉCTRICOS", LINES, 39)
     assert matches_profile_scope("CCM con variadores", LINES, 39)
@@ -39,9 +74,8 @@ def test_scope_specific_phrase_or_two_terms_and_boundaries():
 
 @patch("buenapro_worker.jobs.poll_prod6_profile.upsert_search_item", return_value=True)
 @patch("buenapro_worker.jobs.poll_prod6_profile.SeaceClient")
-def test_poll_only_current_relevant_vigente_goods_services(client_cls, upsert):
+def test_poll_only_current_relevant_vigente_goods_services(client_cls, upsert, decisions):
     repo = MagicMock()
-    repo.conn.execute.return_value.fetchone.return_value = {"id": "profile"}
     repo.conn.execute.return_value.fetchall.return_value = LINES
     client_cls.return_value.__enter__.return_value.search_contracts.side_effect = [
         response([item(1, "tableros eléctricos"), item(2, "papelería"),
@@ -50,7 +84,15 @@ def test_poll_only_current_relevant_vigente_goods_services(client_cls, upsert):
     stats = poll_prod6_profile(settings(), repo, profile_id="profile")
     assert stats["candidates"] == stats["changed"] == stats["enqueued"] == 2
     assert stats["skipped"] == 3
-    assert upsert.call_count == 2
+    # Only candidates are upserted/enqueued; rejected and pending ones just get a decision.
+    assert [call.args[1].id_contrato for call in upsert.call_args_list] == [1, 5]
+    assert repo.enqueue.call_count == 2
+    assert {id: (row["decision"], row["decided_by"]) for id, row in decisions.by_contract().items()} == {
+        1: ("accepted", "keywords"), 2: ("pending", "keywords"),
+        3: ("rejected", "prefilter"), 5: ("accepted", "keywords")}
+    assert decisions.by_contract()[3]["prefilter_reasons"] == ["not_vigente"]
+    assert 4 not in decisions.by_contract()  # wrong year: neither stored nor decided
+    assert (stats["decisions_recorded"], stats["decisions_reused"], stats["prefilter_rejected"]) == (4, 0, 1)
     calls = client_cls.return_value.__enter__.return_value.search_contracts.call_args_list
     assert [(call.kwargs["objeto"], call.kwargs["segmento"]) for call in calls] == [(1,39),(2,39)]
 
@@ -59,7 +101,7 @@ def test_poll_only_current_relevant_vigente_goods_services(client_cls, upsert):
 @patch("buenapro_worker.jobs.poll_prod6_profile.SeaceClient")
 def test_unchanged_or_filtered_page_does_not_stop_pagination(client_cls, upsert):
     repo = MagicMock()
-    repo.conn.execute.return_value.fetchone.side_effect = [{"id": "profile"}, None]
+    repo.conn.execute.return_value.fetchone.side_effect = [None]
     repo.conn.execute.return_value.fetchall.return_value = LINES
     client_cls.return_value.__enter__.return_value.search_contracts.side_effect = [
         response([item(1, "papelería")], total=201),
@@ -79,9 +121,9 @@ def test_scheduler_profile_discovery_requires_opt_in():
 
 @patch("buenapro_worker.jobs.poll_prod6_profile.upsert_search_item", return_value=False)
 @patch("buenapro_worker.jobs.poll_prod6_profile.SeaceClient")
-def test_completed_extraction_not_requeued_and_expired_not_saved(client_cls, upsert):
+def test_completed_extraction_not_requeued_and_expired_not_saved(client_cls, upsert, decisions):
     repo = MagicMock()
-    repo.conn.execute.return_value.fetchone.side_effect = [{"id": "profile"}, {"exists": 1}]
+    repo.conn.execute.return_value.fetchone.side_effect = [{"exists": 1}]
     repo.conn.execute.return_value.fetchall.return_value = LINES
     expired = item(2, "tableros eléctricos") | {"fecFinCotizacion": "01/01/2020 10:00:00"}
     client_cls.return_value.__enter__.return_value.search_contracts.side_effect = [
@@ -91,6 +133,8 @@ def test_completed_extraction_not_requeued_and_expired_not_saved(client_cls, ups
     assert stats["enqueued"] == 0
     assert stats["skipped"] == 1
     repo.enqueue.assert_not_called()
+    assert decisions.by_contract()[2]["prefilter_reasons"] == ["closed"]
+    assert decisions.by_contract()[2]["decision"] == "rejected"
     upsert.assert_called_once()
 
 
@@ -99,6 +143,7 @@ def test_rejects_unbounded_or_inactive_profile():
         poll_prod6_profile(settings(), MagicMock(), profile_id="profile", max_candidates=0)
     repo = MagicMock()
     repo.conn.execute.return_value.fetchone.return_value = None
+    poll_module.profile_snapshot.side_effect = screening.profile_snapshot
     with pytest.raises(ValueError, match="Active company"):
         poll_prod6_profile(settings(), repo, profile_id="missing")
 
@@ -114,7 +159,7 @@ def parallel_repo(*, extracted=None):
     def execute(sql, *_args):
         assert threading.get_ident() == coordinator, "DB connection reached an HTTP thread"
         cursor = MagicMock()
-        cursor.fetchone.return_value = {"id": "profile"} if "SELECT id FROM company_profiles" in sql else extracted
+        cursor.fetchone.return_value = extracted
         cursor.fetchall.return_value = parallel_lines()
         return cursor
 
@@ -227,7 +272,7 @@ def test_parallel_candidate_cap_reports_all_actual_queries_and_stream_caps():
     upsert.assert_called_once()
 
 
-def test_parallel_scope_and_dedup_preserve_completed_readings_without_new_jobs():
+def test_parallel_scope_and_dedup_preserve_completed_readings_without_new_jobs(decisions):
     class Client:
         def __init__(self, _settings):
             pass
@@ -257,6 +302,8 @@ def test_parallel_scope_and_dedup_preserve_completed_readings_without_new_jobs()
     assert stats["candidates"] == 1
     assert stats["enqueued"] == 0
     upsert.assert_called_once()
+    # Expired, not vigente and one-term rows only get a decision.
+    assert set(decisions.by_contract()) == {1, 2, 5, 7}
     repo.enqueue.assert_not_called()
 
 
