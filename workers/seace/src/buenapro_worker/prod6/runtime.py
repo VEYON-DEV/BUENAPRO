@@ -20,6 +20,7 @@ from typing import Any
 
 import httpx
 import psycopg
+from dotenv import dotenv_values
 
 from buenapro_worker.db.connection import connect
 from buenapro_worker.jobs.derive_summary import derive_summary_job
@@ -31,6 +32,9 @@ from buenapro_worker.queue.repository import Job, JobRepository
 from buenapro_worker.seace.egress import EgressUnavailable, check_egress, is_egress_failure, notify_ops
 from buenapro_worker.settings import Settings
 from buenapro_worker.extraction.commercial_classification import POLICY_KEY, TAXONOMY_VERSION, get_commercial_policy
+from buenapro_worker.prod6.jev_screening import (
+    JevScreeningClient, admit_accepted, score_pending, unadmitted_accepted,
+)
 from buenapro_worker.prod6.reading import (
     ReadingPolicyError, bind_reading_policy, reading_policy_context,
 )
@@ -81,6 +85,12 @@ def failure_diagnostic(error: Exception) -> dict[str, str]:
 
 
 class ScopedRepository(JobRepository):
+    """Queue scope of the coordinator.
+
+    With several profiles, ``profile_id`` is the first one: the document reading is
+    shared per contract, so the scope only names which coordinator owns the jobs.
+    """
+
     def __init__(self, conn, *, profile_id: str, batch_id: str, reading_policy=None):
         super().__init__(conn)
         self.profile_id, self.batch_id = profile_id, batch_id
@@ -131,12 +141,38 @@ class ScopedRepository(JobRepository):
                    dict(row["payload"]), int(row["attempts"]))
 
 
-def profile_enabled(repo: ScopedRepository) -> bool:
+def profile_enabled(repo: ScopedRepository, profile_id: str | None = None) -> bool:
     row = repo.conn.execute(
         """SELECT is_active, identity_json->>'profile_ingestion_enabled' AS enabled
-           FROM company_profiles WHERE id=%s""", (repo.profile_id,),
+           FROM company_profiles WHERE id=%s""", (profile_id or repo.profile_id,),
     ).fetchone()
     return bool(row and row["is_active"] and row["enabled"] != "false")
+
+
+def jev_api_key() -> str | None:
+    """TYPESAFE_API_KEY from the environment, else the ignored .env.jev.local at the repo root."""
+    key = os.environ.get("TYPESAFE_API_KEY", "").strip()
+    parents = Path(__file__).resolve().parents
+    if not key and len(parents) > 5:
+        key = (dotenv_values(parents[5] / ".env.jev.local").get("TYPESAFE_API_KEY") or "").strip()
+    return key or None
+
+
+def jev_cycle(repo: ScopedRepository, profile_ids: list[str], *, max_requests: int,
+              threshold: float, batch_id: str) -> dict[str, Any]:
+    """Score pending decisions and admit the accepted contracts; without a key nothing changes."""
+    api_key = jev_api_key()
+    if api_key is None:
+        return {"status": "jev_unavailable", "reason": "missing_api_key"}
+    with JevScreeningClient(api_key) as client:
+        result, accepted = score_pending(repo.conn, client, profile_ids=profile_ids,
+                                         threshold=threshold, max_requests=max_requests)
+    # Contracts accepted by an earlier cycle that crashed before admission are admitted too.
+    recovered = unadmitted_accepted(repo.conn, profile_ids=profile_ids)
+    result["admission"] = admit_accepted(repo, accepted + recovered, batch_id=batch_id)
+    unavailable = result["aborted"] or (result["failed"] and not result["accepted"] + result["rejected"])
+    return {"status": "jev_unavailable" if unavailable else "ok",
+            **({"reason": "repeated_failures"} if unavailable else {}), **result}
 
 
 def current_extraction(repo: ScopedRepository, contract_id: int, archive_id: int):
@@ -311,10 +347,16 @@ def execute_io_job(settings: Settings, profile_id: str, job: Job, receipt_dir: P
         return outcome
 
 
-def run(settings: Settings, *, profile_id: str, receipt_dir: Path, once: bool = False,
+def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: bool = False,
         interval_seconds: int = 1800, max_pages: int = 100, max_candidates: int = 200,
-        http_workers: int = 3, io_workers: int = 2,
-        llm1_commercial_taxonomy: str | None = None) -> int:
+        http_workers: int = 3, io_workers: int = 2, max_jev_requests: int = 200,
+        jev_threshold: float = 60, llm1_commercial_taxonomy: str | None = None) -> int:
+    profile_ids = list(dict.fromkeys(profile_ids))
+    if not profile_ids:
+        raise ValueError("At least one profile is required")
+    profile_id = profile_ids[0]  # Queue scope; see ScopedRepository.
+    if max_jev_requests < 0 or not 0 <= jev_threshold <= 100:
+        raise ValueError("JEV requests must not be negative and the threshold must be 0-100")
     requested_policy = reading_policy_context(
         {POLICY_KEY: llm1_commercial_taxonomy} if llm1_commercial_taxonomy is not None else None)
     if interval_seconds < 60 or max_pages < 1 or max_candidates < 1:
@@ -359,6 +401,7 @@ def run(settings: Settings, *, profile_id: str, receipt_dir: Path, once: bool = 
             print(json.dumps(startup), flush=True)
             return 2
         egress_down = False
+        jev_down = False
 
         def egress_alert(reason: str) -> None:
             nonlocal egress_down
@@ -379,7 +422,7 @@ def run(settings: Settings, *, profile_id: str, receipt_dir: Path, once: bool = 
             repo = ScopedRepository(conn, profile_id=profile_id, batch_id=batch_id,
                                     reading_policy=effective_policy)
             state: dict[str, Any] = {"runtime": NAMESPACE, "profile_id": profile_id,
-                "batch_id": batch_id, "started_at": datetime.now(timezone.utc).isoformat(),
+                "profile_ids": profile_ids, "batch_id": batch_id, "started_at": datetime.now(timezone.utc).isoformat(),
                 "status": "sweeping", "phase": "profile_check", "done": {}, "suppressed": {},
                 **effective_policy,
                 "parallelism": {"http": http_workers, "io": io_workers, "paid_reading": 1}}
@@ -401,10 +444,19 @@ def run(settings: Settings, *, profile_id: str, receipt_dir: Path, once: bool = 
                 state["phase"] = "source_discovery"
                 source_started = time.monotonic()
                 try:
-                    with conn.transaction():
-                        state["source"] = poll_prod6_profile(settings, repo, profile_id=profile_id,
-                            max_pages_per_segment=max_pages, max_candidates=max_candidates,
-                            batch_id=batch_id, search_parallelism=http_workers)
+                    state["source"] = {}
+                    # The scope profile was checked above; a paused extra company is skipped.
+                    active_ids = [profile_id] + [other for other in profile_ids[1:]
+                                                 if profile_enabled(repo, other)]
+                    for active_id in active_ids:
+                        with conn.transaction():
+                            polled = poll_prod6_profile(settings, repo, profile_id=active_id,
+                                max_pages_per_segment=max_pages, max_candidates=max_candidates,
+                                batch_id=batch_id, search_parallelism=http_workers)
+                        for key, value in polled.items():
+                            state["source"][key] = state["source"].get(key, 0) + value
+                        if len(profile_ids) > 1:
+                            state.setdefault("source_by_profile", {})[active_id] = polled
                 except Exception as error:
                     if is_egress_failure(error):
                         egress_backoff(state, type(error).__name__)
@@ -431,6 +483,17 @@ def run(settings: Settings, *, profile_id: str, receipt_dir: Path, once: bool = 
                     notify_ops("BuenaPro PROD6: SEACE egress recovered.")
                     egress_down = False
                 state["source_seconds"] = round(time.monotonic() - source_started, 3)
+                state["phase"] = "jev_screening"
+                state["jev"] = jev_cycle(repo, active_ids, max_requests=max_jev_requests,
+                                         threshold=jev_threshold, batch_id=batch_id)
+                if state["jev"]["status"] == "jev_unavailable":
+                    if not jev_down:
+                        notify_ops(f"BuenaPro PROD6: JEV screening unavailable ({state['jev']['reason']}); "
+                                   f"contracts stay pending, retrying every {interval_seconds}s.")
+                        jev_down = True
+                elif jev_down:
+                    notify_ops("BuenaPro PROD6: JEV screening recovered.")
+                    jev_down = False
                 state["status"] = "processing"
                 state["phase"] = "processing"
                 write_state(receipt_dir / "state.json", state)
@@ -572,10 +635,12 @@ def run(settings: Settings, *, profile_id: str, receipt_dir: Path, once: bool = 
                     write_state(receipt_dir / "state.json", state)
                 state["suppressed"] = repo.suppressed
                 incomplete = bool(state.get("blocked_documents") or repo.suppressed.get("source_document_blocked"))
+                jev_unavailable = state["jev"]["status"] == "jev_unavailable"
                 if state.get("egress_deferred"):
                     egress_alert("io_jobs")
                 state["status"] = ("stopped" if stopping else "sweep_blocked" if incomplete
                                    else "egress_backoff" if state.get("egress_deferred")
+                                   else "jev_unavailable" if jev_unavailable
                                    else "sweep_deferred" if state.get("deferred_io") else "sweep_drained")
                 if state["source"]["capped_segments"] or state["source"]["limit_reached"]:
                     state["source_coverage"] = "bounded_partial"
@@ -593,14 +658,16 @@ def run(settings: Settings, *, profile_id: str, receipt_dir: Path, once: bool = 
                 print(json.dumps(state), flush=True)
                 return 2
             if once or stopping:
-                return 2 if state.get("deferred_io") or state.get("egress_deferred") or incomplete else 0
+                return 2 if (state.get("deferred_io") or state.get("egress_deferred") or incomplete
+                             or jev_unavailable) else 0
             _wait_for_poll(lambda: stopping, interval_seconds)
     return 0
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--profile-id", required=True)
+    parser.add_argument("--profile-id", action="append", dest="profile_ids", required=True,
+                        help="Repeat for each company; the first one scopes the job queue")
     parser.add_argument("--receipt-dir", type=Path, required=True)
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--interval-seconds", type=int, default=1800)
@@ -608,6 +675,10 @@ def main() -> None:
     parser.add_argument("--max-candidates", type=int, default=200)
     parser.add_argument("--http-workers", type=int, default=3)
     parser.add_argument("--io-workers", type=int, default=2)
+    parser.add_argument("--max-jev-requests", type=int, default=200,
+                        help="JEV queries per cycle (one per contract, all companies together)")
+    parser.add_argument("--jev-threshold", type=float, default=60,
+                        help="Minimum 0-100 affinity for a company to accept a contract")
     parser.add_argument("--llm1-commercial-taxonomy", choices=[TAXONOMY_VERSION],
                         help="Explicit fresh receipt namespace only: commercial classification in new readings")
     args = parser.parse_args()

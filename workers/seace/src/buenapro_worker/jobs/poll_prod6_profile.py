@@ -11,6 +11,7 @@ from buenapro_worker.prod6.screening import (
 )
 from buenapro_worker.queue.repository import JobRepository
 from buenapro_worker.seace.client import SeaceClient
+from buenapro_worker.seace.schemas import SearchItem
 from buenapro_worker.settings import Settings
 
 
@@ -26,6 +27,37 @@ def matches_profile_scope(description: str, lines: list[dict[str, Any]], segment
         and line_matches(text, line)
         for line in lines
     )
+
+
+def admit_contract(repo: JobRepository, item: SearchItem, *, anio: int, segment: int,
+                   batch_id: str | None) -> dict[str, int]:
+    """Make an accepted contract visible and queue its document reading.
+
+    Existing candidates without extraction can be recovered, but complete
+    documents must not re-run every 30 minutes.
+    """
+    changed = upsert_search_item(repo, item, anio=anio, segment=segment)
+    extracted = None
+    if not changed:
+        extracted = repo.conn.execute(
+            """SELECT 1 FROM tdr_extractions e
+               JOIN contract_documents d ON d.id = e.contract_document_id
+               WHERE d.id_contrato = %s AND e.is_current = true
+                 AND e.quality != 'failed' LIMIT 1""",
+            (item.id_contrato,),
+        ).fetchone()
+    enqueued = 0
+    if not extracted:
+        payload: dict[str, Any] = {"id_contrato": item.id_contrato, "segment": segment}
+        if batch_id:
+            payload["batch_id"] = batch_id
+        job = repo.enqueue(
+            "process_contract", payload, queue_name="io", priority=2,
+            dedup_key=f"process_contract:{batch_id or 'profile'}:{item.id_contrato}:"
+                      f"{canonical_hash(item.model_dump(mode='json', by_alias=True))}",
+        )
+        enqueued = int(job is not None)
+    return {"changed": int(changed), "enqueued": enqueued}
 
 
 def _search_pages(client: SeaceClient, *, year: int, objeto: int, segment: int,
@@ -91,7 +123,7 @@ def poll_prod6_profile(
                     or {"object_out_of_scope", "publication_year_mismatch"} & set(reasons)):
                 stats["skipped"] += 1
                 continue
-            decision, decided_by = decide(passed, keyword_lines)
+            decision, decided_by = decide(passed)
             stats["prefilter_rejected"] += int(not passed)
             contract_hash = canonical_hash(item.model_dump(mode="json", by_alias=True))
             recorded = record_decision(
@@ -103,6 +135,7 @@ def poll_prod6_profile(
             stats["decisions_recorded" if recorded else "decisions_reused"] += 1
             # Only accepted contracts become seace_contracts / opportunities (the web
             # lists them); rejected and pending ones live in the decisions table alone.
+            # Policy v2 never accepts here: JEV scoring accepts and admits later.
             if decision != "accepted":
                 stats["skipped"] += 1
                 continue
@@ -110,29 +143,9 @@ def poll_prod6_profile(
                 continue
             seen.add(item.id_contrato)
             stats["candidates"] += 1
-            changed = upsert_search_item(repo, item, anio=year, segment=segment)
-            stats["changed"] += int(changed)
-            # Existing candidates without extraction can be recovered, but
-            # complete documents must not re-run every 30 minutes.
-            extracted = None
-            if not changed:
-                extracted = repo.conn.execute(
-                    """SELECT 1 FROM tdr_extractions e
-                       JOIN contract_documents d ON d.id = e.contract_document_id
-                       WHERE d.id_contrato = %s AND e.is_current = true
-                         AND e.quality != 'failed' LIMIT 1""",
-                    (item.id_contrato,),
-                ).fetchone()
-            if not extracted:
-                payload: dict[str, Any] = {"id_contrato": item.id_contrato, "segment": segment}
-                if batch_id:
-                    payload["batch_id"] = batch_id
-                job = repo.enqueue(
-                    "process_contract", payload, queue_name="io", priority=2,
-                    dedup_key=f"process_contract:{batch_id or 'profile'}:{item.id_contrato}:"
-                              f"{canonical_hash(item.model_dump(mode='json', by_alias=True))}",
-                )
-                stats["enqueued"] += int(job is not None)
+            admitted = admit_contract(repo, item, anio=year, segment=segment, batch_id=batch_id)
+            stats["changed"] += admitted["changed"]
+            stats["enqueued"] += admitted["enqueued"]
             # Preserved historical readings count toward this same bound too.
             if stats["candidates"] >= max_candidates:
                 stats["limit_reached"] = 1

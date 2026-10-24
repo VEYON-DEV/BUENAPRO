@@ -289,12 +289,12 @@ def test_runtime_freezes_under_lock_before_source_and_refuses_changed_resume(mon
     monkeypatch.setattr(runtime, "profile_enabled", MagicMock(return_value=False))
     poll = MagicMock()
     monkeypatch.setattr(runtime, "poll_prod6_profile", poll)
-    assert runtime.run(MagicMock(), profile_id="company", receipt_dir=tmp_path,
+    assert runtime.run(MagicMock(), profile_ids=["company"], receipt_dir=tmp_path,
                        once=True, llm1_commercial_taxonomy=TAXONOMY_VERSION) == 2
     state = (tmp_path / "state.json").read_bytes()
     assert json.loads(state)[POLICY_KEY] == TAXONOMY_VERSION
     assert (tmp_path / "readings" / reading.READING_POLICY_FILENAME).exists()
-    assert runtime.run(MagicMock(), profile_id="company", receipt_dir=tmp_path, once=True) == 2
+    assert runtime.run(MagicMock(), profile_ids=["company"], receipt_dir=tmp_path, once=True) == 2
     assert (tmp_path / "state.json").read_bytes() == state
     startup = json.loads(next(tmp_path.glob("startup-*.json")).read_bytes())
     assert startup["phase"] == "reading_policy" and startup["error_type"] == "ReadingPolicyError"
@@ -306,7 +306,7 @@ def test_runtime_invalid_policy_is_rejected_before_database_or_source(monkeypatc
     connect = MagicMock()
     monkeypatch.setattr(runtime, "connect", connect)
     with pytest.raises(reading.ReadingPolicyError):
-        runtime.run(MagicMock(), profile_id="company", receipt_dir=tmp_path,
+        runtime.run(MagicMock(), profile_ids=["company"], receipt_dir=tmp_path,
                     llm1_commercial_taxonomy=value)
     connect.assert_not_called()
     assert not list(tmp_path.iterdir())

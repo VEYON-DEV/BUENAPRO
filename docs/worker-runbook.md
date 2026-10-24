@@ -356,10 +356,62 @@ Cada contrato visto por `poll_prod6_profile` queda con una decisión por empresa
 hash del perfil, versión de política)`: con la misma clave no se reevalúa ni se vuelve a
 guardar (`decisions_reused`). El prefiltro duro (vigente, bien/servicio, publicado en el
 año, no cerrado, segmento CUBSO de la empresa) descarta con motivos estables; las palabras
-clave solo se registran en `keyword_lines`. Política `prod6_screening_v1` (M1): pasa el
-prefiltro y hay frase/dos términos → `accepted` (se encola como antes); sin coincidencia →
-`pending`, a la espera de JEV en M2 (no es un descarte). Los rechazados y pendientes se
-guardan solo en `prod6_profile_decisions` (con su `listing_json` de la búsqueda), sin tocar `seace_contracts` ni `opportunities`: solo los `accepted` pasan por `upsert_search_item` y se encolan. Las columnas de score/modelo/costo son para JEV.
+clave solo se registran en `keyword_lines` y ya no aceptan. Los rechazados y pendientes se
+guardan solo en `prod6_profile_decisions` (con su `listing_json` de la búsqueda), sin tocar
+`seace_contracts` ni `opportunities`: solo un contrato aceptado se guarda como contrato y se encola.
+
+### Afinidad JEV por empresa (M2, política `prod6_screening_v2`)
+
+Con la política v2 el poll deja todo contrato que pasa el prefiltro como `pending`
+(`decided_by='jev'`); nunca acepta. En cada ciclo del runtime, después del descubrimiento
+de todas las empresas y antes del procesamiento IO, `prod6/jev_screening.py` puntúa los
+pendientes:
+
+- Una sola consulta JEV (`jev-1.13.0`, `POST https://api.typesafe.ai/v1/systemone`) por
+  contrato y ficha de búsqueda, con todas las empresas pendientes de ese contrato. El
+  `state` lleva `descripcion` (texto del listado + entidad + objeto, máx. 20000 caracteres)
+  y `empresas` con un alias estable por empresa (`e1`, `e2`... según el orden de
+  `profile_id`) y su descripción y líneas. Preguntas: `dominio`, `informacion`,
+  `subcategoria` (taxonomía `SUBCATEGORIES`, editable) y una `afinidad_<alias>` por empresa,
+  que puntúa solo contra `state.empresas.<alias>` (sin unión ni suma de capacidades).
+  El puntaje 0-4 de JEV se guarda como índice 0-100 (x25).
+- `score >= umbral` (60 por defecto) → `accepted`; menor → `rejected`. Siempre se guarda
+  (puntaje, umbral, dominio, subcategoría, información, modelo, hash de la solicitud,
+  tokens, costo y la respuesta cruda en `result_json`). El costo de la consulta
+  (`tokens de entrada x US$0.042 / 1M`) y los tokens se reparten entre las filas del grupo;
+  el total queda en `result_json.query_cost_usd`.
+- Solo se puntúan filas cuyo `profile_hash` coincide con el perfil actual y que no tengan
+  una ficha más nueva (`skipped_stale`: el poll las vuelve a decidir); las cerradas
+  (`fec_fin_cotizacion` vencida) se saltan sin gastar (`skipped_closed`).
+- Un fallo de JEV (HTTP distinto de 200, error de transporte o respuesta inválida) **nunca
+  descarta**: la fila sigue `pending` con `attempts+1` y `last_error` con solo el tipo de
+  error (p. ej. `JevHttpError status=503`). Se reintenta en el siguiente ciclo hasta
+  `max_attempts=5` (`exhausted` cuenta las agotadas y quedan pendientes para revisión manual).
+  Tres fallos seguidos cortan el pase del ciclo para no gastar intentos durante una caída.
+- Los contratos aceptados por al menos una empresa se admiten una sola vez
+  (`admit_contract`: `upsert_search_item` + `process_contract` si no tiene lectura vigente).
+  Si un ciclo cayó entre guardar la decisión y admitir, el siguiente admite lo que quedó
+  aceptado y sin contrato. La lectura de TDR con Gemini sigue igual.
+- Una decisión `accepted`/`rejected` no se vuelve a consultar: la segunda pasada no llama a JEV.
+
+Runtime (`python -m buenapro_worker.prod6.runtime`):
+
+- `--profile-id` se repite por empresa (`--profile-id <veyon> --profile-id <din>`); con uno
+  solo funciona como antes. El primero es el alcance de la cola de jobs (la lectura documental
+  es compartida por contrato). Las empresas con `profile_ingestion_enabled=false` se omiten.
+- `--max-jev-requests` (200) consultas JEV por ciclo; `--jev-threshold` (60) índice mínimo.
+  `--max-candidates` ya no limita nada con la política v2 (el poll no acepta).
+- `TYPESAFE_API_KEY` en el entorno del contenedor; fuera de él también se lee de
+  `.env.jev.local` en la raíz del repo, como los scripts de PROD2. Sin llave el runtime no
+  admite nada nuevo, deja todo `pending`, termina el ciclo con `status: "jev_unavailable"`
+  (`jev.reason: missing_api_key`) en `state.json`, sale con código 2 en `--once` y avisa por
+  `notify_ops` (Telegram) una vez por transición, y otra al recuperarse.
+- `state.json` agrega `profile_ids`, `source_by_profile` (con varias empresas) y `jev`
+  (`requests`, `accepted`, `rejected`, `failed`, `skipped_closed`, `skipped_stale`,
+  `exhausted`, `cost_usd`, `aborted`, `admission`).
+
+La imagen PROD6 no necesita archivos nuevos: copia todo `prod6/` y `poll_prod6_profile.py`; las
+constantes JEV se importan de `prod2/analysis.py` de la imagen base (sin cambios desde el 1.er sync).
 
 ## Salida peruana para SEACE (proxy egress)
 

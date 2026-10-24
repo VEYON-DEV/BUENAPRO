@@ -18,7 +18,7 @@ import psycopg
 from buenapro_worker.jobs.poll_search import LIMA_TZ, canonical_hash, parse_lima_datetime
 from buenapro_worker.seace.schemas import SearchItem
 
-POLICY_VERSION = "prod6_screening_v1"
+POLICY_VERSION = "prod6_screening_v2"
 
 
 def normalize(value: str) -> str:
@@ -95,16 +95,15 @@ def prefilter(item: SearchItem, snapshot: dict[str, Any], *, year: int, now: dat
     return not reasons, reasons, keyword_lines
 
 
-def decide(prefilter_passed: bool, keyword_lines: list[str]) -> tuple[str, str]:
-    """M1 decision as (decision, decided_by).
+def decide(prefilter_passed: bool) -> tuple[str, str]:
+    """Policy v2 as (decision, decided_by).
 
-    Interim policy until JEV exists: keyword hits keep the previous behaviour
-    ('accepted' triggers the paid document reading); a pass without hits stays
-    'pending' for JEV in M2 and is NOT a rejection.
+    A prefilter pass is never an acceptance: the contract waits as 'pending' for
+    JEV, which is NOT a rejection (a JEV failure keeps it pending and retried).
     """
     if not prefilter_passed:
         return "rejected", "prefilter"
-    return ("accepted" if keyword_lines else "pending"), "keywords"
+    return "pending", "jev"
 
 
 def existing_decision(conn: psycopg.Connection, id_contrato: int, profile_id: str,

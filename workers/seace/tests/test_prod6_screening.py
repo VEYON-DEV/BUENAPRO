@@ -82,14 +82,13 @@ def test_prefilter_collects_every_failed_rule():
     assert reasons == ["not_vigente", "closed"]
 
 
-@pytest.mark.parametrize("passed, keyword_lines, expected", [
-    (False, ["Tableros"], ("rejected", "prefilter")),
-    (False, [], ("rejected", "prefilter")),
-    (True, ["Tableros"], ("accepted", "keywords")),
-    (True, [], ("pending", "keywords")),
+@pytest.mark.parametrize("passed, expected", [
+    (False, ("rejected", "prefilter")),
+    (True, ("pending", "jev")),
 ])
-def test_m1_decision_rule(passed, keyword_lines, expected):
-    assert decide(passed, keyword_lines) == expected
+def test_v2_decision_rule_never_accepts_without_jev(passed, expected):
+    assert POLICY_VERSION == "prod6_screening_v2"
+    assert decide(passed) == expected
 
 
 def profile_rows(*lines):
@@ -253,13 +252,13 @@ def run_poll(db, profile, items):
 
 
 @needs_db
-def test_poll_records_accepted_pending_and_rejected_and_enqueues_only_accepted(db, profile):
+def test_poll_records_pending_and_rejected_and_admits_nothing(db, profile):
     opportunities_before = opportunity_count(db)
     ids = [new_contract_id() for _ in range(5)]
-    accepted, pending, closed, wrong_year, other_state = ids
+    keyword_hit, no_hit, closed, wrong_year, other_state = ids
     items = [
-        poll_item(accepted, "Mantenimiento de tableros eléctricos"),
-        poll_item(pending, "Servicio de papelería"),
+        poll_item(keyword_hit, "Mantenimiento de tableros eléctricos"),
+        poll_item(no_hit, "Servicio de papelería"),
         poll_item(closed, "Tableros eléctricos", fecFinCotizacion="01/01/2026 10:00:00"),
         poll_item(wrong_year, "Tableros eléctricos", fecPublica="01/10/2025 10:00:00"),
         poll_item(other_state, "Tableros eléctricos", idEstadoContrato=3),
@@ -267,24 +266,21 @@ def test_poll_records_accepted_pending_and_rejected_and_enqueues_only_accepted(d
     stats = run_poll(db, profile, items)
     rows = {row["id_contrato"]: row for row in db.execute(
         """SELECT * FROM prod6_profile_decisions WHERE profile_id = %s""", (profile,)).fetchall()}
-    assert set(rows) == {accepted, pending, closed, other_state}  # wrong-year rows are not decided
-    assert (rows[accepted]["decision"], rows[accepted]["decided_by"]) == ("accepted", "keywords")
-    assert rows[accepted]["keyword_lines"] == ["Tableros"]
-    assert (rows[pending]["decision"], rows[pending]["prefilter_passed"]) == ("pending", True)
+    assert set(rows) == {keyword_hit, no_hit, closed, other_state}  # wrong-year rows are not decided
+    # A keyword hit is only a signal: both prefilter passes wait for JEV.
+    assert (rows[keyword_hit]["decision"], rows[keyword_hit]["decided_by"]) == ("pending", "jev")
+    assert rows[keyword_hit]["keyword_lines"] == ["Tableros"] and rows[no_hit]["keyword_lines"] == []
+    assert (rows[no_hit]["decision"], rows[no_hit]["prefilter_passed"]) == ("pending", True)
     assert (rows[closed]["decision"], rows[closed]["prefilter_reasons"]) == ("rejected", ["closed"])
     assert rows[other_state]["prefilter_reasons"] == ["not_vigente"]
     assert all(row["score"] is None and row["attempts"] == 0 for row in rows.values())
-    # Only the accepted contract reaches seace_contracts and opportunities (what the web lists).
-    contracts = db.execute("SELECT id_contrato, opportunity_id FROM seace_contracts "
-                           "WHERE id_contrato = ANY(%s)", (ids,)).fetchall()
-    assert [c["id_contrato"] for c in contracts] == [accepted] and contracts[0]["opportunity_id"]
-    assert db.execute("SELECT count(*) AS n FROM opportunity_sources WHERE source_key = 'seace_prod6' "
-                      "AND external_id = ANY(%s)", ([str(i) for i in ids],)).fetchone()["n"] == 1
-    assert opportunity_count(db) == opportunities_before + 1
-    jobs = db.execute("SELECT payload FROM worker_jobs WHERE job_type = 'process_contract' "
-                      "AND (payload->>'id_contrato')::bigint = ANY(%s)", (ids,)).fetchall()
-    assert [job["payload"]["id_contrato"] for job in jobs] == [accepted]
-    assert (stats["candidates"], stats["enqueued"], stats["skipped"]) == (1, 1, 4)
+    # Nothing reaches seace_contracts, opportunities or the queue before JEV accepts.
+    assert db.execute("SELECT count(*) AS n FROM seace_contracts WHERE id_contrato = ANY(%s)",
+                      (ids,)).fetchone()["n"] == 0
+    assert opportunity_count(db) == opportunities_before
+    assert db.execute("SELECT count(*) AS n FROM worker_jobs WHERE job_type = 'process_contract' "
+                      "AND (payload->>'id_contrato')::bigint = ANY(%s)", (ids,)).fetchone()["n"] == 0
+    assert (stats["candidates"], stats["enqueued"], stats["skipped"]) == (0, 0, 5)
     assert (stats["decisions_recorded"], stats["decisions_reused"], stats["prefilter_rejected"]) == (4, 0, 2)
 
 

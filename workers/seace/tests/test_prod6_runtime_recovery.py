@@ -15,6 +15,7 @@ from buenapro_worker.prod6.reading import ReadingBlockedError
 from buenapro_worker.queue.repository import Job
 
 
+REAL_JEV_CYCLE = runtime.jev_cycle  # offline_runtime replaces it with a stub
 SECRET = "synthetic-private-token"
 SOURCE_STATS = {"pages": 1, "capped_segments": 0, "limit_reached": 0}
 
@@ -44,7 +45,9 @@ def offline_runtime(monkeypatch, tmp_path):
     execute_io = MagicMock(return_value={"files_changed": True})
     claim = MagicMock(return_value=None)
     wait = MagicMock()
+    jev = MagicMock(return_value={"status": "ok"})
     monkeypatch.setattr(runtime, "poll_prod6_profile", poll)
+    monkeypatch.setattr(runtime, "jev_cycle", jev)
     monkeypatch.setattr(runtime, "dispatch", dispatch)
     monkeypatch.setattr(runtime, "execute_io_job", execute_io)
     monkeypatch.setattr(runtime.ScopedRepository, "claim_scoped", claim)
@@ -59,7 +62,7 @@ def offline_runtime(monkeypatch, tmp_path):
     monkeypatch.setattr(runtime, "write_state", write_state)
 
     def run(*, once=True):
-        return runtime.run(MagicMock(), profile_id="veyon", receipt_dir=tmp_path,
+        return runtime.run(MagicMock(), profile_ids=["veyon"], receipt_dir=tmp_path,
                            once=once, interval_seconds=1800, io_workers=2)
 
     def stop():
@@ -74,7 +77,7 @@ def offline_runtime(monkeypatch, tmp_path):
 
         claim.side_effect = next_job
 
-    return SimpleNamespace(conn=conn, connect=connect, poll=poll, dispatch=dispatch,
+    return SimpleNamespace(conn=conn, connect=connect, poll=poll, jev=jev, dispatch=dispatch,
         execute_io=execute_io, claim=claim, wait=wait, states=states, run=run,
         stop=stop, queues=queues, folder=tmp_path)
 
@@ -571,3 +574,152 @@ def test_plain_network_errors_without_a_proxy_keep_the_source_backoff(offline_ru
     h.poll.side_effect = error
     assert h.run(once=True) == 2
     assert h.states[-1]["status"] == "source_backoff" and egress.alerts == []
+
+
+def unavailable_jev(h, monkeypatch, *, key=None):
+    """Run the real JEV step with a missing key; storage and the provider must stay untouched."""
+    monkeypatch.setattr(runtime, "jev_cycle", REAL_JEV_CYCLE)
+    monkeypatch.setattr(runtime, "jev_api_key", lambda: key)
+    scored, admitted = MagicMock(), MagicMock()
+    monkeypatch.setattr(runtime, "score_pending", scored)
+    monkeypatch.setattr(runtime, "admit_accepted", admitted)
+    return scored, admitted
+
+
+def test_missing_jev_key_admits_nothing_records_state_and_alerts_once(offline_runtime, egress, monkeypatch):
+    h = offline_runtime
+    scored, admitted = unavailable_jev(h, monkeypatch)
+    waits = []
+
+    def wait(should_stop, interval_seconds):
+        waits.append(interval_seconds)
+        if len(waits) == 2:
+            h.stop()
+
+    h.wait.side_effect = wait
+    assert h.run(once=False) == 0
+    scored.assert_not_called()
+    admitted.assert_not_called()
+    assert h.poll.call_count == 2  # Discovery keeps recording decisions.
+    final = h.states[-1]
+    assert final["status"] == "jev_unavailable"
+    assert final["jev"] == {"status": "jev_unavailable", "reason": "missing_api_key"}
+    assert len(egress.alerts) == 1 and "JEV" in egress.alerts[0] and "missing_api_key" in egress.alerts[0]
+    assert json.loads((h.folder / "state.json").read_text())["status"] == "jev_unavailable"
+
+
+def test_one_shot_run_without_a_jev_key_exits_incomplete(offline_runtime, egress, monkeypatch):
+    h = offline_runtime
+    unavailable_jev(h, monkeypatch)
+    assert h.run(once=True) == 2
+    assert h.states[-1]["status"] == "jev_unavailable"
+
+
+def test_jev_recovery_alerts_once_and_the_rest_of_the_cycle_still_runs(offline_runtime, egress, monkeypatch):
+    h = offline_runtime
+    unavailable_jev(h, monkeypatch)
+    h.queues(io=[Job(1, "process_contract", "io", {"id_contrato": 1, "batch_id": "b"}, 1)])
+    waits = []
+
+    def wait(should_stop, interval_seconds):
+        waits.append(interval_seconds)
+        if len(waits) == 1:
+            monkeypatch.setattr(runtime, "jev_cycle", MagicMock(return_value={"status": "ok"}))
+        else:
+            h.stop()
+
+    h.wait.side_effect = wait
+    assert h.run(once=False) == 0
+    assert h.execute_io.call_count == 1  # Unavailable JEV did not abort the IO processing.
+    assert len(egress.alerts) == 2 and "recovered" in egress.alerts[1]
+
+
+def test_jev_cycle_scores_then_admits_new_and_recovered_acceptances_together(monkeypatch):
+    repo = MagicMock()
+    stats = {"requests": 2, "accepted": 1, "rejected": 1, "failed": 0, "aborted": False}
+    scored = MagicMock(return_value=(stats, [{"id_contrato": 1}]))
+    admitted = MagicMock(return_value={"admitted": 2})
+    client = MagicMock()
+    monkeypatch.setattr(runtime, "jev_api_key", lambda: "test-key")
+    monkeypatch.setattr(runtime, "JevScreeningClient", MagicMock(return_value=client))
+    monkeypatch.setattr(runtime, "score_pending", scored)
+    monkeypatch.setattr(runtime, "unadmitted_accepted", MagicMock(return_value=[{"id_contrato": 2}]))
+    monkeypatch.setattr(runtime, "admit_accepted", admitted)
+    result = REAL_JEV_CYCLE(repo, ["a", "b"], max_requests=7, threshold=65, batch_id="batch")
+    assert result["status"] == "ok" and result["admission"] == {"admitted": 2}
+    assert scored.call_args.args[1] is client.__enter__.return_value
+    assert scored.call_args.kwargs == {"profile_ids": ["a", "b"], "threshold": 65, "max_requests": 7}
+    assert admitted.call_args.args[1] == [{"id_contrato": 1}, {"id_contrato": 2}]
+
+
+@pytest.mark.parametrize("stats, expected", [
+    ({"failed": 3, "accepted": 0, "rejected": 0, "aborted": True}, "jev_unavailable"),
+    ({"failed": 2, "accepted": 0, "rejected": 0, "aborted": False}, "jev_unavailable"),
+    ({"failed": 2, "accepted": 1, "rejected": 0, "aborted": False}, "ok"),
+    ({"failed": 0, "accepted": 0, "rejected": 0, "aborted": False}, "ok"),
+])
+def test_jev_cycle_reports_unavailable_only_when_nothing_could_be_scored(monkeypatch, stats, expected):
+    monkeypatch.setattr(runtime, "jev_api_key", lambda: "test-key")
+    monkeypatch.setattr(runtime, "JevScreeningClient", MagicMock())
+    monkeypatch.setattr(runtime, "score_pending", MagicMock(return_value=(dict(stats), [])))
+    monkeypatch.setattr(runtime, "unadmitted_accepted", MagicMock(return_value=[]))
+    monkeypatch.setattr(runtime, "admit_accepted", MagicMock(return_value={}))
+    assert REAL_JEV_CYCLE(MagicMock(), ["a"], max_requests=1, threshold=60, batch_id="b")["status"] == expected
+
+
+def test_api_key_comes_from_the_environment_before_the_ignored_dotenv(monkeypatch):
+    monkeypatch.setattr(runtime, "dotenv_values", lambda path: {"TYPESAFE_API_KEY": " from-file "})
+    monkeypatch.setenv("TYPESAFE_API_KEY", " from-env ")
+    assert runtime.jev_api_key() == "from-env"
+    monkeypatch.delenv("TYPESAFE_API_KEY")
+    assert runtime.jev_api_key() == "from-file"
+    monkeypatch.setattr(runtime, "dotenv_values", lambda path: {})
+    assert runtime.jev_api_key() is None
+
+
+def test_several_profiles_are_polled_each_cycle_and_scored_together(offline_runtime):
+    h = offline_runtime
+    h.poll.side_effect = [{"pages": 2, "capped_segments": 0, "limit_reached": 0},
+                          {"pages": 3, "capped_segments": 1, "limit_reached": 0}]
+    assert runtime.run(MagicMock(), profile_ids=["veyon", "din"], receipt_dir=h.folder, once=True,
+                       max_jev_requests=9, jev_threshold=70) == 0
+    assert [call.kwargs["profile_id"] for call in h.poll.call_args_list] == ["veyon", "din"]
+    repo, active = h.jev.call_args.args[:2]
+    assert repo.profile_id == "veyon" and active == ["veyon", "din"]  # The first profile scopes the queue.
+    assert h.jev.call_args.kwargs["max_requests"] == 9 and h.jev.call_args.kwargs["threshold"] == 70
+    state = json.loads((h.folder / "state.json").read_text())
+    assert state["profile_ids"] == ["veyon", "din"]
+    assert state["source"]["pages"] == 5 and state["source"]["capped_segments"] == 1
+    assert state["source_by_profile"]["din"]["pages"] == 3
+
+
+def test_a_paused_extra_profile_is_neither_polled_nor_scored(offline_runtime, monkeypatch):
+    h = offline_runtime
+    monkeypatch.setattr(runtime, "profile_enabled", lambda repo, profile_id=None: profile_id != "din")
+    assert runtime.run(MagicMock(), profile_ids=["veyon", "din", "veyon"], receipt_dir=h.folder, once=True) == 0
+    assert [call.kwargs["profile_id"] for call in h.poll.call_args_list] == ["veyon"]
+    assert h.jev.call_args.args[1] == ["veyon"]
+
+
+def test_profile_option_is_repeatable_and_single_use_still_works(monkeypatch, tmp_path):
+    run = MagicMock(return_value=0)
+    monkeypatch.setattr(runtime, "run", run)
+    monkeypatch.setattr(runtime, "Settings", MagicMock())
+    for arguments, expected in ((["--profile-id", "a"], ["a"]),
+                                (["--profile-id", "a", "--profile-id", "b"], ["a", "b"])):
+        monkeypatch.setattr("sys.argv", ["prod6-runtime", *arguments, "--receipt-dir", str(tmp_path)])
+        with pytest.raises(SystemExit):
+            runtime.main()
+        assert run.call_args.kwargs["profile_ids"] == expected
+        assert run.call_args.kwargs["max_jev_requests"] == 200 and run.call_args.kwargs["jev_threshold"] == 60
+    monkeypatch.setattr("sys.argv", ["prod6-runtime", "--profile-id", "a", "--receipt-dir", str(tmp_path),
+                                     "--max-jev-requests", "5", "--jev-threshold", "75"])
+    with pytest.raises(SystemExit):
+        runtime.main()
+    assert run.call_args.kwargs["max_jev_requests"] == 5 and run.call_args.kwargs["jev_threshold"] == 75
+
+
+@pytest.mark.parametrize("options", [{"max_jev_requests": -1}, {"jev_threshold": 101}, {"jev_threshold": -1}])
+def test_invalid_jev_limits_are_rejected_before_the_database(options, tmp_path):
+    with pytest.raises(ValueError):
+        runtime.run(MagicMock(), profile_ids=["a"], receipt_dir=tmp_path, **options)

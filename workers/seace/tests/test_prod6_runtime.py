@@ -81,13 +81,14 @@ def test_each_parallel_io_job_owns_a_connection_and_persists_before_reporting(co
 
 @patch("buenapro_worker.prod6.runtime.signal.signal")
 @patch("buenapro_worker.prod6.runtime.connect")
+@patch("buenapro_worker.prod6.runtime.jev_cycle", return_value={"status": "ok"})
 @patch("buenapro_worker.prod6.runtime.poll_prod6_profile", return_value={"pages": 1})
 @patch("buenapro_worker.prod6.runtime.profile_enabled", return_value=True)
 @patch("buenapro_worker.prod6.runtime.ScopedRepository.claim_scoped")
 @patch("buenapro_worker.prod6.runtime.execute_io_job")
 @patch("buenapro_worker.prod6.runtime.dispatch")
 def test_parallel_io_error_settles_reserved_jobs_and_stops_before_paid_reading(
-        dispatch, execute_io, claim, enabled, poll, connect, signal, tmp_path):
+        dispatch, execute_io, claim, enabled, poll, jev, connect, signal, tmp_path):
     jobs = [Job(i, "process_contract", "io", {"id_contrato": i, "batch_id": "batch"}, 1)
             for i in (1, 2)]
     claim.side_effect = jobs
@@ -98,7 +99,7 @@ def test_parallel_io_error_settles_reserved_jobs_and_stops_before_paid_reading(
         return {"files_changed": True}
 
     execute_io.side_effect = outcome
-    assert run(MagicMock(), profile_id="veyon", receipt_dir=tmp_path, once=True) == 2
+    assert run(MagicMock(), profile_ids=["veyon"], receipt_dir=tmp_path, once=True) == 2
     assert execute_io.call_count == 2
     dispatch.assert_not_called()
     state = __import__("json").loads((tmp_path / "state.json").read_text())

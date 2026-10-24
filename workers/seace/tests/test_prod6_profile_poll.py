@@ -57,8 +57,28 @@ def fake_snapshot(conn, profile_id):
 
 @pytest.fixture(autouse=True)
 def decisions(monkeypatch):
-    """Keep these tests DB-free; the decision repository has its own PostgreSQL tests."""
+    """Keep these tests DB-free; the decision repository has its own PostgreSQL tests.
+
+    Policy v2 never accepts in the poll, so the admission path is exercised with a
+    stand-in of the old keyword rule (accept on a keyword hit) unless a test restores
+    ``screening.decide``.
+    """
     store = DecisionStore()
+    hits = {}
+    real_prefilter = poll_module.prefilter
+
+    def prefilter(*args, **kwargs):
+        result = real_prefilter(*args, **kwargs)
+        hits["keyword_lines"] = result[2]
+        return result
+
+    def keyword_decide(prefilter_passed):
+        if not prefilter_passed:
+            return "rejected", "prefilter"
+        return ("accepted" if hits["keyword_lines"] else "pending"), "keywords"
+
+    monkeypatch.setattr(poll_module, "prefilter", prefilter)
+    monkeypatch.setattr(poll_module, "decide", keyword_decide)
     monkeypatch.setattr(poll_module, "profile_snapshot", MagicMock(side_effect=fake_snapshot))
     monkeypatch.setattr(poll_module, "record_decision", store.record)
     return store
@@ -352,5 +372,22 @@ def test_parallel_http_failure_cannot_commit_partial_discovery():
             patch("buenapro_worker.jobs.poll_prod6_profile.upsert_search_item") as upsert:
         with pytest.raises(RuntimeError, match="offline source failure"):
             poll_prod6_profile(settings(), repo, profile_id="profile", anio=2026, search_parallelism=2)
+    upsert.assert_not_called()
+    repo.enqueue.assert_not_called()
+
+
+@patch("buenapro_worker.jobs.poll_prod6_profile.upsert_search_item", return_value=True)
+@patch("buenapro_worker.jobs.poll_prod6_profile.SeaceClient")
+def test_policy_v2_poll_leaves_every_prefilter_pass_pending(client_cls, upsert, decisions, monkeypatch):
+    monkeypatch.setattr(poll_module, "decide", screening.decide)
+    repo = MagicMock()
+    repo.conn.execute.return_value.fetchall.return_value = LINES
+    client_cls.return_value.__enter__.return_value.search_contracts.side_effect = [
+        response([item(1, "tableros eléctricos"), item(2, "papelería"),
+                  item(3, "tableros eléctricos", state=3)]), response([])]
+    stats = poll_prod6_profile(settings(), repo, profile_id="profile")
+    assert {id: (row["decision"], row["decided_by"]) for id, row in decisions.by_contract().items()} == {
+        1: ("pending", "jev"), 2: ("pending", "jev"), 3: ("rejected", "prefilter")}
+    assert (stats["candidates"], stats["enqueued"], stats["skipped"]) == (0, 0, 3)
     upsert.assert_not_called()
     repo.enqueue.assert_not_called()
