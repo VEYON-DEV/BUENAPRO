@@ -1,6 +1,7 @@
 """Offline regression guards for free source recovery and paid fail-closed paths."""
 from collections import deque
 import copy
+from datetime import datetime, timedelta, timezone
 import json
 import signal
 from types import SimpleNamespace
@@ -12,6 +13,7 @@ import pytest
 
 from buenapro_worker.prod6 import runtime
 from buenapro_worker.prod6.reading import ReadingBlockedError
+from buenapro_worker.seace import pacing
 from buenapro_worker.queue.repository import Job
 
 
@@ -46,7 +48,7 @@ def offline_runtime(monkeypatch, tmp_path):
     claim = MagicMock(return_value=None)
     wait = MagicMock()
     jev = MagicMock(return_value={"status": "ok"})
-    monkeypatch.setattr(runtime, "poll_prod6_profile", poll)
+    monkeypatch.setattr(runtime, "poll_prod6_profiles", poll)
     monkeypatch.setattr(runtime, "jev_cycle", jev)
     monkeypatch.setattr(runtime, "dispatch", dispatch)
     monkeypatch.setattr(runtime, "execute_io_job", execute_io)
@@ -192,14 +194,14 @@ def test_failure_diagnostic_discards_invalid_sqlstate_and_private_messages(code)
     }
 
 
-@pytest.mark.parametrize("status", [408, 425, 429, 500, 502, 503, 504])
+@pytest.mark.parametrize("status", [408, 425, 500, 502, 503, 504])
 def test_only_explicit_temporary_http_statuses_are_recoverable(status):
     assert runtime.free_http_failure(http_failure(status)) == {
         "error_type": "HTTPStatusError", "http_status": status,
     }
 
 
-@pytest.mark.parametrize("status", [400, 401, 403, 404, 409, 422, 501])
+@pytest.mark.parametrize("status", [400, 401, 403, 404, 409, 422, 429, 501])
 def test_permanent_http_errors_do_not_authorize_polling_retries(status):
     assert runtime.free_http_failure(http_failure(status)) is None
 
@@ -241,7 +243,7 @@ def test_transient_discovery_waits_then_completes_a_later_cycle(offline_runtime,
 
 def test_one_shot_discovery_backoff_is_incomplete_not_success(offline_runtime):
     h = offline_runtime
-    h.poll.side_effect = http_failure(429)
+    h.poll.side_effect = http_failure(503)
     assert h.run(once=True) == 2
     assert h.poll.call_count == 1
     h.wait.assert_not_called()
@@ -249,7 +251,7 @@ def test_one_shot_discovery_backoff_is_incomplete_not_success(offline_runtime):
     assert h.states[-1]["status"] == "source_backoff"
 
 
-@pytest.mark.parametrize("status", [401, 403, 404])
+@pytest.mark.parametrize("status", [401, 404])
 def test_nonrecoverable_discovery_stops_with_status_but_no_private_details(offline_runtime, capsys, status):
     h = offline_runtime
     h.poll.side_effect = http_failure(status)
@@ -336,7 +338,7 @@ def test_changed_io_ownership_blocks_recovery_before_any_further_work(offline_ru
     assert h.states[-1]["error_type"] == "RuntimeError"
 
 
-@pytest.mark.parametrize("status", [401, 403, 404, 410])
+@pytest.mark.parametrize("status", [401, 404, 410])
 def test_inaccessible_download_is_held_without_retry_and_other_contract_continues(offline_runtime, capsys, status):
     h = offline_runtime
     blocked = Job(1, "download_file", "io", {"id_contrato": 42,
@@ -442,24 +444,13 @@ def test_cycle_with_only_suppressed_document_is_blocked_even_without_claim(offli
     h.wait.assert_not_called()
 
 
-def test_403_for_process_contract_remains_fatal_not_a_document_hold(offline_runtime):
-    h = offline_runtime
-    h.queues(io=[Job(1, "process_contract", "io", {"id_contrato": 42, "batch_id": "original"}, 1)])
-    h.execute_io.side_effect = http_failure(403)
-    assert h.run(once=False) == 2
-    assert h.states[-1]["status"] == "attention_required"
-    assert h.states[-1]["io_errors"] == [{"job_id": 1, "error_type": "HTTPStatusError", "http_status": 403}]
-    assert "blocked_documents" not in h.states[-1]
-    h.dispatch.assert_not_called()
-    h.wait.assert_not_called()
-
-
-def test_lost_ownership_does_not_claim_to_have_held_the_document(offline_runtime):
+@pytest.mark.parametrize("status", [401, 403])
+def test_lost_ownership_does_not_claim_to_have_held_the_document(offline_runtime, status):
     h = offline_runtime
     h.conn.execute.return_value.rowcount = 0
     h.queues(io=[Job(1, "download_file", "io", {"id_contrato": 42,
         "id_contrato_archivo": 31, "batch_id": "original"}, 1)])
-    h.execute_io.side_effect = http_failure(403)
+    h.execute_io.side_effect = http_failure(status)
     assert h.run(once=False) == 2
     assert h.states[-1]["status"] == "attention_required"
     assert h.states[-1]["error_type"] == "RuntimeError"
@@ -556,16 +547,17 @@ def test_io_egress_failure_defers_without_manual_review_and_stops_further_io(off
     assert len(egress.alerts) == 1
 
 
-def test_download_403_is_still_held_for_manual_review_with_the_proxy_configured(offline_runtime, egress, monkeypatch):
+def test_download_403_with_the_proxy_configured_is_a_source_block_not_an_egress_outage(
+        offline_runtime, egress, monkeypatch):
     monkeypatch.setenv("SEACE_EGRESS_PROXY", "http://10.161.181.75:8888")
     h = offline_runtime
     h.queues(io=[Job(1, "download_file", "io", {"id_contrato": 42, "id_contrato_archivo": 31, "batch_id": "b"}, 1)])
     h.execute_io.side_effect = http_failure(403)
     assert h.run(once=True) == 2
     state = h.states[-1]
-    assert state["status"] == "sweep_blocked"
-    assert state["blocked_documents"][0]["http_status"] == 403 and "egress_deferred" not in state
-    assert egress.alerts == []
+    assert state["status"] == "source_blocked" and state["source_block"]["status"] == 403
+    assert "egress_deferred" not in state and "blocked_documents" not in state
+    assert len(egress.alerts) == 1 and "HTTP 403" in egress.alerts[0]
 
 
 @pytest.mark.parametrize("error", [httpx.ConnectError("x"), httpx.ReadTimeout("x")])
@@ -677,27 +669,32 @@ def test_api_key_comes_from_the_environment_before_the_ignored_dotenv(monkeypatc
     assert runtime.jev_api_key() is None
 
 
-def test_several_profiles_are_polled_each_cycle_and_scored_together(offline_runtime):
+def test_several_profiles_share_one_search_sweep_and_are_scored_together(offline_runtime):
     h = offline_runtime
-    h.poll.side_effect = [{"pages": 2, "capped_segments": 0, "limit_reached": 0},
-                          {"pages": 3, "capped_segments": 1, "limit_reached": 0}]
+    h.poll.return_value = {"pages": 5, "capped_segments": 1, "limit_reached": 0, "http_requests": 5,
+        "by_profile": {"veyon": {"seen": 4, "decisions_recorded": 4},
+                       "din": {"seen": 9, "decisions_recorded": 9}},
+        "cursor": {"next_stream_index": 0, "next_stream": [1, 43], "stream_count": 4, "complete": True}}
     assert runtime.run(MagicMock(), profile_ids=["veyon", "din"], receipt_dir=h.folder, once=True,
                        max_jev_requests=9, jev_threshold=70) == 0
-    assert [call.kwargs["profile_id"] for call in h.poll.call_args_list] == ["veyon", "din"]
+    h.poll.assert_called_once()  # One sweep, not one per company.
+    assert h.poll.call_args.kwargs["profile_ids"] == ["veyon", "din"]
     repo, active = h.jev.call_args.args[:2]
     assert repo.profile_id == "veyon" and active == ["veyon", "din"]  # The first profile scopes the queue.
     assert h.jev.call_args.kwargs["max_requests"] == 9 and h.jev.call_args.kwargs["threshold"] == 70
     state = json.loads((h.folder / "state.json").read_text())
     assert state["profile_ids"] == ["veyon", "din"]
     assert state["source"]["pages"] == 5 and state["source"]["capped_segments"] == 1
-    assert state["source_by_profile"]["din"]["pages"] == 3
+    assert "by_profile" not in state["source"] and "cursor" not in state["source"]
+    assert state["source_by_profile"]["din"] == {"seen": 9, "decisions_recorded": 9}
+    assert state["discovery"]["next_stream_index"] == 0 and state["discovery"]["max_requests"] == 24
 
 
 def test_a_paused_extra_profile_is_neither_polled_nor_scored(offline_runtime, monkeypatch):
     h = offline_runtime
     monkeypatch.setattr(runtime, "profile_enabled", lambda repo, profile_id=None: profile_id != "din")
     assert runtime.run(MagicMock(), profile_ids=["veyon", "din", "veyon"], receipt_dir=h.folder, once=True) == 0
-    assert [call.kwargs["profile_id"] for call in h.poll.call_args_list] == ["veyon"]
+    assert h.poll.call_args.kwargs["profile_ids"] == ["veyon"]
     assert h.jev.call_args.args[1] == ["veyon"]
 
 
@@ -723,3 +720,436 @@ def test_profile_option_is_repeatable_and_single_use_still_works(monkeypatch, tm
 def test_invalid_jev_limits_are_rejected_before_the_database(options, tmp_path):
     with pytest.raises(ValueError):
         runtime.run(MagicMock(), profile_ids=["a"], receipt_dir=tmp_path, **options)
+
+
+# --- Slow pace, request budget and the 403/429 circuit breaker -----------------------
+
+def requesting_poll(stats=SOURCE_STATS, requests=1):
+    """A discovery stand-in that asks the pacer for its slots like the real client does."""
+    def poll(*_args, **_kwargs):
+        for _ in range(requests):
+            pacing.PACER.acquire()
+        return dict(stats)
+    return poll
+
+
+def denied_download(status=403):
+    """What the client does on a denial: open the breaker, then raise the HTTP error."""
+    def execute(settings, profile_id, job, receipts):
+        pacing.PACER.trip(status)
+        raise http_failure(status)
+    return execute
+
+
+def deferrals(h):
+    return [call.args for call in h.conn.execute.call_args_list if "attempts=GREATEST" in call.args[0]]
+
+
+def holds(h):
+    return [call.args for call in h.conn.execute.call_args_list if "run_after='infinity'" in call.args[0]]
+
+
+def poll_job(job_id, kind="download_file", **payload):
+    base = {"id_contrato": 40 + job_id, "batch_id": "b", **payload}
+    if kind != "process_contract":
+        base.setdefault("id_contrato_archivo", 30 + job_id)
+    return Job(job_id, kind, "io" if kind in runtime.IO_TYPES else "llm", base, 1)
+
+
+@pytest.mark.parametrize("status", [403, 429])
+def test_search_denial_opens_the_breaker_alerts_once_and_keeps_local_work(offline_runtime, egress, status):
+    h = offline_runtime
+    h.poll.side_effect = http_failure(status)
+    h.queues(io=[poll_job(1, "process_contract")], serial=[poll_job(3, "derive_summary")])
+    assert h.run(once=True) == 2
+    state = h.states[-1]
+    assert state["status"] == "source_blocked"
+    pause = datetime.fromisoformat(state["source_blocked_until"]) - datetime.fromisoformat(state["started_at"])
+    assert timedelta(seconds=10800) <= pause < timedelta(seconds=10805)
+    assert state["source_block"]["status"] == status and f"HTTP {status}" in state["source_block"]["reason"]
+    assert "attention_required" not in {saved["status"] for saved in h.states}
+    h.jev.assert_called_once()  # Pending JEV screening is local work and goes on.
+    h.execute_io.assert_not_called()  # IO needs PROD6.
+    assert all(call.args[1:] != (runtime.IO_TYPES,) for call in h.claim.call_args_list)  # IO never claimed
+    assert h.dispatch.call_count == 1 and h.dispatch.call_args.args[2].id == 3
+    assert len(egress.alerts) == 1 and f"HTTP {status}" in egress.alerts[0]
+    assert json.loads((h.folder / "state.json").read_text())["source_blocked_until"] == state["source_blocked_until"]
+    assert pacing.PACER.blocked
+
+
+def test_partial_discovery_that_hit_a_denial_also_opens_the_breaker(offline_runtime, egress):
+    h = offline_runtime
+    h.poll.side_effect = [dict(SOURCE_STATS, source_blocked=1)]
+    assert h.run(once=True) == 2
+    state = h.states[-1]
+    assert state["status"] == "source_blocked" and state["source"]["source_blocked"] == 1
+    assert state["source_coverage"] == "bounded_partial"
+    assert len(egress.alerts) == 1
+
+
+def test_the_blocked_sweep_keeps_the_rotation_for_after_the_pause(offline_runtime, egress):
+    h = offline_runtime
+    h.poll.side_effect = [dict(SOURCE_STATS, source_blocked=1, cursor={
+        "next_stream_index": 3, "next_stream": [2, 43], "stream_count": 4, "complete": False})]
+    assert runtime.run(MagicMock(), profile_ids=["veyon", "din"], receipt_dir=h.folder, once=True) == 2
+    assert h.poll.call_count == 1
+    h.poll.side_effect = None
+    h.poll.return_value = dict(SOURCE_STATS)
+    assert runtime.run(MagicMock(), profile_ids=["veyon", "din"], receipt_dir=h.folder, once=True) == 2
+    h.poll.assert_called_once()  # Paused: no sweep, and the position survives in state.json.
+    assert json.loads((h.folder / "state.json").read_text())["discovery"]["next_stream_index"] == 3
+
+
+def sweep(index, *, complete=False, **extra):
+    return dict(SOURCE_STATS, http_requests=5, cursor={"next_stream_index": index,
+        "next_stream": [1, 43], "stream_count": 6, "complete": complete}, **extra)
+
+
+def test_each_cycle_resumes_the_sweep_where_the_last_one_stopped_even_after_a_restart(offline_runtime):
+    h = offline_runtime
+    h.poll.side_effect = [sweep(4, discovery_limit_reached=1), sweep(0, complete=True), sweep(2)]
+    assert h.run(once=True) == 0
+    assert h.poll.call_args.kwargs["start_stream"] == 0
+    state = json.loads((h.folder / "state.json").read_text())
+    assert state["discovery"]["next_stream_index"] == 4
+    assert state["source_coverage"] == "bounded_partial"
+    assert h.run(once=True) == 0  # A new process reads the position from state.json.
+    assert h.poll.call_args.kwargs["start_stream"] == 4
+    assert h.run(once=True) == 0
+    assert h.poll.call_args.kwargs["start_stream"] == 0  # A full pass starts over.
+    assert json.loads((h.folder / "state.json").read_text())["discovery"]["next_stream_index"] == 2
+
+
+def test_discovery_cannot_take_the_whole_cycle_budget(offline_runtime):
+    h = offline_runtime
+    assert h.run(once=True) == 0
+    assert h.poll.call_args.kwargs["max_requests"] == 24 and h.poll.call_args.kwargs["max_pages_per_segment"] == 5
+    runtime.run(MagicMock(), profile_ids=["veyon"], receipt_dir=h.folder, once=True,
+                max_source_requests=40, max_discovery_requests=10, max_pages=3)
+    assert h.poll.call_args.kwargs["max_requests"] == 10
+    runtime.run(MagicMock(), profile_ids=["veyon"], receipt_dir=h.folder, once=True,
+                max_source_requests=8)  # Never more than the cycle itself allows.
+    assert h.poll.call_args.kwargs["max_requests"] == 8
+
+
+def test_discovery_leaves_the_rest_of_the_budget_to_io(offline_runtime):
+    h = offline_runtime
+    # The sweep spent its 24 requests of 40; two free jobs of three requests each still fit.
+    h.poll.side_effect = requesting_poll(dict(SOURCE_STATS, discovery_limit_reached=1), requests=24)
+    h.queues(io=[poll_job(1, "process_contract"), poll_job(2, "process_contract")])
+    assert h.run(once=True) == 0
+    assert h.execute_io.call_count == 2
+    assert h.states[-1]["source_requests"]["used"] == 24 and h.states[-1]["status"] == "sweep_drained"
+    assert h.states[-1]["source"]["discovery_limit_reached"] == 1
+
+
+@pytest.mark.parametrize("options", [{"max_discovery_requests": 0}, {"max_discovery_requests": 4, "max_pages": 5}])
+def test_invalid_discovery_limit_is_rejected_before_the_database(options, tmp_path):
+    with pytest.raises(ValueError, match="discovery"):
+        runtime.run(MagicMock(), profile_ids=["a"], receipt_dir=tmp_path, **options)
+
+
+class Clock:
+    def __init__(self):
+        self.now = datetime(2026, 10, 24, 12, 0, tzinfo=timezone.utc)
+
+
+@pytest.fixture
+def clock(monkeypatch):
+    fake = Clock()
+
+    class FakeDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fake.now if tz else fake.now.replace(tzinfo=None)
+
+    monkeypatch.setattr(runtime, "datetime", FakeDatetime)
+    return fake
+
+
+def run_cycles(h, clock, cycles, *, step=1800):
+    waits = []
+
+    def wait(should_stop, interval_seconds):
+        waits.append(interval_seconds)
+        clock.now += timedelta(seconds=step)
+        if len(waits) == cycles:
+            h.stop()
+
+    h.wait.side_effect = wait
+    return h.run(once=False)
+
+
+def test_no_prod6_request_until_the_pause_ends_then_one_probe_and_one_recovery_alert(
+        offline_runtime, egress, clock):
+    h = offline_runtime
+    ok = requesting_poll()
+
+    def poll(*args, **kwargs):
+        if h.poll.call_count == 1:
+            raise http_failure(403)
+        return ok()
+
+    h.poll.side_effect = poll
+    h.queues(io=[poll_job(1, "process_contract")])
+    assert run_cycles(h, clock, 7) == 0  # Seven cycles, thirty minutes apart: the pause is three hours.
+    assert h.poll.call_count == 2  # The first (denied) and the probe; none in cycles 2-6.
+    statuses = [state["status"] for state in h.states if state["status"] in {"source_blocked", "sweep_drained"}]
+    assert statuses.count("source_blocked") >= 6 and statuses[-1] == "sweep_drained"
+    assert h.jev.call_count == 7  # Local screening ran every cycle.
+    assert h.execute_io.call_count == 1  # The IO job only after the pause ended.
+    assert len(egress.alerts) == 2 and "blocked" in egress.alerts[0] and "recovered" in egress.alerts[1]
+    final = json.loads((h.folder / "state.json").read_text())
+    assert "source_blocked_until" not in final and "source_block" not in final
+
+
+def test_a_denied_probe_extends_the_pause_without_a_new_alert(offline_runtime, egress, clock):
+    h = offline_runtime
+    ok = requesting_poll()
+
+    def poll(*args, **kwargs):
+        if h.poll.call_count <= 2:
+            raise http_failure(403)
+        return ok()
+
+    h.poll.side_effect = poll
+    assert run_cycles(h, clock, 13) == 0
+    assert h.poll.call_count == 3  # Denied, denied probe three hours later, probe after a second pause.
+    assert len(egress.alerts) == 2 and "recovered" in egress.alerts[1]
+
+
+def test_the_pause_survives_a_restart_and_a_bad_state_file_is_ignored(offline_runtime, egress):
+    h = offline_runtime
+    h.poll.side_effect = http_failure(403)
+    assert h.run(once=True) == 2
+    until = json.loads((h.folder / "state.json").read_text())["source_blocked_until"]
+    h.poll.reset_mock(side_effect=True)
+    h.poll.return_value = dict(SOURCE_STATS)
+    h.states.clear()
+    assert h.run(once=True) == 2  # A new process, same receipt folder.
+    h.poll.assert_not_called()
+    assert h.states[-1]["status"] == "source_blocked" and h.states[-1]["source_blocked_until"] == until
+    assert len(egress.alerts) == 1  # No second alert for the same block.
+    # Once the recorded time has passed the same file lets the probe through.
+    saved = json.loads((h.folder / "state.json").read_text())
+    saved["source_block"]["until"] = saved["source_blocked_until"] = "2020-01-01T00:00:00+00:00"
+    (h.folder / "state.json").write_text(json.dumps(saved))
+    h.poll.side_effect = requesting_poll()
+    assert h.run(once=True) == 0
+    assert h.poll.call_count == 1 and len(egress.alerts) == 2 and "recovered" in egress.alerts[1]
+
+
+def test_load_source_block_reads_only_valid_records(tmp_path):
+    path = tmp_path / "state.json"
+    assert runtime.load_source_block(path) is None
+    path.write_text("not json")
+    assert runtime.load_source_block(path) is None
+    path.write_text(json.dumps({"source_block": {"until": "tomorrow"}}))
+    assert runtime.load_source_block(path) is None
+    path.write_text(json.dumps({"source_blocked_until": "2026-10-24T15:00:00+00:00"}))
+    assert runtime.load_source_block(path)["until"] == "2026-10-24T15:00:00+00:00"
+    path.write_text(json.dumps({"source_block": {"until": "2026-10-24T15:00:00+00:00", "status": 429}}))
+    assert runtime.load_source_block(path)["status"] == 429
+
+
+def test_io_denial_returns_jobs_to_pending_after_the_pause_and_counts_only_its_own_denial(
+        offline_runtime, egress):
+    h = offline_runtime
+    denied = poll_job(1, "download_file")
+    refused = poll_job(2, "process_contract", source_block_count=1)
+    never_started = poll_job(3, "download_file")
+    h.queues(io=[denied, refused, never_started], serial=[poll_job(4, "derive_summary")])
+
+    def execute(settings, profile_id, job, receipts):
+        if job.id == 1:
+            return denied_download()(settings, profile_id, job, receipts)
+        raise pacing.SourceBlocked(403)  # The breaker refused it before any request.
+
+    h.execute_io.side_effect = execute
+    assert h.run(once=True) == 2
+    assert h.execute_io.call_count == 2  # Job 3 is never claimed while the source is blocked.
+    state = h.states[-1]
+    assert state["status"] == "source_blocked" and not {"io_errors", "blocked_documents"} & set(state)
+    until = datetime.fromisoformat(state["source_blocked_until"])
+    by_job = {args[1][3]: args for args in deferrals(h)}
+    assert set(by_job) == {1, 2}
+    for job_id, count in ((1, {"source_block_count": 1}), (2, {})):
+        sql, values = by_job[job_id]
+        assert values[0] == until and json.loads(values[1]) == count
+        assert "status='pending'" in sql and "status='claimed'" in sql and "claimed_by=%s" in sql
+        assert "payload->>'source_runtime'=%s" in sql and "infinity" not in sql
+        assert values[4:] == ("prod6-only-v1:veyon", runtime.NAMESPACE, "veyon")
+    assert holds(h) == []
+    assert sorted(item["job_id"] for item in state["source_deferred"]) == [1, 2]
+    assert state["done"] == {"derive_summary": 1}  # Local work after the block still runs.
+    assert len(egress.alerts) == 1
+
+
+@pytest.mark.parametrize("kind", ["download_file", "process_contract"])
+def test_third_denial_of_the_same_document_goes_to_manual_review(offline_runtime, egress, kind):
+    h = offline_runtime
+    h.queues(io=[poll_job(1, kind, source_block_count=2)])
+    h.execute_io.side_effect = denied_download()
+    assert h.run(once=True) == 2
+    assert deferrals(h) == []
+    (sql, values), = holds(h)
+    assert json.loads(values[0]) == {"source_document_block": {
+        "http_status": 403, "reason": "manual_review_required"}, "source_block_count": 3}
+    assert "interval" not in sql and values[2:] == (1, "prod6-only-v1:veyon", runtime.NAMESPACE, "veyon")
+    state = h.states[-1]
+    assert state["status"] == "source_blocked"  # The source itself stays paused.
+    assert state["blocked_documents"][0]["job_id"] == 1 and state["blocked_documents"][0]["http_status"] == 403
+    assert len(egress.alerts) == 1
+
+
+def test_second_denial_still_waits_for_the_pause(offline_runtime, egress):
+    h = offline_runtime
+    h.queues(io=[poll_job(1, "download_file", source_block_count=1)])
+    h.execute_io.side_effect = denied_download()
+    assert h.run(once=True) == 2
+    assert holds(h) == [] and json.loads(deferrals(h)[0][1][1]) == {"source_block_count": 2}
+
+
+@pytest.mark.parametrize("error,patch", [(http_failure(403), {"source_block_count": 1}),
+                                         (pacing.SourceBlocked(403), {})])
+def test_reading_that_needs_a_new_download_is_deferred_not_failed_or_counted_as_an_attempt(
+        offline_runtime, egress, error, patch):
+    h = offline_runtime
+    h.queues(serial=[poll_job(1, "extract_tdr")])
+    h.dispatch.side_effect = error
+    assert h.run(once=True) == 2
+    state = h.states[-1]
+    assert state["status"] == "source_blocked" and "job_type" not in state
+    (sql, values), = deferrals(h)
+    assert "attempts=GREATEST(attempts-1,0)" in sql  # The paid-attempt guard must not see a try.
+    assert json.loads(values[1]) == patch and values[3] == 1
+    assert datetime.fromisoformat(state["source_blocked_until"]) == values[0]
+
+
+def test_other_serial_failures_still_stop_the_cycle(offline_runtime):
+    h = offline_runtime
+    h.queues(serial=[poll_job(1, "derive_summary")])
+    h.dispatch.side_effect = http_failure(403)  # derive_summary never talks to PROD6.
+    assert h.run(once=True) == 2
+    assert h.states[-1]["status"] == "attention_required"
+
+
+def test_budget_ends_discovery_without_error_and_leaves_io_for_the_next_cycle(offline_runtime, egress):
+    h = offline_runtime
+    h.poll.side_effect = requesting_poll(dict(SOURCE_STATS, budget_reached=1), requests=3)
+    h.queues(io=[poll_job(1, "process_contract")], serial=[poll_job(2, "derive_summary")])
+    assert runtime.run(MagicMock(), profile_ids=["veyon"], receipt_dir=h.folder, once=True,
+                       max_source_requests=3) == 0
+    state = h.states[-1]
+    assert state["status"] == "source_budget_reached" and state["source_coverage"] == "bounded_partial"
+    assert state["source_requests"] == {"used": 3, "max": 3, "budget_reached": True}
+    assert "attention_required" not in {saved["status"] for saved in h.states}
+    h.execute_io.assert_not_called()
+    assert h.dispatch.call_count == 1  # Local work is not limited by the budget.
+    assert egress.alerts == []
+
+
+def test_a_job_that_would_not_fit_in_the_remaining_budget_is_not_started(offline_runtime):
+    h = offline_runtime
+    h.poll.side_effect = requesting_poll(requests=3)  # Leaves 2 of 5: a contract needs 3.
+    h.queues(io=[poll_job(1, "process_contract")])
+    assert runtime.run(MagicMock(), profile_ids=["veyon"], receipt_dir=h.folder, once=True,
+                       max_source_requests=5) == 0
+    h.execute_io.assert_not_called()
+    assert h.states[-1]["status"] == "source_budget_reached"
+    assert h.states[-1]["source_requests"] == {"used": 3, "max": 5, "budget_reached": True}
+
+
+def test_free_budget_runs_io_and_reports_usage(offline_runtime):
+    h = offline_runtime
+    h.queues(io=[poll_job(1, "process_contract")])
+    assert h.run(once=True) == 0
+    h.execute_io.assert_called_once()
+    assert h.states[-1]["status"] == "sweep_drained"
+    assert h.states[-1]["source_requests"] == {"used": 0, "max": 40, "budget_reached": False}
+    assert h.states[-1]["source_pacing"] == {"min_interval_seconds": 0.0, "max_requests": 40}
+
+
+def test_reading_refused_by_a_spent_budget_waits_for_the_next_cycle(offline_runtime, egress):
+    h = offline_runtime
+    h.queues(serial=[poll_job(1, "extract_tdr")])
+    h.dispatch.side_effect = pacing.SourceBudgetReached()
+    assert h.run(once=True) == 0
+    state = h.states[-1]
+    assert state["status"] == "source_budget_reached" and "source_blocked_until" not in state
+    (sql, values), = deferrals(h)
+    assert json.loads(values[1]) == {} and values[0] > datetime.now(timezone.utc) + timedelta(minutes=29)
+    assert egress.alerts == [] and not pacing.PACER.blocked
+
+
+def test_request_budget_comes_from_the_argument_then_the_environment(offline_runtime, monkeypatch):
+    h = offline_runtime
+    monkeypatch.setenv("PROD6_MAX_SOURCE_REQUESTS", "7")
+    assert h.run(once=True) == 0
+    assert h.states[-1]["source_pacing"]["max_requests"] == 7 and pacing.PACER.max_requests == 7
+    assert runtime.run(MagicMock(), profile_ids=["veyon"], receipt_dir=h.folder, once=True,
+                       max_source_requests=5) == 0
+    assert h.states[-1]["source_pacing"]["max_requests"] == 5
+
+
+@pytest.mark.parametrize("options", [{"max_source_requests": 0}, {"max_source_requests": -3}])
+def test_invalid_request_budget_is_rejected_before_the_database(options, tmp_path):
+    with pytest.raises(ValueError):
+        runtime.run(MagicMock(), profile_ids=["a"], receipt_dir=tmp_path, **options)
+
+
+@pytest.mark.parametrize("name,value", [("PROD6_MIN_REQUEST_INTERVAL_SECONDS", "-2"),
+                                        ("PROD6_BLOCK_BACKOFF_SECONDS", "never"),
+                                        ("PROD6_MAX_SOURCE_REQUESTS", "0")])
+def test_invalid_pacing_environment_is_rejected_before_the_database(monkeypatch, tmp_path, name, value):
+    monkeypatch.setenv(name, value)
+    connect = MagicMock()
+    monkeypatch.setattr(runtime, "connect", connect)
+    with pytest.raises(ValueError, match=name):
+        runtime.run(MagicMock(), profile_ids=["a"], receipt_dir=tmp_path)
+    connect.assert_not_called()
+
+
+def test_source_request_option_reaches_the_runtime(monkeypatch, tmp_path):
+    run = MagicMock(return_value=0)
+    monkeypatch.setattr(runtime, "run", run)
+    monkeypatch.setattr(runtime, "Settings", MagicMock())
+    for arguments, expected, discovery in (([], None, 24), (["--max-source-requests", "9",
+                                             "--max-discovery-requests", "6"], 9, 6)):
+        monkeypatch.setattr("sys.argv", ["prod6-runtime", "--profile-id", "a",
+                                         "--receipt-dir", str(tmp_path), *arguments])
+        with pytest.raises(SystemExit):
+            runtime.main()
+        assert run.call_args.kwargs["max_source_requests"] == expected
+        assert run.call_args.kwargs["max_discovery_requests"] == discovery
+        assert run.call_args.kwargs["max_pages"] == 5
+
+
+def test_manual_review_removes_the_temporary_source_copy(offline_runtime):
+    h = offline_runtime
+    sha = "a" * 64
+    copy = h.folder / "source-cache" / sha
+    copy.parent.mkdir()
+    copy.write_bytes(b"%PDF-1.7")
+    h.conn.execute.return_value.fetchone.return_value = {"locked": True, "sha256_original": sha}
+    h.queues(io=[poll_job(1, "download_file")])
+    h.execute_io.side_effect = http_failure(404)
+    assert h.run(once=True) == 2
+    assert not copy.exists()
+    assert holds(h)
+
+
+def test_cleanup_runs_only_after_the_job_committed(offline_runtime):
+    h = offline_runtime
+    ran = []
+    h.queues(serial=[poll_job(1, "extract_tdr"), poll_job(2, "extract_tdr")])
+
+    def dispatch(settings, repo, job, receipts):
+        repo.after_commit.append(lambda: ran.append(job.id))
+        if job.id == 2:
+            raise ValueError("local failure")
+        return {"outcome": "read_or_reused"}
+
+    h.dispatch.side_effect = dispatch
+    assert h.run(once=True) == 2
+    assert ran == [1]  # The failed job keeps its copy.

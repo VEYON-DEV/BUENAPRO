@@ -288,7 +288,7 @@ def test_runtime_freezes_under_lock_before_source_and_refuses_changed_resume(mon
     monkeypatch.setattr(runtime.signal, "signal", MagicMock())
     monkeypatch.setattr(runtime, "profile_enabled", MagicMock(return_value=False))
     poll = MagicMock()
-    monkeypatch.setattr(runtime, "poll_prod6_profile", poll)
+    monkeypatch.setattr(runtime, "poll_prod6_profiles", poll)
     assert runtime.run(MagicMock(), profile_ids=["company"], receipt_dir=tmp_path,
                        once=True, llm1_commercial_taxonomy=TAXONOMY_VERSION) == 2
     state = (tmp_path / "state.json").read_bytes()

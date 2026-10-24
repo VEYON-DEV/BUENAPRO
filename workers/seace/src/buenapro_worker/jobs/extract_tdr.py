@@ -22,6 +22,7 @@ def extract_tdr_job(
     bucket: str | None = None,
     segment: int | str | None = None,
     extractor: object | None = None,
+    source_cache: object | None = None,
 ) -> int:
     document = repo.conn.execute(
         """
@@ -87,8 +88,13 @@ def extract_tdr_job(
         result = recovery_adapter(extractor, str(document["sha256_original"]),
             mime=document["mime"] or "application/pdf", doc_class=doc_class)
     if result is None:
-        with SeaceClient(settings) as client:
-            pdf_bytes = client.download_file(id_contrato_archivo)
+        # El archivo que download_file ya bajo vive como temporal privado verificado
+        # por hash; solo si falta o no coincide se vuelve a pedir a la fuente.
+        pdf_bytes = (source_cache.load(document["sha256_original"])
+                     if source_cache is not None else None)
+        if pdf_bytes is None:
+            with SeaceClient(settings) as client:
+                pdf_bytes = client.download_file(id_contrato_archivo)
 
         result = (extractor or GeminiExtractor(settings)).extract(
             pdf_bytes, mime=document["mime"] or "application/pdf", doc_class=doc_class

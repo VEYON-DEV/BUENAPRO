@@ -26,7 +26,7 @@ def request(client, kind):
 
 
 @pytest.mark.parametrize("kind", ["json", "bytes"])
-@pytest.mark.parametrize("status", [400, 401, 403, 404, 409, 410, 422, 501])
+@pytest.mark.parametrize("status", [400, 401, 403, 404, 409, 410, 422, 429, 501])
 def test_permanent_status_makes_one_attempt(kind, status):
     calls = []
 
@@ -41,7 +41,7 @@ def test_permanent_status_makes_one_attempt(kind, status):
 
 
 @pytest.mark.parametrize("kind", ["json", "bytes"])
-@pytest.mark.parametrize("status", [408, 425, 429, 500, 502, 503, 504])
+@pytest.mark.parametrize("status", [408, 425, 500, 502, 503, 504])
 def test_transient_status_can_recover_within_bound(kind, status):
     calls = []
 

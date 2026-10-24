@@ -21,6 +21,7 @@ def download_file_job(
     batch_id: str | None = None,
     bucket: str | None = None,
     segment: int | str | None = None,
+    source_cache: object | None = None,
 ) -> dict[str, object]:
     # El PDF no se persiste en ningun storage propio: la web hace preview y
     # descarga en streaming directo desde SEACE. Este job solo baja el archivo
@@ -86,7 +87,12 @@ def download_file_job(
     )
 
     # Gemini solo acepta PDF como documento; un TDR .docx quedaria en dead-letter.
+    cached = False
     if doc_class in {"tdr", "eett"} and mime == "application/pdf":
+        if source_cache is not None:
+            # Copia temporal privada: extract_tdr lee estos bytes en vez de volver a
+            # descargar el archivo. Quien la creo la borra al guardar la lectura.
+            cached = source_cache.store(content) == sha_original
         payload: dict[str, object] = {
             "id_contrato": id_contrato,
             "id_contrato_archivo": id_contrato_archivo,
@@ -114,8 +120,11 @@ def download_file_job(
             "size_original_bytes": len(content),
         },
     )
-    return {
+    result: dict[str, object] = {
         "sha256_original": sha_original,
         "doc_class": doc_class,
         "size_original_bytes": len(content),
     }
+    if cached:
+        result["source_cached"] = True
+    return result

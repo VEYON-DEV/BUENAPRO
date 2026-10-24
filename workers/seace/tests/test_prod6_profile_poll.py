@@ -7,6 +7,7 @@ from buenapro_worker.jobs import poll_prod6_profile as poll_module
 from buenapro_worker.jobs.poll_prod6_profile import matches_profile_scope, poll_prod6_profile
 from buenapro_worker.jobs.scheduler import enqueue_poll_search_jobs
 from buenapro_worker.prod6 import screening
+from buenapro_worker.seace import pacing
 from buenapro_worker.seace.schemas import SearchResponse
 from buenapro_worker.settings import Settings
 
@@ -391,3 +392,228 @@ def test_policy_v2_poll_leaves_every_prefilter_pass_pending(client_cls, upsert, 
     assert (stats["candidates"], stats["enqueued"], stats["skipped"]) == (0, 0, 3)
     upsert.assert_not_called()
     repo.enqueue.assert_not_called()
+
+
+# --- A 403/429 or a spent request budget ends the sweep but keeps the pages already read ---
+
+def denial(status):
+    import httpx
+    request = httpx.Request("GET", "https://example.invalid/search")
+    return httpx.HTTPStatusError("denied", request=request,
+                                 response=httpx.Response(status, request=request))
+
+
+@pytest.mark.parametrize("stop,flag", [
+    (denial(403), "source_blocked"), (denial(429), "source_blocked"),
+    (pacing.SourceBlocked(403), "source_blocked"), (pacing.SourceBudgetReached(), "budget_reached")])
+@patch("buenapro_worker.jobs.poll_prod6_profile.upsert_search_item", return_value=False)
+@patch("buenapro_worker.jobs.poll_prod6_profile.SeaceClient")
+def test_serial_sweep_keeps_decisions_of_pages_read_before_the_stop(client_cls, upsert, decisions, stop, flag):
+    repo = MagicMock()
+    repo.conn.execute.return_value.fetchall.return_value = LINES
+    client_cls.return_value.__enter__.return_value.search_contracts.side_effect = [
+        response([item(1, "papelería"), item(2, "tableros eléctricos")], total=201), stop]
+    stats = poll_prod6_profile(settings(), repo, profile_id="profile", anio=2026)
+    assert stats[flag] == 1 and stats["http_requests"] == 1
+    assert set(decisions.by_contract()) == {1, 2}  # Not rolled back, not requested again.
+    assert client_cls.return_value.__enter__.return_value.search_contracts.call_count == 2
+
+
+@patch("buenapro_worker.jobs.poll_prod6_profile.SeaceClient")
+def test_other_failures_still_abort_the_sweep(client_cls):
+    repo = MagicMock()
+    repo.conn.execute.return_value.fetchall.return_value = LINES
+    client_cls.return_value.__enter__.return_value.search_contracts.side_effect = denial(404)
+    with pytest.raises(Exception, match="denied"):
+        poll_prod6_profile(settings(), repo, profile_id="profile", anio=2026)
+
+
+@pytest.mark.parametrize("parallelism", [1, 3])
+def test_blocked_stream_does_not_discard_other_streams_and_ends_the_sweep(parallelism, decisions):
+    class Client:
+        def __init__(self, _settings):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            pass
+
+        def search_contracts(self, **query):
+            if (query["objeto"], query["segmento"]) == (1, 43):
+                raise denial(403)
+            return response([item(query["objeto"] * 100 + query["segmento"], "papelería",
+                                  obj=query["objeto"])])
+
+    with patch("buenapro_worker.jobs.poll_prod6_profile.SeaceClient", Client):
+        stats = poll_prod6_profile(settings(), parallel_repo(), profile_id="profile", anio=2026,
+                                  search_parallelism=parallelism)
+    assert stats["source_blocked"] == 1
+    assert 139 in decisions.by_contract()  # Stream (1, 39) was read before the denial.
+    if parallelism == 1:
+        assert set(decisions.by_contract()) == {139}  # Nothing is asked after the denial.
+
+
+# --- One search sweep for several companies, discovery limit and rotation ----------------
+
+def segment_snapshots(**segments_by_profile):
+    def snapshot(_conn, profile_id):
+        return {"id": profile_id, "descripcion": "", "profile_hash": f"hash-{profile_id}",
+                "lines": [{"nombre": "line", "cubso_segmentos": [str(value) for value in
+                                                                 segments_by_profile[profile_id]],
+                           "keyword_phrases": ["tableros eléctricos"], "keyword_terms": [],
+                           "keywords": [], "score_umbral": 70}]}
+    return snapshot
+
+
+class RecordingSource:
+    """Replaces SeaceClient: one result row per stream, every query recorded."""
+
+    def __init__(self, pages=1, text="papelería"):
+        self.queries, self.pages, self.text = [], pages, text
+        self.lock = threading.Lock()
+
+    def __call__(self, _settings):
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        pass
+
+    def search_contracts(self, **query):
+        with self.lock:
+            self.queries.append((query["objeto"], query["segmento"], query["page"]))
+        row = item(query["objeto"] * 100000 + int(query["segmento"]) * 10 + query["page"], self.text,
+                   obj=query["objeto"])
+        return response([row], total=100 * self.pages)
+
+    def streams(self):
+        return [(objeto, segment) for objeto, segment, page in self.queries if page == 1]
+
+
+def poll_many(source, profile_ids, snapshots, monkeypatch, **kwargs):
+    from buenapro_worker.jobs.poll_prod6_profile import poll_prod6_profiles
+    monkeypatch.setattr(poll_module, "profile_snapshot", MagicMock(side_effect=snapshots))
+    monkeypatch.setattr(poll_module, "SeaceClient", source)
+    return poll_prod6_profiles(settings(), MagicMock(), profile_ids=profile_ids, anio=2026, **kwargs)
+
+
+def test_one_page_feeds_the_decisions_of_every_profile_with_that_segment(decisions, monkeypatch):
+    source = RecordingSource()
+    result = poll_many(source, ["a", "b"], segment_snapshots(a=[43, 81], b=[43]), monkeypatch)
+    # The union of segments is searched once: 2 objects x {43, 81}, not 4 + 2 streams.
+    assert source.streams() == [(1, 43), (1, 81), (2, 43), (2, 81)]
+    assert result["http_requests"] == result["pages"] == 4
+    rows = {(row_id, profile) for (row_id, profile, *_rest) in decisions.rows}
+    segment_of = lambda row_id: (row_id // 10) % 10000  # noqa: E731
+    assert {(segment_of(row_id), profile) for row_id, profile in rows} == {
+        (43, "a"), (43, "b"), (81, "a")}  # Profile b has no segment 81: no row for it.
+    assert len(rows) == 6
+    assert result["by_profile"]["a"]["seen"] == 4 and result["by_profile"]["b"]["seen"] == 2
+    assert result["by_profile"]["a"]["decisions_recorded"] == 4 and result["by_profile"]["b"]["decisions_recorded"] == 2
+    assert result["seen"] == 6 and result["decisions_recorded"] == 6
+    assert result["cursor"] == {"next_stream_index": 0, "next_stream": [1, 43], "stream_count": 4,
+                                "complete": True}
+
+
+def test_each_profile_keeps_its_own_prefilter_and_snapshot(decisions, monkeypatch):
+    source = RecordingSource()
+    poll_many(source, ["a", "b"], segment_snapshots(a=[43], b=[43]), monkeypatch)
+    hashes = {(key[1], key[3]) for key in decisions.rows}
+    assert hashes == {("a", "hash-a"), ("b", "hash-b")}
+
+
+@patch("buenapro_worker.jobs.poll_prod6_profile.upsert_search_item", return_value=True)
+def test_a_contract_accepted_by_two_profiles_is_admitted_once_and_counted_for_each(upsert, decisions, monkeypatch):
+    from buenapro_worker.jobs.poll_prod6_profile import poll_prod6_profiles
+    source = RecordingSource(text="Mantenimiento de tableros eléctricos")
+    monkeypatch.setattr(poll_module, "profile_snapshot", MagicMock(side_effect=segment_snapshots(a=[43], b=[43])))
+    monkeypatch.setattr(poll_module, "SeaceClient", source)
+    repo = MagicMock()
+    result = poll_prod6_profiles(settings(), repo, profile_ids=["a", "b"], anio=2026)
+    assert upsert.call_count == 2  # Two streams, two contracts: not four.
+    assert result["by_profile"]["a"]["candidates"] == result["by_profile"]["b"]["candidates"] == 2
+    assert repo.enqueue.call_count == 2
+
+
+def test_a_profile_at_its_candidate_limit_stops_while_the_other_continues(decisions, monkeypatch):
+    from buenapro_worker.jobs.poll_prod6_profile import poll_prod6_profiles
+    source = RecordingSource(text="Mantenimiento de tableros eléctricos")
+    monkeypatch.setattr(poll_module, "profile_snapshot",
+                        MagicMock(side_effect=segment_snapshots(a=[43], b=[43, 81])))
+    monkeypatch.setattr(poll_module, "SeaceClient", source)
+    with patch("buenapro_worker.jobs.poll_prod6_profile.upsert_search_item", return_value=True):
+        result = poll_prod6_profiles(settings(), MagicMock(), profile_ids=["a", "b"], anio=2026,
+                                    max_candidates=1)
+    assert result["by_profile"]["a"]["limit_reached"] == 1 and result["by_profile"]["a"]["candidates"] == 1
+    assert result["by_profile"]["b"]["limit_reached"] == 1  # Both are done: the sweep ends early.
+    assert len(source.queries) == 1
+
+
+def test_limit_cuts_the_sweep_and_the_next_one_resumes_there_until_a_full_pass(decisions, monkeypatch):
+    snapshots = segment_snapshots(a=[43, 81])
+    first = RecordingSource()
+    result = poll_many(first, ["a"], snapshots, monkeypatch, max_requests=3)
+    assert first.streams() == [(1, 43), (1, 81), (2, 43)]
+    assert result["discovery_limit_reached"] == 1 and result["http_requests"] == 3
+    assert result["cursor"] == {"next_stream_index": 3, "next_stream": [2, 81], "stream_count": 4,
+                                "complete": False}
+    second = RecordingSource()
+    result = poll_many(second, ["a"], snapshots, monkeypatch, max_requests=3,
+                       start_stream=result["cursor"]["next_stream_index"])
+    assert second.streams() == [(2, 81), (1, 43), (1, 81)]  # Wraps around: nothing starves.
+    assert result["cursor"]["next_stream_index"] == 2
+    third = RecordingSource()
+    result = poll_many(third, ["a"], snapshots, monkeypatch, max_requests=4, start_stream=2)
+    assert third.streams() == [(2, 43), (2, 81), (1, 43), (1, 81)]
+    assert "discovery_limit_reached" not in result
+    assert result["cursor"]["next_stream_index"] == 0 and result["cursor"]["complete"]
+
+
+def test_a_stream_cut_mid_pagination_is_resumed_from_its_first_page(decisions, monkeypatch):
+    source = RecordingSource(pages=3)
+    result = poll_many(source, ["a"], segment_snapshots(a=[43]), monkeypatch, max_requests=4,
+                       max_pages_per_segment=3)
+    assert source.queries == [(1, 43, 1), (1, 43, 2), (1, 43, 3), (2, 43, 1)]
+    assert result["cursor"]["next_stream_index"] == 1  # (2, 43) did not finish.
+    assert result["http_requests"] == 4 and result["discovery_limit_reached"] == 1
+
+
+def test_start_index_wraps_and_must_not_be_negative(decisions, monkeypatch):
+    source = RecordingSource()
+    poll_many(source, ["a"], segment_snapshots(a=[43]), monkeypatch, start_stream=5)
+    assert source.streams() == [(2, 43), (1, 43)]
+    with pytest.raises(ValueError):
+        poll_many(RecordingSource(), ["a"], segment_snapshots(a=[43]), monkeypatch, start_stream=-1)
+    with pytest.raises(ValueError):
+        poll_many(RecordingSource(), ["a"], segment_snapshots(a=[43]), monkeypatch, max_requests=0)
+
+
+def test_parallel_sweep_respects_the_discovery_limit(decisions, monkeypatch):
+    source = RecordingSource()
+    result = poll_many(source, ["a"], segment_snapshots(a=[43, 81]), monkeypatch,
+                       search_parallelism=3, max_requests=2)
+    assert len(source.queries) == result["http_requests"] == 2
+    assert result["discovery_limit_reached"] == 1 and not result["cursor"]["complete"]
+
+
+def test_blocked_stream_leaves_the_cursor_on_that_stream(decisions, monkeypatch):
+    class Blocked(RecordingSource):
+        def search_contracts(self, **query):
+            if (query["objeto"], query["segmento"]) == (2, 43):
+                raise denial(403)
+            return super().search_contracts(**query)
+
+    result = poll_many(Blocked(), ["a"], segment_snapshots(a=[43, 81]), monkeypatch)
+    assert result["source_blocked"] == 1 and result["cursor"]["next_stream_index"] == 2
+
+
+def test_single_profile_wrapper_returns_only_flat_counters(decisions, monkeypatch):
+    monkeypatch.setattr(poll_module, "profile_snapshot", MagicMock(side_effect=segment_snapshots(a=[43])))
+    monkeypatch.setattr(poll_module, "SeaceClient", RecordingSource())
+    stats = poll_prod6_profile(settings(), MagicMock(), profile_id="a", anio=2026)
+    assert not {"by_profile", "cursor", "streams", "streams_searched"} & set(stats)
+    assert stats["seen"] == 2 and stats["http_requests"] == 2

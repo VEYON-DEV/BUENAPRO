@@ -9,6 +9,7 @@ from buenapro_worker.jobs.poll_search import canonical_hash, parse_lima_datetime
 from buenapro_worker.jobs.opportunity_identity import refresh_prod6_classification
 from buenapro_worker.queue.repository import JobRepository
 from buenapro_worker.seace.client import SeaceClient
+from buenapro_worker.seace.pacing import source_stop
 from buenapro_worker.settings import Settings
 
 
@@ -258,7 +259,11 @@ def process_contract(
         primary_files = client.list_files(id_contrato, category=1)
         try:
             attachments = client.list_files(id_contrato, category=2)
-        except Exception:
+        except Exception as error:
+            # A 403/429, open breaker or spent budget is not "no attachments": the
+            # contract must be retried, not stored with an incomplete file list.
+            if source_stop(error) is not None:
+                raise
             attachments = []
 
     for file_item in primary_files:

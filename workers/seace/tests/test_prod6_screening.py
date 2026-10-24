@@ -299,3 +299,35 @@ def test_poll_does_not_reevaluate_decided_contracts_but_redecides_on_changes(db,
     db.execute("UPDATE business_lines SET score_umbral = 60 WHERE profile_id = %s", (profile,))
     assert run_poll(db, profile, changed)["decisions_recorded"] == 1
     assert db.execute(count, (ids,)).fetchone()["n"] == 4
+
+
+@needs_db
+def test_one_sweep_decides_for_each_company_whose_segment_matches(db, profile):
+    from buenapro_worker.jobs.poll_prod6_profile import poll_prod6_profiles
+    tenant = db.execute("SELECT tenant_id FROM company_profiles WHERE id = %s", (profile,)).fetchone()["tenant_id"]
+    other = str(db.execute(
+        """INSERT INTO company_profiles (tenant_id, ruc, razon_social, identity_json)
+           VALUES (%s, '20999999992', 'Segundo Test SAC', '{"descripcion": "Otro rubro"}') RETURNING id""",
+        (tenant,)).fetchone()["id"])
+    db.execute("""INSERT INTO business_lines (profile_id, nombre, cubso_segmentos, keyword_phrases)
+                  VALUES (%s, 'Otra', '{39,43}', '{software}')""", (other,))
+    queried = []
+
+    class Client(FakeClient):
+        def search_contracts(self, *, objeto, segmento, **query):
+            queried.append((objeto, segmento))
+            return super().search_contracts(objeto=objeto, **query)
+
+    contract = new_contract_id()
+    with patch("buenapro_worker.jobs.poll_prod6_profile.SeaceClient",
+               Client([poll_item(contract, "Mantenimiento de tableros eléctricos")])):
+        result = poll_prod6_profiles(settings(), JobRepository(db), profile_ids=[profile, other], anio=2026)
+    assert sorted(queried) == [(1, 39), (1, 43), (2, 39), (2, 43)]  # The union, once each.
+    rows = db.execute("""SELECT profile_id::text, cubso_segmento FROM prod6_profile_decisions
+                         WHERE id_contrato = %s ORDER BY 1, 2""", (contract,)).fetchall()
+    # The same card returned by the 39 and 43 streams is decided once per company (the key has
+    # no segment); both companies get their row from the single shared sweep.
+    assert {row["profile_id"] for row in rows} == {profile, other}
+    assert result["by_profile"][profile]["decisions_recorded"] >= 1
+    assert result["by_profile"][other]["decisions_recorded"] >= 1
+    assert result["cursor"]["complete"]

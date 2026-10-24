@@ -6,23 +6,27 @@ from typing import Any
 import httpx
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
+from buenapro_worker.seace import pacing
 from buenapro_worker.seace.egress import is_egress_failure, seace_http_client
 from buenapro_worker.seace.schemas import SearchResponse
 from buenapro_worker.settings import Settings
 
 
 def _temporary_source_failure(error: BaseException) -> bool:
-    """Retry remote/transient failures, never an access denial, egress outage or local config error."""
+    """Retry remote/transient failures, never an access denial (403/429), egress outage,
+    open breaker or local config error."""
     if is_egress_failure(error):
         return False
     if isinstance(error, httpx.HTTPStatusError):
-        return error.response.status_code in {408, 425, 429, 500, 502, 503, 504}
+        return error.response.status_code in {408, 425, 500, 502, 503, 504}
     return isinstance(error, (httpx.TimeoutException, httpx.NetworkError,
                               httpx.RemoteProtocolError))
 
 
 class SeaceClient:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, *, pacer: pacing.SourcePacer | None = None) -> None:
+        # Every request, retries included, waits for the process-wide pacer.
+        self._pacer = pacer or pacing.PACER
         self._client = seace_http_client(
             base_url=settings.seace_base_url,
             timeout=settings.seace_timeout_seconds,
@@ -46,12 +50,10 @@ class SeaceClient:
         reraise=True,
     )
     def _get_json(self, path: str, params: Mapping[str, Any] | None = None) -> Any:
-        response = self._client.get(
+        return self._send(
             path,
             params={key: value for key, value in (params or {}).items() if value not in (None, "")},
-        )
-        response.raise_for_status()
-        return response.json()
+        ).json()
 
     @retry(
         retry=retry_if_exception(_temporary_source_failure),
@@ -60,9 +62,16 @@ class SeaceClient:
         reraise=True,
     )
     def _get_bytes(self, path: str) -> bytes:
-        response = self._client.get(path)
+        return self._send(path).content
+
+    def _send(self, path: str, params: Mapping[str, Any] | None = None) -> httpx.Response:
+        self._pacer.acquire()
+        response = self._client.get(path, params=params)
+        if response.status_code in pacing.BLOCK_STATUSES:
+            # 403/429 is a block of our IP: stop every PROD6 request, not just this one.
+            self._pacer.trip(response.status_code)
         response.raise_for_status()
-        return response.content
+        return response
 
     def search_contracts(
         self,

@@ -406,11 +406,104 @@ Runtime (`python -m buenapro_worker.prod6.runtime`):
   admite nada nuevo, deja todo `pending`, termina el ciclo con `status: "jev_unavailable"`
   (`jev.reason: missing_api_key`) en `state.json`, sale con código 2 en `--once` y avisa por
   `notify_ops` (Telegram) una vez por transición, y otra al recuperarse.
-- `state.json` agrega `profile_ids`, `source_by_profile` (con varias empresas) y `jev`
+- `state.json` agrega `profile_ids`, `source_by_profile` (desglose por empresa), `discovery` (rotación) y `jev`
   (`requests`, `accepted`, `rejected`, `failed`, `skipped_closed`, `skipped_stale`,
   `exhausted`, `cost_usd`, `aborted`, `admission`).
 
-La imagen PROD6 no necesita archivos nuevos: copia todo `prod6/` y `poll_prod6_profile.py`; las
+#### Ritmo lento, tope por ciclo y pausa ante 403 (PROD6)
+
+Un ciclo real local hizo unas 18 peticiones a PROD6 en tres minutos y el WAF de SEACE devolvió
+403 a toda la IP (búsqueda y descargas) durante un buen rato. Producción sale por la misma IP
+peruana, así que el runtime va lento y, ante un 403, se detiene mucho tiempo.
+
+- **Ritmo fijo y bajo** (`seace/pacing.py`): un pacer por proceso, compartido por todos los
+  `SeaceClient` y todos los hilos, que separa dos peticiones consecutivas (búsqueda, detalle,
+  listado de archivos, descarga y cada reintento) al menos `PROD6_MIN_REQUEST_INTERVAL_SECONDS`
+  (6 por defecto; `0` lo desactiva). Con `--http-workers`/`--io-workers` mayores a uno el
+  intervalo global se mantiene: los hilos solo se reparten las ranuras. **No hay jitter ni
+  rotación de IP/User-Agent**: es un ritmo constante y bajo, no una evasión.
+- **Una sola búsqueda por ciclo para todas las empresas** (`poll_prod6_profiles`): el ciclo
+  recorre una vez los streams (objeto 1 y 2 × segmento) de la **unión** de los segmentos de las
+  empresas activas, y cada página alimenta el prefiltro y `record_decision` de cada empresa
+  cuyo conjunto de segmentos incluye ese segmento (una empresa sin ese segmento no recibe fila
+  de ese ítem). La semántica por empresa no cambia (una decisión por contrato × empresa × hash
+  de ficha × hash de perfil × política; un contrato aceptado por varias se admite una vez;
+  `--max-candidates` aplica por empresa). `poll_prod6_profile(profile_id=...)` sigue
+  existiendo como envoltorio de una sola empresa. `state.json` lleva `source` (contadores
+  sumados) y `source_by_profile` (desglose por empresa: `seen`, `decisions_recorded`,
+  `decisions_reused`, `prefilter_rejected`, `candidates`, `changed`, `enqueued`, `skipped`,
+  `limit_reached`).
+- **Tope por ciclo y reserva para IO**: `--max-source-requests` (por defecto
+  `PROD6_MAX_SOURCE_REQUESTS` o 40) cuenta las peticiones PROD6 de todo el ciclo y
+  `--max-discovery-requests` (24, nunca más que el tope del ciclo) limita las del
+  descubrimiento, así que lo que resta queda para `process_contract` y descargas. Debe cubrir
+  `--max-pages` (por defecto 5, páginas por stream y ciclo) o se rechaza el arranque. Al llegar
+  al límite de descubrimiento la búsqueda se corta sin error (`source.discovery_limit_reached`,
+  cobertura `bounded_partial`), conserva las decisiones ya registradas y
+  `state.json.discovery` guarda `next_stream_index` (y `next_stream`, `stream_count`,
+  `complete`): el siguiente ciclo, incluso tras reiniciar, empieza en ese stream y da la
+  vuelta, de modo que ningún stream queda sin recorrer siempre. Un stream cortado a mitad se
+  reinicia desde su primera página; tras una pasada completa se vuelve al índice 0. Con
+  `--http-workers` mayor a uno, qué streams se cortan puede depender de los tiempos, pero el
+  cursor siempre apunta al primero que no terminó.
+- **Tope agotado**: el ciclo deja de pedir a PROD6 sin error; los jobs de IO pendientes
+  (un contrato necesita hasta 3 peticiones, así que no se inicia uno que no quepa) esperan
+  al siguiente ciclo. El estado pasa a `source_budget_reached` y `--once` sale con código 0.
+  `state.json` guarda `source_pacing` (intervalo y tope) y `source_requests` (`used`, `max`,
+  `budget_reached`).
+- **Estimación con VEYON + DIN** (base local, consulta de solo lectura): VEYON SAC activo con
+  ingesta tiene los segmentos 43 y 81 (2 × 2 = 4 streams) y DIN AUTOMATIZACION S.A.C. tiene
+  23, 32, 39, 41, 43, 72, 73, 81 y 86 (9 × 2 = 18 streams); la unión son **9 segmentos = 18
+  streams** (antes 22 búsquedas mínimas por ciclo, con 43 y 81 repetidos). Una pasada completa
+  cuesta como mínimo 18 peticiones (una página de 100 por stream) y hasta 90 con `--max-pages 5`;
+  con el límite de 24 una pasada cabe en un ciclo si casi todos los streams tienen una sola
+  página y, si no, se reparte en varios ciclos con la rotación. Un ciclo completo son hasta
+  24 de descubrimiento más hasta 16 de IO (unos 5 contratos nuevos con detalle, dos listados y
+  una descarga cada uno, o más si solo hay descargas): 40 peticiones máximas, unos 4 minutos a 6 s.
+  En régimen, con pocos contratos nuevos, un ciclo suele quedar en 18 a 30 peticiones.
+- **Circuito ante 403/429**: cualquier 403 o 429 de PROD6 (búsqueda, detalle, listado o
+  descarga) abre el circuito de la fuente. Nada vuelve a salir hacia PROD6 en ese ciclo (los
+  hilos que esperaban su ranura tampoco envían) y el 403/429 nunca se reintenta con tenacity.
+  `state.json` guarda `source_blocked_until` (ahora + `PROD6_BLOCK_BACKOFF_SECONDS`, 10800 = 3 h)
+  y `source_block` (`status`, `reason`, `since`, `until`, `alerted`); se lee al arrancar, así que
+  la pausa sobrevive a reinicios (con `--once` desde cron o con el bucle). Los ciclos
+  siguientes, antes de esa hora, **no hacen ninguna petición PROD6** (estado `source_blocked`,
+  `--once` sale con 2) pero sí trabajo local: JEV de pendientes, `derive_summary` y lecturas
+  cuyo documento ya está descargado. Pasada la hora, el siguiente ciclo es la sonda: si el
+  descubrimiento pasa, se cierra el bloqueo; si vuelve un 403, la pausa se renueva. `notify_ops`
+  avisa una vez al abrirse el bloqueo (una vez por episodio, aunque la sonda falle de nuevo) y
+  otra al recuperarse.
+- **Jobs afectados**: el job que recibió el 403/429 y los que el circuito rechazó vuelven a
+  `pending` con `run_after = source_blocked_until`, devuelven su intento (`attempts-1`, para
+  que el guard de lecturas pagadas no vea un intento) y quedan en `state.source_deferred`; no
+  son `manual_review_required` ni fallo del documento. Solo la respuesta 403/429 que recibió la
+  petición propia del job suma a `payload.source_block_count`; al tercer bloqueo del mismo job
+  (descarga, listado de contrato o relectura) pasa a `manual_review_required` como hoy
+  (`blocked_documents`), para no reintentar eternamente un documento prohibido. Los 401/404/410
+  de una descarga siguen yendo a revisión manual de inmediato.
+- **Variables**: `PROD6_MIN_REQUEST_INTERVAL_SECONDS` (6), `PROD6_MAX_SOURCE_REQUESTS` (40, valor
+  por defecto de `--max-source-requests`), `PROD6_BLOCK_BACKOFF_SECONDS` (10800). Se leen del
+  entorno del proceso (como las del proxy de salida), no de `.env.local`; un valor inválido
+  detiene el arranque antes de abrir la base. El intervalo afecta a todo `SeaceClient`: los
+  workers legados que lo usen (p. ej. `schedule-refresh`) también irían a un ritmo de 6 s por
+  petición salvo que su entorno lo cambie.
+
+#### Descarga única
+
+`download_file` guarda lo que descargó (solo PDF de TDR/EETT que van a lectura) como temporal
+privado en `<receipt_dir>/source-cache/<sha256>` (carpeta 0700, archivo 0600) y `extract_tdr` lo
+lee en vez de volver a pedirlo: una petición por documento en lugar de dos. Es un temporal de
+análisis, no una copia permanente: al leerse se verifica su sha256 (si falta o no coincide se
+borra y entonces sí se descarga, con ritmo y circuito) y el runtime lo elimina cuando la lectura
+quedó guardada (después del commit), cuando el job termina sin leer (lectura vigente, contrato
+cerrado, intento histórico), cuando el documento cambió de hash o pasa a revisión manual. Si la
+lectura falla, la copia se conserva para reanudar. No altera el guard de lecturas pagadas: la
+copia solo se consulta después de `recover_before_download`, que sigue decidiendo si un job con
+intento previo puede enviar algo; nunca autoriza un nuevo envío pagado.
+
+La imagen PROD6 copia todo `prod6/` (incluye `source_cache.py`) y, de fuera de esa carpeta,
+`seace/client.py`, `seace/pacing.py`, `seace/egress.py`, `jobs/download_file.py`,
+`jobs/process_contract.py`, `jobs/extract_tdr.py` y `jobs/poll_prod6_profile.py`; las
 constantes JEV se importan de `prod2/analysis.py` de la imagen base (sin cambios desde el 1.er sync).
 
 ## Salida peruana para SEACE (proxy egress)
@@ -438,9 +531,10 @@ bloqueo de SEACE y nunca escribe `source_access_blocked` ni cuenta como 403/429:
   sigue siendo `source_access_blocked` y `attention_required`.
 - **PROD6** (`prod6.runtime`): chequeo previo por ciclo y estado `egress_backoff` (sin contar
   como `source_backoff` ni revisión manual). Los jobs de IO afectados quedan `pending` con
-  `run_after` del siguiente ciclo. Los 401/403/404/410 de descargas siguen en revisión manual.
+  `run_after` del siguiente ciclo. Un 403/429 de PROD6 abre la pausa de fuente (ver "Ritmo lento,
+  tope por ciclo y pausa ante 403"); los 401/404/410 de descargas siguen en revisión manual.
 
-La imagen PROD6 (`infra/docker/prod6.Dockerfile`) copia también `seace/egress.py`.
+La imagen PROD6 (`infra/docker/prod6.Dockerfile`) copia también `seace/egress.py` y `seace/pacing.py`.
 
 ## Pausa de emergencia
 

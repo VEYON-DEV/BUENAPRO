@@ -82,7 +82,7 @@ def test_each_parallel_io_job_owns_a_connection_and_persists_before_reporting(co
 @patch("buenapro_worker.prod6.runtime.signal.signal")
 @patch("buenapro_worker.prod6.runtime.connect")
 @patch("buenapro_worker.prod6.runtime.jev_cycle", return_value={"status": "ok"})
-@patch("buenapro_worker.prod6.runtime.poll_prod6_profile", return_value={"pages": 1})
+@patch("buenapro_worker.prod6.runtime.poll_prod6_profiles", return_value={"pages": 1})
 @patch("buenapro_worker.prod6.runtime.profile_enabled", return_value=True)
 @patch("buenapro_worker.prod6.runtime.ScopedRepository.claim_scoped")
 @patch("buenapro_worker.prod6.runtime.execute_io_job")
