@@ -1,0 +1,1 @@
+export { CompanyAffinity } from "./CompanyAffinity";

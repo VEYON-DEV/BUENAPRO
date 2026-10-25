@@ -3,6 +3,7 @@ import { pagination } from "@/server/services/crud";
 import { keywordFitLateralSql } from "@/server/services/keywordScoring";
 import { CommercialFilterError, deriveCommercialCategories, normalizeCommercialClassification, parseCommercialFilters } from "@/lib/commercialTaxonomy";
 import { appendCommercialPredicates, COMMERCIAL_SELECT, PROD6_COMMERCIAL_JOIN } from "./commercialClassification";
+import { jevByCompanySql, jevListLateralSql } from "./prod6JevAffinity";
 
 // Read the current document extraction; canonical participation may belong to another source or revision.
 const PARTICIPATION_EXTRACTION = `jsonb_build_object(
@@ -147,7 +148,9 @@ export async function getContractForTenant(tenantId: string, idContrato: number,
     `,
     [idContrato],
   );
-  return { contract, facets: facets.rows, documents: documents.rows };
+  // Solo lectura: decisión JEV más reciente por empresa activa del tenant; sin decisiones devuelve [].
+  const jevByCompany = await query(jevByCompanySql(1, 2, 3), [idContrato, tenantId, profile?.id ?? null]);
+  return { contract, facets: facets.rows, documents: documents.rows, jev_by_company: jevByCompany.rows };
 }
 
 const ECON_LATERAL_SQL = `
@@ -329,6 +332,11 @@ export async function listContractsForTenant(tenantId: string, params: URLSearch
       fit.business_line_id AS fit_business_line_id,
       fit.business_line_name AS fit_business_line_name,
       COALESCE(fit.keyword_hits, '[]'::jsonb) AS fit_keyword_hits,
+      jev.jev_score,
+      jev.jev_decision,
+      jev.jev_subcategory,
+      jev.jev_threshold,
+      jev.jev_decided_at,
       (sc.id_contrato IS NOT NULL) AS is_saved,
       sc.created_at AS saved_at,
       count(*) OVER()::int AS total_count
@@ -356,6 +364,7 @@ export async function listContractsForTenant(tenantId: string, params: URLSearch
       LIMIT 1
     ) m ON true
     ${keywordFitLateralSql(1, 2)}
+    ${jevListLateralSql(2)}
     ${ECON_LATERAL_SQL}
     ${PROD6_COMMERCIAL_JOIN}
     ${whereSql}

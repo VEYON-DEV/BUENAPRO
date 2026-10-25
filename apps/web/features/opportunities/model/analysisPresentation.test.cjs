@@ -39,6 +39,8 @@ function loadSource(filename) {
       cotizacionStatus: () => ({ key: "abierta", label: "Cotización abierta" }),
       opportunityFacts: row => ({ descripcionCorta: row?.descripcion, roles: [] }), plazoLabel: () => "Por definir",
     };
+    if (specifier === "@/lib/jevAffinity") return loadSource(path.resolve(feature, "../../lib/jevAffinity.ts"));
+    if (specifier === "../JevAffinityMark") return loadSource(path.join(feature, "components/JevAffinityMark/JevAffinityMark.tsx"));
     if (specifier === "../SaveButton") return { SaveButton: () => null };
     if (specifier === "../../api/seaceDetail") return { seaceDetailRequest: () => { throw new Error("SSR must not fetch"); } };
     if (specifier === "../../model/analysisPresentation") return loadSource(path.join(__dirname, "analysisPresentation.ts"));
@@ -316,4 +318,23 @@ test("minor inspector ignores a previous profile detail immediately and keeps th
   assert.doesNotMatch(html, /FOREIGN PROFILE DETAIL/);
   assert.match(html, /href="\/oportunidad\/101615\?profile_id=dinaut-profile"/);
   assert.match(html, /Puntaje provisional: 72 de 100/);
+});
+
+test("minor rows add the JEV affinity next to the current indicator and leave rows without a decision untouched", () => {
+  const jev = { jev_score: 77.6, jev_decision: "accepted", jev_subcategory: "soporte_ti", jev_threshold: 60, jev_decided_at: "2026-10-25T00:00:00Z" };
+  const withJev = render(OpportunityList, { rows: [minor({ match_id: "916", score: 55, verdict: "ambar", ...jev })] });
+  assert.equal((withJev.match(/data-jev-affinity/g) ?? []).length, 2, "row and inspector");
+  assert.match(withJev, /matchCell matchStack/);
+  assert.match(withJev, /<strong>78 \/ 100<\/strong><span>Afinidad JEV<\/span>/);
+  assert.match(withJev, /Soporte TI/);
+  assert.match(withJev, /scoreRing[^>]*>55<\/span>/, "the documentary score keeps its own indicator");
+  assert.ok(withJev.indexOf("Afinidad JEV") < withJev.indexOf("scoreRing"), "JEV goes first in the cell");
+  const rowCell = withJev.slice(withJev.indexOf("matchCell"), withJev.indexOf("</article>")).replace(/ title="[^"]*"/g, "");
+  assert.doesNotMatch(rowCell, /Soporte TI/, "the visible subcategory stays in the inspector; the row only has it in its tooltip");
+
+  for (const row of [minor({ match_id: null }), minor({ match_id: null, jev_score: null, jev_decision: "pending" }), minor({ match_id: null, jev_score: "78" })]) {
+    const html = render(OpportunityList, { rows: [row] });
+    assert.doesNotMatch(html, /data-jev-affinity|matchStack|Afinidad JEV/);
+    assert.match(html, /Afinidad preliminar · análisis pendiente/);
+  }
 });

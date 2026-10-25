@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const ts = require('typescript');
-const { commercial, commercialSql } = require('./commercialClassification.test-support.cjs');
+const { commercial, commercialSql, loadCommercialModule } = require('./commercialClassification.test-support.cjs');
 const profileId = '00000000-0000-0000-0000-000000000001';
 
 function serviceWithCurrentReading({ matchId = null, score = null, matchReviewRequired = false, provisionalScore = null,
@@ -20,6 +20,7 @@ function serviceWithCurrentReading({ matchId = null, score = null, matchReviewRe
     require(name) {
       if (name === '@/lib/commercialTaxonomy') return commercial;
       if (name === './commercialClassification') return commercialSql;
+      if (name === './prod6JevAffinity') return loadCommercialModule('prod6JevAffinity.ts');
       if (name === '@/server/db/client') return { query: async (sql, values) => {
         statements.push({ sql, values });
         if (sql.includes('SELECT id::text, razon_social FROM company_profiles')) return { rows: profileRows };

@@ -236,3 +236,15 @@ Una oportunidad puede pertenecer a varias categorías. Todas conserva también
 casos históricos sin etiquetas; no se inventa su clasificación desde el título.
 No cambia puntaje, afinidad, modalidad jurídica ni guardadas. Publicación y
 activación de lectores se verifican aparte. Contrato: [Clasificación comercial](../opportunity-classification.md).
+
+### Afinidad JEV en Contratos menores (25/10/2026)
+
+La lista de `/feed` (Contratos menores) muestra la calificación preliminar de afinidad comercial JEV del **perfil activo** junto al indicador existente de la columna «Análisis / afinidad». Lee `prod6_profile_decisions` en solo lectura; no llama a SEACE, a JEV ni a Gemini, y no cambia filtros ni orden (JEV no reordena la lista en este MVP).
+
+- `GET /api/contracts` añade por fila `jev_score` (0–100), `jev_decision` (`accepted|rejected|pending`), `jev_subcategory`, `jev_threshold` y `jev_decided_at`; todos `null` sin decisión.
+- Un par contrato × perfil puede tener varias filas (la clave incluye hashes y versión de política). Se usa la más reciente, con prioridad para `decided_by = 'jev'` y luego `updated_at`/`id` descendentes. La tabla vacía no produce error.
+- La fila muestra «**78 / 100** · Afinidad JEV» sobre el indicador actual (puntaje documental, provisional o afinidad por palabras clave), que no cambia. La subcategoría legible, el umbral y la aclaración «no evalúa requisitos ni elegibilidad» viven en la vista rápida. El tooltip de la fila contiene el texto completo.
+- Sin puntaje JEV válido (sin decisión, pendiente o decidida por prefiltro) la fila conserva exactamente el comportamiento anterior.
+- El violeta identifica afinidad (información); no se aplica la regla rojo/amarillo/verde de puntajes documentales, que sigue reservada a esos puntajes.
+- Etiquetas en español en `apps/web/lib/jevAffinity.ts`; componente `features/opportunities/components/JevAffinityMark/`.
+- La vista por omisión conserva `has_extraction=true` y `estado=2`; un contrato aprobado por JEV sin extracción aparece al pasar `has_extraction=` vacío.

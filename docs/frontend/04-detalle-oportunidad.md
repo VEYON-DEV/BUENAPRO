@@ -162,3 +162,14 @@ La política sustantiva V4 se presenta de manera análoga a contratos menores: e
 Las alternativas MYPE identificadas en la proyección se muestran como «Condicional · MYPE» y se excluyen del contador general cuando `required=false`; requieren confirmar que la condición aplica al postor. Un análisis manual de una lectura existente con revisión preservada continúa provisional y mantiene el aviso de las bases. Las filas de seguimiento por omisión del modelo declaran ese origen y no acreditan incumplimiento. Los preparativos ordinarios, incluidos pacto de integridad y promesa de consorcio cuando corresponda, permanecen fuera de la cobertura de capacidad.
 
 `GET /api/prod2/opportunities/:id/documents/:codigo_alfresco` requiere sesión y redirige con `private, no-store` a un GET R2 firmado por 60 segundos. Solo firma keys verificadas `prod2/<convocatoria>/<UUID>/<sha_preview>.pdf`; admite vistas PDF convertidas de ZIP/DOCX sin confundir hash del original con hash del preview. Las credenciales, key privada y URL firmada no se entregan en el JSON de ficha. El vínculo a SEACE abre el buscador estable, conserva la procedencia y no inventa un enlace directo de sesión.
+
+### Afinidad por empresa JEV (25/10/2026)
+
+El detalle de Contratos menores (`/oportunidad/[id]`) incorpora «Afinidad por empresa» justo debajo de la franja de decisión, con la calificación preliminar de afinidad comercial JEV de cada empresa **activa del tenant** que tenga decisión para el contrato. Es lectura pura de `prod6_profile_decisions`; no llama a SEACE, JEV ni Gemini y no modifica el puntaje documental, el veredicto ni las brechas.
+
+- `GET /api/contracts/:id` devuelve `jev_by_company`: una fila por perfil activo con `profile_id`, `profile_name` (razón social), `is_current_profile`, `score`, `threshold`, `decision`, `decided_by`, `subcategory`, `domain`, `information` y `decided_at`. Se usa la decisión más reciente por perfil (prioridad `decided_by = 'jev'`, luego `updated_at`/`id`). Orden: perfil activo seleccionado primero y luego puntaje descendente. `[]` sin decisiones.
+- Cada fila muestra el nombre, «Perfil activo» cuando corresponde, subcategoría · dominio, un medidor 0–100 (`role="meter"`) con marca de umbral y valor numérico, el estado **Aprobada / Descartada / Pendiente** (pastel verde / rojo / ámbar con icono y texto) e «Información suficiente/insuficiente».
+- Una decisión sin puntaje JEV (prefiltro, palabras clave o pendiente) no inventa cero: explica «Sin calificación JEV: decidida por prefiltro.» o «En espera de la calificación JEV.».
+- Nota fija: «Calificación preliminar de afinidad comercial (JEV); no evalúa requisitos ni elegibilidad.»
+- Sin decisiones la sección no se renderiza.
+- Componente `features/opportunity-detail/components/CompanyAffinity/` (superficie sólida, sin paneles anidados); etiquetas y presentación en `apps/web/lib/jevAffinity.ts`.
