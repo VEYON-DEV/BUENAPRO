@@ -12,7 +12,7 @@ import psycopg
 import pytest
 
 from buenapro_worker.prod6 import runtime
-from buenapro_worker.prod6.reading import ReadingBlockedError
+from buenapro_worker.prod6.reading import GuardedReadingError, ProviderRejectedError, ReadingBlockedError
 from buenapro_worker.seace import pacing
 from buenapro_worker.queue.repository import Job
 
@@ -1100,6 +1100,7 @@ def test_invalid_request_budget_is_rejected_before_the_database(options, tmp_pat
 
 @pytest.mark.parametrize("name,value", [("PROD6_MIN_REQUEST_INTERVAL_SECONDS", "-2"),
                                         ("PROD6_BLOCK_BACKOFF_SECONDS", "never"),
+                                        ("PROD6_READING_BACKOFF_SECONDS", "0"),
                                         ("PROD6_MAX_SOURCE_REQUESTS", "0")])
 def test_invalid_pacing_environment_is_rejected_before_the_database(monkeypatch, tmp_path, name, value):
     monkeypatch.setenv(name, value)
@@ -1153,3 +1154,295 @@ def test_cleanup_runs_only_after_the_job_committed(offline_runtime):
     h.dispatch.side_effect = dispatch
     assert h.run(once=True) == 2
     assert ran == [1]  # The failed job keeps its copy.
+
+
+# --- Gemini HTTP errors, reading pause and stop alerts -----------------------------------
+
+def typed_claims(h, jobs):
+    """A queue that honors the job types a claim asks for; ``asked`` records the non-IO claims."""
+    waiting, asked = list(jobs), []
+
+    def next_job(worker_id, job_types=runtime.JOB_TYPES):
+        if tuple(job_types) != runtime.IO_TYPES:
+            asked.append(tuple(job_types))
+        for job in waiting:
+            if job.job_type in job_types:
+                waiting.remove(job)
+                return job
+        return None
+
+    h.claim.side_effect = next_job
+    return asked
+
+
+def dispatching(h, failing, outcome=None):
+    """dispatch raises ``failing[job_id]`` (an exception) and otherwise answers ``outcome``."""
+    def dispatch(settings, repo, job, receipts):
+        if job.id in failing:
+            raise failing[job.id]
+        return dict(outcome or {"outcome": "read_or_reused"})
+
+    h.dispatch.side_effect = dispatch
+
+
+def reading_deferrals(h):
+    return [(values[0], json.loads(values[1]), values[3]) for _, values in deferrals(h)]
+
+
+ACCOUNT_ERRORS = [(401, "Gemini: llave inválida o sin permiso (401/403)"),
+                  (402, "Gemini: créditos agotados (402)"),
+                  (403, "Gemini: llave inválida o sin permiso (401/403)"),
+                  (429, "Gemini: límite de uso (429)")]
+
+
+@pytest.mark.parametrize("code,reason", ACCOUNT_ERRORS)
+def test_gemini_account_error_pauses_paid_readings_without_penalizing_the_document(offline_runtime, egress, clock, code, reason):
+    h = offline_runtime
+    asked = typed_claims(h, [poll_job(1, "extract_tdr"), poll_job(2, "extract_tdr"),
+                             poll_job(3, "derive_summary")])
+    dispatching(h, {1: ProviderRejectedError(code, "RESOURCE_EXHAUSTED")})
+    assert h.run(once=True) == 2
+    until = clock.now + timedelta(seconds=3600)
+    # Searching and scoring ran, the rejected job is back to pending, other work went on.
+    h.poll.assert_called_once()
+    h.jev.assert_called_once()
+    assert [call.args[2].id for call in h.dispatch.call_args_list] == [1, 3]
+    assert reading_deferrals(h) == [(until, {}, 1)]  # The document's count is untouched.
+    assert not any("extract_tdr" in types for types in asked[1:])
+    state = h.states[-1]
+    assert state["status"] == "reading_paused" and state["done"] == {"derive_summary": 1}
+    assert state["reading_pause"]["code"] == code and state["reading_pause"]["reason"] == reason
+    assert datetime.fromisoformat(state["reading_paused_until"]) == until
+    assert state["reading_deferred"][0]["http_status"] == code and "job_type" not in state
+    assert state["reading_deferred"][0]["provider_error_count"] == 0
+    assert json.loads((h.folder / "state.json").read_text())["reading_pause"]["reason"] == reason
+    assert len(egress.alerts) == 1 and reason in egress.alerts[0]
+    assert holds(h) == []
+
+
+def test_pause_length_comes_from_the_environment(offline_runtime, egress, clock, monkeypatch):
+    h = offline_runtime
+    monkeypatch.setenv("PROD6_READING_BACKOFF_SECONDS", "120")
+    h.queues(serial=[poll_job(1, "extract_tdr")])
+    dispatching(h, {1: ProviderRejectedError(402, "RESOURCE_EXHAUSTED")})
+    assert h.run(once=True) == 2
+    assert reading_deferrals(h)[0][0] == clock.now + timedelta(seconds=120)
+
+
+@pytest.mark.parametrize("code,status", [(400, "INVALID_ARGUMENT"), (404, "NOT_FOUND"),
+                                         (413, None), (422, None), (500, "INTERNAL"), (503, "UNAVAILABLE")])
+def test_document_or_transient_gemini_errors_only_reschedule_and_count_against_that_job(offline_runtime, egress, clock, code, status):
+    h = offline_runtime
+    asked = typed_claims(h, [poll_job(1, "extract_tdr"), poll_job(2, "extract_tdr")])
+    dispatching(h, {1: ProviderRejectedError(code, status)})
+    assert h.run(once=True) == 0
+    assert reading_deferrals(h) == [(clock.now + timedelta(seconds=1800), {"provider_error_count": 1}, 1)]
+    assert [call.args[2].id for call in h.dispatch.call_args_list] == [1, 2]  # The next document is read.
+    assert all("extract_tdr" in types for types in asked)
+    state = h.states[-1]
+    assert state["status"] == "sweep_drained" and "reading_pause" not in state
+    assert state["done"] == {"extract_tdr": 1}
+    assert egress.alerts == []
+
+
+def test_third_rejection_of_the_same_document_goes_to_manual_review_and_the_cycle_continues(
+        offline_runtime, egress, clock):
+    h = offline_runtime
+    typed_claims(h, [poll_job(1, "extract_tdr", provider_error_count=2), poll_job(2, "derive_summary")])
+    dispatching(h, {1: ProviderRejectedError(503, "UNAVAILABLE")})
+    assert h.run(once=True) == 2
+    assert deferrals(h) == []
+    (sql, values), = holds(h)
+    assert json.loads(values[0]) == {"source_document_block": {"provider_http_status": 503,
+        "provider_status": "UNAVAILABLE", "reason": "manual_review_required"}, "provider_error_count": 3}
+    assert "Gemini reading HTTP 503" in values[1] and values[2:] == (1, "prod6-only-v1:veyon", runtime.NAMESPACE, "veyon")
+    state = h.states[-1]
+    assert state["status"] == "sweep_blocked" and state["blocked_documents"][0]["job_id"] == 1
+    assert state["done"] == {"derive_summary": 1}
+    assert egress.alerts == []
+
+
+@pytest.mark.parametrize("code,reason", ACCOUNT_ERRORS)
+def test_repeated_account_errors_never_send_the_document_to_manual_review(offline_runtime, egress, clock, code, reason):
+    h = offline_runtime
+    for _ in range(3):  # Three probes in a row, each after the pause ended.
+        typed_claims(h, [poll_job(1, "extract_tdr", provider_error_count=0)])
+        dispatching(h, {1: ProviderRejectedError(code, "PERMISSION_DENIED")})
+        h.run(once=True)
+        clock.now += timedelta(seconds=3601)
+    assert holds(h) == []
+    assert [patch for _, patch, _ in reading_deferrals(h)] == [{}, {}, {}]
+    assert len(egress.alerts) == 1 and reason in egress.alerts[0]
+    # Even a document already near its limit is not held by an account error.
+    typed_claims(h, [poll_job(2, "extract_tdr", provider_error_count=2)])
+    dispatching(h, {2: ProviderRejectedError(code, "PERMISSION_DENIED")})
+    h.run(once=True)
+    assert holds(h) == []
+    assert reading_deferrals(h)[-1][1] == {"provider_error_count": 2}
+
+
+def test_document_errors_count_even_when_an_account_error_paused_readings_before(offline_runtime, egress, clock):
+    h = offline_runtime
+    typed_claims(h, [poll_job(1, "extract_tdr", provider_error_count=2)])
+    dispatching(h, {1: ProviderRejectedError(400, "INVALID_ARGUMENT")})
+    h.run(once=True)
+    (_, values), = holds(h)
+    assert json.loads(values[0])["provider_error_count"] == 3 and egress.alerts == []
+
+
+def test_reading_pause_survives_a_restart_then_one_probe_and_one_recovery_alert(
+        offline_runtime, egress, clock):
+    h = offline_runtime
+    typed_claims(h, [poll_job(1, "extract_tdr")])
+    dispatching(h, {1: ProviderRejectedError(402, "RESOURCE_EXHAUSTED")})
+    assert h.run(once=True) == 2
+    clock.now += timedelta(seconds=1800)  # A new process, inside the pause.
+    asked = typed_claims(h, [poll_job(1, "extract_tdr", provider_error_count=1)])
+    assert h.run(once=True) == 2
+    assert not any("extract_tdr" in types for types in asked)
+    assert h.states[-1]["status"] == "reading_paused" and len(egress.alerts) == 1
+    clock.now += timedelta(seconds=1801)  # The pause ended: the next reading is the probe.
+    typed_claims(h, [poll_job(1, "extract_tdr", provider_error_count=1)])
+    dispatching(h, {}, {"outcome": "read_or_reused", "provider_answered": True})
+    assert h.run(once=True) == 0
+    assert len(egress.alerts) == 2 and "reanudadas" in egress.alerts[1]
+    final = json.loads((h.folder / "state.json").read_text())
+    assert "reading_pause" not in final and "reading_paused_until" not in final
+    assert final["status"] == "sweep_drained"
+
+
+def test_failed_probe_renews_the_pause_without_a_new_alert(offline_runtime, egress, clock):
+    h = offline_runtime
+    typed_claims(h, [poll_job(1, "extract_tdr")])
+    dispatching(h, {1: ProviderRejectedError(429, "RESOURCE_EXHAUSTED"),})
+    h.run(once=True)
+    clock.now += timedelta(seconds=3601)
+    typed_claims(h, [poll_job(1, "extract_tdr", provider_error_count=1)])
+    h.run(once=True)
+    state = json.loads((h.folder / "state.json").read_text())
+    assert datetime.fromisoformat(state["reading_paused_until"]) == clock.now + timedelta(seconds=3600)
+    assert len(egress.alerts) == 1
+    assert reading_deferrals(h)[-1][1] == {"provider_error_count": 1}
+
+
+def test_a_reading_served_without_asking_gemini_does_not_end_the_pause(offline_runtime, egress, clock):
+    h = offline_runtime
+    typed_claims(h, [poll_job(1, "extract_tdr")])
+    dispatching(h, {1: ProviderRejectedError(402, "RESOURCE_EXHAUSTED")})
+    h.run(once=True)
+    clock.now += timedelta(seconds=3601)
+    typed_claims(h, [poll_job(2, "extract_tdr")])
+    dispatching(h, {}, {"outcome": "read_or_reused"})  # Reused or replayed locally.
+    h.run(once=True)
+    assert len(egress.alerts) == 1
+    assert "reading_pause" in json.loads((h.folder / "state.json").read_text())
+
+
+def test_reading_pause_loader_reads_only_valid_records(tmp_path):
+    path = tmp_path / "state.json"
+    assert runtime.load_reading_pause(path) is None
+    path.write_text("not json")
+    assert runtime.load_reading_pause(path) is None
+    path.write_text(json.dumps({"reading_pause": {"until": "soon"}}))
+    assert runtime.load_reading_pause(path) is None
+    path.write_text(json.dumps({"reading_pause": {"until": "2026-10-25T12:00:00+00:00", "code": 402}}))
+    assert runtime.load_reading_pause(path)["code"] == 402
+    assert runtime.load_attention_alert(path) is None
+    path.write_text(json.dumps({"attention_alert": "GuardedReadingError|extract_tdr"}))
+    assert runtime.load_attention_alert(path) == "GuardedReadingError|extract_tdr"
+    path.write_text(json.dumps({"attention_alert": 5}))
+    assert runtime.load_attention_alert(path) is None
+
+
+def test_uncertain_reading_stops_the_service_and_alerts_once_per_stop(offline_runtime, egress):
+    h = offline_runtime
+    h.queues(serial=[poll_job(1, "extract_tdr")])
+    h.dispatch.side_effect = GuardedReadingError(SECRET)
+    assert h.run(once=False) == 2
+    assert h.states[-1]["status"] == "attention_required"
+    assert egress.alerts == ["BuenaPro PROD6: servicio detenido (attention_required): "
+                             "GuardedReadingError en extract_tdr; requiere revisión."]
+    assert json.loads((h.folder / "state.json").read_text())["attention_alert"] == "GuardedReadingError|extract_tdr"
+    # Restarted and stopped by the same cause: no second alert.
+    h.queues(serial=[poll_job(1, "extract_tdr")])
+    assert h.run(once=False) == 2
+    assert len(egress.alerts) == 1
+    # Another cause is a new stop.
+    h.queues(serial=[poll_job(1, "extract_tdr")])
+    h.dispatch.side_effect = ValueError(SECRET)
+    assert h.run(once=False) == 2
+    assert len(egress.alerts) == 2 and "ValueError en extract_tdr" in egress.alerts[1]
+    # A cycle that ends normally closes the episode, so the old cause alerts again.
+    h.dispatch.side_effect = None
+    h.queues(serial=[poll_job(1, "derive_summary")])
+    assert h.run(once=True) == 0
+    h.queues(serial=[poll_job(1, "extract_tdr")])
+    h.dispatch.side_effect = GuardedReadingError(SECRET)
+    assert h.run(once=True) == 2
+    assert len(egress.alerts) == 3
+    assert SECRET not in json.dumps(egress.alerts)
+
+
+def test_io_failure_alerts_with_the_error_and_job_types(offline_runtime, egress):
+    h = offline_runtime
+    h.queues(io=[poll_job(1, "download_file")])
+    h.execute_io.side_effect = RuntimeError(SECRET)
+    assert h.run(once=True) == 2
+    assert egress.alerts == ["BuenaPro PROD6: servicio detenido (attention_required): "
+                             "RuntimeError en download_file; requiere revisión."]
+
+
+def test_cycle_level_failure_and_startup_failure_alert_without_details(offline_runtime, egress):
+    h = offline_runtime
+    h.poll.side_effect = RuntimeError(SECRET)
+    assert h.run(once=True) == 2
+    assert egress.alerts == ["BuenaPro PROD6: servicio detenido (attention_required): "
+                             "RuntimeError en fase source_discovery; requiere revisión."]
+    h.connect.side_effect = psycopg.OperationalError(SECRET)
+    assert h.run(once=True) == 2
+    assert len(egress.alerts) == 2 and "OperationalError en el arranque (database_connect)" in egress.alerts[1]
+    assert SECRET not in json.dumps(egress.alerts)
+
+
+def test_stops_that_are_not_attention_required_do_not_alert(offline_runtime, egress):
+    h = offline_runtime
+    runtime.profile_enabled.return_value = False
+    assert h.run(once=True) == 2
+    assert h.states[-1]["status"] == "profile_paused" and egress.alerts == []
+
+
+def test_dispatch_lets_a_rejected_reading_retry_even_as_a_replay_only_job(monkeypatch, tmp_path):
+    """Real extractor behind the runtime's hash adapter; only Gemini and the database are mocked."""
+    from google.genai import errors as genai_errors
+    from buenapro_worker.prod6 import reading
+    pdf = b"%PDF-1.7 rejected then read"
+    sha = reading._sha(pdf)
+    client = MagicMock()
+    client.models.generate_content.side_effect = [
+        genai_errors.ClientError(429, {"error": {"code": 429, "message": SECRET, "status": "RESOURCE_EXHAUSTED"}}),
+        SimpleNamespace(model_dump=lambda mode: {"candidates": [{"content": {"parts": [{"text": '{"summary": {"x": "y"}}'}]},
+            "finish_reason": "STOP"}], "usage_metadata": {"prompt_token_count": 10, "candidates_token_count": 5}}),
+    ]
+    monkeypatch.setattr(reading.genai, "Client", MagicMock(return_value=client))
+    monkeypatch.setattr(runtime, "eligible_contract", MagicMock(return_value=True))
+    monkeypatch.setattr(runtime, "current_extraction", MagicMock(return_value=None))
+    settings = SimpleNamespace(gemini_model="gemini-3.1-flash-lite", gemini_api_key=SECRET)
+
+    def read(settings, repo, **kwargs):
+        kwargs["extractor"].extract(pdf, mime="application/pdf", doc_class="tdr")
+        return 99
+
+    def dispatch(attempts):
+        repo = runtime.ScopedRepository(MagicMock(), profile_id="veyon", batch_id="b")
+        repo.conn.execute.return_value.fetchone.side_effect = [None, None, {"sha256_original": sha}]
+        monkeypatch.setattr(runtime, "extract_tdr_job", read)
+        job = Job(7, "extract_tdr", "llm", {"id_contrato": 1, "id_contrato_archivo": 2}, attempts)
+        return runtime.dispatch(settings, repo, job, tmp_path)
+
+    with pytest.raises(ProviderRejectedError) as rejected:
+        dispatch(1)
+    assert rejected.value.code == 429 and not (tmp_path / "readings" / "guard.json").exists()
+    # Even a job whose attempt count says "replay only" may retry after a documented rejection.
+    outcome = dispatch(2)
+    assert outcome == {"outcome": "read_or_reused", "extraction_id": 99, "provider_answered": True}
+    assert client.models.generate_content.call_count == 2

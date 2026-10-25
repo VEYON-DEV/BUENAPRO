@@ -5,7 +5,9 @@ from copy import deepcopy
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import httpx
 import pytest
+from google.genai import errors as genai_errors
 from google.genai import types
 
 from buenapro_worker.extraction.gemini import (
@@ -360,3 +362,217 @@ def test_output_cost_includes_provider_thinking_tokens():
     assert usage["output_tokens"] == 70
     assert usage["candidate_tokens"] == 50
     assert usage["thought_tokens"] == 20
+
+
+# --- HTTP errors answered by the provider -------------------------------------------------
+
+SECRET_MESSAGE = "prepayment credits are depleted for key synthetic-secret"
+
+
+def api_error(code, status="RESOURCE_EXHAUSTED", cls=None):
+    cls = cls or (genai_errors.ServerError if code >= 500 else genai_errors.ClientError)
+    return cls(code, {"error": {"code": code, "message": SECRET_MESSAGE, "status": status}})
+
+
+@pytest.mark.parametrize("code,status", [(402, "RESOURCE_EXHAUSTED"), (429, "RESOURCE_EXHAUSTED"),
+                                         (400, "INVALID_ARGUMENT"), (503, "UNAVAILABLE")])
+def test_provider_http_error_opens_no_guard_and_leaves_only_a_private_error_receipt(setup, code, status):
+    extractor, client, factory, directory = setup
+    client.models.generate_content.side_effect = api_error(code, status)
+    with pytest.raises(reading.ProviderRejectedError) as error:
+        extractor.extract(PDF)
+    assert not isinstance(error.value, reading.GuardedReadingError)
+    assert (error.value.code, error.value.status) == (code, status)
+    assert "synthetic-secret" not in str(error.value) and SECRET_MESSAGE not in str(error.value)
+    assert not extractor.guard_path.exists()
+    assert not receipts(directory, "started") and not receipts(directory, "response")
+    (path,) = receipts(directory, "provider_error")
+    saved = json.loads(path.read_text())
+    assert (saved["http_status"], saved["provider_status"]) == (code, status)
+    assert saved["state"] == "provider_error" and saved["cost_usd"] is None
+    assert path.stat().st_mode & 0o777 == 0o600
+    assert b"synthetic-secret" not in path.read_bytes() and b"depleted" not in path.read_bytes()
+    assert PDF not in path.read_bytes()
+    client.close.assert_called_once()
+    assert error.value.__cause__ is None and error.value.__suppress_context__
+
+
+def test_after_a_provider_error_the_same_and_other_documents_can_send(setup):
+    extractor, client, factory, directory = setup
+    client.models.generate_content.side_effect = [api_error(402), response(), response()]
+    with pytest.raises(reading.ProviderRejectedError):
+        extractor.extract(PDF)
+    assert extractor.extract(PDF).raw_json == PAYLOAD  # The retry sends again...
+    assert not receipts(directory, "provider_error")  # ...and consumes the error receipt.
+    assert extractor.extract(PDF + b"other").raw_json == PAYLOAD
+    assert client.models.generate_content.call_count == 3
+    assert extractor.provider_answered
+    assert not extractor.guard_path.exists()
+
+
+def test_a_provider_error_for_one_document_does_not_unblock_an_uncertain_one(setup):
+    extractor, client, factory, directory = setup
+    client.models.generate_content.side_effect = TimeoutError("unknown")
+    with pytest.raises(reading.GuardedReadingError):
+        extractor.extract(PDF)
+    extractor.guard_path.unlink()
+    client.models.generate_content.side_effect = api_error(503, "UNAVAILABLE")
+    with pytest.raises(reading.ReadingBlockedError):
+        extractor.extract(PDF + b"other")  # The earlier started receipt still blocks.
+    assert client.models.generate_content.call_count == 1
+
+
+@pytest.mark.parametrize("failure", [TimeoutError("unknown"), httpx.ReadTimeout("slow"),
+                                     httpx.RemoteProtocolError("cut"), ConnectionResetError("reset"),
+                                     KeyboardInterrupt(), SystemExit(1)])
+def test_any_other_failure_after_sending_stays_uncertain(setup, failure):
+    extractor, client, _, directory = setup
+    client.models.generate_content.side_effect = failure
+    with pytest.raises(reading.GuardedReadingError):
+        extractor.extract(PDF)
+    assert extractor.guard_path.exists() and receipts(directory, "started")
+    assert not receipts(directory, "provider_error")
+    with pytest.raises(reading.ReadingBlockedError):
+        extractor.extract(PDF)
+    client.models.generate_content.assert_called_once()
+
+
+@pytest.mark.parametrize("code", [None, 0, 302, "402", True, 700])
+def test_api_error_without_an_http_error_code_stays_uncertain(setup, code):
+    extractor, client, _, directory = setup
+    error = genai_errors.APIError(1, {"error": {"status": "X"}})
+    error.code = code
+    client.models.generate_content.side_effect = error
+    with pytest.raises(reading.GuardedReadingError):
+        extractor.extract(PDF)
+    assert extractor.guard_path.exists() and not receipts(directory, "provider_error")
+
+
+@pytest.mark.parametrize("status", ["Payment Required", "resource_exhausted", "X" * 60,
+                                    "KEY synthetic-secret", None, 402])
+def test_only_a_plain_api_status_word_is_stored(setup, status):
+    extractor, client, _, directory = setup
+    client.models.generate_content.side_effect = api_error(402, status)
+    with pytest.raises(reading.ProviderRejectedError) as error:
+        extractor.extract(PDF)
+    assert error.value.status is None
+    assert json.loads(receipts(directory, "provider_error")[0].read_text())["provider_status"] is None
+
+
+def test_provider_error_receipt_write_failure_stays_uncertain(setup, monkeypatch):
+    extractor, client, _, directory = setup
+    client.models.generate_content.side_effect = api_error(402)
+    write = reading._write_json
+
+    def fail_error_receipt(path, value):
+        if ".provider_error." in path.name:
+            raise OSError("disk")
+        write(path, value)
+
+    monkeypatch.setattr(reading, "_write_json", fail_error_receipt)
+    with pytest.raises(reading.GuardedReadingError):
+        extractor.extract(PDF)
+    assert extractor.guard_path.exists() and receipts(directory, "started")
+
+
+def test_crash_between_the_error_receipt_and_removing_started_is_still_resolved(setup):
+    extractor, client, factory, directory = setup
+    client.models.generate_content.side_effect = api_error(402)
+    with pytest.raises(reading.ProviderRejectedError):
+        extractor.extract(PDF)
+    (error_path,) = receipts(directory, "provider_error")
+    saved = json.loads(error_path.read_text())
+    started = directory / f"{saved['request_key']}.started.private.json"
+    reading._write_json(started, {"version": 1, "request_key": saved["request_key"],
+        "state": "started", "started_at": saved["started_at"]})
+    client.models.generate_content.side_effect = None
+    client.models.generate_content.return_value = response()
+    assert extractor.extract(PDF + b"other").raw_json == PAYLOAD
+    # A started receipt from a different, later attempt is not resolved by that error.
+    reading._write_json(started, {"version": 1, "request_key": saved["request_key"],
+        "state": "started", "started_at": "2999-01-01T00:00:00+00:00"})
+    with pytest.raises(reading.ReadingBlockedError):
+        extractor.extract(PDF + b"another")
+
+
+def test_malformed_or_foreign_error_receipt_does_not_resolve_started(setup):
+    extractor, client, _, directory = setup
+    client.models.generate_content.side_effect = TimeoutError("unknown")
+    with pytest.raises(reading.GuardedReadingError):
+        extractor.extract(PDF)
+    (started,) = receipts(directory, "started")
+    key = started.name.removesuffix(".started.private.json")
+    extractor.guard_path.unlink()
+    error_path = directory / f"{key}.provider_error.private.json"
+    error_path.write_text("not json")
+    with pytest.raises(reading.ReadingBlockedError):
+        extractor.extract(PDF + b"other")
+    extractor.guard_path.unlink()
+    reading._write_json(error_path, {"version": 1, "request_key": "f" * 64, "state": "provider_error",
+        "http_status": 402, "started_at": json.loads(started.read_text())["started_at"]})
+    with pytest.raises(reading.ReadingBlockedError):
+        extractor.extract(PDF + b"other")
+    client.models.generate_content.assert_called_once()
+
+
+def read_only_extractor(extractor, directory):
+    return reading.GuardedGeminiExtractor(extractor.settings, directory, allow_new_requests=False)
+
+
+def test_replay_only_job_retries_after_a_provider_error_but_not_after_an_uncertain_send(setup):
+    extractor, client, factory, directory = setup
+    client.models.generate_content.side_effect = api_error(429)
+    with pytest.raises(reading.ProviderRejectedError):
+        extractor.extract(PDF)
+    retry = read_only_extractor(extractor, directory)
+    assert retry.recover_before_download(reading._sha(PDF), mime="application/pdf", doc_class="tdr") is None
+    client.models.generate_content.side_effect = None
+    client.models.generate_content.return_value = response()
+    assert retry.extract(PDF).raw_json == PAYLOAD
+    # The same state after an uncertain send never reaches the network.
+    other = PDF + b"uncertain"
+    client.models.generate_content.side_effect = TimeoutError("unknown")
+    with pytest.raises(reading.GuardedReadingError):
+        extractor.extract(other)
+    extractor.guard_path.unlink()
+    with pytest.raises(reading.ReadingBlockedError):
+        read_only_extractor(extractor, directory).recover_before_download(
+            reading._sha(other), mime="application/pdf", doc_class="tdr")
+    with pytest.raises(reading.ReadingBlockedError):
+        read_only_extractor(extractor, directory).extract(other)
+    assert client.models.generate_content.call_count == 3
+
+
+def test_replay_only_job_without_any_receipt_is_still_blocked(setup):
+    extractor, client, factory, directory = setup
+    with pytest.raises(reading.ReadingBlockedError):
+        read_only_extractor(extractor, directory).recover_before_download(
+            reading._sha(PDF), mime="application/pdf", doc_class="tdr")
+    with pytest.raises(reading.ReadingBlockedError):
+        read_only_extractor(extractor, directory).extract(PDF)
+    factory.assert_not_called()
+
+
+def test_a_new_attempt_consumes_the_error_receipt_so_an_uncertain_retry_blocks_replay_only_jobs(setup):
+    extractor, client, _, directory = setup
+    client.models.generate_content.side_effect = api_error(402)
+    with pytest.raises(reading.ProviderRejectedError):
+        extractor.extract(PDF)
+    client.models.generate_content.side_effect = TimeoutError("unknown")
+    with pytest.raises(reading.GuardedReadingError):
+        extractor.extract(PDF)
+    assert not receipts(directory, "provider_error")
+    extractor.guard_path.unlink()
+    with pytest.raises(reading.ReadingBlockedError):
+        read_only_extractor(extractor, directory).recover_before_download(
+            reading._sha(PDF), mime="application/pdf", doc_class="tdr")
+    assert client.models.generate_content.call_count == 2
+
+
+def test_provider_answered_is_false_for_local_replays(setup):
+    extractor, client, _, _ = setup
+    extractor.extract(PDF)
+    assert extractor.provider_answered
+    replay = reading.GuardedGeminiExtractor(extractor.settings, extractor.receipt_dir)
+    replay.extract(PDF)
+    assert not replay.provider_answered

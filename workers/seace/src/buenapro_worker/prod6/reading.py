@@ -4,6 +4,11 @@ The directory belongs to one coordinated runtime. A guard requires deliberate
 operator recovery; removing it alone cannot authorize resending a started call.
 Original documents are never written here. Known responses can always be replayed
 locally, including while an unrelated uncertain request blocks new sends.
+
+An HTTP error answered by the provider (``google.genai.errors.APIError`` with a 4xx/5xx
+code) is the one failure that proves no billable response exists: it leaves a private
+``provider_error`` receipt, resolves the started receipt and may be retried. Any other
+failure after sending (timeout, dropped connection, interrupt, local write) stays uncertain.
 """
 from __future__ import annotations
 
@@ -20,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from google import genai
+from google.genai import errors as genai_errors
 from google.genai import types
 
 from buenapro_worker.extraction.gemini import (
@@ -54,6 +60,28 @@ class ReadingBlockedError(GuardedReadingError):
 
 class ReadingPolicyError(GuardedReadingError):
     """The explicit reading policy differs from this frozen receipt namespace."""
+
+
+class ProviderRejectedError(RuntimeError):
+    """Gemini answered an HTTP error: no billable response, no guard, a later retry is allowed.
+
+    Only the numeric code and the API status word are kept; provider messages can echo
+    request content and are never stored or logged.
+    """
+
+    def __init__(self, code: int, status: str | None = None) -> None:
+        super().__init__(f"Gemini answered HTTP {code}; no billable response")
+        self.code, self.status = code, status
+
+
+def provider_rejection(error: BaseException) -> tuple[int, str | None] | None:
+    """(HTTP code, API status word) when the provider itself answered an error, else None."""
+    if not isinstance(error, genai_errors.APIError):
+        return None
+    code, status = error.code, error.status
+    if type(code) is not int or not 400 <= code <= 599:
+        return None
+    return code, status if isinstance(status, str) and re.fullmatch(r"[A-Z][A-Z_]{0,39}", status) else None
 
 
 READING_POLICY_FILENAME = "reading-policy.private.json"
@@ -158,6 +186,17 @@ def _write_json(path: Path, value: dict[str, Any]) -> None:
             Path(temporary).unlink(missing_ok=True)
 
 
+def _remove_receipt(path: Path) -> None:
+    if not path.exists():
+        return
+    path.unlink()
+    directory_fd = os.open(path.parent, os.O_RDONLY)
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
+
+
 def _read_json(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_bytes())
     if not isinstance(value, dict):
@@ -197,6 +236,8 @@ class GuardedGeminiExtractor:
         if type(allow_new_requests) is not bool:
             raise ReadingPolicyError("PROD6 request permission must be explicit")
         self.allow_new_requests = allow_new_requests
+        # True once the provider returned a response in this instance (not a local replay).
+        self.provider_answered = False
         self.settings = settings
         self.receipt_dir = Path(receipt_dir)
         if self.policy_context and self.receipt_dir.is_symlink():
@@ -257,6 +298,8 @@ class GuardedGeminiExtractor:
             if not ((self.receipt_dir / f"{key}.response.private.json").exists()
                     or (self.receipt_dir / f"{key}.result.private.json").exists()):
                 self._check_new_send(key)
+                if self._retry_after_provider_error(key):
+                    return None  # The prior attempt was an HTTP error: nothing was billed.
                 raise ReadingBlockedError("Prior PROD6 attempt has no exact durable response in this namespace")
             try:
                 return self._extract_locked(b"", prompt, identity, key)
@@ -290,6 +333,33 @@ class GuardedGeminiExtractor:
                 "PROD6 guard persistence failed; retain private receipts and stop"
             ) from None
 
+    def _provider_error(self, key: str) -> dict[str, Any] | None:
+        """The valid provider_error receipt of ``key``; unreadable or foreign ones do not count."""
+        path = self.receipt_dir / f"{key}.provider_error.private.json"
+        try:
+            receipt = _read_json(path)
+        except Exception:
+            return None
+        valid = (receipt.get("version") == 1 and receipt.get("request_key") == key
+                 and receipt.get("state") == "provider_error"
+                 and type(receipt.get("http_status")) is int
+                 and isinstance(receipt.get("started_at"), str))
+        return receipt if valid else None
+
+    def _resolved_by_provider_error(self, key: str, started_path: Path) -> bool:
+        """The started receipt belongs to the attempt the provider answered with an HTTP error."""
+        receipt = self._provider_error(key)
+        if receipt is None:
+            return False
+        try:
+            return receipt["started_at"] == _read_json(started_path).get("started_at")
+        except Exception:
+            return False
+
+    def _retry_after_provider_error(self, key: str) -> bool:
+        """Call after ``_check_new_send``: the last attempt of this exact key was an HTTP error."""
+        return self._provider_error(key) is not None
+
     def _check_new_send(self, key: str) -> None:
         if self.guard_path.exists():
             # A malformed guard is equally blocking. The runtime must explicitly
@@ -297,9 +367,12 @@ class GuardedGeminiExtractor:
             raise ReadingBlockedError("PROD6 reading guard is open; new sends blocked")
         for started in self.receipt_dir.glob("*.started.private.json"):
             existing_key = started.name.removesuffix(".started.private.json")
+            has_response = (self.receipt_dir / f"{existing_key}.response.private.json").exists()
+            if (not has_response and not (self.receipt_dir / f"{existing_key}.result.private.json").exists()
+                    and self._resolved_by_provider_error(existing_key, started)):
+                continue  # Only a crash between the two receipt steps leaves both files.
             if not (self.receipt_dir / f"{existing_key}.result.private.json").exists():
-                reason = ("response_pending_local_review" if
-                          (self.receipt_dir / f"{existing_key}.response.private.json").exists()
+                reason = ("response_pending_local_review" if has_response
                           else "started_request_without_durable_response")
                 self._guard(existing_key, reason)
                 raise ReadingBlockedError("PROD6 unresolved receipt blocks new sends")
@@ -313,7 +386,7 @@ class GuardedGeminiExtractor:
             _bind_reading_policy_locked(self.receipt_dir, self.policy_context)
             try:
                 return self._extract_locked(pdf_bytes, prompt, identity, key)
-            except GuardedReadingError:
+            except (GuardedReadingError, ProviderRejectedError):
                 raise
             except Exception:
                 # Receipt failures are local integrity problems, not permission
@@ -341,7 +414,7 @@ class GuardedGeminiExtractor:
             return self._parse_saved_response(identity, key, response, result_path)
 
         self._check_new_send(key)
-        if not self.allow_new_requests:
+        if not self.allow_new_requests and not self._retry_after_provider_error(key):
             raise ReadingBlockedError("Prior PROD6 attempt permits exact local recovery only")
         schema = schema_with_commercial(
             EettExtractionV1 if identity["doc_class"] == "eett" else TdrExtractionV2, identity)
@@ -359,14 +432,25 @@ class GuardedGeminiExtractor:
                 http_options=types.HttpOptions(
                     retry_options=types.HttpRetryOptions(attempts=1)),
             )
-            _write_json(started_path, {
+            # A new attempt consumes the earlier HTTP-error receipt, so it cannot
+            # authorize yet another send if this one ends uncertain.
+            _remove_receipt(self.receipt_dir / f"{key}.provider_error.private.json")
+            started = {
                 "version": 1, "request_key": key, "identity": identity,
                 "state": "started", "started_at": _now(),
                 "cost_usd": None, "cost_status": "uncertain",
-            })
+            }
+            _write_json(started_path, started)
             try:
-                response = client.models.generate_content(
-                    model=identity["model"], contents=contents, config=config)
+                try:
+                    response = client.models.generate_content(
+                        model=identity["model"], contents=contents, config=config)
+                except genai_errors.APIError as error:
+                    rejection = self._record_provider_error(key, identity, started, started_path, error)
+                    if rejection is not None:
+                        raise rejection from None
+                    raise
+                self.provider_answered = True
                 raw_response = response.model_dump(mode="json")
                 usage = self._usage(raw_response.get("usage_metadata"))
                 saved = {
@@ -379,6 +463,8 @@ class GuardedGeminiExtractor:
                     "cost_status": "known" if usage["known"] else "uncertain",
                 }
                 _write_json(response_path, saved)
+            except ProviderRejectedError:
+                raise
             except BaseException:
                 self._guard(key, "sent_request_without_durable_response")
                 raise GuardedReadingError(
@@ -393,6 +479,28 @@ class GuardedGeminiExtractor:
                     # Closing transports cannot invalidate the durable result or
                     # authorize a retry. Provider exceptions never reach logs.
                     pass
+
+    def _record_provider_error(self, key: str, identity: dict[str, Any], started: dict[str, Any],
+                               started_path: Path, error: BaseException) -> ProviderRejectedError | None:
+        """Receipt for an HTTP error answered by the provider; None keeps the attempt uncertain."""
+        rejection = provider_rejection(error)
+        if rejection is None:
+            return None
+        code, status = rejection
+        try:
+            _write_json(self.receipt_dir / f"{key}.provider_error.private.json", {
+                "version": 1, "request_key": key, "identity": identity,
+                "state": "provider_error", "http_status": code, "provider_status": status,
+                "started_at": started["started_at"], "failed_at": _now(),
+                "cost_usd": None, "cost_status": "no_response",
+            })
+        except Exception:
+            return None
+        try:
+            _remove_receipt(started_path)
+        except OSError:
+            pass  # The matching provider_error receipt already resolves it.
+        return ProviderRejectedError(code, status)
 
     @staticmethod
     def _usage(raw: Any) -> dict[str, Any]:

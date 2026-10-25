@@ -7,6 +7,7 @@ between consecutive requests no matter how many threads or clients exist:
 ``PROD6_MIN_REQUEST_INTERVAL_SECONDS``  minimum gap in seconds (default 6, ``0`` disables).
 ``PROD6_MAX_SOURCE_REQUESTS``           default of the runtime's ``--max-source-requests`` (40).
 ``PROD6_BLOCK_BACKOFF_SECONDS``         pause after a 403/429 from the source (default 10800).
+``PROD6_READING_BACKOFF_SECONDS``       pause of paid readings after Gemini answers 402/429 (default 3600).
 
 The pace is fixed and low on purpose: there is no jitter, rotation or evasion.
 
@@ -27,6 +28,7 @@ import httpx
 DEFAULT_MIN_REQUEST_INTERVAL_SECONDS = 6.0
 DEFAULT_MAX_SOURCE_REQUESTS = 40
 DEFAULT_BLOCK_BACKOFF_SECONDS = 10800
+DEFAULT_READING_BACKOFF_SECONDS = 3600
 # A denial from the WAF, never retried: more requests only prolong the block.
 BLOCK_STATUSES = frozenset({403, 429})
 
@@ -74,6 +76,10 @@ def default_max_source_requests() -> int:
 
 def block_backoff_seconds() -> int:
     return _env_number("PROD6_BLOCK_BACKOFF_SECONDS", DEFAULT_BLOCK_BACKOFF_SECONDS, minimum=1, kind=int)
+
+
+def reading_backoff_seconds() -> int:
+    return _env_number("PROD6_READING_BACKOFF_SECONDS", DEFAULT_READING_BACKOFF_SECONDS, minimum=1, kind=int)
 
 
 def blocking_status(error: BaseException) -> int | None:

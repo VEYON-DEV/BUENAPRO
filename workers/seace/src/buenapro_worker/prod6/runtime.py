@@ -34,7 +34,7 @@ from buenapro_worker.seace import pacing
 from buenapro_worker.seace.egress import EgressUnavailable, check_egress, is_egress_failure, notify_ops
 from buenapro_worker.seace.pacing import (
     block_backoff_seconds, blocking_status, default_max_source_requests, min_request_interval,
-    source_stop,
+    reading_backoff_seconds, source_stop,
 )
 from buenapro_worker.settings import Settings
 from buenapro_worker.extraction.commercial_classification import POLICY_KEY, TAXONOMY_VERSION, get_commercial_policy
@@ -42,7 +42,7 @@ from buenapro_worker.prod6.jev_screening import (
     JevScreeningClient, admit_accepted, score_pending, unadmitted_accepted,
 )
 from buenapro_worker.prod6.reading import (
-    ReadingPolicyError, bind_reading_policy, reading_policy_context,
+    ProviderRejectedError, ReadingPolicyError, bind_reading_policy, reading_policy_context,
 )
 from buenapro_worker.prod6.source_cache import SourceCache
 
@@ -53,6 +53,14 @@ IO_TYPES = ("process_contract", "download_file")
 LOCK = (2061013, 6)
 # A document whose own request was denied this many times goes to manual review.
 SOURCE_BLOCK_LIMIT = 3
+# A document whose reading Gemini rejected this many times in a row goes to manual review.
+PROVIDER_ERROR_LIMIT = 3
+# Gemini answers about the account (key, credits, quota), not the document: they stop every
+# paid reading for a while and never count against the document.
+READING_PAUSE_REASONS = {
+    401: "Gemini: llave inválida o sin permiso (401/403)", 402: "Gemini: créditos agotados (402)",
+    403: "Gemini: llave inválida o sin permiso (401/403)", 429: "Gemini: límite de uso (429)",
+}
 # Requests one free IO job can make (process_contract: detail + two file listings).
 IO_REQUEST_COST = 3
 
@@ -109,6 +117,31 @@ def load_source_block(path: Path) -> dict[str, Any] | None:
     if parse_instant(until) is not None:
         return {"until": until, "status": None, "alerted": True}
     return None
+
+
+def load_reading_pause(path: Path) -> dict[str, Any] | None:
+    """The Gemini reading pause recorded by an earlier process in state.json, if any.
+
+    Call only while holding the coordinator lock, before this process rewrites the file.
+    """
+    try:
+        previous = json.loads(path.read_text(encoding="utf-8"))
+        pause = previous.get("reading_pause") if isinstance(previous, dict) else None
+    except (OSError, ValueError):
+        return None
+    if isinstance(pause, dict) and parse_instant(pause.get("until")) is not None:
+        return dict(pause)
+    return None
+
+
+def load_attention_alert(path: Path) -> str | None:
+    """Fingerprint of the stop already alerted by the previous process, if it ended in attention_required."""
+    try:
+        previous = json.loads(path.read_text(encoding="utf-8"))
+        alert = previous.get("attention_alert") if isinstance(previous, dict) else None
+    except (OSError, ValueError):
+        return None
+    return alert if isinstance(alert, str) and alert else None
 
 
 def load_discovery_cursor(path: Path) -> dict[str, Any] | None:
@@ -419,14 +452,15 @@ def dispatch(settings: Settings, repo: ScopedRepository, job: Job, receipt_dir: 
         options = {"policy_context": repo.reading_policy} if repo.reading_policy else {}
         if job.attempts > 1 or same_runtime_attempt:
             options["allow_new_requests"] = False
-        extractor = HashBoundExtractor(GuardedGeminiExtractor(settings, receipt_dir / "readings", **options),
-                                      document["sha256_original"])
+        guarded = GuardedGeminiExtractor(settings, receipt_dir / "readings", **options)
+        extractor = HashBoundExtractor(guarded, document["sha256_original"])
         extraction_id = extract_tdr_job(settings, repo, id_contrato=contract_id,
                                        id_contrato_archivo=archive_id, extractor=extractor,
                                        source_cache=cache, **common)
         # The reading is saved once this transaction commits; only then is the copy dropped.
         repo.after_commit.append(partial(cache.discard, document["sha256_original"]))
-        return {"outcome": "read_or_reused", "extraction_id": extraction_id}
+        return {"outcome": "read_or_reused", "extraction_id": extraction_id,
+                **({"provider_answered": True} if guarded.provider_answered else {})}
     if job.job_type == "derive_summary":
         return derive_summary_job(repo, id_contrato=contract_id,
                                   extraction_id=int(payload["extraction_id"]), **common)
@@ -484,6 +518,7 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
     discovery_limit = min(max_discovery_requests, max_source_requests)
     min_request_interval()  # An invalid pace or backoff in the environment stops the start.
     backoff_seconds = block_backoff_seconds()
+    reading_backoff = reading_backoff_seconds()
     stopping = False
 
     def stop(*_args):
@@ -519,6 +554,8 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
             # Without a live exclusive lock, state.json may belong to another coordinator.
             write_state(receipt_dir / f"startup-{failed_at.strftime('%Y%m%dT%H%M%S%f')}-{os.getpid()}.json",
                         startup)
+            notify_ops(f"BuenaPro PROD6: servicio detenido (attention_required): "
+                       f"{startup['error_type']} en el arranque ({startup_phase}); requiere revisión.")
             print(json.dumps(startup), flush=True)
             return 2
         egress_down = False
@@ -527,6 +564,9 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
         source_block = load_source_block(receipt_dir / "state.json")
         # The rotation of the search sweep survives restarts the same way.
         discovery_cursor = load_discovery_cursor(receipt_dir / "state.json")
+        # So do a Gemini reading pause and the stop already reported to operations.
+        reading_pause = load_reading_pause(receipt_dir / "state.json")
+        attention_alerted = load_attention_alert(receipt_dir / "state.json")
 
         def egress_alert(reason: str) -> None:
             nonlocal egress_down
@@ -574,14 +614,26 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
                 state.pop("source_block", None)
                 state.pop("source_blocked_until", None)
 
-        def hold_document(state: dict[str, Any], held: Job, http_status: int, *, count: int | None = None) -> None:
-            """Manual review: no automatic retry and no new job for this document."""
+        def hold_document(state: dict[str, Any], held: Job, http_status: int, *,
+                          count: int | None = None, provider: ProviderRejectedError | None = None) -> None:
+            """Manual review: no automatic retry and no new job for this document.
+
+            ``provider`` marks a document whose reading Gemini rejected repeatedly (``count`` is then
+            ``provider_error_count``); otherwise the source denied it (``source_block_count``).
+            """
             block = {"http_status": http_status, "reason": "manual_review_required"}
+            count_key = "source_block_count"
+            origin = "source document"
+            if provider is not None:
+                block = {"provider_http_status": http_status,
+                         **({"provider_status": provider.status} if provider.status else {}),
+                         "reason": "manual_review_required"}
+                count_key, origin = "provider_error_count", "Gemini reading"
             with conn.transaction():
                 changed = conn.execute(HOLD_DOCUMENT_SQL, (
                     json.dumps({"source_document_block": block,
-                                **({"source_block_count": count} if count is not None else {})}),
-                    f"PROD6 source document HTTP {http_status}; manual review; no automatic retry",
+                                **({count_key: count} if count is not None else {})}),
+                    f"PROD6 {origin} HTTP {http_status}; manual review; no automatic retry",
                     held.id, worker_id, NAMESPACE, profile_id))
                 if changed.rowcount != 1:
                     raise RuntimeError("Blocked document ownership changed")
@@ -629,6 +681,76 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
                 **({"http_status": status} if status else {}), "run_after": run_after.isoformat()})
             write_state(receipt_dir / "state.json", state)
 
+        def reading_paused() -> bool:
+            until = parse_instant(reading_pause.get("until")) if reading_pause else None
+            return until is not None and until > datetime.now(timezone.utc)
+
+        def open_reading_pause(state: dict[str, Any], error: ProviderRejectedError) -> datetime:
+            """Gemini answered an account error: no paid reading until the backoff passes.
+
+            One alert per episode; a failed probe after the pause renews it silently and the
+            first successful reading closes the episode.
+            """
+            nonlocal reading_pause
+            now = datetime.now(timezone.utc)
+            until = now + timedelta(seconds=reading_backoff)
+            reason = READING_PAUSE_REASONS[error.code]
+            if not (reading_pause and reading_pause.get("alerted")):
+                notify_ops(f"BuenaPro PROD6: lecturas Gemini en pausa ({reason}); sin lecturas hasta "
+                           f"{until.isoformat()} ({reading_backoff}s); búsqueda, JEV y descargas continúan.")
+            reading_pause = {"code": error.code, "status": error.status, "reason": reason,
+                             "since": (reading_pause or {}).get("since") or now.isoformat(),
+                             "until": until.isoformat(), "alerted": True}
+            state.update(reading_pause=reading_pause, reading_paused_until=reading_pause["until"])
+            write_state(receipt_dir / "state.json", state)
+            return until
+
+        def reading_recovered(state: dict[str, Any]) -> None:
+            nonlocal reading_pause
+            if reading_pause is not None:
+                notify_ops("BuenaPro PROD6: lecturas Gemini reanudadas; primera lectura exitosa tras la pausa.")
+                reading_pause = None
+                state.pop("reading_pause", None)
+                state.pop("reading_paused_until", None)
+
+        def reject_reading(state: dict[str, Any], rejected: Job, error: ProviderRejectedError) -> None:
+            """Gemini answered an HTTP error: nothing was billed and the reading may be retried.
+
+            Like a source stop, the claim's attempt is given back. Account errors (401/402/403/429)
+            pause every paid reading and do not penalize the document; other codes reschedule
+            this job and count, and the third rejection of the same document goes to manual review.
+            """
+            account = error.code in READING_PAUSE_REASONS
+            run_after = (open_reading_pause(state, error) if account
+                         else datetime.now(timezone.utc) + timedelta(seconds=interval_seconds))
+            count = int(rejected.payload.get("provider_error_count") or 0) + (0 if account else 1)
+            if count >= PROVIDER_ERROR_LIMIT:
+                hold_document(state, rejected, error.code, count=count, provider=error)
+                return
+            with conn.transaction():
+                changed = conn.execute(DEFER_FOR_SOURCE_SQL, (
+                    run_after, json.dumps({"provider_error_count": count} if count else {}),
+                    f"Gemini HTTP {error.code}; reading retried at {run_after.isoformat()}",
+                    rejected.id, worker_id, NAMESPACE, profile_id))
+                if changed.rowcount != 1:
+                    raise RuntimeError("Rejected reading ownership changed")
+            state.setdefault("reading_deferred", []).append({"job_id": rejected.id,
+                "job_type": rejected.job_type, "http_status": error.code,
+                **({"provider_status": error.status} if error.status else {}),
+                "provider_error_count": count, "run_after": run_after.isoformat()})
+            write_state(receipt_dir / "state.json", state)
+
+        def attention_alert(state: dict[str, Any], error_types: list[str], where: str) -> None:
+            """One alert per stop: a restart that fails the same way does not repeat it."""
+            nonlocal attention_alerted
+            kinds = ", ".join(sorted(set(error_types))) or "unknown"
+            fingerprint = f"{kinds}|{where}"
+            state["attention_alert"] = fingerprint
+            if fingerprint != attention_alerted:
+                notify_ops(f"BuenaPro PROD6: servicio detenido (attention_required): {kinds} en {where}; "
+                           "requiere revisión.")
+                attention_alerted = fingerprint
+
         def io_allowed() -> bool:
             """IO needs PROD6: closed while the breaker is open or the budget cannot cover a job."""
             if pacing.PACER.blocked:
@@ -659,6 +781,10 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
                 state["source_block"] = source_block
                 if block_active:
                     state["source_blocked_until"] = source_block["until"]
+            if reading_pause:
+                state["reading_pause"] = reading_pause
+                if reading_paused():
+                    state["reading_paused_until"] = reading_pause["until"]
             write_state(receipt_dir / "state.json", state)
             try:
                 if not profile_enabled(repo):
@@ -779,6 +905,7 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
                             (NAMESPACE, profile_id, list(IO_TYPES))).fetchone())
                     if io_batch:
                         errors = []
+                        failed_types = []
                         # Wait for every reserved job to settle before stopping on an error.
                         with ThreadPoolExecutor(max_workers=io_workers) as pool:
                             futures = {pool.submit(execute_io_job, settings, profile_id, io_job,
@@ -844,6 +971,7 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
                                     errors.append({"job_id": io_job.id, "error_type": type(error).__name__,
                                         **({"http_status": error.response.status_code}
                                            if isinstance(error, httpx.HTTPStatusError) else {})})
+                                    failed_types.append((io_job.job_type, type(error).__name__))
                                     continue
                                 state["done"][io_job.job_type] = state["done"].get(io_job.job_type, 0) + 1
                                 state["last_outcome"] = {"job_id": io_job.id,
@@ -853,17 +981,23 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
                                 write_state(receipt_dir / "state.json", state)
                         if errors:
                             state.update(status="attention_required", io_errors=errors)
+                            attention_alert(state, [kind for _, kind in failed_types],
+                                            ", ".join(sorted({job_type for job_type, _ in failed_types})))
                             write_state(receipt_dir / "state.json", state)
                             print(json.dumps(state), flush=True)
                             return 2
                         if state.get("egress_deferred"):
                             break  # Remaining IO waits for the next cycle's egress check.
                         continue
+                    # IO needs PROD6 too: with the source paused or the budget spent only
+                    # reading and summaries (which never ask the source unless a copy is gone) run;
+                    # during a Gemini pause the reading itself waits as well.
+                    claimable = tuple(kind for kind in JOB_TYPES
+                                      if (io_open or kind not in IO_TYPES)
+                                      and not (kind == "extract_tdr" and reading_paused()))
                     with conn.transaction():
-                        # IO needs PROD6 too: with the source paused or the budget spent only
-                        # reading and summaries (which never ask the source unless a copy is gone) run.
-                        job = repo.claim_scoped(worker_id) if io_open else repo.claim_scoped(
-                            worker_id, tuple(kind for kind in JOB_TYPES if kind not in IO_TYPES))
+                        job = (repo.claim_scoped(worker_id) if claimable == JOB_TYPES
+                               else repo.claim_scoped(worker_id, claimable))
                     if not job:
                         break
                     # Preserve the actual batch provenance of any resumed pending job.
@@ -883,6 +1017,9 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
                         if stop_kind is not None:
                             defer_for_source(state, job, error, stop_kind)
                             continue
+                        if isinstance(error, ProviderRejectedError):
+                            reject_reading(state, job, error)
+                            continue
                         # No automatic retry, and no raw provider/PII exception in logs.
                         with conn.transaction():
                             conn.execute("""UPDATE worker_jobs SET status='pending',claimed_by=NULL,
@@ -890,9 +1027,12 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
                                (f"PROD6 attention required: {type(error).__name__}; see private receipt", job.id))
                         state.update(status="attention_required", job_id=job.id,
                                      job_type=job.job_type, error_type=type(error).__name__)
+                        attention_alert(state, [type(error).__name__], job.job_type)
                         write_state(receipt_dir / "state.json", state)
                         print(json.dumps(state), flush=True)
                         return 2
+                    if job.job_type == "extract_tdr" and outcome.get("provider_answered"):
+                        reading_recovered(state)
                     state["done"][job.job_type] = state["done"].get(job.job_type, 0) + 1
                     state["last_outcome"] = {"job_id": job.id, "contract_id": job.payload["id_contrato"],
                                               "type": job.job_type, "result": outcome}
@@ -902,6 +1042,7 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
                 state["suppressed"] = repo.suppressed
                 incomplete = bool(state.get("blocked_documents") or repo.suppressed.get("source_document_blocked"))
                 jev_unavailable = state["jev"]["status"] == "jev_unavailable"
+                reading_stopped = reading_paused()
                 blocked_cycle = pacing.PACER.blocked or "source_blocked_until" in state
                 budget_reached = bool(pacing.PACER.budget_reached or state["source"].get("budget_reached")
                                       or budget_held or any(item["reason"] == "budget"
@@ -914,6 +1055,7 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
                                    else "sweep_blocked" if incomplete
                                    else "egress_backoff" if state.get("egress_deferred")
                                    else "jev_unavailable" if jev_unavailable
+                                   else "reading_paused" if reading_stopped
                                    else "sweep_deferred" if state.get("deferred_io")
                                    else "source_budget_reached" if budget_reached else "sweep_drained")
                 if block_active or blocked_cycle:
@@ -924,19 +1066,21 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
                 else:
                     state["source_coverage"] = "configured_scope_complete"
                 state["finished_at"] = datetime.now(timezone.utc).isoformat()
+                attention_alerted = None  # A cycle that ended without a stop closes the previous one.
                 write_state(receipt_dir / f"{batch_id}.json", state)
                 write_state(receipt_dir / "state.json", state)
                 print(json.dumps(state), flush=True)
             except Exception as error:
                 state.update(status="attention_required", failed_at=datetime.now(timezone.utc).isoformat(),
                              **failure_diagnostic(error))
+                attention_alert(state, [type(error).__name__], f"fase {state.get('phase', 'desconocida')}")
                 write_state(receipt_dir / f"{batch_id}.json", state)
                 write_state(receipt_dir / "state.json", state)
                 print(json.dumps(state), flush=True)
                 return 2
             if once or stopping:
                 return 2 if (state.get("deferred_io") or state.get("egress_deferred") or incomplete
-                             or jev_unavailable or blocked_cycle) else 0
+                             or jev_unavailable or blocked_cycle or reading_stopped) else 0
             _wait_for_poll(lambda: stopping, interval_seconds)
     return 0
 

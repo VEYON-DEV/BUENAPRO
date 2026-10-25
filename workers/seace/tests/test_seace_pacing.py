@@ -115,21 +115,23 @@ def test_interval_comes_from_the_environment_with_a_default_of_six_seconds(monke
 @pytest.mark.parametrize("name,value", [
     ("PROD6_MIN_REQUEST_INTERVAL_SECONDS", "-1"), ("PROD6_MIN_REQUEST_INTERVAL_SECONDS", "fast"),
     ("PROD6_MAX_SOURCE_REQUESTS", "0"), ("PROD6_MAX_SOURCE_REQUESTS", "1.5"),
-    ("PROD6_BLOCK_BACKOFF_SECONDS", "0"), ("PROD6_BLOCK_BACKOFF_SECONDS", "3h")])
+    ("PROD6_BLOCK_BACKOFF_SECONDS", "0"), ("PROD6_BLOCK_BACKOFF_SECONDS", "3h"),
+    ("PROD6_READING_BACKOFF_SECONDS", "0"), ("PROD6_READING_BACKOFF_SECONDS", "1h")])
 def test_invalid_environment_is_rejected(monkeypatch, name, value):
     monkeypatch.setenv(name, value)
     with pytest.raises(ValueError, match=name):
         {"PROD6_MIN_REQUEST_INTERVAL_SECONDS": pacing.min_request_interval,
          "PROD6_MAX_SOURCE_REQUESTS": pacing.default_max_source_requests,
-         "PROD6_BLOCK_BACKOFF_SECONDS": pacing.block_backoff_seconds}[name]()
+         "PROD6_BLOCK_BACKOFF_SECONDS": pacing.block_backoff_seconds,
+         "PROD6_READING_BACKOFF_SECONDS": pacing.reading_backoff_seconds}[name]()
 
 
 def test_environment_defaults(monkeypatch):
     for name in ("PROD6_MIN_REQUEST_INTERVAL_SECONDS", "PROD6_MAX_SOURCE_REQUESTS",
-                 "PROD6_BLOCK_BACKOFF_SECONDS"):
+                 "PROD6_BLOCK_BACKOFF_SECONDS", "PROD6_READING_BACKOFF_SECONDS"):
         monkeypatch.delenv(name, raising=False)
     assert (pacing.min_request_interval(), pacing.default_max_source_requests(),
-            pacing.block_backoff_seconds()) == (6, 40, 10800)
+            pacing.block_backoff_seconds(), pacing.reading_backoff_seconds()) == (6, 40, 10800, 3600)
 
 
 def test_budget_stops_requests_before_they_are_made_and_resets_each_cycle():

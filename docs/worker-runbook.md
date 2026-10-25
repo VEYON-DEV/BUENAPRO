@@ -501,6 +501,67 @@ lectura falla, la copia se conserva para reanudar. No altera el guard de lectura
 copia solo se consulta después de `recover_before_download`, que sigue decidiendo si un job con
 intento previo puede enviar algo; nunca autoriza un nuevo envío pagado.
 
+#### Errores de Gemini, pausa de lecturas y alerta de parada (PROD6)
+
+Una lectura que falla ya no apaga el servicio por cualquier causa. El lector distingue dos casos
+(`prod6/reading.py`):
+
+- **Gemini respondió un error HTTP** (`google.genai.errors.APIError`: `ClientError` 4xx o
+  `ServerError` 5xx con código). No hay respuesta facturable, así que no se abre el guard: se
+  escribe `<key>.provider_error.private.json` (solo código HTTP, palabra de estado de la API como
+  `RESOURCE_EXHAUSTED`, fechas y la identidad de la petición; nunca el mensaje del proveedor, que
+  puede repetir contenido o llaves), se retira el `.started.private.json` de ese intento y se
+  lanza `ProviderRejectedError(code, status)`, distinta de `GuardedReadingError`.
+- **Cualquier otra falla tras enviar** (timeout, corte de conexión, `KeyboardInterrupt`/`SystemExit`,
+  fallo al escribir la respuesta o el recibo del error) sigue siendo incierta: guard abierto,
+  `started` sin respuesta y `GuardedReadingError`. El guard, `started` sin respuesta o una respuesta
+  pendiente de revisión siguen bloqueando todo envío nuevo.
+
+Un `started` solo queda resuelto por un recibo `provider_error` válido del mismo intento (mismo
+`started_at`; cubre un corte entre ambos pasos). El recibo habilita un nuevo envío de esa misma
+petición, también para un job que `recover_before_download` marcaría como solo-reproducción
+(`attempts > 1`); al iniciar el nuevo envío el recibo se consume, de modo que si ese intento queda
+incierto ya no autoriza otro.
+
+El runtime (`prod6/runtime.py`) trata `ProviderRejectedError` así:
+
+- El job vuelve a `pending` y devuelve su intento (`attempts-1`, como los bloqueos de fuente).
+  Se distinguen dos clases de error:
+  - **Errores del documento o pasajeros** (400, 404, 413, 422, 5xx y cualquier otro código):
+    suman a `payload.provider_error_count`, el job se reprograma para el siguiente ciclo
+    (`run_after = ahora + --interval-seconds`), sin pausa global ni alerta. Al **tercero** del mismo
+    job pasa a `manual_review_required` (`source_document_block.provider_http_status`), el ciclo
+    continúa y no se encolan lecturas nuevas de ese documento.
+  - **Errores de la cuenta** (401, 402, 403, 429): no dicen nada del documento, así que **no suman**
+    a `provider_error_count` y nunca lo mandan a revisión manual, por muchas veces que se repitan.
+    Pausan la lectura como se describe a continuación.
+- **401/403, 402 y 429** ("Gemini: llave inválida o sin permiso (401/403)", "Gemini: créditos
+  agotados (402)", "Gemini: límite de uso (429)") pausan **todas** las lecturas pagadas durante
+  `PROD6_READING_BACKOFF_SECONDS` (3600 por defecto): el job vuelve con `run_after` al fin de la
+  pausa, `extract_tdr` no se reclama mientras dure, y búsqueda, JEV, descargas, listados y
+  `derive_summary` siguen. `state.json` guarda `reading_pause` (`code`, `status`, `reason`, `since`,
+  `until`, `alerted`) y `reading_paused_until`; sobrevive a reinicios. El estado del ciclo es
+  `reading_paused` (`--once` sale con 2). `notify_ops` avisa **una vez por episodio**
+  con ese motivo legible; pasada la hora, la siguiente
+  lectura es la sonda: si vuelve a fallar la pausa se renueva sin otra alerta, y la primera lectura
+  en que Gemini respondió (no una reutilizada ni reproducida de recibo) cierra el episodio con
+  un aviso de reanudación.
+- Reanudar manualmente tras recargar crédito: borrar `reading_pause` y `reading_paused_until` de
+  `state.json` con el servicio detenido, o esperar a que termine la pausa.
+
+**Alerta de parada.** Cuando el proceso termina en `attention_required` (lectura incierta, fallo de
+un job de IO, fallo del ciclo o fallo de arranque) envía por `notify_ops` el tipo de excepción y el
+tipo de job o fase, sin mensajes del proveedor ni datos del documento:
+`BuenaPro PROD6: servicio detenido (attention_required): GuardedReadingError en extract_tdr;
+requiere revisión.` Se avisa una vez por parada: `state.json` guarda `attention_alert`
+(`<error>|<job o fase>`) y un reinicio que se detiene por la misma causa no repite la alerta; un
+ciclo que termina sin parada cierra el episodio. Los fallos de arranque (antes de tomar el
+candado) no pueden deduplicarse y avisan en cada intento.
+
+**Variable**: `PROD6_READING_BACKOFF_SECONDS` (3600), del entorno del proceso; un valor inválido
+detiene el arranque. `pacing.py` ya se copia en la imagen PROD6 y el resto del cambio vive en
+`prod6/`, así que `infra/docker/prod6.Dockerfile` no necesita archivos nuevos.
+
 La imagen PROD6 copia todo `prod6/` (incluye `source_cache.py`) y, de fuera de esa carpeta,
 `seace/client.py`, `seace/pacing.py`, `seace/egress.py`, `jobs/download_file.py`,
 `jobs/process_contract.py`, `jobs/extract_tdr.py` y `jobs/poll_prod6_profile.py`; las

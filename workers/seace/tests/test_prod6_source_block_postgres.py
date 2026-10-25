@@ -93,3 +93,48 @@ def test_third_denial_hold_keeps_the_job_out_of_the_queue_and_suppresses_new_one
     assert again.enqueue("download_file", {"id_contrato": job.payload["id_contrato"],
                                           "id_contrato_archivo": 31}) is None
     assert again.suppressed == {"source_document_blocked": 1}
+
+
+def claimed_reading(db):
+    repo = runtime.ScopedRepository(db, profile_id=PROFILE, batch_id="batch-reading")
+    contract = random.randint(9_000_000_000, 9_900_000_000)
+    job_id = repo.enqueue("extract_tdr", {"id_contrato": contract, "id_contrato_archivo": 31},
+                          queue_name="llm", priority=2, dedup_key=f"extract_tdr:{contract}")
+    db.execute("UPDATE worker_jobs SET run_after=now() - interval '1 second' WHERE id=%s", (job_id,))
+    job = repo.claim_scoped(WORKER, ("extract_tdr",))
+    assert job.id == job_id and job.attempts == 1
+    return repo, job
+
+
+@needs_db
+def test_rejected_reading_waits_gives_back_its_attempt_and_counts_the_rejection(db):
+    repo, job = claimed_reading(db)
+    until = datetime.now(timezone.utc) + timedelta(hours=1)
+    assert db.execute(runtime.DEFER_FOR_SOURCE_SQL, (
+        until, json.dumps({"provider_error_count": 1}), "Gemini HTTP 402", job.id, WORKER,
+        runtime.NAMESPACE, PROFILE)).rowcount == 1
+    saved = row(db, job.id)
+    assert saved["status"] == "pending" and saved["attempts"] == 0
+    assert saved["payload"]["provider_error_count"] == 1 and saved["payload"]["id_contrato_archivo"] == 31
+    # While Gemini is paused the runtime asks for every type but the reading.
+    reading_paused = tuple(kind for kind in runtime.JOB_TYPES if kind != "extract_tdr")
+    assert repo.claim_scoped(WORKER, reading_paused) is None
+    db.execute("UPDATE worker_jobs SET run_after=now() - interval '1 second' WHERE id=%s", (job.id,))
+    assert repo.claim_scoped(WORKER, reading_paused) is None
+    again = repo.claim_scoped(WORKER)
+    assert again.id == job.id and again.attempts == 1 and again.payload["provider_error_count"] == 1
+
+
+@needs_db
+def test_third_gemini_rejection_hold_suppresses_new_readings_of_that_document(db):
+    repo, job = claimed_reading(db)
+    block = {"provider_http_status": 503, "provider_status": "UNAVAILABLE",
+             "reason": "manual_review_required"}
+    assert db.execute(runtime.HOLD_DOCUMENT_SQL, (
+        json.dumps({"source_document_block": block, "provider_error_count": 3}), "held",
+        job.id, WORKER, runtime.NAMESPACE, PROFILE)).rowcount == 1
+    assert repo.claim_scoped(WORKER) is None
+    again = runtime.ScopedRepository(db, profile_id=PROFILE, batch_id="a-later-batch")
+    assert again.enqueue("extract_tdr", {"id_contrato": job.payload["id_contrato"],
+                                         "id_contrato_archivo": 31}) is None
+    assert again.suppressed == {"source_document_blocked": 1}
