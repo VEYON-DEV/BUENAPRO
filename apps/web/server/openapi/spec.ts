@@ -16,7 +16,7 @@ const singleResponse = {
 };
 
 const jevSubcategories = [
-  "licencias_software", "hardware_ti", "desarrollo_sistemas", "soporte_ti", "redes_telecom",
+  "licencias_software", "servicios_informacion", "hardware_ti", "desarrollo_sistemas", "soporte_ti", "redes_telecom",
   "automatizacion_industrial", "electrico_instrumentacion", "capacitacion", "otro",
 ] as const;
 

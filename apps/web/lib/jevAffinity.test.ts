@@ -9,15 +9,17 @@ import {
   jevAffinity,
   jevCompanyAffinities,
   jevDomainLabel,
+  isJevSuperseded,
   jevSubcategoryLabel,
 } from "./jevAffinity.ts";
 
 test("every subcategory, domain, decision and information value has a Spanish label", () => {
   assert.deepEqual(Object.keys(JEV_SUBCATEGORY_LABELS).sort(), [
     "automatizacion_industrial", "capacitacion", "desarrollo_sistemas", "electrico_instrumentacion", "hardware_ti",
-    "licencias_software", "otro", "redes_telecom", "soporte_ti",
+    "licencias_software", "otro", "redes_telecom", "servicios_informacion", "soporte_ti",
   ]);
   assert.equal(jevSubcategoryLabel("licencias_software"), "Licencias de software");
+  assert.equal(jevSubcategoryLabel("servicios_informacion"), "Servicios de información");
   assert.equal(jevSubcategoryLabel("electrico_instrumentacion"), "Eléctrico e instrumentación");
   assert.deepEqual(Object.keys(JEV_DOMAIN_LABELS).sort(), ["ambiguo", "industrial_electrica", "informatica", "otro"]);
   assert.equal(jevDomainLabel("industrial_electrica"), "Industrial y eléctrica");
@@ -98,4 +100,16 @@ test("empty, malformed or unknown company data is tolerated", () => {
   assert.equal(odd.decisionLabel, "Archived");
   assert.equal(odd.tone, "neutral");
   assert.equal(odd.score, null, "an out-of-range score is not shown");
+});
+
+test("a superseded decision is never shown as pending, as a result or as a score", () => {
+  assert.equal(isJevSuperseded("superseded"), true);
+  for (const value of ["pending", "accepted", null, undefined, 3]) assert.equal(isJevSuperseded(value), false);
+  assert.equal(jevAffinity({ jev_score: 70, jev_decision: "superseded", jev_threshold: 60 }), null);
+  const rows = jevCompanyAffinities([
+    { profile_id: "a", profile_name: "VEYON SAC", is_current_profile: true, score: null, decision: "superseded", decided_by: "jev" },
+    { profile_id: "b", profile_name: "DIN SAC", score: 82, threshold: 60, decision: "accepted", decided_by: "jev" },
+  ]);
+  assert.deepEqual(rows.map((row) => row.profileId), ["b"]);
+  assert.ok(rows.every((row) => row.decisionLabel !== "Pendiente" && !/superseded/i.test(row.decisionLabel)));
 });

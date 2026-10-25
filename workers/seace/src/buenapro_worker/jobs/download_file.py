@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from buenapro_worker.documents.pdf import classify_document, detect_mime, sha256_bytes
+from buenapro_worker.documents.pdf import classify_document, detect_mime, is_archive_name, sha256_bytes
 from buenapro_worker.queue.repository import JobRepository
 from buenapro_worker.seace.client import SeaceClient
 from buenapro_worker.settings import Settings
@@ -55,6 +55,9 @@ def download_file_job(
             doc_class = "tdr"
     elif categoria == 1 and doc_class == "otro":
         doc_class = "tdr"
+    if categoria == 1 and is_archive_name(filename):
+        # Un RAR/ZIP no se lee: no se presenta como TDR/EETT (el motivo queda en process_contract).
+        doc_class = "otro"
 
     repo.conn.execute(
         """

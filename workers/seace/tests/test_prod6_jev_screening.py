@@ -3,6 +3,7 @@ import json
 import os
 import random
 from datetime import datetime, timezone
+from pathlib import Path
 from uuid import uuid4
 
 import httpx
@@ -10,10 +11,13 @@ import pytest
 
 from buenapro_worker.prod6 import jev_screening
 from buenapro_worker.prod6.jev_screening import (
-    JevHttpError, JevResponseError, JevScreeningClient, JevTransportError, SUBCATEGORIES,
-    admit_accepted, build_payload, listing_text, score_pending, unadmitted_accepted,
+    JevHttpError, JevResponseError, JevScreeningClient, JevTransportError, MAX_COMPANY_KEYWORDS,
+    MAX_LINE_KEYWORDS, SUBCATEGORIES, admit_accepted, build_payload, company_payload, listing_text,
+    request_hash, score_pending, unadmitted_accepted,
 )
-from buenapro_worker.prod6.screening import POLICY_VERSION, profile_snapshot, record_decision
+from buenapro_worker.prod6.screening import (
+    POLICY_VERSION, profile_snapshot, record_decision, supersede_pending,
+)
 from buenapro_worker.queue.repository import JobRepository
 from buenapro_worker.seace.schemas import SearchItem
 
@@ -95,6 +99,89 @@ def test_each_affinity_question_scores_only_its_own_company():
 def test_single_company_payload_has_a_single_affinity_question():
     payload = build_payload("Licencias", {"e2": COMPANIES["e2"]})
     assert [qid for qid in payload["questions"] if qid.startswith("afinidad_")] == ["afinidad_e2"]
+
+
+def test_information_services_are_a_subcategory_distinct_from_software_licences():
+    assert "servicios_informacion" in SUBCATEGORIES
+    assert "otro" in SUBCATEGORIES and list(SUBCATEGORIES)[-1] == "otro"
+    assert {"licencias_software", "hardware_ti", "desarrollo_sistemas", "soporte_ti", "redes_telecom",
+            "automatizacion_industrial", "electrico_instrumentacion", "capacitacion"} <= set(SUBCATEGORIES)
+    assert "informacion crediticia" in SUBCATEGORIES["servicios_informacion"]
+    assert "No es software" in SUBCATEGORIES["servicios_informacion"]
+    assert "No incluye suscripciones o acceso a bases de datos" in SUBCATEGORIES["licencias_software"]
+    payload = build_payload("Suscripcion a informacion crediticia", COMPANIES)
+    assert payload["questions"]["subcategoria"]["criteria"] == SUBCATEGORIES
+    assert "no es software ni licencia" in payload["questions"]["afinidad_e1"]["instructions"]
+    result, _ = screen(subcategory="servicios_informacion")
+    assert result["subcategory"]["choice"] == "servicios_informacion"
+
+
+def test_changing_the_subcategories_changes_the_request_hash(monkeypatch):
+    before = request_hash(build_payload("Licencias", COMPANIES))
+    assert before == request_hash(build_payload("Licencias", COMPANIES))
+    monkeypatch.setattr(jev_screening, "SUBCATEGORIES", {**SUBCATEGORIES, "otra": "Nueva."})
+    # build_payload reads the module constant: stored decisions keep their own hash, new queries differ.
+    assert request_hash(build_payload("Licencias", COMPANIES)) != before
+
+
+def line(nombre, phrases=(), terms=(), keywords=()):
+    return {"nombre": nombre, "cubso_segmentos": ["43"], "keyword_phrases": list(phrases),
+            "keyword_terms": list(terms), "keywords": list(keywords), "score_umbral": 60}
+
+
+def test_company_payload_anchors_each_line_with_normalized_deduplicated_keywords():
+    snapshot = {"descripcion": " Software   y nube ", "lines": [
+        line("Soporte  técnico", phrases=["Soporte Técnico", "mantenimiento de sistemas", " "],
+             terms=["Cloud", "NUBE", "nube", "licencia"]),
+        line("Automatización", terms=["PLC", "scada"])]}
+    payload = company_payload(snapshot)
+    assert payload["descripcion"] == "Software y nube"
+    assert payload["lineas"] == [
+        {"nombre": "Automatización", "palabras_clave": ["plc", "scada"]},
+        {"nombre": "Soporte técnico", "palabras_clave": [
+            "soporte tecnico", "cloud", "mantenimiento de sistemas", "nube", "licencia"]},
+    ]
+    # Same snapshot content, any order: same payload (and so the same request_hash).
+    reordered = {**snapshot, "lines": snapshot["lines"][::-1]}
+    assert company_payload(reordered) == payload
+
+
+def test_company_payload_merges_lines_with_the_same_name_and_reads_legacy_keywords():
+    payload = company_payload({"descripcion": "", "lines": [
+        line("Redes", phrases=["cableado estructurado"]), line("Redes", terms=["switch", "cableado estructurado"]),
+        line("Antiguo", keywords=["Licencias de software", "antivirus"])]})
+    assert payload["lineas"] == [
+        {"nombre": "Antiguo", "palabras_clave": ["licencias de software", "antivirus"]},
+        {"nombre": "Redes", "palabras_clave": ["cableado estructurado", "switch"]}]
+    with pytest.raises(ValueError):
+        company_payload({"descripcion": " ", "lines": []})
+    assert company_payload({"descripcion": "Solo descripcion", "lines": []})["lineas"] == []
+
+
+def test_company_payload_respects_the_per_line_and_per_company_caps():
+    big = line("Grande", phrases=[f"frase numero {i}" for i in range(30)], terms=[f"termino{i}" for i in range(30)])
+    single = company_payload({"descripcion": "x", "lines": [big]})["lineas"][0]["palabras_clave"]
+    assert len(single) == MAX_LINE_KEYWORDS
+    # Phrases and terms alternate, so a cap never leaves only one kind.
+    assert single[:4] == ["frase numero 0", "termino0", "frase numero 1", "termino1"]
+    many = [line(f"Linea {index:02d}", phrases=[f"frase {index} {i}" for i in range(12)]) for index in range(30)]
+    lines = company_payload({"descripcion": "x", "lines": many})["lineas"]
+    sizes = [len(entry["palabras_clave"]) for entry in lines]
+    assert sum(sizes) == MAX_COMPANY_KEYWORDS and max(sizes) - min(sizes) <= 1 and min(sizes) >= 1
+    assert all(entry["nombre"] for entry in lines) and len(lines) == 30
+    # A short line keeps all of its keywords; the line cap still applies to the big one (sorted by name).
+    mixed = company_payload({"descripcion": "x", "lines": [big, line("Corta", terms=["a1", "b2"])]})["lineas"]
+    assert [(entry["nombre"], len(entry["palabras_clave"])) for entry in mixed] == [("Corta", 2), ("Grande", 12)]
+
+
+def test_payload_carries_line_keywords_and_keeps_the_single_company_instruction():
+    payload = build_payload("Licencias", {"e1": company_payload({"descripcion": "Software", "lines": [
+        line("Licencias", phrases=["licencias de software"], terms=["antivirus"])]})})
+    assert payload["state"]["empresas"]["e1"]["lineas"] == [
+        {"nombre": "Licencias", "palabras_clave": ["licencias de software", "antivirus"]}]
+    text = payload["questions"]["afinidad_e1"]["instructions"]
+    assert "SOLO la afinidad comercial de state.descripcion contra state.empresas.e1" in text
+    assert "palabras clave de cada linea" in text and "no sumes capacidades" in text
 
 
 def test_listing_text_adds_entity_and_object_and_stays_bounded():
@@ -242,7 +329,7 @@ def test_one_query_scores_both_companies_and_stores_every_verdict(db, companies)
     assert len(handler.requests) == 1
     body = handler.requests[0][1]
     assert body["state"]["empresas"]["e1"]["descripcion"] == "Software y nube"
-    assert body["state"]["empresas"]["e2"]["lineas"] == ["Automatización"]
+    assert body["state"]["empresas"]["e2"]["lineas"] == [{"nombre": "Automatización", "palabras_clave": ["x"]}]
     first, second = (decision(db, contract, profile_id) for profile_id in companies)
     assert (first["decision"], first["score"], first["decided_by"], first["threshold"]) == ("accepted", 75, "jev", 60)
     assert (second["decision"], second["score"]) == ("rejected", 25)
@@ -310,12 +397,163 @@ def test_obsolete_profile_hash_and_superseded_cards_are_ignored(db, companies):
     add_pending(db, companies[0], current)
     handler = FakeJev(scores={"e1": 3})
     stats, _ = run_score(db, handler, companies)
-    assert stats["requests"] == 2 and stats["skipped_stale"] == 2
+    # The poll already retired the old card; the row of an old profile waits for the poll's new decision.
+    assert stats["requests"] == 2 and stats["skipped_stale"] == 1
     assert decision(db, stale, companies[0])["decision"] == "pending"
     statuses = db.execute("SELECT contract_hash, decision FROM prod6_profile_decisions WHERE id_contrato = %s "
                           "ORDER BY id", (old_card,)).fetchall()
     assert [(row["contract_hash"], row["decision"]) for row in statuses] == [
-        ("old-card", "pending"), ("new-card", "accepted")]
+        ("old-card", "superseded"), ("new-card", "accepted")]
+
+
+def insert_row(db, profile_id, id_contrato, *, contract_hash, profile_hash, decision="pending", decided_by="jev"):
+    """A row as an older worker version left it: no supersession at write time."""
+    db.execute(
+        """INSERT INTO prod6_profile_decisions (id_contrato, profile_id, listing_json, contract_hash, profile_hash,
+             policy_version, prefilter_passed, decision, decided_by)
+           VALUES (%s, %s, %s::jsonb, %s, %s, %s, true, %s, %s)""",
+        (id_contrato, profile_id, json.dumps(search_item(id_contrato).model_dump(mode="json", by_alias=True)),
+         contract_hash, profile_hash, POLICY_VERSION, decision, decided_by))
+
+
+def states(db, id_contrato, profile_id):
+    return [(row["contract_hash"], row["profile_hash"], row["decision"]) for row in db.execute(
+        "SELECT contract_hash, profile_hash, decision FROM prod6_profile_decisions "
+        "WHERE id_contrato = %s AND profile_id = %s ORDER BY id", (id_contrato, profile_id)).fetchall()]
+
+
+@needs_db
+def test_supersede_marks_only_pending_rows_that_have_a_newer_row_and_is_idempotent(db, companies):
+    a, b, c, d = (new_contract_id() for _ in range(4))
+    me, other = companies
+    # a: new card (contract_hash) and new profile (profile_hash) after two stale pending rows.
+    insert_row(db, me, a, contract_hash="c1", profile_hash="p1")
+    insert_row(db, me, a, contract_hash="c2", profile_hash="p1")
+    insert_row(db, me, a, contract_hash="c2", profile_hash="p2")
+    # b: history never changes: accepted/rejected rows stay even with a newer row.
+    insert_row(db, me, b, contract_hash="c1", profile_hash="p1", decision="accepted")
+    insert_row(db, me, b, contract_hash="c2", profile_hash="p1", decision="rejected")
+    insert_row(db, me, b, contract_hash="c3", profile_hash="p1", decision="pending")
+    # c: a single pending row, and the same contract for another company, are untouched.
+    insert_row(db, me, c, contract_hash="c1", profile_hash="p1")
+    insert_row(db, other, c, contract_hash="c1", profile_hash="p1")
+    insert_row(db, other, c, contract_hash="c9", profile_hash="p1")
+    # d: a newer row of another policy does not retire the pending one.
+    insert_row(db, me, d, contract_hash="c1", profile_hash="p1")
+    db.execute("""INSERT INTO prod6_profile_decisions (id_contrato, profile_id, listing_json, contract_hash,
+                    profile_hash, policy_version, prefilter_passed, decision, decided_by)
+                  VALUES (%s, %s, '{}'::jsonb, 'c2', 'p1', 'otra_politica', true, 'pending', 'jev')""", (d, me))
+
+    assert supersede_pending(db, profile_ids=companies) == 3
+    assert states(db, a, me) == [("c1", "p1", "superseded"), ("c2", "p1", "superseded"), ("c2", "p2", "pending")]
+    assert states(db, b, me) == [("c1", "p1", "accepted"), ("c2", "p1", "rejected"), ("c3", "p1", "pending")]
+    assert states(db, c, me) == [("c1", "p1", "pending")]
+    assert states(db, c, other) == [("c1", "p1", "superseded"), ("c9", "p1", "pending")]
+    assert states(db, d, me)[0] == ("c1", "p1", "pending")
+    before = db.execute("SELECT id, decision, updated_at FROM prod6_profile_decisions "
+                        "WHERE id_contrato = ANY(%s) ORDER BY id", ([a, b, c, d],)).fetchall()
+    assert supersede_pending(db, profile_ids=companies) == 0
+    assert db.execute("SELECT id, decision, updated_at FROM prod6_profile_decisions "
+                      "WHERE id_contrato = ANY(%s) ORDER BY id", ([a, b, c, d],)).fetchall() == before
+    assert supersede_pending(db, profile_ids=[]) == 0
+
+
+@needs_db
+def test_score_pending_retires_legacy_obsolete_pending_rows_and_never_scores_them(db, companies):
+    legacy, fresh = new_contract_id(), new_contract_id()
+    current_hash = profile_snapshot(db, companies[0])["profile_hash"]
+    insert_row(db, companies[0], legacy, contract_hash="old", profile_hash=current_hash)
+    insert_row(db, companies[0], legacy, contract_hash="new", profile_hash=current_hash,
+               decision="rejected", decided_by="prefilter")
+    add_pending(db, companies[0], fresh)
+    handler = FakeJev(scores={"e1": 3})
+    stats, _ = run_score(db, handler, companies)
+    assert (stats["superseded"], stats["requests"], stats["skipped_stale"]) == (1, 1, 0)
+    assert [row[2] for row in states(db, legacy, companies[0])] == ["superseded", "rejected"]
+    assert decision(db, fresh, companies[0])["decision"] == "accepted"
+    again, _ = run_score(db, handler, companies)
+    assert (again["superseded"], again["requests"]) == (0, 0)
+
+
+@needs_db
+def test_recording_a_new_decision_retires_older_pending_rows_and_never_touches_history(db, companies):
+    contract, history = new_contract_id(), new_contract_id()
+    me = companies[0]
+    profile_hash = profile_snapshot(db, me)["profile_hash"]
+    add_pending(db, me, contract, contract_hash="c1")
+    add_pending(db, companies[1], contract, contract_hash="c1")
+    add_pending(db, me, contract, contract_hash="c2")
+    assert states(db, contract, me) == [("c1", profile_hash, "superseded"), ("c2", profile_hash, "pending")]
+    assert states(db, contract, companies[1])[0][2] == "pending", "another company is not affected"
+    # An accepted row stays accepted when a newer card arrives.
+    add_pending(db, me, history, contract_hash="c1")
+    db.execute("UPDATE prod6_profile_decisions SET decision = 'accepted' WHERE id_contrato = %s", (history,))
+    add_pending(db, me, history, contract_hash="c2")
+    assert [row[2] for row in states(db, history, me)] == ["accepted", "pending"]
+    # A repeated decision is reused and changes nothing.
+    assert record_decision(
+        db, item=search_item(contract), segment=43, profile_id=me, contract_hash="c2", profile_hash=profile_hash,
+        policy_version=POLICY_VERSION, prefilter_passed=True, prefilter_reasons=[], keyword_lines=[],
+        decision="pending", decided_by="jev") is False
+    assert [row[2] for row in states(db, contract, me)] == ["superseded", "pending"]
+
+
+@needs_db
+def test_a_superseded_row_that_becomes_current_again_is_revived(db, companies):
+    contract = new_contract_id()
+    me = companies[0]
+    add_pending(db, me, contract, contract_hash="c1")
+    add_pending(db, me, contract, contract_hash="c2")  # c1 superseded
+    db.execute("UPDATE prod6_profile_decisions SET attempts = 3, last_error = 'JevHttpError status=503' "
+               "WHERE id_contrato = %s AND contract_hash = 'c1'", (contract,))
+    revived = record_decision(
+        db, item=search_item(contract), segment=43, profile_id=me, contract_hash="c1",
+        profile_hash=profile_snapshot(db, me)["profile_hash"], policy_version=POLICY_VERSION,
+        prefilter_passed=True, prefilter_reasons=[], keyword_lines=[], decision="pending", decided_by="jev")
+    assert revived is True
+    assert [row[2] for row in states(db, contract, me)] == ["pending", "superseded"]
+    row = db.execute("SELECT attempts, last_error FROM prod6_profile_decisions WHERE id_contrato = %s "
+                     "AND contract_hash = 'c1'", (contract,)).fetchone()
+    assert (row["attempts"], row["last_error"]) == (0, None)
+    # The sweep does not flip it back: the newer row is itself superseded.
+    assert supersede_pending(db, profile_ids=companies) == 0
+    handler = FakeJev(scores={"e1": 3})
+    stats, _ = run_score(db, handler, companies)
+    assert stats["requests"] == 1 and stats["accepted"] == 1
+
+
+@needs_db
+def test_profile_hash_and_company_payload_follow_the_line_keywords(db, companies):
+    me = companies[0]
+    before = profile_snapshot(db, me)
+    db.execute("UPDATE business_lines SET keyword_terms = '{nube,antivirus}' WHERE profile_id = %s", (me,))
+    after = profile_snapshot(db, me)
+    assert before["profile_hash"] != after["profile_hash"]
+    assert company_payload(before) != company_payload(after)
+    assert company_payload(after)["lineas"] == [{"nombre": "Licencias", "palabras_clave": ["x", "antivirus", "nube"]}]
+
+
+@needs_db
+def test_migration_0049_is_reapplicable_and_admits_superseded_without_touching_rows(db):
+    migration = (Path(__file__).resolve().parents[3] / "db" / "migrations" / "0049_prod6_decision_superseded.sql")
+    before = db.execute("SELECT count(*) AS n, count(*) FILTER (WHERE decision = 'pending') AS p "
+                        "FROM prod6_profile_decisions").fetchone()
+    for _ in range(2):
+        db.execute(migration.read_text(encoding="utf-8"))
+    checks = db.execute(
+        """SELECT pg_get_constraintdef(c.oid) AS definition FROM pg_constraint c
+           JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
+           WHERE c.conrelid = 'prod6_profile_decisions'::regclass AND c.contype = 'c' AND a.attname = 'decision'"""
+    ).fetchall()
+    assert len(checks) == 1 and "superseded" in checks[0]["definition"]
+    assert db.execute("SELECT count(*) AS n, count(*) FILTER (WHERE decision = 'pending') AS p "
+                      "FROM prod6_profile_decisions").fetchone() == before
+    with pytest.raises(Exception):
+        with db.transaction():
+            db.execute("""INSERT INTO prod6_profile_decisions (id_contrato, profile_id, listing_json, contract_hash,
+                            profile_hash, policy_version, prefilter_passed, decision, decided_by)
+                          SELECT 1, id, '{}'::jsonb, 'x', 'x', 'x', true, 'inventada', 'jev'
+                          FROM company_profiles LIMIT 1""")
 
 
 @needs_db

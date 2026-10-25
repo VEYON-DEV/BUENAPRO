@@ -94,9 +94,9 @@ def derive_summary(raw: dict[str, Any]) -> dict[str, Any]:
     result = {
         "participation": derive_participation(raw),
         "descripcion_corta": _descripcion_corta(summary, summary_text, contract),
-        "modalidad": _modalidad(contract, execution),
+        "modalidad": _modalidad(contract, execution, raw),
         "valor_estimado": _valor_estimado(summary, contract),
-        "plazo_ejecucion_dias": _plazo_dias(summary, execution, contract),
+        "plazo_ejecucion_dias": _plazo_dias(summary, execution, contract, as_dict(raw.get("goods"))),
         "tipo_pago": _tipo_pago(summary, payment, contract, summary_text),
         "entregables_count": len(deliverables),
         "penalidad_tope_pct": _penalty_cap(penalties),
@@ -137,18 +137,53 @@ def derive_summary(raw: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def _modalidad(contract: dict[str, Any], execution: dict[str, Any]) -> str:
-    text = _text(contract.get("modalidad") or execution.get("modalidad")).lower()
+_VIRTUAL_WORDS = ("virtual", "remot", "a distancia", "teletrabajo", "en linea", "en línea")
+_MIXED_WORDS = ("mixt", "hibrid", "híbrid")
+_PRESENTIAL_WORDS = ("presencial", "in situ", "en sitio", "campo")
+# A concrete place (premises, address) is where a person has to be present.
+_PLACE_PATTERN = re.compile(
+    r"instalaci[oó]n|oficina|\bsede\b|almac[eé]n|\blocal\b|planta|laboratorio|taller|"
+    r"\bav\.|avenida|\bjr\.|jir[oó]n|\bcalle\b|\bpsje\.|pasaje|urb\.|distrito|"
+    r"\b[a-zñ]+\s*,\s*[a-zñ]+", re.IGNORECASE)
+
+
+def _modalidad_of_text(text: str, *, place_is_presential: bool) -> str | None:
+    """mixta / virtual / presencial when ``text`` says so; None when it says nothing about it."""
+    text = text.lower()
     if not text:
-        return "no_indicada"
-    has_virtual = any(value in text for value in ("virtual", "remot", "distancia"))
-    has_presential = any(value in text for value in ("presencial", "in situ", "campo"))
-    if "mixt" in text or (has_virtual and has_presential):
+        return None
+    has_virtual = any(value in text for value in _VIRTUAL_WORDS)
+    has_presential = any(value in text for value in _PRESENTIAL_WORDS)
+    if any(value in text for value in _MIXED_WORDS) or (has_virtual and has_presential):
         return "mixta"
     if has_virtual:
         return "virtual"
     if has_presential:
         return "presencial"
+    if place_is_presential and _PLACE_PATTERN.search(text):
+        return "presencial"
+    return None
+
+
+def _modalidad(contract: dict[str, Any], execution: dict[str, Any], raw: dict[str, Any] | None = None) -> str:
+    """Remote or in person, from how the reading says the work is carried out.
+
+    ``contract.modalidad`` holds the contracting system ("Suma alzada") in current readings and
+    the form of execution in older ones, so it only counts when it names one. The explicit form,
+    then the place of execution decide; a place with premises or an address is in person.
+    """
+    goods = as_dict(as_dict(raw).get("goods"))
+    sources = (
+        (contract.get("forma_ejecucion"), False),
+        (contract.get("modalidad") or execution.get("modalidad"), False),
+        (contract.get("lugar_ejecucion"), True),
+        (execution.get("lugar"), True),
+        (as_dict(goods.get("entrega")).get("lugar"), True),
+    )
+    for value, place_is_presential in sources:
+        result = _modalidad_of_text(_text(value), place_is_presential=place_is_presential)
+        if result is not None:
+            return result
     return "no_indicada"
 
 
@@ -201,6 +236,7 @@ def _parse_money(text: str) -> float | None:
 
 _PLAZO_TEXT_KEYS = (
     "plazo",
+    "plazo_texto",
     "plazo_ejecucion",
     "term",
     "duration",
@@ -211,12 +247,18 @@ _PLAZO_TEXT_KEYS = (
 )
 
 
-def _plazo_dias(summary: dict[str, Any], execution: dict[str, Any], contract: dict[str, Any]) -> int | None:
+def _plazo_dias(
+    summary: dict[str, Any],
+    execution: dict[str, Any],
+    contract: dict[str, Any],
+    goods: dict[str, Any] | None = None,
+) -> int | None:
     direct = summary.get("plazo_ejecucion_dias") or execution.get("plazo_dias")
     if isinstance(direct, (int, float)) and direct > 0:
         return int(direct)
 
-    for source in (execution, contract):
+    delivery = as_dict(as_dict(goods).get("entrega"))
+    for source in (execution, contract, delivery):
         for key in ("execution_period_days", "plazo_dias", "duration_days"):
             value = source.get(key)
             if isinstance(value, (int, float)) and value > 0:

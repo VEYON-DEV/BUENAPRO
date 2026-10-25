@@ -410,6 +410,13 @@ Runtime (`python -m buenapro_worker.prod6.runtime`):
   (`requests`, `accepted`, `rejected`, `failed`, `skipped_closed`, `skipped_stale`,
   `exhausted`, `cost_usd`, `aborted`, `admission`).
 
+#### Calibración de JEV (M2b)
+
+- Anclaje por línea: `company_payload` envía a JEV, por línea, el nombre y hasta 12 frases/términos normalizados (frases y términos intercalados), con tope de 120 por empresa repartido por turnos entre líneas. El `profile_hash` ya cubre esas palabras. Costo estimado: +~1 450 tokens por consulta con ambas empresas (~US$ 0,00006). Cambiar `SUBCATEGORIES`, `QUESTION_INSTRUCTIONS` o el anclaje cambia `request_hash` solo de las consultas nuevas; las decisiones guardadas conservan el suyo.
+- Subcategoría `servicios_informacion` (suscripciones o acceso a bases de datos, información crediticia o comercial, consultas): no es software; `licencias_software` la excluye. La subcategoría es descriptiva y no modifica por sí sola el puntaje.
+- Estado `superseded` (migración 0049, idempotente): una fila `pending` con una fila más nueva para el mismo contrato y empresa (otra ficha u otro perfil) pasa a `superseded`. Lo hace el poll al registrar una fila nueva y `score_pending` al inicio de cada pasada (`stats["superseded"]`). Nunca toca `accepted` ni `rejected`. Si la ficha o el perfil vuelve a un hash anterior, `record_decision` revive esa fila con la decisión nueva. La web excluye `superseded`. Aplicar 0049 antes de desplegar este código.
+- El umbral sigue en 60. Simulación sobre 220 decisiones reales (25/10/2026): 55 sumaría 3 contratos eléctricos de DIN; 65 quitaría 2 de DIN y 1 de VEYON; "65 si confianza de dominio < 0,9" solo quitaría uno de DIN.
+
 #### Ritmo lento, tope por ciclo y pausa ante 403 (PROD6)
 
 Un ciclo real local hizo unas 18 peticiones a PROD6 en tres minutos y el WAF de SEACE devolvió
@@ -614,9 +621,130 @@ candado) no pueden deduplicarse y avisan en cada intento.
 detiene el arranque. `pacing.py` ya se copia en la imagen PROD6 y el resto del cambio vive en
 `prod6/`, así que `infra/docker/prod6.Dockerfile` no necesita archivos nuevos.
 
+#### Calidad de las lecturas PROD6: revisión determinista, modalidad, plazo y documento (PROD6)
+
+Origen: la revisión de las 23 primeras lecturas reales (25/10/2026). Las 23 salían con
+`quality='auto'` y `requires_human_review=false` aunque cinco se contradecían (NAS de GRTCLL con
+título 2.2 GHz/8 GB y especificaciones 1.7 GHz/4 GB; CEPLAN con pago mensual como "armadas" y 1 de
+12 cuotas; SEDAPAR con `plazo_dias` nulo y entrega de 20 días; AGROMERCADO con plazo 375 sumado;
+SEAL con experiencia en USD y moneda PEN), `modalidad` era siempre `no_indicada` y los bienes no
+tenían plazo. Todo se corrige sin nuevas lecturas pagadas.
+
+**Reglas de revisión (`prod6/review.py`, sin LLM).** `derive_summary_job` las aplica a cada lectura
+y guarda en `summary_json`: `review_reasons` (lista de `{code, message}`; código estable en inglés,
+mensaje corto en español), `review_rules_version` (`reading_review_v1`) y `review_inherited`.
+`requires_human_review = hay razones OR review_inherited`. Códigos:
+
+| Código | Cuándo |
+| --- | --- |
+| `term_missing` | `contract.plazo_dias` vacío pero `plazo_texto` o `goods.entrega` indican un plazo |
+| `term_conflict` | el plazo del contrato y el de la entrega difieren |
+| `term_not_literal` | `plazo_dias` no aparece en el texto del plazo ni como meses/semanas/años (suma o cálculo) |
+| `payment_count_mismatch` | el documento declara N pagos (`numero_pagos_declarado` o "doce (12) armadas") y hay otra cantidad de filas |
+| `payment_percent_sum` | los porcentajes de las filas no suman 100 (±1) |
+| `payment_type_incoherent` | `pago_unico` con varias filas, `armadas` con menos de dos, no mensual con texto de pagos mensuales, o mensual con "pago único" |
+| `experience_currency_mismatch` | la moneda de un requisito de experiencia (campo `moneda` o símbolo en el texto: S/, US$, $, USD, €) no es la del contrato |
+| `low_evidence` | más de la mitad de los requisitos (sin contar RUC/RNP/CCI/impedimentos; con el prompt nuevo también personal, equipos y seguros) no trae cita textual; mínimo 2 requisitos |
+| `title_spec_mismatch` | cifras con unidad del título (GHz, GB/TB/MB, HP, kVA, kW, kV, núcleos) disjuntas de las de `goods.items` (solo bienes) |
+| `title_quantity_mismatch` | cantidad "DOS (02)" del título distinta de las cantidades de `goods.items`, su suma o su número |
+| `title_model_missing` | un modelo del título (letras y dígitos, p. ej. TS4300) no aparece en la lectura (solo bienes) |
+| `review_rule_failed` | una regla no pudo evaluar la forma de la lectura |
+
+`quality` no cambia: sus valores (`auto`/`reviewed`/`corrected`/`failed`) los restringe la base y
+significan resultado de revisión humana o fallo, no confianza. La señal es `requires_human_review`
+(la cola de administración lista `requires_human_review = true`). Un indicador puesto antes por la
+extracción (bienes sin items, modelo de respaldo, clasificación comercial sin respaldo) se conserva
+como `review_inherited` y solo lo limpia una persona; una lectura con `quality` `reviewed`/`corrected`
+conserva el indicador que dejó la persona. **Efecto:** una lectura marcada queda fuera de LLM2
+(`analyze_match` y `matching.readiness` la rechazan) hasta que alguien la revise. Los códigos se
+consultan con `summary_json->'review_reasons'`.
+
+No se detecta de forma determinista que el objeto describa mal el producto cuando el título y el
+cuerpo coinciden en cifras (caso SBS-530, "Audit PLUS" frente a "ADAudit Plus"): el prompt nuevo pide
+que `contract.objeto` salga del cuerpo y que las contradicciones se anoten en `observaciones_clave`.
+
+**Modalidad y plazo (`normalization/facets.py`).** `modalidad` ya no depende de
+`contract.modalidad` (el prompt ahí pone el sistema de contratación, "Suma alzada"): decide, en
+orden, `contract.forma_ejecucion` (campo nuevo), `contract.modalidad` si nombra una forma,
+`contract.lugar_ejecucion`, `execution.lugar` y `goods.entrega.lugar`. Remoto/virtual y presencial a
+la vez o "híbrido" es `mixta`; un lugar con local, oficina, sede, almacén o dirección es `presencial`;
+un nombre propio sin lugar queda `no_indicada`. `plazo_ejecucion_dias` lee además
+`goods.entrega.plazo_dias` y `plazo_texto` de contrato y entrega.
+
+**Recalcular lecturas ya guardadas, sin Gemini** (`prod6/recompute.py`; solo lee
+`raw_extraction_json` y el título, no encola nada, no crea filas de `contract_filter_index`, no
+toca la lectura cruda; idempotente; dry-run por defecto):
+
+```bash
+cd workers/seace
+DATABASE_URL=... python -m buenapro_worker.prod6.recompute --since 2026-10-25               # dry-run
+DATABASE_URL=... python -m buenapro_worker.prod6.recompute --since 2026-10-25 --apply
+DATABASE_URL=... python -m buenapro_worker.prod6.recompute --id 2298 --id 2303 --apply
+```
+
+Selectores: `--id` (repetible), `--since` (UTC) o `--all`. Imprime JSON con lecturas cambiadas,
+marcadas (`newly_flagged`, `no_longer_flagged`), razones por código y conteo de `modalidad`.
+Aplicado en la base local sobre las 23 lecturas (25/10/2026): 5 pasan a revisión, `modalidad` deja
+de ser `no_indicada` en 22, y `plazo_ejecucion_dias` se completa en SEDAPAR (20). **No correr
+`--all` en producción sin revisar el dry-run**: sobre las 2 100 lecturas vigentes de la copia local
+marca 347 (200 por `low_evidence`, porque las lecturas con el prompt antiguo traían la cita como
+opcional) y la marca saca esas lecturas de LLM2.
+
+**Prompt nuevo y recibos (`prod6/reading.py`).** El prompt y el esquema pasan a una *generación*
+de lectura: `prod6_quality_v1` (prompts `prompts/prod6_tdr_reading_v1.txt` y
+`prod6_eett_reading_v1.txt`, versiones `prod6_tdr_reading_v1`/`prod6_eett_reading_v1`, esquemas
+`prod6_*_schema_v1`). Los prompts antiguos (`tdr_extraction_v2.txt`, `eett_extraction_v1.txt`) no se
+editan: su hash forma parte de la clave de cada recibo. Una lectura nueva usa la generación nueva
+(la identidad añade `reading_generation`). Un documento que ya tiene `response` o `result` de la
+generación antigua se reproduce localmente sin enviar nada; un `started` sin respuesta de cualquier
+generación sigue bloqueando todo envío nuevo; un `provider_error` antiguo permite un reintento con el
+prompt nuevo (no hubo respuesta facturable). El marcador `reading-policy.private.json` no cambia y
+`reuse_prompt_versions` busca primero el prompt nuevo y luego los antiguos (hasta cuatro versiones
+con la taxonomía comercial), así que no se paga de nuevo un documento ya leído con otro prompt.
+Reglas nuevas del prompt: cita literal breve y página por requisito (`evidencia`, `pagina`, también
+en personal, equipos y seguros), `moneda` por requisito con monto (PEN/USD/EUR, sin convertir),
+`plazo_dias` solo si el documento lo da en días (nada de sumas), pago mensual es `mensual`
+(`numero_pagos_declarado`, `armadas` vacío), `forma_ejecucion` (remota/presencial/mixta) separada de
+`modalidad` (sistema de contratación), sin expandir siglas ni completar datos ausentes. Los campos
+nuevos son opcionales y tolerantes (una página o moneda inválida queda `null`, nunca bloquea una
+respuesta pagada), y los consumidores de los campos anteriores no cambian.
+
+**Documento a leer (`prod6/document_selection.py`, `jobs/process_contract.py`, `documents/pdf.py`).**
+Un PDF de categoría 1 se lee como siempre. Sin PDF de categoría 1 (RAR/ZIP, Word), si un anexo PDF
+tiene nombre de TDR/EETT/términos de referencia/especificaciones técnicas/requerimiento y no es un
+papel del postor (declaración jurada, cumplimiento, anexo, formato, carta, CCI, oferta...), ese PDF se
+descarga y se lee; los dos casos reales: `CM-177-2026-CM-UE008` (el RAR `REQUERIMIENTO.rar` no se
+lee; se elige `EETT - SERVIDOR  UE008 v2 F .pdf`, categoría 2) y `CM-5-2026-EPSEL S.A.` (su PDF
+`TDR -ADQUISICIÓN DE DOS (02) VARIADORES...` ya era el elegido; no se leyó porque el contrato cerró
+su cotización antes de la descarga, `closed_preserved`, y su `doc_class` quedó NULL; al volver a listar
+un contrato elegible el listado le pone clase `tdr`/`eett` según el objeto nativo, pero un contrato
+cerrado ya no se procesa). El listado también clasifica los anexos por
+nombre (antes todo era `anexo`/`otro`) y mejora `otro` a `eett`/`tdr` al volver a listar. Un RAR/ZIP
+principal ya no se rotula `eett`/`tdr` (queda `otro`) y no se vuelve a descargar en cada ciclo.
+**RAR/ZIP/7z no se abren**: `prod2/archive_inventory.py` inventaría un archivo con UUID padre y SHA
+congelados y devuelve miembros ligados a ese inventario, mientras que una lectura PROD6, sus recibos
+y `contract_documents.sha256_original` se ligan al SHA del archivo que lista SEACE; leer un miembro
+exige su propia fila, identidad y limpieza, y eso es un diseño aparte. Si no hay PDF legible queda una
+**revisión manual explícita**: el resultado del job `process_contract` trae `manual_review`
+(`primary_document_is_archive`, `primary_document_not_pdf`, `no_primary_document` o
+`ambiguous_secondary_documents`, con mensaje y nombres de archivo) y `contract_documents.raw_file_json`
+de los archivos principales guarda `_reading_review` (el anexo elegido guarda `_reading`:
+`attachment_is_requirement`). Consulta: `SELECT id_contrato, filename, raw_file_json->'_reading_review'
+FROM contract_documents WHERE raw_file_json ? '_reading_review'`. En la copia local: 18 contratos
+tendrían anexo PDF como requerimiento, 17 quedan en revisión por archivo comprimido y 12 por
+documento no PDF.
+
+**Despliegue.** La imagen PROD6 (`infra/docker/prod6.Dockerfile`) copia ahora también
+`jobs/derive_summary.py`, `normalization/facets.py`, `documents/pdf.py` y los dos prompts nuevos a
+`/app/workers/seace/prompts/`; `reading_schema.py`, `review.py`, `recompute.py` y
+`document_selection.py` van dentro de `prod6/`. Verificar contra la imagen base que esos tres
+módulos no difieran en otro aspecto antes de construir. Sin migración. Nada de esto autoriza
+reiniciar workers, relecturas ni llamadas pagadas.
+
 La imagen PROD6 copia todo `prod6/` (incluye `source_cache.py`) y, de fuera de esa carpeta,
 `seace/client.py`, `seace/pacing.py`, `seace/egress.py`, `jobs/download_file.py`,
-`jobs/process_contract.py`, `jobs/extract_tdr.py` y `jobs/poll_prod6_profile.py`; las
+`jobs/process_contract.py`, `jobs/extract_tdr.py`, `jobs/poll_prod6_profile.py`, `jobs/derive_summary.py`,
+`normalization/facets.py`, `documents/pdf.py` y los prompts `prod6_*_reading_v1.txt`; las
 constantes JEV se importan de `prod2/analysis.py` de la imagen base (sin cambios desde el 1.er sync).
 
 ## Salida peruana para SEACE (proxy egress)

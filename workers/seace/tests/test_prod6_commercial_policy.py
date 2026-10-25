@@ -63,7 +63,7 @@ def test_absence_retains_exact_legacy_identity_prompt_schema_and_replay(local_sd
     if doc_class == "eett":
         value["goods"] = {"items": []}
     h.client.models.generate_content.return_value = sdk_response(value)
-    reader = reading.GuardedGeminiExtractor(h.settings, h.folder)
+    reader = reading.GuardedGeminiExtractor(h.settings, h.folder, generations=(reading.LEGACY_GENERATION,))
     first = reader.extract(PDF, doc_class=doc_class)
     prompt = read_prompt(EETT_PROMPT_FILENAME if doc_class == "eett" else PROMPT_FILENAME) + PARTICIPATION_INSTRUCTION
     expected = {"document_sha256": SHA, "doc_class": doc_class, "mime": "application/pdf",
@@ -82,6 +82,9 @@ def test_absence_retains_exact_legacy_identity_prompt_schema_and_replay(local_sd
     replay = reading.GuardedGeminiExtractor(h.settings, h.folder).extract(PDF, doc_class=doc_class)
     assert replay == first and snapshot(h.folder) == before
     assert h.client.models.generate_content.call_count == h.factory.call_count == 1
+    assert (replay.prompt_version, replay.schema_version) == (
+        EETT_PROMPT_VERSION if doc_class == "eett" else PROMPT_VERSION,
+        EETT_SCHEMA_VERSION if doc_class == "eett" else SCHEMA_VERSION)
 
 
 @pytest.mark.parametrize("doc_class", ["tdr", "eett"])
@@ -328,7 +331,7 @@ def test_hash_reuse_happens_before_source_and_preserves_paid_legacy_without_back
                       prompt_version=PROMPT_VERSION + "_" + TAXONOMY_VERSION,
                       raw_extraction_json=payload() if cached_policy == "commercial" else {})
     before = deepcopy(source)
-    reusable = MagicMock(side_effect=[None, source] if cached_policy == "legacy" else [source])
+    reusable = MagicMock(side_effect=[None, None, None, source] if cached_policy == "legacy" else [source])
     insert, download = MagicMock(return_value=99), MagicMock(side_effect=AssertionError("No download"))
     monkeypatch.setattr(extraction_job, "find_reusable_extraction", reusable)
     monkeypatch.setattr(extraction_job, "insert_reused_extraction", insert)
@@ -342,9 +345,14 @@ def test_hash_reuse_happens_before_source_and_preserves_paid_legacy_without_back
     else:
         assert extraction_job.extract_tdr_job(h.settings, repo, id_contrato=1, id_contrato_archivo=2, extractor=bound) == 99
         assert insert.call_args.kwargs["source"] == before
-    assert reusable.call_args_list[0].kwargs["prompt_version"] == PROMPT_VERSION + "_" + TAXONOMY_VERSION
+    # Newest generation first (commercial, then plain), then the frozen legacy readings.
+    assert reusable.call_args_list[0].kwargs["prompt_version"] == (
+        reading.QUALITY_GENERATION.prompt_versions["tdr"] + "_" + TAXONOMY_VERSION)
     if cached_policy == "legacy":
-        assert reusable.call_args_list[1].kwargs["prompt_version"] == PROMPT_VERSION
+        assert [call.kwargs["prompt_version"] for call in reusable.call_args_list] == [
+            reading.QUALITY_GENERATION.prompt_versions["tdr"] + "_" + TAXONOMY_VERSION,
+            reading.QUALITY_GENERATION.prompt_versions["tdr"],
+            PROMPT_VERSION + "_" + TAXONOMY_VERSION, PROMPT_VERSION]
     assert source == before
     download.assert_not_called()
     h.factory.assert_not_called()
@@ -368,7 +376,7 @@ def test_new_document_job_uses_bound_commercial_reader_and_persists_same_paid_bl
     inserted = repo.conn.execute.call_args.args[1]
     assert json.loads(inserted[7])["commercial_classification"] == payload()["commercial_classification"]
     assert inserted[2].endswith("_" + TAXONOMY_VERSION) and inserted[3].endswith("_" + TAXONOMY_VERSION)
-    assert reusable.call_count == 2
+    assert reusable.call_count == 4
     assert h.client.models.generate_content.call_count == 1
 
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from itertools import zip_longest
 from typing import Any
 from uuid import UUID
 
@@ -19,16 +20,32 @@ from buenapro_worker.jobs.poll_search import LIMA_TZ, canonical_hash, parse_lima
 from buenapro_worker.prod2.analysis import (
     AFFINITY, DOMAIN, INFO, JEV_INPUT_USD_PER_MILLION, JEV_MODEL, _finite, _tokens,
 )
-from buenapro_worker.prod6.screening import POLICY_VERSION, profile_snapshot
+from buenapro_worker.prod6.screening import (
+    NEWER_ROW_SQL, POLICY_VERSION, normalize, profile_snapshot, supersede_pending,
+)
 from buenapro_worker.seace.schemas import SearchItem
 
 JEV_URL = "https://api.typesafe.ai/v1/systemone"
 MAX_DESCRIPTION_CHARS = 20000
 MAX_CONSECUTIVE_FAILURES = 3
 
+# Anchoring of each company line: a few phrases/terms per line tell JEV what the company really sells.
+# Request size matters little (a query is ~2.5k tokens at $0.042/M), so the caps bound payload growth
+# for oversized profiles rather than cost: 12 per line covers the 8 phrases + terms of a rich line, and
+# 120 per company keeps a profile of ~10 rich lines near ~1k extra tokens. Each line gets a fair share.
+MAX_LINE_KEYWORDS = 12
+MAX_COMPANY_KEYWORDS = 120
+
 # Editable taxonomy of what is being bought; one short criterion per value.
+# Changing any text or value here changes ``request_hash`` (it hashes the payload): it only affects new
+# queries, stored decisions keep the hash they were scored with.
 SUBCATEGORIES = {
-    "licencias_software": "Compra o renovacion de licencias, suscripciones o software de terceros.",
+    "licencias_software": ("Compra o renovacion de licencias de uso de software de terceros o suscripciones a "
+                           "software y servicios en la nube (SaaS). No incluye suscripciones o acceso a bases de "
+                           "datos o informacion: eso es servicios_informacion."),
+    "servicios_informacion": ("Suscripcion o acceso a bases de datos, informacion crediticia o comercial, "
+                              "centrales de riesgo, servicios de consulta o reportes de informacion. No es "
+                              "software ni licencia de uso."),
     "hardware_ti": "Equipos de computo, servidores, almacenamiento, perifericos o repuestos de TI.",
     "desarrollo_sistemas": "Desarrollo, implementacion o mantenimiento de sistemas, aplicaciones o integraciones.",
     "soporte_ti": "Soporte, mantenimiento o administracion de infraestructura y servicios de TI.",
@@ -45,7 +62,9 @@ QUESTION_INSTRUCTIONS = (
     "probabilidad de ganar. Usa objeto/entregable y contexto, no IA dentro de cirugia, sistemas "
     "aislado, seguridad fisica como ciberseguridad o carreras de informatica como compra de "
     "software. Software hospitalario puede ser TI; equipo medico con IA no es desarrollo de IA. "
-    "No supongas autorizaciones de marcas. "
+    "No supongas autorizaciones de marcas. Una suscripcion o acceso a informacion, bases de datos o "
+    "servicios de consulta (por ejemplo informacion crediticia) no es software ni licencia aunque se "
+    "llame suscripcion. "
 )
 
 
@@ -71,12 +90,41 @@ def company_alias(index: int) -> str:
     return f"e{index}"
 
 
+def _line_keywords(line: dict[str, Any]) -> list[str]:
+    """Normalized, deduplicated phrases and terms of one line, interleaved so both kinds survive a cap."""
+    phrases = list(dict.fromkeys(filter(None, (normalize(value) for value in line.get("keyword_phrases", [])))))
+    terms = list(dict.fromkeys(filter(None, (normalize(value) for value in line.get("keyword_terms", [])))))
+    if not phrases and not terms:  # Lines populated before split keywords.
+        legacy = list(dict.fromkeys(filter(None, (normalize(value) for value in line.get("keywords", [])))))
+        phrases = [value for value in legacy if " " in value]
+        terms = [value for value in legacy if " " not in value]
+    ordered = [value for pair in zip_longest(phrases, terms) for value in pair if value]
+    return list(dict.fromkeys(ordered))
+
+
 def company_payload(snapshot: dict[str, Any]) -> dict[str, Any]:
-    lines = sorted({" ".join(line["nombre"].split()) for line in snapshot["lines"]})
+    """Description plus, per line, its name and a bounded list of keywords.
+
+    Lines with the same name are merged. Keywords are dealt round-robin across lines until
+    ``MAX_COMPANY_KEYWORDS`` so one big line cannot starve the others; each line keeps at most
+    ``MAX_LINE_KEYWORDS``. The result depends only on the profile content, like ``profile_hash``.
+    """
+    names: dict[str, list[str]] = {}
+    for line in snapshot["lines"]:
+        name = " ".join(line["nombre"].split())
+        names[name] = list(dict.fromkeys([*names.get(name, []), *_line_keywords(line)]))
     description = " ".join(snapshot["descripcion"].split())
-    if not lines and not description:
+    if not names and not description:
         raise ValueError("Empty commercial profile")
-    return {"descripcion": description, "lineas": lines}
+    chosen: dict[str, list[str]] = {name: [] for name in names}
+    total = 0
+    for rank in range(MAX_LINE_KEYWORDS):
+        for name, keywords in names.items():
+            if rank < len(keywords) and total < MAX_COMPANY_KEYWORDS:
+                chosen[name].append(keywords[rank])
+                total += 1
+    return {"descripcion": description,
+            "lineas": [{"nombre": name, "palabras_clave": chosen[name]} for name in sorted(chosen)]}
 
 
 def listing_text(item: SearchItem) -> str:
@@ -106,8 +154,9 @@ def build_payload(description: str, companies: dict[str, dict[str, Any]],
             "type": "score",
             "instructions": (
                 f"Puntua SOLO la afinidad comercial de state.descripcion contra state.empresas.{alias} "
-                "(su descripcion y sus lineas). Ignora las demas empresas de state.empresas: no las "
-                "unas, no sumes capacidades y no compares empresas entre si. " + QUESTION_INSTRUCTIONS),
+                "(su descripcion, sus lineas y las palabras clave de cada linea, que indican lo que la "
+                "empresa vende). Ignora las demas empresas de state.empresas: no las unas, no sumes "
+                "capacidades y no compares empresas entre si. " + QUESTION_INSTRUCTIONS),
             "criteria": AFFINITY,
         }
     return {"model": model,
@@ -214,6 +263,9 @@ def score_pending(conn: psycopg.Connection, client: JevScreeningClient, *, profi
         except ValueError:
             pass  # Inactive profile: its pending rows count as stale.
     scope = (POLICY_VERSION, list(aliases))
+    # Obsolete pending rows (a newer row exists for the contract x company) leave 'pending' for good.
+    with conn.transaction():
+        superseded = supersede_pending(conn, profile_ids=list(aliases))
     counts = conn.execute(
         """SELECT count(*) FILTER (WHERE fec_fin_cotizacion <= %s) AS closed,
                   count(*) FILTER (WHERE (fec_fin_cotizacion IS NULL OR fec_fin_cotizacion > %s)
@@ -223,18 +275,14 @@ def score_pending(conn: psycopg.Connection, client: JevScreeningClient, *, profi
         (now, now, max_attempts, *scope)).fetchone()
     rows = conn.execute(
         """SELECT d.id, d.id_contrato, d.profile_id, d.contract_hash, d.profile_hash, d.cubso_segmento,
-                  d.listing_json,
-                  EXISTS (SELECT 1 FROM prod6_profile_decisions n
-                          WHERE n.id_contrato = d.id_contrato AND n.profile_id = d.profile_id
-                            AND n.policy_version = d.policy_version AND n.id > d.id
-                            AND n.contract_hash <> d.contract_hash) AS superseded
+                  d.listing_json, """ + NEWER_ROW_SQL + """ AS superseded
            FROM prod6_profile_decisions d
            WHERE d.decision = 'pending' AND d.policy_version = %s AND d.profile_id = ANY(%s::uuid[])
              AND (d.fec_fin_cotizacion IS NULL OR d.fec_fin_cotizacion > %s) AND d.attempts < %s
            ORDER BY d.fec_fin_cotizacion NULLS LAST, d.id_contrato, d.id""",
         (*scope, now, max_attempts)).fetchall()
     stats: dict[str, Any] = {"requests": 0, "accepted": 0, "rejected": 0, "failed": 0,
-                             "skipped_closed": counts["closed"], "skipped_stale": 0,
+                             "skipped_closed": counts["closed"], "skipped_stale": 0, "superseded": superseded,
                              "exhausted": counts["exhausted"], "cost_usd": 0.0, "aborted": False}
     groups: dict[tuple[int, str], list[dict[str, Any]]] = {}
     for row in rows:

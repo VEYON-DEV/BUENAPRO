@@ -15,6 +15,7 @@ from buenapro_worker.extraction.gemini import (
 )
 from buenapro_worker.extraction.schemas import EettExtractionV1, TdrExtractionV2
 from buenapro_worker.prod6 import reading
+from buenapro_worker.prod6.reading_schema import EettExtractionV3, TdrExtractionV3
 
 
 PDF = b"%PDF-1.7 private document bytes"
@@ -55,9 +56,10 @@ def test_single_attempt_config_real_schema_and_private_receipts(setup):
     options = factory.call_args.kwargs["http_options"]
     assert options.retry_options.attempts == 1
     config = client.models.generate_content.call_args.kwargs["config"]
-    assert config.response_schema is TdrExtractionV2
+    assert config.response_schema is TdrExtractionV3
     assert "participation.consorcio" in config.system_instruction
-    assert (result.prompt_version, result.schema_version) == (PROMPT_VERSION, SCHEMA_VERSION)
+    assert (result.prompt_version, result.schema_version) == (
+        reading.QUALITY_GENERATION.prompt_versions["tdr"], reading.QUALITY_GENERATION.schema_versions["tdr"])
     assert (result.input_tokens, result.output_tokens) == (100, 50)
     assert result.cost_usd == pytest.approx(0.0001)
     assert len(receipts(directory, "started")) == len(receipts(directory, "response")) == 1
@@ -324,9 +326,10 @@ def test_eett_schema_prompt_and_identity_are_distinct(setup):
     client.models.generate_content.return_value = response(text=json.dumps(
         PAYLOAD | {"goods": {"items": [{"nombre": "Laptop", "cantidad": 2}]}}))
     result = extractor.extract(PDF, doc_class="eett")
-    assert isinstance(result.extraction, EettExtractionV1)
-    assert (result.prompt_version, result.schema_version) == (EETT_PROMPT_VERSION, EETT_SCHEMA_VERSION)
-    assert client.models.generate_content.call_args.kwargs["config"].response_schema is EettExtractionV1
+    assert isinstance(result.extraction, EettExtractionV3)
+    assert (result.prompt_version, result.schema_version) == (
+        reading.QUALITY_GENERATION.prompt_versions["eett"], reading.QUALITY_GENERATION.schema_versions["eett"])
+    assert client.models.generate_content.call_args.kwargs["config"].response_schema is EettExtractionV3
     extractor.extract(PDF, doc_class="tdr")
     assert len(receipts(directory, "started")) == 2
 

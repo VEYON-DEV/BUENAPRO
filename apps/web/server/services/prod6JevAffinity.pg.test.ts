@@ -68,6 +68,18 @@ test("JEV affinity SQL picks the latest decision per contract and profile inside
     await decide(inactive, -17002, "rejected", "prefilter", null, "2026-10-25T09:00:00Z");
     assert.equal((await listed(inactive, -17002)).jev_score, null);
 
+    // An obsolete pending row ('superseded') is ignored even when it is JEV's and the most recently updated:
+    // the newer prefilter decision wins and, with nothing else, the contract shows no JEV fields.
+    await contract(-17003);
+    await decide(alpha, -17003, "pending", "jev", null, "2026-10-25T13:00:00Z");
+    await decide(alpha, -17003, "rejected", "prefilter", null, "2026-10-25T12:00:00Z");
+    await client.query("UPDATE prod6_profile_decisions SET decision = 'superseded' WHERE id_contrato = -17003 AND decision = 'pending'");
+    const retired = await listed(alpha, -17003);
+    assert.equal(retired.jev_decision, "rejected", "the superseded pending row does not hide the newer decision");
+    await client.query("DELETE FROM prod6_profile_decisions WHERE id_contrato = -17003 AND decision = 'rejected'");
+    assert.equal((await listed(alpha, -17003)).jev_decision, null, "superseded alone is not listed as pending");
+    assert.deepEqual((await client.query(jevByCompanySql(1, 2, 3), [-17003, tenant, alpha])).rows, []);
+
     const byCompany = async (idContrato: number, current: string | null) =>
       (await client.query(jevByCompanySql(1, 2, 3), [idContrato, tenant, current])).rows;
 

@@ -4,9 +4,13 @@
  *
  * Un par (contrato, perfil) puede tener varias filas porque la clave incluye contract_hash,
  * profile_hash y policy_version. Se usa siempre la más reciente, dando prioridad a las filas
- * calificadas por JEV (`decided_by = 'jev'`) y desempatando por updated_at e id. La tabla vacía
- * produce LEFT JOIN sin coincidencias, nunca un error.
+ * calificadas por JEV (`decided_by = 'jev'`) y desempatando por updated_at e id. Las filas
+ * `superseded` (pendientes obsoletas con una fila más nueva) nunca cuentan: sin esa exclusión una
+ * pendiente vieja de JEV taparía una decisión más nueva del prefiltro. La tabla vacía produce
+ * LEFT JOIN sin coincidencias, nunca un error.
  */
+export const JEV_ACTIVE_DECISION_FILTER = "d.decision <> 'superseded'";
+
 export const JEV_LATEST_DECISION_ORDER = "(d.decided_by = 'jev') DESC, d.updated_at DESC, d.id DESC";
 
 /** LATERAL para la lista: campos `jev_*` del perfil activo ya resuelto (parámetro uuid o null). */
@@ -20,6 +24,7 @@ export function jevListLateralSql(profileParam: number) {
            d.updated_at AS jev_decided_at
     FROM prod6_profile_decisions d
     WHERE d.id_contrato = c.id_contrato AND d.profile_id = $${profileParam}::uuid
+      AND ${JEV_ACTIVE_DECISION_FILTER}
     ORDER BY ${JEV_LATEST_DECISION_ORDER}
     LIMIT 1
   ) jev ON true`;
@@ -47,6 +52,7 @@ export function jevByCompanySql(contractParam: number, tenantParam: number, prof
     SELECT d.*
     FROM prod6_profile_decisions d
     WHERE d.id_contrato = $${contractParam} AND d.profile_id = cp.id
+      AND ${JEV_ACTIVE_DECISION_FILTER}
     ORDER BY ${JEV_LATEST_DECISION_ORDER}
     LIMIT 1
   ) d ON true

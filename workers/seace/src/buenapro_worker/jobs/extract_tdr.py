@@ -42,7 +42,7 @@ def extract_tdr_job(
     version_adapter = getattr(type(extractor), "reuse_prompt_versions", None)
     if callable(version_adapter):
         versions = version_adapter(extractor, doc_class)
-        if (not isinstance(versions, tuple) or not 1 <= len(versions) <= 2
+        if (not isinstance(versions, tuple) or not 1 <= len(versions) <= 4
                 or any(not isinstance(value, str) or not value for value in versions)
                 or len(set(versions)) != len(versions)):
             raise ValueError("Invalid explicit extraction reuse policy")

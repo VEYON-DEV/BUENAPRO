@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 import logging
 
-from buenapro_worker.normalization.facets import derive_facets, derive_summary, facet_hash
+from buenapro_worker.normalization.facets import derive_facets, facet_hash
 from buenapro_worker.normalization.participation_repository import persist_participation
+from buenapro_worker.prod6.review import build_reading_summary
 from buenapro_worker.queue.repository import JobRepository
 
 
@@ -22,7 +23,8 @@ def derive_summary_job(
 ) -> dict[str, object]:
     row = repo.conn.execute(
         """
-        SELECT e.raw_extraction_json, c.opportunity_id, d.sha256_original
+        SELECT e.raw_extraction_json, e.summary_json AS previous_summary_json, e.prompt_version,
+               e.quality, e.requires_human_review, c.opportunity_id, c.descripcion, d.sha256_original
         FROM tdr_extractions e
         JOIN contract_documents d ON d.id = e.contract_document_id
         JOIN seace_contracts c ON c.id_contrato = d.id_contrato
@@ -37,7 +39,12 @@ def derive_summary_job(
     persist_participation(repo, opportunity_id=row.get("opportunity_id"), raw=raw,
                           extraction_id=extraction_id, source="seace_prod6",
                           document_sha256=row.get("sha256_original"))
-    summary = derive_summary(raw)
+    # Deterministic review rules: contradictions inside the reading or against the contract title
+    # raise requires_human_review with stable reasons (summary_json.review_reasons).
+    summary, requires_review = build_reading_summary(
+        raw, contract_title=row.get("descripcion"), prompt_version=row.get("prompt_version"),
+        previous_summary=row.get("previous_summary_json"),
+        previous_flag=bool(row.get("requires_human_review")), quality=row.get("quality") or "auto")
     facets = derive_facets(raw)
     old_hashes = _current_hashes(repo, id_contrato)
     new_hashes = {facet_hash(item) for item in facets}
@@ -45,10 +52,11 @@ def derive_summary_job(
     repo.conn.execute(
         """
         UPDATE tdr_extractions
-        SET summary_json = %s::jsonb
+        SET summary_json = %s::jsonb,
+            requires_human_review = %s
         WHERE id = %s
         """,
-        (json.dumps(summary, ensure_ascii=False), extraction_id),
+        (json.dumps(summary, ensure_ascii=False), requires_review, extraction_id),
     )
     repo.conn.execute(
         """
@@ -158,9 +166,11 @@ def derive_summary_job(
 
     logger.info(
         "derive_summary_done",
-        extra={"id_contrato": id_contrato, "extraction_id": extraction_id, "facets": len(facets), "diff": len(diff)},
+        extra={"id_contrato": id_contrato, "extraction_id": extraction_id, "facets": len(facets), "diff": len(diff),
+               "requires_human_review": requires_review,
+               "review_reasons": [reason["code"] for reason in summary["review_reasons"]]},
     )
-    return {"facets": len(facets), "diff": diff}
+    return {"facets": len(facets), "diff": diff, "requires_human_review": requires_review}
 
 
 def _current_hashes(repo: JobRepository, id_contrato: int) -> set[str]:

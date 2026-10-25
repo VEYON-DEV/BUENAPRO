@@ -9,6 +9,13 @@ An HTTP error answered by the provider (``google.genai.errors.APIError`` with a 
 code) is the one failure that proves no billable response exists: it leaves a private
 ``provider_error`` receipt, resolves the started receipt and may be retried. Any other
 failure after sending (timeout, dropped connection, interrupt, local write) stays uncertain.
+
+Reading generations. A request identity includes the prompt text and versions, so improving
+the prompt creates a new generation instead of editing the old one. New readings use the
+newest generation; the frozen legacy identity (``tdr_extraction_v3`` / ``eett_extraction_v2``
+with its original prompt files) stays addressable, so a durable response or result of an
+older generation is always replayed instead of paying again, and any unresolved ``started``
+receipt of any generation still blocks every new send.
 """
 from __future__ import annotations
 
@@ -20,6 +27,7 @@ import re
 import tempfile
 from contextlib import contextmanager
 from copy import deepcopy
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -47,6 +55,7 @@ from buenapro_worker.extraction.commercial_classification import (
     POLICY_KEY, TAXONOMY_VERSION, get_commercial_policy, prompt_with_commercial,
     schema_with_commercial, validate_commercial_payload, version_with_commercial,
 )
+from buenapro_worker.prod6.reading_schema import EettExtractionV3, TdrExtractionV3
 from buenapro_worker.settings import Settings
 
 
@@ -82,6 +91,46 @@ def provider_rejection(error: BaseException) -> tuple[int, str | None] | None:
     if type(code) is not int or not 400 <= code <= 599:
         return None
     return code, status if isinstance(status, str) and re.fullmatch(r"[A-Z][A-Z_]{0,39}", status) else None
+
+
+@dataclass(frozen=True)
+class ReadingGeneration:
+    """One frozen way of asking: prompt files, versions and response schemas per document class."""
+    marker: str | None  # Written into the identity; None keeps the original identity bytes.
+    prompt_files: dict[str, str]
+    prompt_versions: dict[str, str]
+    schema_versions: dict[str, str]
+    schemas: dict[str, type]
+
+
+LEGACY_GENERATION = ReadingGeneration(
+    marker=None,
+    prompt_files={"tdr": PROMPT_FILENAME, "eett": EETT_PROMPT_FILENAME},
+    prompt_versions={"tdr": prompt_version_for_doc_class("tdr"), "eett": prompt_version_for_doc_class("eett")},
+    schema_versions={"tdr": SCHEMA_VERSION, "eett": EETT_SCHEMA_VERSION},
+    schemas={"tdr": TdrExtractionV2, "eett": EettExtractionV1},
+)
+# Quality reading: literal quote, page and currency per requirement; literal terms; no inferred
+# data (docs/worker-runbook.md, "Calidad de las lecturas PROD6"). Never edit it in place: a new
+# prompt text is a new generation.
+QUALITY_GENERATION_MARKER = "prod6_quality_v1"
+QUALITY_GENERATION = ReadingGeneration(
+    marker=QUALITY_GENERATION_MARKER,
+    prompt_files={"tdr": "prod6_tdr_reading_v1.txt", "eett": "prod6_eett_reading_v1.txt"},
+    prompt_versions={"tdr": "prod6_tdr_reading_v1", "eett": "prod6_eett_reading_v1"},
+    schema_versions={"tdr": "prod6_tdr_schema_v1", "eett": "prod6_eett_schema_v1"},
+    schemas={"tdr": TdrExtractionV3, "eett": EettExtractionV3},
+)
+# Newest first. Older generations are only ever replayed, never sent again.
+READING_GENERATIONS = (QUALITY_GENERATION, LEGACY_GENERATION)
+
+
+def generation_of(identity: dict[str, Any]) -> ReadingGeneration:
+    marker = identity.get("reading_generation")
+    for generation in READING_GENERATIONS:
+        if generation.marker == marker:
+            return generation
+    raise ValueError("Unknown PROD6 reading generation")
 
 
 READING_POLICY_FILENAME = "reading-policy.private.json"
@@ -231,7 +280,12 @@ def _sdk_compatible_response(raw_response: dict[str, Any]) -> dict[str, Any]:
 
 class GuardedGeminiExtractor:
     def __init__(self, settings: Settings, receipt_dir: Path, *, policy_context=None,
-                 allow_new_requests: bool = True) -> None:
+                 allow_new_requests: bool = True,
+                 generations: tuple[ReadingGeneration, ...] = READING_GENERATIONS) -> None:
+        if not generations or generations[-1] is not LEGACY_GENERATION:
+            raise ReadingPolicyError("PROD6 reading generations must keep the legacy identity")
+        # Newest first: the first one asks, all of them can replay a durable response.
+        self.generations = generations
         self.policy_context = reading_policy_context(policy_context)
         if type(allow_new_requests) is not bool:
             raise ReadingPolicyError("PROD6 request permission must be explicit")
@@ -247,25 +301,33 @@ class GuardedGeminiExtractor:
         self.receipt_dir.chmod(0o700)
 
     def reuse_prompt_versions(self, doc_class: str) -> tuple[str, ...]:
-        legacy = prompt_version_for_doc_class(doc_class)
-        current = version_with_commercial(legacy, self.policy_context)
-        # A prior paid reading is preserved, never regenerated merely to add tags.
-        return (current, legacy) if current != legacy else (legacy,)
+        """Prompt versions of readings that may be reused instead of paying again, newest first."""
+        versions: list[str] = []
+        for generation in self.generations:
+            plain = generation.prompt_versions[doc_class]
+            current = version_with_commercial(plain, self.policy_context)
+            # A prior paid reading is preserved, never regenerated merely to add tags.
+            versions += [current, plain] if current != plain else [plain]
+        return tuple(dict.fromkeys(versions))
 
     def validate_reused_extraction(self, source: dict, doc_class: str) -> None:
-        if (not self.policy_context or source.get("prompt_version")
-                != self.reuse_prompt_versions(doc_class)[0]):
+        if not self.policy_context:
             return
-        expected_schema = version_with_commercial(
-            EETT_SCHEMA_VERSION if doc_class == "eett" else SCHEMA_VERSION, self.policy_context)
-        if source.get("schema_version") != expected_schema:
-            raise ReadingPolicyError("Commercial cached extraction has an incompatible schema")
-        raw = source.get("raw_extraction_json")
-        validate_commercial_payload(raw, self.policy_context)
-        schema_with_commercial(EettExtractionV1 if doc_class == "eett" else TdrExtractionV2,
-                               self.policy_context).model_validate(raw)
+        for generation in self.generations:
+            if source.get("prompt_version") != version_with_commercial(
+                    generation.prompt_versions[doc_class], self.policy_context):
+                continue
+            expected_schema = version_with_commercial(
+                generation.schema_versions[doc_class], self.policy_context)
+            if source.get("schema_version") != expected_schema:
+                raise ReadingPolicyError("Commercial cached extraction has an incompatible schema")
+            raw = source.get("raw_extraction_json")
+            validate_commercial_payload(raw, self.policy_context)
+            schema_with_commercial(generation.schemas[doc_class], self.policy_context).model_validate(raw)
+            return
 
-    def _request_identity(self, document_sha256: str, *, mime: str, doc_class: str):
+    def _request_identity(self, document_sha256: str, *, mime: str, doc_class: str,
+                          generation: ReadingGeneration | None = None):
         if (doc_class not in {"tdr", "eett"} or mime != "application/pdf"
                 or not isinstance(document_sha256, str)
                 or not re.fullmatch(r"[0-9a-f]{64}", document_sha256)):
@@ -273,16 +335,40 @@ class GuardedGeminiExtractor:
         model = self.settings.gemini_model
         if model not in MODEL_PRICES_USD_PER_MILLION:
             raise ValueError("PROD6 guarded reading requires a model with known local prices")
-        prompt = read_prompt(EETT_PROMPT_FILENAME if doc_class == "eett" else PROMPT_FILENAME)
+        generation = generation or self.generations[0]
+        prompt = read_prompt(generation.prompt_files[doc_class])
         prompt = prompt_with_commercial(prompt + PARTICIPATION_INSTRUCTION, self.policy_context)
         identity = {"document_sha256": document_sha256, "doc_class": doc_class,
             "mime": mime, "model": model,
-            "prompt_version": version_with_commercial(prompt_version_for_doc_class(doc_class), self.policy_context),
+            "prompt_version": version_with_commercial(generation.prompt_versions[doc_class], self.policy_context),
             "prompt_sha256": _sha(prompt.encode("utf-8")),
             "schema_version": version_with_commercial(
-                EETT_SCHEMA_VERSION if doc_class == "eett" else SCHEMA_VERSION, self.policy_context),
+                generation.schema_versions[doc_class], self.policy_context),
             **self.policy_context}
+        if generation.marker is not None:
+            identity["reading_generation"] = generation.marker
         return prompt, identity, _sha(_canonical(identity))
+
+    def _resolve_identity(self, document_sha256: str, *, mime: str, doc_class: str):
+        """The newest generation, unless an older one already holds this document's paid response.
+
+        A durable response or result is replayed whichever prompt produced it; the identity of
+        a request that was never answered is always the newest generation.
+        """
+        candidates = [self._request_identity(document_sha256, mime=mime, doc_class=doc_class,
+                                             generation=generation) for generation in self.generations]
+        for candidate in candidates:
+            key = candidate[2]
+            if ((self.receipt_dir / f"{key}.result.private.json").exists()
+                    or (self.receipt_dir / f"{key}.response.private.json").exists()):
+                return candidate
+        return candidates[0]
+
+    def _document_keys(self, identity: dict[str, Any]) -> list[str]:
+        """Request keys of every generation for the document of ``identity``."""
+        return [self._request_identity(identity["document_sha256"], mime=identity["mime"],
+                                       doc_class=identity["doc_class"], generation=generation)[2]
+                for generation in self.generations]
 
     def recover_before_download(self, document_sha256: str, *, mime: str, doc_class: str):
         """Previously attempted jobs require an exact, verifiable paid response.
@@ -292,13 +378,14 @@ class GuardedGeminiExtractor:
         """
         if self.allow_new_requests:
             return None
-        prompt, identity, key = self._request_identity(document_sha256, mime=mime, doc_class=doc_class)
+        self._request_identity(document_sha256, mime=mime, doc_class=doc_class)  # Validates the inputs.
         with self._lock():
             _bind_reading_policy_locked(self.receipt_dir, self.policy_context)
+            prompt, identity, key = self._resolve_identity(document_sha256, mime=mime, doc_class=doc_class)
             if not ((self.receipt_dir / f"{key}.response.private.json").exists()
                     or (self.receipt_dir / f"{key}.result.private.json").exists()):
                 self._check_new_send(key)
-                if self._retry_after_provider_error(key):
+                if self._retry_after_provider_error(identity):
                     return None  # The prior attempt was an HTTP error: nothing was billed.
                 raise ReadingBlockedError("Prior PROD6 attempt has no exact durable response in this namespace")
             try:
@@ -356,9 +443,12 @@ class GuardedGeminiExtractor:
         except Exception:
             return False
 
-    def _retry_after_provider_error(self, key: str) -> bool:
-        """Call after ``_check_new_send``: the last attempt of this exact key was an HTTP error."""
-        return self._provider_error(key) is not None
+    def _retry_after_provider_error(self, identity: dict[str, Any]) -> bool:
+        """Call after ``_check_new_send``: the last attempt for this document was an HTTP error.
+
+        Any generation counts: an HTTP error proves nothing was billed, whichever prompt was sent.
+        """
+        return any(self._provider_error(key) is not None for key in self._document_keys(identity))
 
     def _check_new_send(self, key: str) -> None:
         if self.guard_path.exists():
@@ -381,9 +471,10 @@ class GuardedGeminiExtractor:
                 doc_class: str = "tdr") -> ExtractionResult:
         if doc_class not in {"tdr", "eett"} or mime != "application/pdf" or not pdf_bytes:
             raise ValueError("PROD6 guarded reading requires a nonempty TDR/EETT PDF")
-        prompt, identity, key = self._request_identity(_sha(pdf_bytes), mime=mime, doc_class=doc_class)
+        self._request_identity(_sha(pdf_bytes), mime=mime, doc_class=doc_class)  # Validates the inputs.
         with self._lock():
             _bind_reading_policy_locked(self.receipt_dir, self.policy_context)
+            prompt, identity, key = self._resolve_identity(_sha(pdf_bytes), mime=mime, doc_class=doc_class)
             try:
                 return self._extract_locked(pdf_bytes, prompt, identity, key)
             except (GuardedReadingError, ProviderRejectedError):
@@ -414,10 +505,9 @@ class GuardedGeminiExtractor:
             return self._parse_saved_response(identity, key, response, result_path)
 
         self._check_new_send(key)
-        if not self.allow_new_requests and not self._retry_after_provider_error(key):
+        if not self.allow_new_requests and not self._retry_after_provider_error(identity):
             raise ReadingBlockedError("Prior PROD6 attempt permits exact local recovery only")
-        schema = schema_with_commercial(
-            EettExtractionV1 if identity["doc_class"] == "eett" else TdrExtractionV2, identity)
+        schema = schema_with_commercial(generation_of(identity).schemas[identity["doc_class"]], identity)
         config = types.GenerateContentConfig(
             system_instruction=prompt, response_mime_type="application/json",
             response_schema=schema, temperature=0, max_output_tokens=16384,
@@ -434,7 +524,8 @@ class GuardedGeminiExtractor:
             )
             # A new attempt consumes the earlier HTTP-error receipt, so it cannot
             # authorize yet another send if this one ends uncertain.
-            _remove_receipt(self.receipt_dir / f"{key}.provider_error.private.json")
+            for document_key in self._document_keys(identity):
+                _remove_receipt(self.receipt_dir / f"{document_key}.provider_error.private.json")
             started = {
                 "version": 1, "request_key": key, "identity": identity,
                 "state": "started", "started_at": _now(),
@@ -564,8 +655,7 @@ class GuardedGeminiExtractor:
         if not usage.get("known"):
             raise ValueError("Usage unknown")
         validate_commercial_payload(raw_json, identity)
-        schema = schema_with_commercial(
-            EettExtractionV1 if identity["doc_class"] == "eett" else TdrExtractionV2, identity)
+        schema = schema_with_commercial(generation_of(identity).schemas[identity["doc_class"]], identity)
         extraction = schema.model_validate(raw_json)
         commercial = getattr(extraction, "commercial_classification", None)
         return ExtractionResult(

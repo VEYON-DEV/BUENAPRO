@@ -48,6 +48,7 @@ export const JEV_DECIDED_BY_LABELS: Record<JevDecidedBy, string> = {
 
 export const JEV_SUBCATEGORY_LABELS: Record<string, string> = {
   licencias_software: "Licencias de software",
+  servicios_informacion: "Servicios de información",
   hardware_ti: "Hardware TI",
   desarrollo_sistemas: "Desarrollo de sistemas",
   soporte_ti: "Soporte TI",
@@ -96,6 +97,14 @@ function validThreshold(value: unknown) {
   return validScore(value);
 }
 
+/**
+ * `superseded`: era pendiente y existe una fila más nueva para el mismo contrato y empresa. No es un
+ * estado para el usuario: nunca se muestra como pendiente ni como resultado.
+ */
+export function isJevSuperseded(value: unknown) {
+  return value === "superseded";
+}
+
 function asDecision(value: unknown): JevDecision | null {
   return value === "accepted" || value === "rejected" || value === "pending" ? value : null;
 }
@@ -119,6 +128,7 @@ export type JevAffinity = {
  * válido (sin decisión, pendiente o descartada por prefiltro): la lista conserva entonces su indicador actual.
  */
 export function jevAffinity(row: JevListFields | null | undefined): JevAffinity | null {
+  if (isJevSuperseded(row?.jev_decision)) return null;
   const exact = validScore(row?.jev_score);
   if (exact == null) return null;
   const score = Math.round(exact);
@@ -162,11 +172,11 @@ export type JevCompanyAffinity = {
 
 const DECISION_TONES: Record<JevDecision, JevCompanyAffinity["tone"]> = { accepted: "green", rejected: "red", pending: "amber" };
 
-/** Normaliza `jev_by_company` conservando el orden recibido (perfil activo y mayor puntaje primero). */
+/** Normaliza `jev_by_company` conservando el orden recibido (perfil activo y mayor puntaje primero); omite las filas reemplazadas (`superseded`). */
 export function jevCompanyAffinities(rows: JevCompanyRow[] | null | undefined): JevCompanyAffinity[] {
   if (!Array.isArray(rows)) return [];
   return rows.flatMap((row) => {
-    if (!row || typeof row.profile_id !== "string") return [];
+    if (!row || typeof row.profile_id !== "string" || isJevSuperseded(row.decision)) return [];
     const decision = asDecision(row.decision);
     const score = validScore(row.score);
     const threshold = validThreshold(row.threshold);

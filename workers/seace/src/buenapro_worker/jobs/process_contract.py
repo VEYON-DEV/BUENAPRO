@@ -5,8 +5,10 @@ import logging
 from datetime import datetime
 from typing import Any
 
+from buenapro_worker.documents.pdf import classify_document, classify_requirement_file, is_archive_name
 from buenapro_worker.jobs.poll_search import canonical_hash, parse_lima_datetime
 from buenapro_worker.jobs.opportunity_identity import refresh_prod6_classification
+from buenapro_worker.prod6.document_selection import select_reading_files
 from buenapro_worker.queue.repository import JobRepository
 from buenapro_worker.seace.client import SeaceClient
 from buenapro_worker.seace.pacing import source_stop
@@ -155,23 +157,44 @@ def _attachment_class(file_item: dict[str, Any]) -> str:
         return "cotizacion"
     if "anexo" in name or "formato" in name:
         return "anexo"
-    return "otro"
+    # A PDF that is itself the TDR/EETT (the entity attached it here instead of as the main
+    # file) is read like one; papers that merely cite the TDR ("declaracion de cumplimiento") are not.
+    return classify_requirement_file(str(file_item.get("nombre") or ""),
+                                     str(file_item.get("descripcionMime") or "")) or "otro"
+
+
+def _primary_class(file_item: dict[str, Any], objeto_codigo: int | None) -> str | None:
+    """Class of a category-1 file before it is downloaded (download_file confirms it).
+
+    Same rule as download_file: the contract's native object decides, and an archive is not
+    a readable requirement. Without it the name still gives a hint, so a listed TDR is never NULL.
+    """
+    name = str(file_item.get("nombre") or "")
+    if is_archive_name(name):
+        return "otro"
+    if objeto_codigo == 1:
+        return "eett"
+    if objeto_codigo == 2:
+        return "tdr"
+    role = classify_document(name, str(file_item.get("descripcionMime") or ""))
+    return role if role in {"tdr", "eett"} else None
 
 
 def upsert_files(repo: JobRepository, settings: Settings, id_contrato: int, files: list[dict[str, Any]]) -> bool:
     hash_files = canonical_hash(files)
     previous = repo.conn.execute(
-        "SELECT hash_files FROM seace_contracts WHERE id_contrato = %s",
+        "SELECT hash_files, objeto_codigo FROM seace_contracts WHERE id_contrato = %s",
         (id_contrato,),
     ).fetchone()
     changed = previous is None or previous["hash_files"] != hash_files
+    objeto_codigo = _parse_int(previous["objeto_codigo"]) if previous is not None else None
 
     for file_item in files:
         id_archivo = file_item.get("idContratoArchivo")
         if id_archivo is None:
             continue
         categoria = int(file_item.get("_categoria") or 1)
-        doc_class = None if categoria == 1 else _attachment_class(file_item)
+        doc_class = _primary_class(file_item, objeto_codigo) if categoria == 1 else _attachment_class(file_item)
         repo.conn.execute(
             """
             INSERT INTO contract_documents (
@@ -195,6 +218,8 @@ def upsert_files(repo: JobRepository, settings: Settings, id_contrato: int, file
               seace_download_url = EXCLUDED.seace_download_url,
               doc_class = CASE
                 WHEN EXCLUDED.doc_class = 'cotizacion' THEN 'cotizacion'
+                WHEN contract_documents.doc_class = 'otro' AND EXCLUDED.doc_class IN ('tdr', 'eett')
+                  THEN EXCLUDED.doc_class
                 ELSE COALESCE(contract_documents.doc_class, EXCLUDED.doc_class)
               END,
               raw_file_json = EXCLUDED.raw_file_json,
@@ -245,7 +270,7 @@ def process_contract(
     bucket: str | None = None,
     segment: int | str | None = None,
     force_detail: bool = False,
-) -> dict[str, bool]:
+) -> dict[str, Any]:
     # La ingesta normal reutiliza el detalle. Lifecycle puede forzar el GET para
     # detectar cambios de estado y cronograma con una rotacion controlada.
     existing = repo.conn.execute(
@@ -272,12 +297,23 @@ def process_contract(
         file_item["_categoria"] = 2
 
     detail_changed = update_contract_detail(repo, id_contrato, detail) if detail is not None else False
+
+    # El requerimiento es el PDF de categoria 1. Si no hay ninguno (RAR/ZIP, Word) y un anexo PDF
+    # es el TDR/EETT, ese anexo se lee; si no, queda como revision manual con motivo. Las marcas
+    # quedan en raw_file_json (consultable) y en el resultado del job.
+    selection = select_reading_files(primary_files, attachments, _contract_object(repo, id_contrato))
+    if selection.fallback is not None:
+        selection.fallback["_reading"] = "attachment_is_requirement"
+    if selection.manual_review is not None:
+        for file_item in primary_files:
+            file_item["_reading_review"] = {"reason": selection.manual_review["reason"],
+                                            "message": selection.manual_review["message"]}
     files_changed = upsert_files(repo, settings, id_contrato, primary_files + attachments)
 
     if files_changed:
-        # Solo los archivos de categoria 1 (TDR/requerimiento) se descargan y
-        # pasan a extraccion; los anexos quedan listados con descarga directa.
-        for file_item in primary_files:
+        # Los archivos de categoria 1 (TDR/requerimiento) se descargan y pasan a extraccion,
+        # mas el anexo elegido cuando no hay PDF de categoria 1; el resto queda listado.
+        for file_item in selection.files:
             id_archivo = file_item.get("idContratoArchivo")
             if id_archivo is None:
                 continue
@@ -298,6 +334,22 @@ def process_contract(
 
     logger.info(
         "process_contract_done",
-        extra={"id_contrato": id_contrato, "detail_changed": detail_changed, "files_changed": files_changed},
+        extra={"id_contrato": id_contrato, "detail_changed": detail_changed, "files_changed": files_changed,
+               **({"reading_review": selection.manual_review["reason"]} if selection.manual_review else {})},
     )
-    return {"detail_changed": detail_changed, "files_changed": files_changed}
+    result: dict[str, Any] = {"detail_changed": detail_changed, "files_changed": files_changed}
+    if selection.manual_review is not None:
+        result["manual_review"] = selection.manual_review
+    if selection.fallback is not None:
+        result["reading_fallback"] = str(selection.fallback.get("nombre") or "")
+    return result
+
+
+def _contract_object(repo: JobRepository, id_contrato: int) -> int | None:
+    row = repo.conn.execute(
+        "SELECT objeto_codigo FROM seace_contracts WHERE id_contrato = %s", (id_contrato,)
+    ).fetchone()
+    try:
+        return _parse_int(row["objeto_codigo"]) if row is not None else None
+    except (KeyError, TypeError):
+        return None

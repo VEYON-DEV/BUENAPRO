@@ -1,0 +1,2977 @@
+[
+ {
+  "id": 2293,
+  "codigo": "CM-215-2026-GRLL-PECH-OP-AI",
+  "title": "SERVICIO DE CONSULTORÍA ESPECIALIZADA PARA EL DIAGNÓSTICO, DISEÑO Y DESARROLLO DE LA PRIMERA ETAPA DEL SISTEMA COMERCIAL ¿DE LA DIVISIÓN DE SISTEMAS HIDROELÉCTRICOS DEL PECH, EN EL MARCO DEL SIGI CHAVIMOCHIC 2050",
+  "prompt_version": "tdr_extraction_v3",
+  "old_summary": {
+   "modalidad": "no_indicada",
+   "plazo_ejecucion_dias": 60,
+   "tipo_pago": "armadas"
+  },
+  "expect": {
+   "requires_human_review": false,
+   "reasons": [],
+   "modalidad": "presencial",
+   "plazo_ejecucion_dias": 60
+  },
+  "raw": {
+   "contract": {
+    "moneda": "PEN",
+    "objeto": "Servicio de consultoría especializada para el diagnóstico, diseño y desarrollo de la primera etapa del sistema comercial de la División de Sistemas Hidroeléctricos del PECH.",
+    "entidad": "Proyecto Especial CHAVIMOCHIC (PECH)",
+    "modalidad": null,
+    "plazo_dias": 60,
+    "plazo_texto": "Hasta sesenta días (60) días calendarios",
+    "area_usuaria": "Oficina de Planificación - Área de Informática",
+    "lugar_ejecucion": "Instalaciones del proveedor, y sólo en caso de ser necesario, en la sede del Proyecto Especial CHAVIMOCHIC para coordinación.",
+    "condicion_inicio": "desde el día siguiente de notificada la orden de servicio",
+    "valor_estimado_monto": null
+   },
+   "execution": {
+    "lugar": "Instalaciones del proveedor, y sólo en caso de ser necesario, en la sede del Proyecto Especial CHAVIMOCHIC para coordinación.",
+    "entregables": [
+     {
+      "nombre": "Entregable 01: Informe 01 (Diagnóstico, análisis y diseño)",
+      "plazo_dias": 30,
+      "plazo_texto": "30 días calendario"
+     },
+     {
+      "nombre": "Entregable 02: Informe 02 (Desarrollo e implementación)",
+      "plazo_dias": 60,
+      "plazo_texto": "60 días calendario"
+     }
+    ]
+   },
+   "payment": {
+    "tipo": "armadas",
+    "armadas": [
+     {
+      "numero": 1,
+      "condicion": "Conformidad del entregable 01",
+      "porcentaje": 50.0
+     },
+     {
+      "numero": 2,
+      "condicion": "Conformidad del entregable 02",
+      "porcentaje": 50.0
+     }
+    ],
+    "detalle": "Dos pagos parciales iguales, uno por cada entregable con conformidad.",
+    "plazo_pago_dias": null
+   },
+   "requirements": {
+    "provider": [
+     {
+      "tipo": "legal_capacity",
+      "monto": null,
+      "evidencia": null,
+      "descripcion": "Persona natural o jurídica.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "ruc_status",
+      "monto": null,
+      "evidencia": null,
+      "descripcion": "Contar con Registro Único de Contribuyente (RUC) vigente.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "rnp",
+      "monto": null,
+      "evidencia": null,
+      "descripcion": "Contar con Registro Nacional de Proveedores (RNP) vigente.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "not_disqualified",
+      "monto": null,
+      "evidencia": null,
+      "descripcion": "No estar inhabilitado ni sancionado para contratar con el Estado.",
+      "obligatorio": true
+     }
+    ],
+    "equipment": [],
+    "insurance": [
+     {
+      "tipo": "Seguro contra accidentes personales",
+      "descripcion": "Seguro contra accidentes personales o afines, vigente por el periodo de ejecución del servicio.",
+      "obligatorio": true
+     }
+    ],
+    "key_personnel": [
+     {
+      "rol": "Consultor Especializado",
+      "formacion": [
+       "Ingeniero de Sistemas, Ingeniero de Computación y Sistemas o Ingeniero Informático"
+      ],
+      "experiencia": "Experiencia General: mínima de cuatro (04) años en el sector público y/o privado. Experiencia específica: mínima de tres (03) años en desarrollo de software, sistemas de gestión e integración de bases de datos.",
+      "capacitaciones": [
+       "Gerencia de Proyectos",
+       "Gestor de Base de Datos SQL, MYSQL, POSTGRESQL",
+       "Transformación Digital",
+       "HTML5",
+       "Desarrollo web",
+       "Diseño UI de interfaz",
+       "Usabilidad y accesibilidad web",
+       "Creación de Geo portales, Geoserver & QGIS"
+      ],
+      "experiencia_anios": 4,
+      "colegiatura_requerida": true
+     }
+    ],
+    "proposal_documents": [
+     "Copias simples de grados, títulos, certificados o constancias de cursos o capacitaciones.",
+     "Copia simple de contratos y/o ordenes de servicio y/o constancia de prestación de servicios y/o certificados de trabajo."
+    ]
+   },
+   "summary": {
+    "descripcion_corta": "Contratación de una consultoría especializada para el diagnóstico, diseño y desarrollo de la primera etapa del sistema comercial de la División de Sistemas Hidroeléctricos del PECH. El plazo de ejecución es de 60 días calendario, con dos entregables parciales. El pago se realizará en dos armadas iguales tras la conformidad de cada entregable. Se requiere un profesional con título de ingeniero, colegiado y con experiencia específica en desarrollo de software.",
+    "observaciones_clave": [
+     "El plazo de ejecución es corto (60 días) para el alcance solicitado.",
+     "Se requiere seguro contra accidentes personales vigente antes de la emisión de la orden.",
+     "El incumplimiento de hitos técnicos tiene penalidades específicas en UIT.",
+     "La propiedad intelectual de todo lo producido, incluyendo código fuente, es del PECH.",
+     "Se exige la presentación de declaración jurada de intereses según Ley 31227."
+    ]
+   }
+  }
+ },
+ {
+  "id": 2294,
+  "codigo": "CM-510-2026-SBS",
+  "title": "Contratación de servicio de soporte técnico, mantenimiento y actualización para la unidad de cintas automatizada Lenovo TS4300.",
+  "prompt_version": "tdr_extraction_v3",
+  "old_summary": {
+   "modalidad": "no_indicada",
+   "plazo_ejecucion_dias": 365,
+   "tipo_pago": "pago_unico"
+  },
+  "expect": {
+   "requires_human_review": false,
+   "reasons": [],
+   "modalidad": "presencial",
+   "plazo_ejecucion_dias": 365
+  },
+  "raw": {
+   "contract": {
+    "moneda": "PEN",
+    "objeto": "Servicio de soporte técnico, mantenimiento y actualización para la unidad de cintas automatizada Lenovo TS4300.",
+    "entidad": "Superintendencia de Banca, Seguros y Administradoras Privadas de Fondos de Pensiones (SBS)",
+    "modalidad": null,
+    "plazo_dias": 365,
+    "plazo_texto": "365 días, contabilizados desde el 25 de enero de 2027 hasta 24 de enero del 2028",
+    "area_usuaria": "Departamento de soporte técnico / Gerencia de tecnología de la información",
+    "lugar_ejecucion": "Calle Los Laureles 214 – San Isidro",
+    "condicion_inicio": "desde el 25 de enero de 2027",
+    "valor_estimado_monto": null
+   },
+   "execution": {
+    "lugar": "Calle Los Laureles 214 – San Isidro",
+    "entregables": [
+     {
+      "nombre": "Documento que acredite la activación del servicio de soporte técnico",
+      "plazo_dias": 5,
+      "plazo_texto": "dentro de los cinco (5) días calendario siguientes a la fecha de activación del servicio"
+     }
+    ]
+   },
+   "payment": {
+    "tipo": "pago_unico",
+    "armadas": [],
+    "detalle": "El pago total se realizará luego de la activación del servicio, previa conformidad del Departamento de Soporte Técnico (DST).",
+    "plazo_pago_dias": 10
+   },
+   "requirements": {
+    "provider": [
+     {
+      "tipo": "other",
+      "monto": null,
+      "evidencia": "Carta del fabricante o sucursal local del fabricante",
+      "descripcion": "Distribuidor y/o partner autorizado en el Perú para prestar el servicio de soporte técnico para librería y/o biblioteca de cintas de la marca Lenovo y/o IBM.",
+      "obligatorio": true
+     }
+    ],
+    "equipment": [],
+    "insurance": [],
+    "key_personnel": [],
+    "proposal_documents": [
+     "Propuesta técnica",
+     "Carta del fabricante o sucursal local del fabricante que acredite ser partner autorizado"
+    ]
+   },
+   "summary": {
+    "descripcion_corta": "Contratación de servicio de soporte técnico, mantenimiento y actualización para la unidad de cintas automatizada Lenovo TS4300 por un periodo de 365 días. El servicio requiere atención 24x7 con tiempos de respuesta definidos para incidentes críticos y no críticos. El pago es único tras la activación del servicio y conformidad del área usuaria. Se exige ser partner autorizado de la marca Lenovo/IBM.",
+    "observaciones_clave": [
+     "El postor debe ser partner autorizado de Lenovo/IBM, acreditado mediante carta del fabricante.",
+     "El servicio debe estar disponible 24x7 con tiempos de respuesta de 2 horas (críticos) y 4 horas (no críticos).",
+     "La conformidad se otorga en un plazo de 7 días, extendible a 20 días si se requieren pruebas.",
+     "El plazo de ejecución es fijo (365 días) iniciando el 25 de enero de 2027.",
+     "Se requiere la entrega de informes de actividades y de cada problema/requerimiento en plazos estrictos."
+    ]
+   }
+  }
+ },
+ {
+  "id": 2295,
+  "codigo": "CM-786-2026-EPS EMAPA CAÑETE S.A.",
+  "title": "ADQUISICION DE MEDIDORES DE 15 MM PARA EL MANTENIMIENTO DEL PARQUE DE MEDIDORES DE LAS LOCALIDADES ADMINISTRADAS POR LA EPS EMAPA CAÑETE S.A.",
+  "prompt_version": "eett_extraction_v2",
+  "old_summary": {
+   "modalidad": "no_indicada",
+   "plazo_ejecucion_dias": 15,
+   "tipo_pago": "pago_unico"
+  },
+  "expect": {
+   "requires_human_review": false,
+   "reasons": [],
+   "modalidad": "presencial",
+   "plazo_ejecucion_dias": 15
+  },
+  "raw": {
+   "contract": {
+    "moneda": "PEN",
+    "objeto": "Adquisición de medidores de agua para el mantenimiento del parque de medidores de las localidades administradas por la EPS EMAPA CAÑETE S.A.",
+    "entidad": "EPS EMAPA CAÑETE S.A.",
+    "modalidad": "Suma Alzada",
+    "plazo_dias": 15,
+    "plazo_texto": "Máximo de 15 días calendario, computados desde el día siguiente al perfeccionamiento del contrato y/o se contabilizará a partir de la emisión del certificado de verificación inicial emitido por INACAL.",
+    "area_usuaria": "OFICINA DE CATASTRO COMERCIAL, MEDICIÓN Y FACTURACIÓN",
+    "lugar_ejecucion": "Almacén central de la EPS EMAPA CAÑETE S.A., ubicado en Av. Mariscal Benavides N° 768, distrito de San Vicente, provincia Cañete, región Lima.",
+    "condicion_inicio": "Día siguiente al perfeccionamiento del contrato y/o a partir de la emisión del certificado de verificación inicial emitido por INACAL.",
+    "valor_estimado_monto": null
+   },
+   "execution": {
+    "lugar": "Almacén central de la EPS EMAPA CAÑETE S.A.",
+    "entregables": []
+   },
+   "payment": {
+    "tipo": "pago_unico",
+    "armadas": [],
+    "detalle": "El pago se realiza de conformidad con el artículo 67 de la Ley, en un plazo que no excederá de siete (7) días hábiles tras la conformidad. La entidad pagará dentro de los diez días hábiles siguientes de otorgada la conformidad.",
+    "plazo_pago_dias": 10
+   },
+   "requirements": {
+    "provider": [
+     {
+      "tipo": "rnp",
+      "monto": null,
+      "evidencia": null,
+      "descripcion": "Contar con Registro Nacional de Proveedores (RNP) vigente",
+      "obligatorio": true
+     },
+     {
+      "tipo": "ruc_status",
+      "monto": null,
+      "evidencia": null,
+      "descripcion": "Contar con Ruc activo y habido",
+      "obligatorio": true
+     },
+     {
+      "tipo": "specific_experience",
+      "monto": 135000.0,
+      "evidencia": "Contratos, órdenes de compra o comprobantes de pago",
+      "descripcion": "Experiencia en la especialidad (Venta de equipos de medición por flujo, telemetría, ultrasónico, electromagnéticos, macro medidores)",
+      "obligatorio": true
+     }
+    ],
+    "equipment": [],
+    "insurance": [],
+    "key_personnel": [],
+    "proposal_documents": [
+     "Certificado de Garantía del bien",
+     "Guía de Remisión",
+     "Factura",
+     "Certificado de Homologación o Aprobación del modelo",
+     "Certificado de Verificación Inicial",
+     "Listado de medidores (N° de serie, marca, modelo, ensayos de errores, resultados)",
+     "Declaración Jurada de Disponibilidad de Servicios y Repuestos"
+    ]
+   },
+   "goods": {
+    "items": [
+     {
+      "nombre": "Medidor de agua fría Ultrasónico",
+      "cantidad": 50,
+      "unidad_medida": "UND",
+      "especificaciones": [
+       "Diámetro nominal 15 mm",
+       "Relación Q3/Q1 R500",
+       "Caudal permanente 2,5 m3/h",
+       "Longitud 110-165 mm",
+       "Batería ER26500, EVE o HCB",
+       "Material PPS"
+      ]
+     },
+     {
+      "nombre": "Medidor de agua fría Chorro Múltiple",
+      "cantidad": 260,
+      "unidad_medida": "UND",
+      "especificaciones": [
+       "Diámetro nominal 15 mm",
+       "Relación Q3/Q1 R160",
+       "Caudal permanente 2,5 m3/h",
+       "Longitud 165 mm",
+       "Esfera Extra Seca",
+       "Alcance de indicación 99,999 m3"
+      ]
+     }
+    ],
+    "entrega": {
+     "lugar": "Almacén central de la EPS EMAPA CAÑETE S.A., Av. Mariscal Benavides N° 768, San Vicente, Cañete.",
+     "plazo_dias": 15,
+     "condiciones": "Transporte en óptimas condiciones, horario de atención de 08:00 a 12:00 y 14:00 a 17:00.",
+     "plazo_texto": "Máximo de 15 días calendario."
+    },
+    "garantia": {
+     "cobertura": "Fallas o desperfectos del medidor, componente o repuesto.",
+     "condiciones": "Corrección inmediata en el lugar de operación.",
+     "plazo_texto": "Mínimo 12 meses."
+    }
+   },
+   "summary": {
+    "descripcion_corta": "Adquisición de 50 medidores ultrasónicos y 260 medidores de chorro múltiple (DN15) para la EPS EMAPA CAÑETE. La entrega debe realizarse en el almacén central en un plazo máximo de 15 días. Se requiere experiencia en la especialidad por un monto acumulado de S/ 135,000.00.",
+    "observaciones_clave": [
+     "El plazo de entrega inicia tras el perfeccionamiento del contrato o la emisión del certificado de verificación inicial por INACAL.",
+     "Se requiere certificado de aprobación de modelo y certificado de verificación inicial para cada lote.",
+     "La subcontratación está prohibida.",
+     "La garantía mínima exigida es de 12 meses.",
+     "El transporte debe realizarse en horario de atención de almacén (08:00 a 12:00 y 14:00 a 17:00)."
+    ]
+   }
+  }
+ },
+ {
+  "id": 2296,
+  "codigo": "CM-1514-2026-SEDAPAR SA",
+  "title": "Adquisición de repuestos y consumibles para tableros eléctricos de control y potencia (Req. 2026006278)",
+  "prompt_version": "eett_extraction_v2",
+  "old_summary": {
+   "modalidad": "no_indicada",
+   "plazo_ejecucion_dias": null,
+   "tipo_pago": "pago_unico"
+  },
+  "expect": {
+   "requires_human_review": true,
+   "reasons": [
+    "term_missing"
+   ],
+   "modalidad": "presencial",
+   "plazo_ejecucion_dias": 20
+  },
+  "raw": {
+   "contract": {
+    "moneda": "PEN",
+    "objeto": "Adquisición de repuestos y consumibles para tableros eléctricos de control y potencia de la planta Miguel de la Cuba Ibarra",
+    "entidad": "SEDAPAR S.A.",
+    "modalidad": "A suma alzada",
+    "plazo_dias": null,
+    "plazo_texto": "20 días calendario contados desde el día siguiente de notificada la orden",
+    "area_usuaria": null,
+    "lugar_ejecucion": "Planta de Agua Potable la Tomilla - Almacén Tomilla SEDAPAR S.A. Av. Bolognesi s/n La Tomilla, Cayma.",
+    "condicion_inicio": "Día siguiente de notificada la orden",
+    "valor_estimado_monto": 626.0
+   },
+   "execution": {
+    "lugar": "Planta de Agua Potable la Tomilla - Almacén Tomilla SEDAPAR S.A. Av. Bolognesi s/n La Tomilla, Cayma.",
+    "entregables": []
+   },
+   "payment": {
+    "tipo": "pago_unico",
+    "armadas": [],
+    "detalle": "Pago único en un plazo máximo de diez días hábiles luego de otorgada la conformidad por parte del área usuaria y es prorrogable justificación de la demora por 5 días hábiles.",
+    "plazo_pago_dias": 10
+   },
+   "requirements": {
+    "provider": [],
+    "equipment": [],
+    "insurance": [],
+    "key_personnel": [],
+    "proposal_documents": []
+   },
+   "goods": {
+    "items": [
+     {
+      "nombre": "INTERRUPTOR TERMOMAGNETICO TRIFASICO",
+      "cantidad": 3.0,
+      "unidad_medida": "UNI",
+      "especificaciones": [
+       "Caja moldeada (MCCB)",
+       "3 x 100 A",
+       "3 polos",
+       "Montaje en riel DIN",
+       "Rango de ajuste 28-40 A",
+       "380-690 Vca",
+       "36 kA Icu en 380/415 V CA 50/60 Hz",
+       "Norma IEC 60947-2"
+      ]
+     },
+     {
+      "nombre": "INTERRUPTOR HORARIO ELECTRÓNICO",
+      "cantidad": 5.0,
+      "unidad_medida": "UNI",
+      "especificaciones": [
+       "Multifunción semanal 230Vac, 60Hz",
+       "2 modos",
+       "1 contacto conmutado o reversible (SPDT)",
+       "16 A máximo 250VAC",
+       "Montaje riel DIN",
+       "Pantalla LCD",
+       "Reserva de marcha 100 horas"
+      ]
+     },
+     {
+      "nombre": "INTERRUPTOR DIFERENCIAL 4 POLOS",
+      "cantidad": 3.0,
+      "unidad_medida": "UNI",
+      "especificaciones": [
+       "40 A",
+       "Sensibilidad 300mA",
+       "Tipo AC",
+       "Norma EN/IEC 61008-1",
+       "4.5kA",
+       "Montaje riel DIN",
+       "IP20/IP40"
+      ]
+     },
+     {
+      "nombre": "INTERRUPTOR DIFERENCIAL 4 POLOS",
+      "cantidad": 2.0,
+      "unidad_medida": "UNI",
+      "especificaciones": [
+       "25 A",
+       "Sensibilidad 30mA",
+       "Tipo A-SI",
+       "Norma EN/IEC 61008-1",
+       "4.5kA",
+       "Montaje riel DIN",
+       "IP20/IP40"
+      ]
+     },
+     {
+      "nombre": "TUBO CONDUIT",
+      "cantidad": 10.0,
+      "unidad_medida": "UNI",
+      "especificaciones": [
+       "Acero galvanizado conduit EMT",
+       "3 m x 20 mm",
+       "Norma ANSI C80.6",
+       "Certificación UL 1242",
+       "3/4 pulgada",
+       "Espesor 2.10 mm o superior"
+      ]
+     },
+     {
+      "nombre": "TUBO CONDUIT",
+      "cantidad": 12.0,
+      "unidad_medida": "UNI",
+      "especificaciones": [
+       "Acero galvanizado tipo conduit EMT",
+       "3.05 m x 38.1 mm",
+       "Norma ANSI C80.6",
+       "Certificación UL 1242",
+       "1 pulgada",
+       "Espesor 2.35 mm o superior"
+      ]
+     },
+     {
+      "nombre": "BORNERA DE COBRE",
+      "cantidad": 15.0,
+      "unidad_medida": "UN",
+      "especificaciones": [
+       "Para riel DIN",
+       "35 mm2",
+       "Poliamida libre de halógenos",
+       "Norma IEC/EN 60947-7-1",
+       "Color amarillo verdoso"
+      ]
+     },
+     {
+      "nombre": "BORNERA DE COBRE",
+      "cantidad": 50.0,
+      "unidad_medida": "UN",
+      "especificaciones": [
+       "Para riel DIN",
+       "35 mm2",
+       "Poliamida libre de halógenos",
+       "Norma IEC/EN 60947-7-1",
+       "Color gris o blanco"
+      ]
+     },
+     {
+      "nombre": "LUMINARIA",
+      "cantidad": 6.0,
+      "unidad_medida": "UNI",
+      "especificaciones": [
+       "Emergencia LED rectangular",
+       "13 W",
+       "3000 lúmenes",
+       "56 LEDs",
+       "Batería 12 V 4500 mAh",
+       "Autonomía 3 horas",
+       "IP20-IK07"
+      ]
+     },
+     {
+      "nombre": "TUBO LED",
+      "cantidad": 20.0,
+      "unidad_medida": "UNI",
+      "especificaciones": [
+       "18 W",
+       "1800 lm",
+       "6500 K",
+       "1200 mm",
+       "Casquillo G13 ROT",
+       "T8"
+      ]
+     },
+     {
+      "nombre": "CABLE ELECTRICO",
+      "cantidad": 300.0,
+      "unidad_medida": "MT",
+      "especificaciones": [
+       "Flexible tipo NZXY",
+       "1 x 16 mm2",
+       "Aislamiento HFFR",
+       "Color negro",
+       "Norma IEC 60228, IEC 60502-1"
+      ]
+     },
+     {
+      "nombre": "CABLE ELECTRICO",
+      "cantidad": 100.0,
+      "unidad_medida": "MT",
+      "especificaciones": [
+       "Flexible tipo NZXY",
+       "1 x 16 mm2",
+       "Aislamiento HFFR",
+       "Color amarillo/verde",
+       "Norma IEC 60228, IEC 60502-1"
+      ]
+     },
+     {
+      "nombre": "CABLE ELECTRICO",
+      "cantidad": 100.0,
+      "unidad_medida": "MT",
+      "especificaciones": [
+       "Flexible tipo TWF-70",
+       "6 mm2",
+       "Aislamiento HFFR",
+       "Color amarillo/verde",
+       "Norma IEC 60228, IEC 60502-1"
+      ]
+     }
+    ],
+    "entrega": {
+     "lugar": "Planta de Agua Potable la Tomilla - Almacén Tomilla SEDAPAR S.A. Av. Bolognesi s/n La Tomilla, Cayma.",
+     "plazo_dias": 20,
+     "condiciones": "Entregas de lunes a viernes de 7:10 am a 12:10 pm y de 1:00 pm a 3:00 pm. El personal debe contar con implementos de seguridad.",
+     "plazo_texto": "20 días calendario contados desde el día siguiente de notificada la orden"
+    },
+    "garantia": {
+     "cobertura": null,
+     "condiciones": null,
+     "plazo_texto": "Un año de garantía"
+    }
+   },
+   "summary": {
+    "descripcion_corta": "Adquisición de diversos repuestos y consumibles eléctricos (interruptores, bornes, luminarias, tubos conduit y cables) para la planta Miguel de la Cuba Ibarra. La entrega se realizará en el Almacén La Tomilla en un plazo de 20 días calendario. El pago es único tras la conformidad.",
+    "observaciones_clave": [
+     "Plazo de entrega de 20 días calendario desde la notificación de la orden.",
+     "Garantía comercial de un año.",
+     "Entregas de lunes a viernes de 7:10 am a 12:10 pm y de 1:00 pm a 3:00 pm.",
+     "El personal debe contar con implementos de seguridad según normativa vigente.",
+     "Penalidad por mora calculada con factor F según plazo de retraso."
+    ]
+   }
+  }
+ },
+ {
+  "id": 2297,
+  "codigo": "CM-216-2026-GRLL-PECH-OP-AI",
+  "title": "SERVICIO DE CONSULTORÍA ESPECIALIZADA DE DESARROLLO E IMPLEMENTACIÓN DEL MÓDULO DE ASESORÍA JURÍDICA PARA EL SISTEMA INTEGRADO DE GESTIÓN INSTITUCIONAL DEL PECH",
+  "prompt_version": "tdr_extraction_v3",
+  "old_summary": {
+   "modalidad": "no_indicada",
+   "plazo_ejecucion_dias": 60,
+   "tipo_pago": "armadas"
+  },
+  "expect": {
+   "requires_human_review": false,
+   "reasons": [],
+   "modalidad": "presencial",
+   "plazo_ejecucion_dias": 60
+  },
+  "raw": {
+   "contract": {
+    "moneda": "PEN",
+    "objeto": "Servicio de consultoría especializada de desarrollo e implementación del módulo de asesoría jurídica para el sistema integrado de gestión institucional del PECH.",
+    "entidad": "Proyecto Especial Chavimochic (PECH)",
+    "modalidad": null,
+    "plazo_dias": 60,
+    "plazo_texto": "Hasta sesenta días (60) días calendarios",
+    "area_usuaria": "Oficina de Planificación - Área de Informática",
+    "lugar_ejecucion": "Instalaciones del proveedor, y solo en caso de ser necesario, en la sede del Proyecto Especial CHAVIMOCHIC para coordinación.",
+    "condicion_inicio": "Desde el día siguiente de notificada la orden de servicio.",
+    "valor_estimado_monto": null
+   },
+   "execution": {
+    "lugar": "Instalaciones del proveedor, y solo en caso de ser necesario, en la sede del Proyecto Especial CHAVIMOCHIC para coordinación.",
+    "entregables": [
+     {
+      "nombre": "Entregable 01: Análisis, diseño y desarrollo inicial del módulo de asesoría jurídica",
+      "plazo_dias": 30,
+      "plazo_texto": "Hasta los 30 días calendario"
+     },
+     {
+      "nombre": "Entregable 02: Implementación, pruebas y puesta en funcionamiento del módulo de asesoría jurídica",
+      "plazo_dias": 60,
+      "plazo_texto": "Hasta los 60 días calendario"
+     }
+    ]
+   },
+   "payment": {
+    "tipo": "armadas",
+    "armadas": [
+     {
+      "numero": 1,
+      "condicion": "Conformidad del Entregable 01",
+      "porcentaje": 50.0
+     },
+     {
+      "numero": 2,
+      "condicion": "Conformidad del Entregable 02",
+      "porcentaje": 50.0
+     }
+    ],
+    "detalle": "Dos pagos parciales iguales, uno por cada entregable con conformidad, previa presentación de informe y comprobante de pago.",
+    "plazo_pago_dias": null
+   },
+   "requirements": {
+    "provider": [
+     {
+      "tipo": "legal_capacity",
+      "monto": null,
+      "evidencia": null,
+      "descripcion": "Persona natural o jurídica.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "ruc_status",
+      "monto": null,
+      "evidencia": "Contar con Registro Único de Contribuyente (RUC) vigente.",
+      "descripcion": "Contar con Registro Único de Contribuyente (RUC) vigente.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "rnp",
+      "monto": null,
+      "evidencia": "Contar con Registro Nacional de Proveedores (RNP) vigente.",
+      "descripcion": "Contar con Registro Nacional de Proveedores (RNP) vigente.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "not_disqualified",
+      "monto": null,
+      "evidencia": "No estar inhabilitado ni sancionado para contratar con el Estado.",
+      "descripcion": "No estar inhabilitado ni sancionado para contratar con el Estado.",
+      "obligatorio": true
+     }
+    ],
+    "equipment": [],
+    "insurance": [
+     {
+      "tipo": "Seguro contra accidentes personales",
+      "descripcion": "Seguro contra accidentes personales o afines, vigente por el periodo de ejecución del servicio.",
+      "obligatorio": true
+     }
+    ],
+    "key_personnel": [
+     {
+      "rol": "Especialista (Ingeniero)",
+      "formacion": [
+       "Ingeniero de Sistemas, Ingeniero de Computación y Sistemas o Ingeniero Informático"
+      ],
+      "experiencia": "Experiencia General: mínima de 3 años y 5 meses. Experiencia específica: mínima de 3 años y 5 meses en Gestión de TI, Soporte Técnico, Mantenimiento de equipos y/o Tecnologías de la Información.",
+      "capacitaciones": [
+       "Desarrollo web y ciclo de vida de aplicaciones (Java, PHP, JavaScript; HTML/CSS)",
+       "Automatización y programación (Python)",
+       "Gestión avanzada de datos y consultas SQL",
+       "Administración de bases de datos y motores (MySQL)",
+       "Implementación y optimización de agentes de IA (Google Gemini / Workspace & AI)",
+       "Diplomado en Sistemas Administrativos (SIGA, SIAF Y SEACE 3.0)",
+       "Diplomado en Power BI (Business Intelligence)"
+      ],
+      "experiencia_anios": 3.4,
+      "colegiatura_requerida": true
+     }
+    ],
+    "proposal_documents": [
+     "Copias simples de grados, títulos, certificados o constancias de cursos o capacitaciones.",
+     "Copia simple de contratos y/o órdenes de servicio y/o constancia de prestación de servicios y/o certificados de trabajo."
+    ]
+   },
+   "summary": {
+    "descripcion_corta": "El PECH requiere la contratación de un servicio de consultoría especializada para el desarrollo e implementación de un Módulo de Asesoría Jurídica integrado al SIGI CHAVIMOCHIC 2050. El plazo de ejecución es de 60 días calendario, con dos entregables parciales sujetos a pagos iguales. Se exige un perfil profesional de ingeniero con amplia experiencia en TI y capacitaciones específicas en desarrollo web, SQL, IA y sistemas administrativos. El servicio debe prestarse principalmente en las instalaciones del proveedor.",
+    "observaciones_clave": [
+     "El plazo de ejecución es muy ajustado (60 días para desarrollo e implementación).",
+     "Se requiere seguro contra accidentes personales vigente antes de la orden de servicio.",
+     "El pago es en dos armadas iguales, condicionado a la conformidad de cada entregable.",
+     "Existen penalidades específicas por inasistencia a reuniones y retrasos en hitos técnicos.",
+     "El proveedor debe entregar código fuente y manuales, los cuales pasan a propiedad del PECH."
+    ]
+   }
+  }
+ },
+ {
+  "id": 2298,
+  "codigo": "CM-233-2026-CEPLAN",
+  "title": "SUSCRIPCIÓN ANUAL DE ALMACENAMIENTO EN NUBE INFORMÁTICA",
+  "prompt_version": "tdr_extraction_v3",
+  "old_summary": {
+   "modalidad": "no_indicada",
+   "plazo_ejecucion_dias": 365,
+   "tipo_pago": "armadas"
+  },
+  "expect": {
+   "requires_human_review": true,
+   "reasons": [
+    "payment_count_mismatch",
+    "payment_percent_sum",
+    "payment_type_incoherent"
+   ],
+   "modalidad": "mixta",
+   "plazo_ejecucion_dias": 365
+  },
+  "raw": {
+   "contract": {
+    "moneda": "PEN",
+    "objeto": "Suscripción anual de almacenamiento en nube informática para el CEPLAN.",
+    "entidad": "Centro Nacional de Planeamiento Estratégico – CEPLAN",
+    "modalidad": "Suma alzada",
+    "plazo_dias": 365,
+    "plazo_texto": "trescientos sesenta y cinco (365) días calendario",
+    "area_usuaria": "UFTI – Unidad Funcional de Tecnologías de la Información",
+    "lugar_ejecucion": "Híbrido (instalaciones del CEPLAN en Av. Canaval y Moreyra N.º 480, piso 21 o Auditorio piso 2, San Isidro, previa coordinación).",
+    "condicion_inicio": "desde el día de la activación de la suscripción indicada en el acta de inicio del servicio",
+    "valor_estimado_monto": null
+   },
+   "execution": {
+    "lugar": "Híbrido",
+    "entregables": [
+     {
+      "nombre": "Informe mensual de operación y consumo del servicio",
+      "plazo_dias": 7,
+      "plazo_texto": "dentro de los primeros siete (7) días hábiles siguientes al cierre de cada mes"
+     }
+    ]
+   },
+   "payment": {
+    "tipo": "armadas",
+    "armadas": [
+     {
+      "numero": 1,
+      "condicion": "Pago mensual tras conformidad",
+      "porcentaje": 8.33
+     }
+    ],
+    "detalle": "Pago en doce (12) armadas iguales, previa conformidad del entregable y presentación de documentos (carta simple, acta de activación, comprobante de pago e informe mensual).",
+    "plazo_pago_dias": null
+   },
+   "requirements": {
+    "provider": [
+     {
+      "tipo": "legal_capacity",
+      "monto": null,
+      "evidencia": null,
+      "descripcion": "Persona natural y/o jurídica.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "ruc_status",
+      "monto": null,
+      "evidencia": null,
+      "descripcion": "Tener RUC activo y habido.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "not_disqualified",
+      "monto": null,
+      "evidencia": null,
+      "descripcion": "No encontrarse inhabilitado, impedido o sancionado para contratar con el Estado.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "rnp",
+      "monto": null,
+      "evidencia": null,
+      "descripcion": "Encontrarse inscrito en el Registro Nacional de Proveedores (RNP).",
+      "obligatorio": true
+     },
+     {
+      "tipo": "economic_experience",
+      "monto": 20000,
+      "evidencia": "S/ 20000 (Veinte mil con 00/100 Soles)",
+      "descripcion": "Monto facturado acumulado equivalente a S/ 20,000 por servicios iguales o similares en los últimos 8 años.",
+      "obligatorio": true
+     }
+    ],
+    "equipment": [],
+    "insurance": [],
+    "key_personnel": [
+     {
+      "rol": "Personal clave",
+      "formacion": [
+       "Bachiller en carreras de Ingeniería de Sistemas o Informática o Electrónica."
+      ],
+      "experiencia": "Mínimo 4 años de experiencia en administración y/o implementación y/o soporte de servicios de almacenamiento en nube y/o soluciones de respaldo de información.",
+      "capacitaciones": [
+       "Certificación técnica del fabricante nivel Engineer en Arcserve UDP.",
+       "Certificación técnica vigente del fabricante en servicios de almacenamiento y/o respaldo en nube.",
+       "Certificación oficial en Sistema de Gestión de la Continuidad del Negocio - ISO 22301."
+      ],
+      "experiencia_anios": 4,
+      "colegiatura_requerida": false
+     }
+    ],
+    "proposal_documents": [
+     "Carta simple dirigida al CEPLAN",
+     "Documentos que acrediten experiencia (contratos, facturas, etc.)",
+     "Documentos que acrediten formación y capacitación del personal clave"
+    ]
+   },
+   "summary": {
+    "descripcion_corta": "Contratación de una suscripción anual de almacenamiento en nube (30 TB) para el CEPLAN, con enfoque en inmutabilidad y protección contra ransomware. El servicio debe integrarse con Arcserve y ser administrado en la nube. El pago se realiza en 12 armadas mensuales tras la conformidad de informes. Se requiere experiencia previa de S/ 20,000 y personal clave con certificaciones específicas en Arcserve e ISO 22301.",
+    "observaciones_clave": [
+     "El plazo de ejecución es de 365 días calendario.",
+     "Se requiere personal con certificaciones específicas (Arcserve Engineer e ISO 22301).",
+     "El pago es en 12 armadas iguales.",
+     "La penalidad por mora tiene una fórmula específica con F=0.40.",
+     "El servicio debe ser 100% cloud, sin hardware local."
+    ]
+   }
+  }
+ },
+ {
+  "id": 2299,
+  "codigo": "CM-1771320262-2026-0779-2026-IGP/JI-DCTS",
+  "title": "ADQUISICIÓN DE SENSORES DE TEMPERATURA/PH HÍDRICA",
+  "prompt_version": "eett_extraction_v2",
+  "old_summary": {
+   "modalidad": "no_indicada",
+   "plazo_ejecucion_dias": 45,
+   "tipo_pago": "pago_unico"
+  },
+  "expect": {
+   "requires_human_review": false,
+   "reasons": [],
+   "modalidad": "presencial",
+   "plazo_ejecucion_dias": 45
+  },
+  "raw": {
+   "contract": {
+    "moneda": "PEN",
+    "objeto": "Adquisición de sensores de temperatura/ph hídrica",
+    "entidad": "Instituto Geofísico del Perú (IGP)",
+    "plazo_dias": 45,
+    "plazo_texto": "45 días calendarios",
+    "area_usuaria": "Dirección en Ciencias de la Tierra Sólida",
+    "lugar_ejecucion": "Almacén del IGP, calle Badajoz N° 169, Urb. Mayorazgo, distrito de Ate, Lima",
+    "condicion_inicio": "Día siguiente de la notificación de la orden de compra por parte de la Entidad",
+    "valor_estimado_monto": null
+   },
+   "execution": {
+    "lugar": "Almacén del IGP, calle Badajoz N° 169, Urb. Mayorazgo, distrito de Ate, Lima",
+    "entregables": []
+   },
+   "payment": {
+    "tipo": "pago_unico",
+    "armadas": [
+     {
+      "numero": 1,
+      "condicion": "Tras la emisión de la conformidad",
+      "porcentaje": 100.0
+     }
+    ],
+    "detalle": "El pago se realizará en una sola armada por el monto total, dentro de los 15 días calendario luego de haberse emitido la conformidad correspondiente.",
+    "plazo_pago_dias": 15
+   },
+   "requirements": {
+    "provider": [
+     {
+      "tipo": "other",
+      "monto": null,
+      "evidencia": null,
+      "descripcion": "Estar habilitado para contratar con el estado",
+      "obligatorio": true
+     }
+    ],
+    "equipment": [],
+    "insurance": [],
+    "key_personnel": [],
+    "proposal_documents": [
+     "Factura del bien(es) entregado(s)",
+     "Guía de Remisión con V°B° del responsable de Almacén",
+     "Copia del Contrato o Copia de la Orden de compra",
+     "Código de Cuenta Interbancaria"
+    ]
+   },
+   "goods": {
+    "items": [
+     {
+      "nombre": "Sensor de temperatura/ph hídrica",
+      "cantidad": 5,
+      "unidad_medida": "Unidad",
+      "especificaciones": [
+       "Rango de medición conductividad: 0 a 100.000 µS/cm",
+       "Salinidad: 2 a 42 PSU",
+       "Sólidos disueltos totales (TDS): 0 a 100.000 mg/L",
+       "Exactitud conductividad: +/-2% o 15 µS/cm",
+       "Exactitud salinidad: +/-2% o 0,1 PSU",
+       "Tiempo de respuesta: 1 segundo al 90% a temperatura estable",
+       "Medición de presión: 0 a 207 kPa, precisión nivel de agua +/-0,05% FS (típico)"
+      ]
+     }
+    ],
+    "entrega": {
+     "lugar": "Almacén del IGP, calle Badajoz N° 169, Urb. Mayorazgo, distrito de Ate, Lima",
+     "plazo_dias": 45,
+     "condiciones": "El plazo empieza a regir a partir del día siguiente de la notificación de la orden de compra.",
+     "plazo_texto": "45 días calendarios"
+    },
+    "garantia": {
+     "cobertura": "Contra todo defecto de diseño y/o fabricación, por malos funcionamientos derivados de desperfectos o fallas ajenas al uso normal.",
+     "condiciones": "Canje o reposición en un plazo no mayor a 10 días en caso de deficiencias.",
+     "plazo_texto": "12 meses"
+    }
+   },
+   "summary": {
+    "descripcion_corta": "Adquisición de 05 sensores de temperatura/ph hídrica para el monitoreo de dinámica física de aguas de alta montaña. La entrega se realizará en el almacén del IGP en Ate, Lima, en un plazo de 45 días calendario. Se requiere que el proveedor esté habilitado para contratar con el Estado.",
+    "observaciones_clave": [
+     "Garantía de 12 meses contra defectos de diseño o fabricación.",
+     "El plazo de entrega inicia al día siguiente de la notificación de la orden de compra.",
+     "El canje o reposición por garantía debe realizarse en un plazo no mayor a 10 días.",
+     "El pago es único a los 15 días de emitida la conformidad.",
+     "El contratista debe cumplir protocolos sanitarios del IGP y del MINSA para la ejecución."
+    ]
+   }
+  }
+ },
+ {
+  "id": 2300,
+  "codigo": "CM-930-2026-DEC/2026",
+  "title": "SERVICIO DE RENOVACIÓN DE LICENCIAS DE SOFTWARE ANTIVIRUS UNIVERSIDAD NACIONAL AUTÓNOMA DE TAYACAJA DANIEL HERNÁNDEZ MORILLO.",
+  "prompt_version": "tdr_extraction_v3",
+  "old_summary": {
+   "modalidad": "no_indicada",
+   "plazo_ejecucion_dias": 20,
+   "tipo_pago": "pago_unico"
+  },
+  "expect": {
+   "requires_human_review": false,
+   "reasons": [],
+   "modalidad": "no_indicada",
+   "plazo_ejecucion_dias": 20
+  },
+  "raw": {
+   "contract": {
+    "moneda": "PEN",
+    "objeto": "Servicio de renovación de licencias de software antivirus para la Universidad Nacional Autónoma de Tayacaja Daniel Hernández Morillo.",
+    "entidad": "Universidad Nacional Autónoma de Tayacaja Daniel Hernández Morillo",
+    "modalidad": null,
+    "plazo_dias": 20,
+    "plazo_texto": "Hasta los veinte (20) días calendario, contabilizados a partir del día siguiente de la notificación de la Orden de Servicio.",
+    "area_usuaria": "Oficina de Tecnologías de la Información",
+    "lugar_ejecucion": "Universidad Nacional Autónoma de Tayacaja Daniel Hernández Morillo",
+    "condicion_inicio": "día siguiente de la notificación de la Orden de Servicio",
+    "valor_estimado_monto": null
+   },
+   "execution": {
+    "lugar": "Universidad Nacional Autónoma de Tayacaja Daniel Hernández Morillo",
+    "entregables": [
+     {
+      "nombre": "Certificado Oficial de Licenciamiento",
+      "plazo_dias": 20,
+      "plazo_texto": "Hasta los 20 días calendario"
+     },
+     {
+      "nombre": "Credenciales y Accesos",
+      "plazo_dias": 20,
+      "plazo_texto": "Hasta los 20 días calendario"
+     },
+     {
+      "nombre": "Informe de Instalación y Configuración",
+      "plazo_dias": 20,
+      "plazo_texto": "Hasta los 20 días calendario"
+     },
+     {
+      "nombre": "Carta de soporte por 12 meses",
+      "plazo_dias": 20,
+      "plazo_texto": "Hasta los 20 días calendario"
+     }
+    ]
+   },
+   "payment": {
+    "tipo": "pago_unico",
+    "armadas": [
+     {
+      "numero": 1,
+      "condicion": "Único entregable",
+      "porcentaje": 100.0
+     }
+    ],
+    "detalle": "El pago se efectuará luego de emitida la conformidad del entregable, en un plazo máximo de diez (10) días hábiles.",
+    "plazo_pago_dias": 10
+   },
+   "requirements": {
+    "provider": [
+     {
+      "tipo": "legal_capacity",
+      "monto": null,
+      "evidencia": "Persona jurídica dedicad al rubro de la contratación",
+      "descripcion": "Persona jurídica dedicada al rubro de la contratación.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "rnp",
+      "monto": null,
+      "evidencia": "Registro Nacional de Proveedores vigente (Obligatorio)",
+      "descripcion": "Registro Nacional de Proveedores vigente.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "not_disqualified",
+      "monto": null,
+      "evidencia": "No contar con impedimento para contratar con el estado",
+      "descripcion": "No contar con impedimento para contratar con el Estado.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "ruc_status",
+      "monto": null,
+      "evidencia": "RUC vigente y habido (Obligatorio)",
+      "descripcion": "RUC vigente y habido.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "cci",
+      "monto": null,
+      "evidencia": "Contar con CCI vinculado a su RUC",
+      "descripcion": "Contar con CCI vinculado a su RUC.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "other",
+      "monto": null,
+      "evidencia": "El postor deberá acreditar ser agente autorizado en el Perú",
+      "descripcion": "Agente autorizado en el Perú por el fabricante o representante o distribuidor oficial.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "economic_experience",
+      "monto": null,
+      "evidencia": "monto facturado acumulado equivalente a 2 veces el valor estimado",
+      "descripcion": "Monto facturado acumulado equivalente a 2 veces el valor estimado en servicios iguales o similares en los últimos 8 años.",
+      "obligatorio": true
+     }
+    ],
+    "equipment": [],
+    "insurance": [],
+    "key_personnel": [],
+    "proposal_documents": [
+     "Copia simple de contratos u órdenes de servicio con su respectiva conformidad",
+     "Constancias",
+     "Certificados",
+     "Factura o boleta de pago",
+     "Documentación que demuestre la experiencia adquirida"
+    ]
+   },
+   "summary": {
+    "descripcion_corta": "La UNAT requiere la renovación de 339 licencias de software antivirus corporativo con soporte técnico por un año. El servicio incluye la instalación, configuración y gestión centralizada de la seguridad. El plazo de ejecución es de 20 días calendario y el pago es único tras la conformidad. Se exige ser agente autorizado en el Perú y acreditar experiencia acumulada equivalente a dos veces el valor estimado.",
+    "observaciones_clave": [
+     "El plazo de ejecución es muy corto (20 días).",
+     "Se requiere acreditar ser agente autorizado por el fabricante en el Perú.",
+     "La experiencia exigida es de 2 veces el valor estimado en los últimos 8 años.",
+     "El pago está sujeto a una conformidad que puede demorar hasta 7 días hábiles tras la entrega.",
+     "La penalidad por mora tiene un tope del 10% del monto del contrato."
+    ]
+   }
+  }
+ },
+ {
+  "id": 2301,
+  "codigo": "CM-128-2026-UNACHU",
+  "title": "CONTRATACIÓN DEL SERVICIO DE SUSCRIPCIÓN DE TREINTA Y CINCO (35) LICENCIAS MICROSOFT 365 EDUCATION A3 PARA LA UNIVERSIDAD NACIONAL AUTÓNOMA DE CHUPACA, A TODO COSTO.",
+  "prompt_version": "tdr_extraction_v3",
+  "old_summary": {
+   "modalidad": "no_indicada",
+   "plazo_ejecucion_dias": 30,
+   "tipo_pago": "pago_unico"
+  },
+  "expect": {
+   "requires_human_review": false,
+   "reasons": [],
+   "modalidad": "mixta",
+   "plazo_ejecucion_dias": 30
+  },
+  "raw": {
+   "contract": {
+    "moneda": "PEN",
+    "objeto": "Contratación del servicio de suscripción de treinta y cinco (35) licencias Microsoft 365 Education A3 para la Universidad Nacional Autónoma de Chupaca, a todo costo.",
+    "entidad": "Universidad Nacional Autónoma de Chupaca",
+    "modalidad": null,
+    "plazo_dias": 30,
+    "plazo_texto": "treinta (30) días calendario",
+    "area_usuaria": "Oficina de Tecnologías de la Información",
+    "lugar_ejecucion": "Remota en el entorno de Microsoft 365 de la UNACHU; actividades presenciales en Jr. María Miranda N° 690, Barrio La Libertad, Chupaca, Junín.",
+    "condicion_inicio": "desde el día siguiente de notificada la orden de servicio o suscrito el contrato",
+    "valor_estimado_monto": null
+   },
+   "execution": {
+    "lugar": "Remota en el entorno de Microsoft 365 de la UNACHU",
+    "entregables": [
+     {
+      "nombre": "Informe único (activación, implementación, migración, capacitación y soporte)",
+      "plazo_dias": 30,
+      "plazo_texto": "Hasta treinta (30) días calendario, contados a partir del día siguiente de notificada la orden de servicio o suscrito el contrato"
+     }
+    ]
+   },
+   "payment": {
+    "tipo": "pago_unico",
+    "armadas": [
+     {
+      "numero": 1,
+      "condicion": "Conformidad del entregable único",
+      "porcentaje": 100
+     }
+    ],
+    "detalle": "El pago se realiza en un plazo máximo de diez (10) días hábiles luego de otorgada la conformidad del entregable único.",
+    "plazo_pago_dias": 10
+   },
+   "requirements": {
+    "provider": [
+     {
+      "tipo": "legal_capacity",
+      "monto": null,
+      "evidencia": "6.1. Del proveedor",
+      "descripcion": "Ser persona natural o jurídica.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "ruc_status",
+      "monto": null,
+      "evidencia": "6.1. Del proveedor",
+      "descripcion": "Contar con RUC activo y habido.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "rnp",
+      "monto": null,
+      "evidencia": "6.1. Del proveedor",
+      "descripcion": "Contar con inscripción vigente en el Registro Nacional de Proveedores (RNP), capítulo de servicios.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "not_disqualified",
+      "monto": null,
+      "evidencia": "6.1. Del proveedor",
+      "descripcion": "No encontrarse impedido para contratar con el Estado.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "cci",
+      "monto": null,
+      "evidencia": "6.1. Del proveedor",
+      "descripcion": "Contar con Código de Cuenta Interbancaria (CCI).",
+      "obligatorio": true
+     },
+     {
+      "tipo": "other",
+      "monto": null,
+      "evidencia": "6.1. Del proveedor",
+      "descripcion": "Contar con la condición de partner autorizado por Microsoft (Cloud Solution Provider).",
+      "obligatorio": true
+     },
+     {
+      "tipo": "specific_experience",
+      "monto": null,
+      "evidencia": "6.2. Experiencia del proveedor",
+      "descripcion": "Haber ejecutado, como mínimo, cuatro (04) servicios similares en los cinco (05) años anteriores.",
+      "obligatorio": true
+     }
+    ],
+    "equipment": [],
+    "insurance": [],
+    "key_personnel": [
+     {
+      "rol": "Responsable técnico",
+      "formacion": [
+       "Profesional o técnico en Ingeniería de Sistemas, Informática, Computación o afines."
+      ],
+      "experiencia": "Mínimo doce (12) meses en administración o implementación de Microsoft 365, Exchange Online, servicios de correo electrónico en la nube o plataformas cloud similares.",
+      "capacitaciones": [],
+      "experiencia_anios": 1,
+      "colegiatura_requerida": false
+     }
+    ],
+    "proposal_documents": [
+     "Copia simple de contratos u órdenes de servicio y su respectiva conformidad.",
+     "Constancias o certificados.",
+     "Comprobantes de pago cuya cancelación se acredite documentalmente.",
+     "Certificado, constancia o documento emitido por Microsoft que acredite ser partner autorizado."
+    ]
+   },
+   "summary": {
+    "descripcion_corta": "Contratación de 35 licencias Microsoft 365 Education A3 por 12 meses para la UNACHU. Incluye implementación, configuración, migración de correos y capacitación. El plazo de ejecución es de 30 días calendario. El pago es único al 100% tras la conformidad.",
+    "observaciones_clave": [
+     "El proveedor debe ser partner autorizado por Microsoft (Cloud Solution Provider).",
+     "Se requiere acreditar 4 servicios similares en los últimos 5 años.",
+     "La penalidad por mora se calcula con una fórmula específica donde F=0.40.",
+     "El soporte técnico es obligatorio durante toda la vigencia de la suscripción (12 meses).",
+     "La migración de correos es de aproximadamente 4 GB de información."
+    ]
+   }
+  }
+ },
+ {
+  "id": 2302,
+  "codigo": "CM-1978626-2026-0272-2026-IGP/JI-DIGDT",
+  "title": "ADQUISICIÓN DE MATERIALES PARA PUESTA EN OPERACIÓN DE ARRANCADOR SUAVE PARA VENTILADOR EN LA ESTACIÓN SISMICA DE ÑAÑA UBICADA EN LA REGIÓN LIMA - CUBSO REFERENCIAL",
+  "prompt_version": "eett_extraction_v2",
+  "old_summary": {
+   "modalidad": "no_indicada",
+   "plazo_ejecucion_dias": 15,
+   "tipo_pago": "pago_unico"
+  },
+  "expect": {
+   "requires_human_review": false,
+   "reasons": [],
+   "modalidad": "presencial",
+   "plazo_ejecucion_dias": 15
+  },
+  "raw": {
+   "contract": {
+    "moneda": "PEN",
+    "objeto": "Adquisición de materiales para puesta en operación de arrancador suave para ventilador en la estación sísmica de Ñaña ubicada en la región Lima",
+    "entidad": "Instituto Geofísico del Perú",
+    "plazo_dias": 15,
+    "plazo_texto": "QUINCE (15) días calendarios",
+    "area_usuaria": "Dirección de Instrumentación Geofísica y Desarrollo Tecnológico",
+    "lugar_ejecucion": "Almacén del IGP, Calle Badajoz N° 169, Urb. Mayorazgo 4ta Etapa, Ate, Lima, Perú",
+    "condicion_inicio": "A partir del día siguiente de recibida la orden de compra por parte del proveedor",
+    "valor_estimado_monto": null
+   },
+   "execution": {
+    "lugar": "Almacén del IGP, Calle Badajoz N° 169, Urb. Mayorazgo 4ta Etapa, Ate, Lima, Perú",
+    "entregables": []
+   },
+   "payment": {
+    "tipo": "pago_unico",
+    "armadas": [
+     {
+      "numero": 1,
+      "condicion": "Luego de haberse emitido la conformidad correspondiente",
+      "porcentaje": 100.0
+     }
+    ],
+    "detalle": "El pago se realizará en una sola armada por el monto total, dentro de los 15 días calendario luego de haberse emitido la conformidad correspondiente.",
+    "plazo_pago_dias": 15
+   },
+   "requirements": {
+    "provider": [
+     {
+      "tipo": "other",
+      "monto": null,
+      "evidencia": null,
+      "descripcion": "Brindar la garantía de los bienes solicitados cumpliendo con los estándares respectivos, especificaciones técnicas solicitadas y con las certificaciones que corresponda.",
+      "obligatorio": true
+     }
+    ],
+    "equipment": [],
+    "insurance": [],
+    "key_personnel": [],
+    "proposal_documents": [
+     "Factura del bien(es) entregado(s)",
+     "Guía de Remisión con V°B° del responsable de Almacén",
+     "Copia del Contrato o Copia de la Orden de compra",
+     "Código de Cuenta Interbancaria"
+    ]
+   },
+   "goods": {
+    "items": [
+     {
+      "nombre": "Interruptor termomagnetico 1A",
+      "cantidad": 1,
+      "unidad_medida": "unidad",
+      "especificaciones": [
+       "Tipo: Monofásico (2 polos)",
+       "Voltaje: 230V",
+       "Curva: Tipo C 6 KA",
+       "Estándar: IEC 60898-1",
+       "Contacto de libre apertura: Si",
+       "Montaje: Riel DIN"
+      ]
+     },
+     {
+      "nombre": "Interruptor termomagnetico 5A",
+      "cantidad": 1,
+      "unidad_medida": "unidad",
+      "especificaciones": [
+       "Tipo: Monofásico (2 polos)",
+       "Voltaje: 230V",
+       "Curva: Tipo C 6 KA",
+       "Estándar: IEC 60898-1",
+       "Contacto de libre apertura: Si",
+       "Montaje: Riel DIN"
+      ]
+     }
+    ],
+    "entrega": {
+     "lugar": "Almacén del IGP, Calle Badajoz N° 169, Urb. Mayorazgo 4ta Etapa, Ate, Lima, Perú",
+     "plazo_dias": 15,
+     "condiciones": "El plazo empezará a regir a partir del día siguiente de recibida la orden de compra por parte del proveedor.",
+     "plazo_texto": "QUINCE (15) días calendarios"
+    },
+    "garantia": {
+     "cobertura": "Deficiencias en la calidad o bien ofertado",
+     "condiciones": "El tiempo de solución o reemplazo por garantía será en un plazo no mayor de QUINCE (15) días de haber notificado al CONTRATISTA.",
+     "plazo_texto": "Mínimo de DOCE (12) meses"
+    }
+   },
+   "summary": {
+    "descripcion_corta": "Adquisición de interruptores termomagnéticos (1A y 5A) para la estación sísmica de Ñaña. La entrega se realizará en el almacén del IGP en Ate en un plazo de 15 días calendario. Se requiere garantía mínima de 12 meses.",
+    "observaciones_clave": [
+     "Garantía comercial mínima de 12 meses.",
+     "Plazo de entrega de 15 días calendario tras recibir la orden de compra.",
+     "El canje o reposición por garantía debe realizarse en un plazo no mayor a 15 días.",
+     "El pago se realiza en una sola armada tras la conformidad.",
+     "Cumplimiento obligatorio de protocolos sanitarios en instalaciones del IGP."
+    ]
+   }
+  }
+ },
+ {
+  "id": 2303,
+  "codigo": "CM-411-2026-AABAST-GRTCLL",
+  "title": "ADQUISICIÓN DE SERVIDOR TIPO NAS 2.2 GHz 4 NUCLEOS 8 GB",
+  "prompt_version": "eett_extraction_v2",
+  "old_summary": {
+   "modalidad": "no_indicada",
+   "plazo_ejecucion_dias": 10,
+   "tipo_pago": "pago_unico"
+  },
+  "expect": {
+   "requires_human_review": true,
+   "reasons": [
+    "title_spec_mismatch"
+   ],
+   "modalidad": "presencial",
+   "plazo_ejecucion_dias": 10
+  },
+  "raw": {
+   "contract": {
+    "moneda": "PEN",
+    "objeto": "ADQUISICIÓN DE SERVIDOR TIPO NAS 2.2 GHz 4 NUCLEOS 8 GB",
+    "entidad": "Gerencia Regional de Transportes y Comunicaciones La Libertad",
+    "plazo_dias": 10,
+    "plazo_texto": "diez (10) días calendario",
+    "area_usuaria": "AREA TECNICA FUNCIONAL DE LICENCIAS DE CONDUCIR",
+    "lugar_ejecucion": "Almacén del Área de Abastecimiento de la Gerencia Regional de Transportes y Comunicaciones de La Libertad, Av. Moche N.° 452, Urb. Torres Araujo, Trujillo, La Libertad",
+    "condicion_inicio": "día siguiente de recibida la Orden de Compra",
+    "valor_estimado_monto": null
+   },
+   "execution": {
+    "lugar": "Almacén del Área de Abastecimiento de la Gerencia Regional de Transportes y Comunicaciones de La Libertad",
+    "entregables": [
+     {
+      "nombre": "Servidor NAS (Network Attached Storage) para almacenamiento centralizado, respaldo y gestión de la información institucional",
+      "plazo_dias": 10,
+      "plazo_texto": "diez (10) días calendario"
+     }
+    ]
+   },
+   "payment": {
+    "tipo": "pago_unico",
+    "armadas": [],
+    "detalle": "Pago único en soles, dentro de los diez (10) días hábiles siguientes de otorgada la conformidad.",
+    "plazo_pago_dias": 10
+   },
+   "requirements": {
+    "provider": [
+     {
+      "tipo": "legal_capacity",
+      "descripcion": "Persona natural o jurídica dedicada a las actividades del rubro.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "not_disqualified",
+      "descripcion": "No tener impedimento para contratar con el estado.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "ruc_status",
+      "descripcion": "Contar con RUC en el rubro de la actividad (Activo-habido).",
+      "obligatorio": true
+     },
+     {
+      "tipo": "rnp",
+      "descripcion": "Contar con Registro Nacional de Proveedores (RNP) en caso de corresponder.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "cci",
+      "descripcion": "Tener Código de Cuenta Interbancaria (CCI) registrada y vinculada a RUC.",
+      "obligatorio": true
+     }
+    ],
+    "equipment": [],
+    "insurance": [],
+    "key_personnel": [],
+    "proposal_documents": [
+     "Factura",
+     "Guía de Remisión",
+     "Carta de autorización con el Código de Cuenta Interbancaria (CCI)"
+    ]
+   },
+   "goods": {
+    "items": [
+     {
+      "nombre": "Servidor NAS",
+      "cantidad": 1,
+      "unidad_medida": "unidad",
+      "especificaciones": [
+       "Procesador mínimo 4 núcleos, 1.7 GHz o superior, 64 bits",
+       "RAM mínima 4 GB DDR4, ampliable a 16 GB",
+       "Mínimo 8 bahías para discos SATA 6 Gb/s",
+       "Incluye 4 discos duros grado NAS: 2 de 2TB y 2 de 4TB",
+       "Soporte RAID 0, 1, 5, 6, 10, JBOD",
+       "2 puertos Ethernet 2.5 GbE, 2 puertos USB 3.2 Gen 1",
+       "Alimentación 100-240 V AC, 50/60 Hz",
+       "Formato torre"
+      ]
+     }
+    ],
+    "entrega": {
+     "lugar": "Almacén del Área de Abastecimiento de la Gerencia Regional de Transportes y Comunicaciones de La Libertad",
+     "plazo_dias": 10,
+     "condiciones": "Incluye instalación, configuración y puesta en marcha.",
+     "plazo_texto": "diez (10) días calendario"
+    },
+    "garantia": {
+     "cobertura": "Servidor NAS, discos duros y componentes.",
+     "condiciones": "Modalidad ON-SITE, tiempo de respuesta máximo de 24 horas.",
+     "plazo_texto": "36 meses"
+    }
+   },
+   "summary": {
+    "descripcion_corta": "Adquisición de un servidor NAS con 4 núcleos, 8GB RAM y 4 discos duros (2x2TB, 2x4TB) para la Gerencia Regional de Transportes y Comunicaciones La Libertad. Incluye instalación, configuración, migración de datos y capacitación de 48 horas. El plazo de entrega es de 10 días calendario.",
+    "observaciones_clave": [
+     "Garantía mínima de 3 años ON-SITE con tiempo de respuesta máximo de 24 horas.",
+     "El proveedor debe realizar la migración de información del sistema actual.",
+     "Capacitación obligatoria de 48 horas al personal técnico.",
+     "El pago es único tras la conformidad de los bienes y servicios."
+    ]
+   }
+  }
+ },
+ {
+  "id": 2304,
+  "codigo": "CM-2386-2026-SERVICIOS-UA-UNALM",
+  "title": "SERVICIO DE MANTENIMIENTO CORRECTIVO DE EQUIPOS ELECTRICOS DE UNA EXTRUSORA",
+  "prompt_version": "tdr_extraction_v3",
+  "old_summary": {
+   "modalidad": "no_indicada",
+   "plazo_ejecucion_dias": 30,
+   "tipo_pago": "pago_unico"
+  },
+  "expect": {
+   "requires_human_review": false,
+   "reasons": [],
+   "modalidad": "presencial",
+   "plazo_ejecucion_dias": 30
+  },
+  "raw": {
+   "contract": {
+    "moneda": "PEN",
+    "objeto": "Mantenimiento correctivo de equipos eléctricos de una Extrusora Marca: INBRAMAQ y Modelo: PQDRX-50 con código de inventario: 675044310001.",
+    "entidad": "Universidad Nacional Agraria La Molina",
+    "modalidad": "Suma alzada",
+    "plazo_dias": 30,
+    "plazo_texto": "Hasta 30 días calendarios, contabilizados desde el día siguiente de la notificación de la orden de servicio.",
+    "area_usuaria": "Instituto de Desarrollo Agroindustrial -INDDA",
+    "lugar_ejecucion": "Lima Av. La Molina 1781",
+    "condicion_inicio": "desde el día siguiente de la notificación de la orden de servicio",
+    "valor_estimado_monto": null
+   },
+   "execution": {
+    "lugar": "Instituto de Desarrollo Agroindustrial -INDDA",
+    "entregables": [
+     {
+      "nombre": "Informe final de Mantenimiento correctivo de equipos eléctricos de una Extrusora",
+      "plazo_dias": 30,
+      "plazo_texto": "Hasta 30 días calendarios"
+     }
+    ]
+   },
+   "payment": {
+    "tipo": "pago_unico",
+    "armadas": [],
+    "detalle": "El pago se realizará previa conformidad, mediante abono a cuenta interbancaria.",
+    "plazo_pago_dias": null
+   },
+   "requirements": {
+    "provider": [
+     {
+      "tipo": "rnp",
+      "monto": null,
+      "evidencia": "Contar con Registro Nacional de Proveedores vigente.",
+      "descripcion": "Contar con Registro Nacional de Proveedores vigente.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "ruc_status",
+      "monto": null,
+      "evidencia": "Contar con RUC activo y habido.",
+      "descripcion": "Contar con RUC activo y habido.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "not_disqualified",
+      "monto": null,
+      "evidencia": "No estar impedido para contratar con el Estado.",
+      "descripcion": "No estar impedido para contratar con el Estado.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "business_line",
+      "monto": null,
+      "evidencia": "Pertenecer al rubro objeto de la contratación.",
+      "descripcion": "Pertenecer al rubro objeto de la contratación.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "economic_experience",
+      "monto": null,
+      "evidencia": "Acreditar experiencia con un monto igual o superior al de su cotización en la realización de servicios similares solicitados en los términos de referencia.",
+      "descripcion": "Acreditar experiencia con un monto igual o superior al de su cotización en la realización de servicios similares.",
+      "obligatorio": true
+     }
+    ],
+    "equipment": [],
+    "insurance": [
+     {
+      "tipo": "SCTR y/o seguro y/o SIS",
+      "descripcion": "Seguros aplicables para el personal.",
+      "obligatorio": true
+     }
+    ],
+    "key_personnel": [],
+    "proposal_documents": []
+   },
+   "summary": {
+    "descripcion_corta": "Contratación de servicio de mantenimiento correctivo para una extrusora marca INBRAMAQ modelo PQDRX-50 en la UNALM. El plazo de ejecución es de 30 días calendario. El pago es único tras la conformidad del servicio. Se requiere RNP vigente, RUC activo y experiencia en servicios similares.",
+    "observaciones_clave": [
+     "El plazo de ejecución es de 30 días calendario.",
+     "Se requiere acreditar experiencia por un monto igual o superior a la cotización presentada.",
+     "El contratista debe contar con SCTR y/o seguro y/o SIS.",
+     "La penalidad por mora tiene un tope del 10% del monto del entregable.",
+     "El contratista es responsable por vicios ocultos por un plazo no menor a un año."
+    ]
+   }
+  }
+ },
+ {
+  "id": 2305,
+  "codigo": "CM-505-2026-CONCYTEC",
+  "title": "ADQUISICIÓN DE UN SERVIDOR PARA EL CONCYTEC",
+  "prompt_version": "eett_extraction_v2",
+  "old_summary": {
+   "modalidad": "no_indicada",
+   "plazo_ejecucion_dias": 30,
+   "tipo_pago": "pago_unico"
+  },
+  "expect": {
+   "requires_human_review": false,
+   "reasons": [],
+   "modalidad": "presencial",
+   "plazo_ejecucion_dias": 30
+  },
+  "raw": {
+   "contract": {
+    "moneda": "PEN",
+    "objeto": "ADQUISICIÓN DE UN SERVIDOR PARA EL CONCYTEC",
+    "entidad": "CONCYTEC",
+    "plazo_dias": 30,
+    "plazo_texto": "Treinta (30) días calendarios, contados a partir del día siguiente de notificada la orden de compra.",
+    "area_usuaria": "OFICINA DE TECNOLOGIAS DE INFORMACIÓN",
+    "lugar_ejecucion": "Instalaciones del almacén del CONCYTEC, ubicado en Av. Del Aire N° 485 – San Borja",
+    "condicion_inicio": "día siguiente de notificada la orden de compra",
+    "valor_estimado_monto": null
+   },
+   "execution": {
+    "lugar": "Instalaciones del almacén del CONCYTEC, ubicado en Av. Del Aire N° 485 – San Borja",
+    "entregables": []
+   },
+   "payment": {
+    "tipo": "pago_unico",
+    "armadas": [],
+    "detalle": "Pago único, previa recepción del equipo por parte del Almacén y conformidad del área usuaria. El pago se realizará con abono en la cuenta “Código de Cuenta Interbancaria” (CCI) del contratista, como máximo, hasta los diez (10) días calendario posteriores a la emisión de la conformidad del bien respectivo y presentación del comprobante de pago.",
+    "plazo_pago_dias": 10
+   },
+   "requirements": {
+    "provider": [
+     {
+      "tipo": "legal_capacity",
+      "monto": null,
+      "evidencia": null,
+      "descripcion": "Persona Natural o Jurídica",
+      "obligatorio": true
+     },
+     {
+      "tipo": "not_disqualified",
+      "monto": null,
+      "evidencia": null,
+      "descripcion": "No estar impedido para contratar con el Estado",
+      "obligatorio": true
+     },
+     {
+      "tipo": "cci",
+      "monto": null,
+      "evidencia": null,
+      "descripcion": "Contar con Código de Cuenta Interbancario (CCI)",
+      "obligatorio": true
+     },
+     {
+      "tipo": "specific_experience",
+      "monto": null,
+      "evidencia": "constancias, contratos, órdenes de servicio o con comprobante de pago",
+      "descripcion": "03 Ventas de servidores o equipo de procesamiento de datos, con empresas privadas o instituciones públicas.",
+      "obligatorio": true
+     }
+    ],
+    "equipment": [],
+    "insurance": [],
+    "key_personnel": [],
+    "proposal_documents": []
+   },
+   "goods": {
+    "items": [
+     {
+      "nombre": "Servidor para el CONCYTEC",
+      "cantidad": 1,
+      "unidad_medida": "unidad",
+      "especificaciones": [
+       "Factor de forma: Rack de 1U o 2U",
+       "Procesador Xeon de 16 Core, 2.2 GHz como mínimo, con posibilidad de crecimiento a dos procesadores",
+       "Memoria RAM: 64 GB (2x32GB) DDR5 6400 MT/s, posibilidad de crecimiento máx. 2TB",
+       "Disco Duro: 02 discos 3.5” de 2.4 TB cada uno como mínimo, 10k rpm SAS, compatible con la generación y el sistema del procesador",
+       "Interface de Red: Ethernet 1 Gb 4 puertos BASE-T OCP3",
+       "Fuente de Alimentación: Hot Plug, 220v y 800W (1 + 1), redundante (2 fuentes) como mínimo",
+       "Accesorios, controladores y todo lo necesario para el funcionamiento del equipo",
+       "Sistemas Operativos Compatibles: Microsoft Windows Server, Red Hat Enterprise Linux, Vmware ESXi"
+      ]
+     }
+    ],
+    "entrega": {
+     "lugar": "Instalaciones del almacén del CONCYTEC, ubicado en Av. Del Aire N° 485 – San Borja",
+     "plazo_dias": 30,
+     "condiciones": "Horario de oficina (8:00 am a 4:15 pm.)",
+     "plazo_texto": "Treinta (30) días calendarios, contados a partir del día siguiente de notificada la orden de compra."
+    },
+    "garantia": {
+     "cobertura": null,
+     "condiciones": "Inicio del cómputo del periodo de garantía: A partir de la fecha en la que se entrega el bien.",
+     "plazo_texto": "tres (03) Años"
+    }
+   },
+   "summary": {
+    "descripcion_corta": "Adquisición de un servidor para el CONCYTEC con especificaciones técnicas de rack, procesador Xeon, 64GB RAM y almacenamiento SAS. La entrega debe realizarse en el almacén de la entidad en un plazo máximo de 30 días. Se requiere experiencia previa en venta de servidores.",
+    "observaciones_clave": [
+     "El plazo de entrega es de 30 días calendario contados desde el día siguiente de la notificación de la orden de compra.",
+     "La garantía comercial es de 03 años a partir de la entrega del bien.",
+     "El pago es único y se realiza hasta 10 días después de la conformidad.",
+     "Se requiere acreditar experiencia con 03 ventas de servidores o equipos de procesamiento de datos.",
+     "La conformidad se otorga en un plazo máximo de 7 días calendario tras la recepción."
+    ]
+   }
+  }
+ },
+ {
+  "id": 2306,
+  "codigo": "CM-239-2026-AGROMERCADO",
+  "title": "SUSCRIPCIÓN ANUAL A UNA PLATAFORMA DE INTELIGENCIA COMERCIAL",
+  "prompt_version": "tdr_extraction_v3",
+  "old_summary": {
+   "modalidad": "no_indicada",
+   "plazo_ejecucion_dias": 375,
+   "tipo_pago": "pago_unico"
+  },
+  "expect": {
+   "requires_human_review": true,
+   "reasons": [
+    "term_not_literal"
+   ],
+   "modalidad": "virtual",
+   "plazo_ejecucion_dias": 375
+  },
+  "raw": {
+   "contract": {
+    "moneda": "PEN",
+    "objeto": "Suscripción anual a una plataforma de inteligencia comercial",
+    "entidad": "MIDAGRI-AGROMERCADO",
+    "modalidad": "Suma Alzada",
+    "plazo_dias": 375,
+    "plazo_texto": "Para la activación de la licencia el proveedor contará con un plazo máximo de diez (10) días calendarios contados a partir del día siguiente de notificada la orden de servicio. La vigencia del licenciamiento de la plataforma web será por 365 días calendarios contabilizados desde la activación de la licencia.",
+    "area_usuaria": "DIRECCIÓN DE OPORTUNIDADES DE MERCADO",
+    "lugar_ejecucion": "Virtual",
+    "condicion_inicio": "día siguiente de notificada la orden de servicio",
+    "valor_estimado_monto": null
+   },
+   "execution": {
+    "lugar": "Virtual",
+    "entregables": [
+     {
+      "nombre": "Confirmación de la activación de la cuenta, el usuario que se ha brindado y un medio probatorio de que el/la especialista encargado(a) de recibir el usuario confirme la correcta recepción del mismo, correo de confirmación y comprobante de pago.",
+      "plazo_dias": 10,
+      "plazo_texto": "Dentro del plazo máximo de diez (10) días calendarios contados a partir del día siguiente de notificada la orden de servicio."
+     }
+    ]
+   },
+   "payment": {
+    "tipo": "pago_unico",
+    "armadas": [
+     {
+      "numero": 1,
+      "condicion": "Después de realizada la prestación y otorgada la conformidad del servicio del área usuaria, presentación de carta de la activación de las licencias y comprobante de pago.",
+      "porcentaje": 100.0
+     }
+    ],
+    "detalle": "100% después de realizada la prestación y otorgada la conformidad del servicio del área usuaria, presentación de carta de la activación de las licencias y comprobante de pago. Previa conformidad de parte del área usuaria y previo visto bueno de TI.",
+    "plazo_pago_dias": null
+   },
+   "requirements": {
+    "provider": [
+     {
+      "tipo": "legal_capacity",
+      "monto": null,
+      "evidencia": "a) Ser persona natural o jurídica.",
+      "descripcion": "Ser persona natural o jurídica.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "ruc_status",
+      "monto": null,
+      "evidencia": "b) Contar con RUC activo y habido.",
+      "descripcion": "Contar con RUC activo y habido.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "rnp",
+      "monto": null,
+      "evidencia": "c) Contar con inscripción vigente en el Registro Nacional de Proveedores (RNP)",
+      "descripcion": "Contar con inscripción vigente en el Registro Nacional de Proveedores (RNP).",
+      "obligatorio": true
+     },
+     {
+      "tipo": "not_disqualified",
+      "monto": null,
+      "evidencia": "d) No encontrarse impedido para contratar con el Estado",
+      "descripcion": "No encontrarse impedido para contratar con el Estado.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "economic_experience",
+      "monto": 3000.0,
+      "evidencia": "El postor deberá acreditar una facturación acumulada mínima de S/ 3 000,00",
+      "descripcion": "Facturación acumulada mínima de S/ 3 000,00 por servicios iguales o similares en los últimos 10 años.",
+      "obligatorio": true
+     }
+    ],
+    "equipment": [],
+    "insurance": [],
+    "key_personnel": [],
+    "proposal_documents": [
+     "Documentos que acrediten la experiencia del postor (Contratos/Órdenes de compra con conformidad o comprobantes de pago según corresponda)."
+    ]
+   },
+   "summary": {
+    "descripcion_corta": "Contratación de una suscripción anual a una plataforma de inteligencia comercial para la Dirección de Oportunidades de Mercado del MIDAGRI. El servicio es virtual y requiere la activación de licencias en un plazo máximo de 10 días. El pago es único (100%) tras la conformidad del área usuaria y visto bueno de TI. Se exige una experiencia mínima de S/ 3,000 en servicios similares.",
+    "observaciones_clave": [
+     "El plazo de activación es muy corto (10 días calendario).",
+     "La experiencia debe acreditarse obligatoriamente con comprobantes de pago si la contratación fue con entidades privadas.",
+     "Se requiere visto bueno de TI para la conformidad del servicio.",
+     "El arbitraje es institucional y resuelto por Árbitro Único.",
+     "La responsabilidad por vicios ocultos es de 1 año."
+    ]
+   }
+  }
+ },
+ {
+  "id": 2307,
+  "codigo": "CM-515-2026-PLD/TIC",
+  "title": "Se requiere contratar a una persona natural o jurídica especializada que realice la supervisión y análisis de la actividad en las redes, servidores, terminales, bases de datos, aplicaciones, sitios web y otros sistemas de SEAL, con el objetivo de alertar de manera temprana y realizar la gestión del ciclo de vida completo de los incidentes de Ciberseguridad que se presenten desde la identificación, análisis, respuesta y recuperación ante incidentes.",
+  "prompt_version": "tdr_extraction_v3",
+  "old_summary": {
+   "modalidad": "no_indicada",
+   "plazo_ejecucion_dias": 365,
+   "tipo_pago": "mensual"
+  },
+  "expect": {
+   "requires_human_review": true,
+   "reasons": [
+    "experience_currency_mismatch"
+   ],
+   "modalidad": "mixta",
+   "plazo_ejecucion_dias": 365
+  },
+  "raw": {
+   "contract": {
+    "moneda": "PEN",
+    "objeto": "Servicio de monitoreo de ciberseguridad en los sistemas informáticos de SEAL.",
+    "entidad": "SEAL",
+    "modalidad": "Suma alzada",
+    "plazo_dias": 365,
+    "plazo_texto": "trescientos sesenta y cinco (365) días calendario",
+    "area_usuaria": "Unidad de Tecnologías de la Información y Comunicaciones",
+    "lugar_ejecucion": "Oficinas de SEAL en Consuelo 310 cercado Arequipa presencial o remotamente",
+    "condicion_inicio": "a partir del día siguiente de la notificación de la Orden de Compra o de la suscripción del contrato",
+    "valor_estimado_monto": null
+   },
+   "execution": {
+    "lugar": "Oficinas de SEAL en Consuelo 310 cercado Arequipa presencial o remotamente",
+    "entregables": [
+     {
+      "nombre": "Informes mensuales",
+      "plazo_dias": 30,
+      "plazo_texto": "mensual"
+     },
+     {
+      "nombre": "Informe de incidentes",
+      "plazo_dias": null,
+      "plazo_texto": "ante eventualidades o alertas comprobadas"
+     }
+    ]
+   },
+   "payment": {
+    "tipo": "mensual",
+    "armadas": [],
+    "detalle": "Pago mensual tras la conformidad de la Unidad de Tecnologías de la Información y Comunicaciones.",
+    "plazo_pago_dias": 10
+   },
+   "requirements": {
+    "provider": [
+     {
+      "tipo": "rnp",
+      "monto": null,
+      "evidencia": "El proveedor deberá estar habilitado en el Registro Nacional de Proveedores (RNP)",
+      "descripcion": "Estar habilitado en el Registro Nacional de Proveedores (RNP).",
+      "obligatorio": true
+     },
+     {
+      "tipo": "not_disqualified",
+      "monto": null,
+      "evidencia": "El proveedor no deberá estar impedido para contratar con el Estado",
+      "descripcion": "No estar impedido para contratar con el Estado.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "specific_experience",
+      "monto": 40000,
+      "evidencia": "al menos 6 servicios facturados en los últimos 2 años, cada uno con un valor mínimo de $40,000.00 USD",
+      "descripcion": "Al menos 6 servicios facturados en los últimos 2 años, cada uno con un valor mínimo de $40,000.00 USD.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "business_line",
+      "monto": null,
+      "evidencia": "El proveedor debe dedicarse a servicios de especializados de ciberseguridad",
+      "descripcion": "Dedicarse a servicios especializados de ciberseguridad (ethical hacking, SOC gestionado, etc.).",
+      "obligatorio": true
+     }
+    ],
+    "equipment": [],
+    "insurance": [],
+    "key_personnel": [
+     {
+      "rol": "Analista 1",
+      "formacion": [
+       "Ingeniero de Sistemas o informático"
+      ],
+      "experiencia": null,
+      "capacitaciones": [
+       "CEH",
+       "CPEH",
+       "CPTE",
+       "eCPPT",
+       "CCSA",
+       "CISSO",
+       "ISO/IEC 27001 Lead Auditor",
+       "Ciberseguridad",
+       "Transformación digital",
+       "Hacking corporativo o seguridad informática corporativa o seguridad de la información o informática forense"
+      ],
+      "experiencia_anios": null,
+      "colegiatura_requerida": false
+     },
+     {
+      "rol": "Analista 2",
+      "formacion": [
+       "Ingeniero de Sistemas o informático"
+      ],
+      "experiencia": null,
+      "capacitaciones": [
+       "CSFPC",
+       "CSA",
+       "Ethical Hacking",
+       "Investigación de amenazas: Applied Threat Hunting"
+      ],
+      "experiencia_anios": null,
+      "colegiatura_requerida": false
+     },
+     {
+      "rol": "Analista 3",
+      "formacion": [
+       "Profesional bachiller en Ingeniería de Sistemas o informático"
+      ],
+      "experiencia": null,
+      "capacitaciones": [
+       "CPTE",
+       "CISA",
+       "CISM",
+       "CISSP"
+      ],
+      "experiencia_anios": null,
+      "colegiatura_requerida": false
+     }
+    ],
+    "proposal_documents": [
+     "Cronograma de implementación",
+     "Documentación de acreditación de experiencia",
+     "Documentación de perfiles de personal"
+    ]
+   },
+   "summary": {
+    "descripcion_corta": "SEAL requiere contratar un servicio de monitoreo de ciberseguridad 24/7 para sus sistemas informáticos por un plazo de 365 días. El servicio incluye la implementación de un SIEM, análisis de vulnerabilidades y gestión de incidentes. El pago es mensual y se requiere experiencia específica de 6 servicios facturados por un mínimo de $40,000 USD cada uno. El personal debe contar con certificaciones internacionales específicas en ciberseguridad.",
+    "observaciones_clave": [
+     "Prohibición expresa de tercerización (salvo subsidiarias con consultores internacionales).",
+     "Experiencia mínima muy específica: 6 servicios de $40,000 USD cada uno en los últimos 2 años.",
+     "Confidencialidad extendida hasta 180 días después de culminado el contrato.",
+     "Penalidad por mora con factor F=0.40 para servicios.",
+     "La experiencia y perfiles no pueden acreditarse mediante declaraciones juradas."
+    ]
+   }
+  }
+ },
+ {
+  "id": 2308,
+  "codigo": "CM-129-2026-OSI-INGEMMET",
+  "title": "SERVICIO DE MANTENIMIENTO PREVENTIVO DE SWITCHES SAN UBICADOS EN EL CENTRO DE DATOS DEL INGEMMET",
+  "prompt_version": "tdr_extraction_v3",
+  "old_summary": {
+   "modalidad": "no_indicada",
+   "plazo_ejecucion_dias": 20,
+   "tipo_pago": "pago_unico"
+  },
+  "expect": {
+   "requires_human_review": false,
+   "reasons": [],
+   "modalidad": "presencial",
+   "plazo_ejecucion_dias": 20
+  },
+  "raw": {
+   "contract": {
+    "moneda": "PEN",
+    "objeto": "Servicio de mantenimiento preventivo de SWITCHES SAN ubicados en el Centro de Datos del INGEMMET.",
+    "entidad": "INGEMMET",
+    "modalidad": null,
+    "plazo_dias": 20,
+    "plazo_texto": "veinte (20) días calendario",
+    "area_usuaria": "Oficina de Sistemas de Información",
+    "lugar_ejecucion": "Av. Canadá N° 1470, San Borja – Lima",
+    "condicion_inicio": "desde el día siguiente de notificada la orden de servicio",
+    "valor_estimado_monto": null
+   },
+   "execution": {
+    "lugar": "Av. Canadá N° 1470, San Borja – Lima",
+    "entregables": [
+     {
+      "nombre": "Informe técnico de mantenimiento preventivo",
+      "plazo_dias": 20,
+      "plazo_texto": "dentro de los veinte (20) días calendario"
+     }
+    ]
+   },
+   "payment": {
+    "tipo": "pago_unico",
+    "armadas": [],
+    "detalle": "El pago se realiza en una sola armada luego de la entrega de la conformidad correspondiente, dentro de los diez (10) días hábiles siguientes de otorgada la misma.",
+    "plazo_pago_dias": 10
+   },
+   "requirements": {
+    "provider": [
+     {
+      "tipo": "ruc_status",
+      "monto": null,
+      "evidencia": "Contar con Ruc activo y habido.",
+      "descripcion": "Contar con Ruc activo y habido.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "rnp",
+      "monto": null,
+      "evidencia": "Contar con RNP vigente en el Capítulo de Servicios",
+      "descripcion": "Contar con RNP vigente en el Capítulo de Servicios.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "not_disqualified",
+      "monto": null,
+      "evidencia": "No encontrarse impedido para contratar con el Estado",
+      "descripcion": "No encontrarse impedido para contratar con el Estado.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "economic_experience",
+      "monto": 20000.0,
+      "evidencia": "El postor debe acreditar un monto facturado acumulado equivalente a S/. 20,000.00",
+      "descripcion": "Acreditar un monto facturado acumulado equivalente a S/. 20,000.00 por servicios iguales o similares en los últimos 15 años.",
+      "obligatorio": true
+     }
+    ],
+    "equipment": [],
+    "insurance": [
+     {
+      "tipo": "SCTR",
+      "descripcion": "Seguro Complementario de Trabajo de Riesgo (SCTR) en sus coberturas de salud y pensión, vigente desde la fecha de inicio de los trabajos hasta la conformidad final.",
+      "obligatorio": true
+     }
+    ],
+    "key_personnel": [
+     {
+      "rol": "Un (01) Especialista",
+      "formacion": [
+       "Profesional titulado, técnico titulado o bachiller en Electrónica, Ingeniería eléctrica, Ingeniería de Sistemas, Computación e Informática, Redes y Comunicaciones, Informática o Soporte y Mantenimiento de Equipos de Computación."
+      ],
+      "experiencia": "Experiencia laboral de dos (02) años como mínimo en implementación y/o supervisión y/o coordinación de instalación y/o mantenimientos correctivos y/o mantenimiento preventivo de switches san.",
+      "capacitaciones": [],
+      "experiencia_anios": 2.0,
+      "colegiatura_requerida": false
+     }
+    ],
+    "proposal_documents": [
+     "Copia simple de contratos u órdenes de servicio con conformidad o constancias de prestación para acreditar experiencia.",
+     "Documentación que acredite la formación y experiencia del personal clave.",
+     "Plan de Trabajo."
+    ]
+   },
+   "summary": {
+    "descripcion_corta": "Contratación del servicio de mantenimiento preventivo para dos switches SAN marca HPE modelo SN6600B en el INGEMMET. El plazo de ejecución es de 20 días calendario. Se requiere un especialista con 2 años de experiencia y el postor debe acreditar una facturación acumulada de S/ 20,000. El pago es único tras la conformidad.",
+    "observaciones_clave": [
+     "El plazo de ejecución es corto (20 días calendario).",
+     "Se requiere SCTR vigente para el personal antes de iniciar los trabajos.",
+     "La garantía del servicio es de 6 meses tras la conformidad.",
+     "El contratista debe atender fallas atribuibles al mantenimiento en un plazo máximo de 48 horas durante la garantía.",
+     "La penalidad por mora tiene un factor F=0.40."
+    ]
+   }
+  }
+ },
+ {
+  "id": 2309,
+  "codigo": "CM-182185-2026-OCII",
+  "title": "SERVICIO DE SUSCRIPCION ANUAL PARA PLATAFORMA DE HERRAMIENTAS EN INTELIGENCIA ARTIFICIAL",
+  "prompt_version": "tdr_extraction_v3",
+  "old_summary": {
+   "modalidad": "no_indicada",
+   "plazo_ejecucion_dias": 365,
+   "tipo_pago": "pago_unico"
+  },
+  "expect": {
+   "requires_human_review": false,
+   "reasons": [],
+   "modalidad": "presencial",
+   "plazo_ejecucion_dias": 365
+  },
+  "raw": {
+   "contract": {
+    "moneda": "PEN",
+    "objeto": "Servicio de suscripción anual para plataforma de herramientas en inteligencia artificial (dos licencias).",
+    "entidad": "Ministerio de Trabajo y Promoción del Empleo",
+    "modalidad": null,
+    "plazo_dias": 365,
+    "plazo_texto": "doce (12) meses",
+    "area_usuaria": "Oficina de Comunicación e Imagen Institucional",
+    "lugar_ejecucion": "Ministerio de Trabajo y Promoción del Empleo, sito en la Av. Salaverry Nº 655 Jesús María – Lima",
+    "condicion_inicio": "contado a partir de la activación del software",
+    "valor_estimado_monto": null
+   },
+   "execution": {
+    "lugar": "Ministerio de Trabajo y Promoción del Empleo, sito en la Av. Salaverry Nº 655 Jesús María – Lima",
+    "entregables": [
+     {
+      "nombre": "Documento de suscripción del uso de los software con inteligencia artificial y declaración de asistencia técnica",
+      "plazo_dias": 5,
+      "plazo_texto": "en un plazo máximo de cinco (05) días calendarios contados a partir del día siguiente de suscrito el contrato o la notificación de la orden de servicio"
+     }
+    ]
+   },
+   "payment": {
+    "tipo": "pago_unico",
+    "armadas": [],
+    "detalle": "Pago único luego de habilitado el servicio, emitida la conformidad por el área usuaria y área técnica. La instalación se acredita con el acta correspondiente.",
+    "plazo_pago_dias": null
+   },
+   "requirements": {
+    "provider": [
+     {
+      "tipo": "legal_capacity",
+      "monto": null,
+      "evidencia": "4.1 Perfil del Postor",
+      "descripcion": "Persona natural o jurídica.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "ruc_status",
+      "monto": null,
+      "evidencia": "Con RUC habido y activo.",
+      "descripcion": "Con RUC habido y activo.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "rnp",
+      "monto": null,
+      "evidencia": "Con RNP vigente.",
+      "descripcion": "Con RNP vigente.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "not_disqualified",
+      "monto": null,
+      "evidencia": "Que no se encuentre inhabilitado para contratar con el Estado.",
+      "descripcion": "Que no se encuentre inhabilitado para contratar con el Estado.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "economic_experience",
+      "monto": 5000.0,
+      "evidencia": "Experiencia mínima de cinco mil soles (5,000.00)",
+      "descripcion": "Experiencia mínima de cinco mil soles (5,000.00) en servicios de suscripción de aplicaciones y/o similares, durante el periodo de 5 años anteriores a la fecha de presentación de la propuesta.",
+      "obligatorio": true
+     }
+    ],
+    "equipment": [],
+    "insurance": [],
+    "key_personnel": [],
+    "proposal_documents": []
+   },
+   "summary": {
+    "descripcion_corta": "Contratación de suscripción anual para dos licencias de software de inteligencia artificial para generación de video y recursos digitales para el MTPE. El servicio tiene un plazo de 12 meses y se paga en un pago único tras la conformidad. Se requiere experiencia mínima de 5,000 soles en servicios similares.",
+    "observaciones_clave": [
+     "El plazo para entregar el documento de suscripción es muy corto (5 días calendario).",
+     "La penalidad por mora se calcula con un factor F=0.40.",
+     "La conformidad requiere doble visto bueno: área usuaria y área técnica.",
+     "Se exige experiencia específica en servicios de suscripción de aplicaciones."
+    ]
+   }
+  }
+ },
+ {
+  "id": 2310,
+  "codigo": "CM-446-2026-SERFOR",
+  "title": "Servicio de integración y actualización de base de datos para evaluación de consistencia especial y elaboración de cartografía forestal de bosques andino-costeros del departamento de Moquegua",
+  "prompt_version": "tdr_extraction_v3",
+  "old_summary": {
+   "modalidad": "no_indicada",
+   "plazo_ejecucion_dias": 60,
+   "tipo_pago": "armadas"
+  },
+  "expect": {
+   "requires_human_review": false,
+   "reasons": [],
+   "modalidad": "virtual",
+   "plazo_ejecucion_dias": 60
+  },
+  "raw": {
+   "contract": {
+    "moneda": "PEN",
+    "objeto": "Servicio de integración y actualización de base de datos para evaluación de consistencia especial y elaboración de cartografía forestal de bosques andino-costeros del departamento de Moquegua",
+    "entidad": "SERFOR",
+    "modalidad": null,
+    "plazo_dias": 60,
+    "plazo_texto": "sesenta (60) días calendario",
+    "area_usuaria": "Dirección de Catastro, Zonificación y Ordenamiento",
+    "lugar_ejecucion": "Remoto",
+    "condicion_inicio": "desde el día siguiente de la notificación de la Orden de Servicio",
+    "valor_estimado_monto": null
+   },
+   "execution": {
+    "lugar": "Remoto",
+    "entregables": [
+     {
+      "nombre": "Primer Entregable: Hoja de Ruta, cronograma y modelo de organización de base de datos",
+      "plazo_dias": 5,
+      "plazo_texto": "hasta cinco (5) días calendario"
+     },
+     {
+      "nombre": "Segundo Entregable: Archivo de datos espaciales preliminar, reporte de revisión y cuadro de atributos",
+      "plazo_dias": 35,
+      "plazo_texto": "hasta treinta (35) días calendario"
+     },
+     {
+      "nombre": "Tercer Entregable: Memoria Técnica, base de datos final y cartografía forestal",
+      "plazo_dias": 60,
+      "plazo_texto": "hasta sesenta (60) días calendario"
+     }
+    ]
+   },
+   "payment": {
+    "tipo": "armadas",
+    "armadas": [
+     {
+      "numero": 1,
+      "condicion": "Primer entregable",
+      "porcentaje": 15.0
+     },
+     {
+      "numero": 2,
+      "condicion": "Segundo entregable",
+      "porcentaje": 45.0
+     },
+     {
+      "numero": 3,
+      "condicion": "Tercer entregable",
+      "porcentaje": 40.0
+     }
+    ],
+    "detalle": "El pago se realizará en tres (03) armadas, luego de ejecutada la respectiva prestación y otorgada la conformidad por la Dirección de Catastro, Zonificación y Ordenamiento.",
+    "plazo_pago_dias": 10
+   },
+   "requirements": {
+    "provider": [
+     {
+      "tipo": "legal_capacity",
+      "descripcion": "Persona natural y/o jurídica dedicada al rubro.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "ruc_status",
+      "descripcion": "Tener Registro Único de Contribuyente activado y habilitado.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "rnp",
+      "descripcion": "Tener Registro Nacional de Proveedores.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "not_disqualified",
+      "descripcion": "No tener impedimento ni inhabilitación para contratar con el Estado.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "specific_experience",
+      "monto": null,
+      "descripcion": "Haber realizado un mínimo de tres (03) servicios de estudios vinculados a la formulación de la zonificación forestal y/o Zonificación Ecológica y Económica y/o evaluación de recursos naturales y/o estudios de suelo y/o levantamiento de información y procesamiento cartográfico y/o servicios de recolección de datos en campo para estudios especializados y/o servicios ambientales y/o servicios ecosistémicos.",
+      "obligatorio": true
+     }
+    ],
+    "equipment": [],
+    "insurance": [],
+    "key_personnel": [
+     {
+      "rol": "Especialista Responsable",
+      "formacion": [
+       "Ingeniería forestal",
+       "Biología",
+       "Ecología",
+       "Ingeniería ambiental",
+       "Ingeniería de recursos naturales",
+       "Ingeniería Agrónoma",
+       "Agrónomo",
+       "Ingeniería Geográfica",
+       "Geografía",
+       "Ingeniería Agroforestal",
+       "Ingeniero Geólogo",
+       "Geólogo"
+      ],
+      "experiencia": "Mínima de cuatro (04) años en el sector público y/o privado (general) y tres (03) años en servicios de generación de estudios relacionados a la formulación de la zonificación forestal y/o evaluación de cobertura vegetal y/o zonificación ecológica económica y/u ordenamiento territorial y/o estudios fisiográficos y/o estudios fisonómicos y/o estudio uso actual y/o estudio de suelos (específica).",
+      "capacitaciones": [
+       "Mínimo 40 horas en zonificación forestal y/o ordenamiento forestal y/o zonificación ecológica económica y/u ordenamiento territorial y/o sistemas de información geográfica y/o teledetección y/o cobertura vegetal y/o mapa forestal."
+      ],
+      "experiencia_anios": 4.0,
+      "colegiatura_requerida": true
+     },
+     {
+      "rol": "Asistente en Sistemas de Información Geográfica",
+      "formacion": [
+       "Ingeniería forestal",
+       "Biología",
+       "Ecología",
+       "Ingeniería ambiental",
+       "Ingeniería Agrónoma",
+       "Agrónomo",
+       "Ingeniería de recursos naturales",
+       "Ingeniero geógrafo",
+       "Geógrafo",
+       "Ingeniero Agroforestal",
+       "Ingeniero Geólogo",
+       "Geólogo"
+      ],
+      "experiencia": "Mínima de cuatro (04) años en el sector público y/o privado (general) y dos (02) años en servicios relacionados a uso de herramientas de sistemas de información geográfica y/u ordenamiento territorial y/o control de calidad espacial y/o elaboración de mapas temáticos y/o estudios de cobertura vegetal y/o uso actual de la tierra y/o teledetección y/o zonificación ecológica económica y/o zonificación forestal y/o elaboración de mapas cartográficos y/o estudios fisiográficos y/o estudios fisonómicos y/o estudio uso actual y/o estudio de suelos (específica).",
+      "capacitaciones": [
+       "Mínimo 40 horas en sistemas de información geográfica y/o teledetección."
+      ],
+      "experiencia_anios": 4.0,
+      "colegiatura_requerida": false
+     }
+    ],
+    "proposal_documents": [
+     "Copia simple de contratos u órdenes de servicio/compra con conformidad",
+     "Constancias de prestación",
+     "Comprobantes de pago con acreditación de abono",
+     "Copias simples de títulos, diplomas, certificados o constancias de estudio/experiencia/capacitación"
+    ]
+   },
+   "summary": {
+    "descripcion_corta": "Contratación de servicios para la integración y actualización de la base de datos geoespacial y elaboración de cartografía forestal de bosques andino-costeros en Moquegua. El plazo de ejecución es de 60 días calendario. El pago se realizará en tres armadas según entregables. Se requiere personal clave con formación específica en ingeniería o ciencias ambientales y experiencia en zonificación forestal.",
+    "observaciones_clave": [
+     "El plazo de ejecución es de 60 días calendario.",
+     "La penalidad por mora es de hasta el 10% del monto contratado.",
+     "El personal clave debe acreditar formación, experiencia y capacitaciones específicas.",
+     "La resolución del contrato puede ser inmediata por incumplimiento de cláusulas de anticorrupción o confidencialidad.",
+     "El pago está sujeto a la conformidad de la Dirección de Catastro, Zonificación y Ordenamiento."
+    ]
+   }
+  }
+ },
+ {
+  "id": 2311,
+  "codigo": "CM-32-2026-CORPAC S.A.",
+  "title": "ADQUISICIÓN DE EQUIPOS MEGOHMETROS DIGITALES PARA LA SEDE DE LIMA PISTA 16L Y PISTA 16R AIJCH",
+  "prompt_version": "eett_extraction_v2",
+  "old_summary": {
+   "modalidad": "no_indicada",
+   "plazo_ejecucion_dias": 50,
+   "tipo_pago": "pago_unico"
+  },
+  "expect": {
+   "requires_human_review": false,
+   "reasons": [],
+   "modalidad": "presencial",
+   "plazo_ejecucion_dias": 50
+  },
+  "raw": {
+   "contract": {
+    "moneda": "PEN",
+    "objeto": "Adquisición de equipos megohmetros digitales para la sede de Lima pista 16L y pista 16R AIJCH",
+    "entidad": "CORPAC S.A.",
+    "modalidad": "suma alzada",
+    "plazo_dias": 50,
+    "plazo_texto": "50 (cincuenta) días calendario, computado a partir del día siguiente de la notificación de la orden",
+    "area_usuaria": "Equipo de Mantenimiento Sistemas de Ayudas Luminosas",
+    "lugar_ejecucion": "Almacén Central – Gerencia de Logística – Zona Norte de CORPAC S.A - Av. Elmer Faucett 3400 Aeropuerto Internacional Jorge Chávez",
+    "condicion_inicio": "día siguiente de la notificación de la orden",
+    "valor_estimado_monto": null
+   },
+   "execution": {
+    "lugar": "Almacén Central – Gerencia de Logística – Zona Norte de CORPAC S.A - Av. Elmer Faucett 3400 Aeropuerto Internacional Jorge Chávez",
+    "entregables": []
+   },
+   "payment": {
+    "tipo": "pago_unico",
+    "armadas": [],
+    "detalle": "Pago único en un plazo máximo de diez (10) días hábiles siguientes de otorgada la conformidad de los bienes por parte del área usuaria",
+    "plazo_pago_dias": 10
+   },
+   "requirements": {
+    "provider": [
+     {
+      "tipo": "economic_experience",
+      "monto": 20000.0,
+      "evidencia": "Copia simple de contratos u órdenes de compra con conformidad o constancia de prestación; o comprobantes de pago con constancia de cancelación documental",
+      "descripcion": "Acreditar experiencia por un monto facturado acumulado de S/ 20,000.00 en la venta de bienes de materiales eléctricos durante los 10 años anteriores a la fecha de presentación de ofertas",
+      "obligatorio": true
+     }
+    ],
+    "equipment": [],
+    "insurance": [
+     {
+      "tipo": "SCTR",
+      "descripcion": "Póliza del Seguro Complementario de Trabajo de Riesgo (SCTR)",
+      "obligatorio": true
+     }
+    ],
+    "key_personnel": [],
+    "proposal_documents": [
+     "Póliza SCTR",
+     "Documentación de experiencia (contratos/órdenes de compra/comprobantes de pago)"
+    ]
+   },
+   "goods": {
+    "items": [
+     {
+      "nombre": "Megohmetros digitales",
+      "cantidad": 2.0,
+      "unidad_medida": "und",
+      "especificaciones": [
+       "Tensiones de prueba: 500 V, 1 kV, 2.5 kV, 5 kV (4 niveles) con selección rápida",
+       "Tensión continua, negativa respecto de tierra",
+       "Alcance: 5 TΩ @ 5 kV",
+       "Corriente de cortocircuito: 1.5 ± 0.5 mA",
+       "Display alfanumérico LCD con luz de fondo",
+       "Exactitud tensiones de prueba: ± 3% sobre 10 GΩ",
+       "Exactitud básica: ± 5% (1 MΩ a 1 TΩ), ± 20% (1 TΩ a 5 TΩ)",
+       "Funciones: Índice de Polarización, Índice de Absorción Dieléctrica, Ensayos Pasa/No pasa, tiempo fijo, escalones de tensión",
+       "Memoria: hasta 4000 valores",
+       "Impresora integrada",
+       "Interfaz USB",
+       "Cronómetro hasta 90:00",
+       "Software de análisis incluido",
+       "Protección ambiental: IP54, IP55 o IP65",
+       "Normas: IEC 61000-4-3, IEC 61000-4-2, IEC 61010-1, IEC 61326-1",
+       "Alimentación: Batería LFP 12V-3Ah",
+       "Cargador 100-240V incluido",
+       "Temperatura operación: -5°C a 50°C",
+       "Peso máximo: 7 kg",
+       "Dimensiones máximas: 300 x 300 x 150 mm"
+      ]
+     }
+    ],
+    "entrega": {
+     "lugar": "Almacén Central – Gerencia de Logística – Zona Norte de CORPAC S.A - Av. Elmer Faucett 3400 Aeropuerto Internacional Jorge Chávez",
+     "plazo_dias": 50,
+     "condiciones": "Incluye 02 maletines de traslado, 02 licencias de software, 02 juegos de accesorios y 02 certificados de calibración",
+     "plazo_texto": "50 (cincuenta) días calendario"
+    },
+    "garantia": {
+     "cobertura": "Garantía comercial del bien",
+     "condiciones": "Computado desde el día siguiente de la emisión de la conformidad",
+     "plazo_texto": "No menor a 12 (doce) meses"
+    }
+   },
+   "summary": {
+    "descripcion_corta": "Adquisición de 02 megohmetros digitales para el mantenimiento de sistemas de ayudas luminosas en el Aeropuerto de Lima. El plazo de entrega es de 50 días calendario en el Almacén Central de CORPAC S.A. Se requiere acreditar experiencia previa en venta de materiales eléctricos por S/ 20,000.00.",
+    "observaciones_clave": [
+     "La garantía comercial no debe ser menor a 12 meses.",
+     "Se requiere presentar certificados de calibración vigente al momento de la entrega.",
+     "El contratista debe presentar SCTR y EPP (casco, calzado con puntera, chaleco) al momento de la entrega.",
+     "La validación de documentos SST se realiza al momento de la entrega sin plazo adicional.",
+     "El pago es único tras la conformidad del área usuaria."
+    ]
+   }
+  }
+ },
+ {
+  "id": 2312,
+  "codigo": "CM-89-2026-PATPAL-FBB/MML",
+  "title": "SERVICIO ESPECIALIZADO PARA EL DESARROLLO E IMPLEMENTACION DE UNA SOLUCION INFORMATICA PARA LA GESTION DEL ARCHIVO CENTRAL DEL PATPAL-FBB",
+  "prompt_version": "tdr_extraction_v3",
+  "old_summary": {
+   "modalidad": "no_indicada",
+   "plazo_ejecucion_dias": 30,
+   "tipo_pago": "pago_unico"
+  },
+  "expect": {
+   "requires_human_review": false,
+   "reasons": [],
+   "modalidad": "presencial",
+   "plazo_ejecucion_dias": 30
+  },
+  "raw": {
+   "contract": {
+    "moneda": "PEN",
+    "objeto": "Contratación del servicio especializado para el desarrollo e implementación de una solución informática para la gestión, control y seguimiento de la documentación del Archivo Central para el Patronato Parque de las Leyendas - FBB.",
+    "entidad": "Patronato Parque de las Leyendas - FBB",
+    "modalidad": "SUMA ALZADA",
+    "plazo_dias": 30,
+    "plazo_texto": "30 días calendarios",
+    "area_usuaria": "Oficina de Tecnologías de la Información",
+    "lugar_ejecucion": "Instalaciones del PATPAL, Av. Parque de las Leyendas N° 580 - 586, Distrito de San Miguel.",
+    "condicion_inicio": "desde el día siguiente de notificada la orden de servicio",
+    "valor_estimado_monto": null
+   },
+   "execution": {
+    "lugar": "Instalaciones, laboratorio y/o infraestructura del proveedor adjudicado, y en las instalaciones del PATPAL para consultas y pruebas.",
+    "entregables": [
+     {
+      "nombre": "Informe de actividades, código fuente, capacitación y acta de garantía",
+      "plazo_dias": 1,
+      "plazo_texto": "En un plazo máximo de un (01) día calendario, contados a partir de la finalización del servicio."
+     }
+    ]
+   },
+   "payment": {
+    "tipo": "pago_unico",
+    "armadas": [],
+    "detalle": "El pago se realiza en un único pago, luego de la recepción formal y completa de la documentación correspondiente y la conformidad otorgada por la Oficina de Tecnología de la Información.",
+    "plazo_pago_dias": 10
+   },
+   "requirements": {
+    "provider": [
+     {
+      "tipo": "legal_capacity",
+      "monto": null,
+      "evidencia": "8.1. Requisitos del Contratista",
+      "descripcion": "Persona natural o jurídica.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "ruc_status",
+      "monto": null,
+      "evidencia": "8.1. Requisitos del Contratista",
+      "descripcion": "Contar con RUC, activo y habido.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "rnp",
+      "monto": null,
+      "evidencia": "8.1. Requisitos del Contratista",
+      "descripcion": "Contar con RNP vigente.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "not_disqualified",
+      "monto": null,
+      "evidencia": "8.1. Requisitos del Contratista",
+      "descripcion": "No estar impedido de contratar con el Estado.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "economic_experience",
+      "monto": 20000.0,
+      "evidencia": "8.2. Experiencia del contratista",
+      "descripcion": "Monto facturado acumulado equivalente a S/ 20,000.00 en los últimos diez (10) años.",
+      "obligatorio": true
+     }
+    ],
+    "equipment": [],
+    "insurance": [],
+    "key_personnel": [
+     {
+      "rol": "Profesional de Ingeniería de Sistemas, Software, Informática y afines",
+      "formacion": [
+       "Profesional de Ingeniería de Sistemas, Software, Informática y afines"
+      ],
+      "experiencia": "Experiencia mínima de 01 año brindando el servicio de desarrollo de software. Haber ejecutado proyectos web para el estado peruano o el sector privado.",
+      "capacitaciones": [],
+      "experiencia_anios": 1,
+      "colegiatura_requerida": false
+     }
+    ],
+    "proposal_documents": [
+     "Contratos u órdenes de servicio con su respectiva conformidad o constancia de prestación",
+     "Comprobantes de pago con constancia de cancelación"
+    ]
+   },
+   "summary": {
+    "descripcion_corta": "Contratación de servicio especializado para el desarrollo e implementación de una solución informática para la gestión del Archivo Central del Patronato Parque de las Leyendas. El plazo de ejecución es de 30 días calendario. El pago es único tras la conformidad del servicio. Se requiere experiencia mínima de 1 año en desarrollo de software y una facturación acumulada de S/ 20,000.00.",
+    "observaciones_clave": [
+     "El plazo de ejecución es muy ajustado (30 días).",
+     "Se requiere experiencia específica en proyectos web para el sector público o privado.",
+     "La penalidad por mora tiene una fórmula específica con factor F=0.40.",
+     "Existe una penalidad adicional del 5% de la UIT por presentar el informe de ejecución fuera de plazo.",
+     "El contratista debe entregar una garantía de asistencia técnica por 12 meses."
+    ]
+   }
+  }
+ },
+ {
+  "id": 2313,
+  "codigo": "CM-530-2026-SBS",
+  "title": "Contratación del servicio de soporte técnico y actualización de software para auditoría de Microsoft Windows (Audit PLUS)",
+  "prompt_version": "tdr_extraction_v3",
+  "old_summary": {
+   "modalidad": "no_indicada",
+   "plazo_ejecucion_dias": 365,
+   "tipo_pago": "pago_unico"
+  },
+  "expect": {
+   "requires_human_review": false,
+   "reasons": [],
+   "modalidad": "presencial",
+   "plazo_ejecucion_dias": 365
+  },
+  "raw": {
+   "contract": {
+    "moneda": "PEN",
+    "objeto": "Contratación del servicio de soporte técnico y actualización de software para auditoría de Microsoft Windows (Audit PLUS)",
+    "entidad": "Superintendencia de Banca, Seguros y Administradoras Privadas de Fondos de Pensiones",
+    "modalidad": null,
+    "plazo_dias": 365,
+    "plazo_texto": "01 año (365 días)",
+    "area_usuaria": "Gerencia de tecnologías de información / Gerencia Central de Planeamiento Innovación y Tecnología",
+    "lugar_ejecucion": "San Isidro, Lima",
+    "condicion_inicio": "A partir de la fecha de inicio comunicada por el Departamento de Soporte Técnico y Servicios de Tecnologías de Información de la Gerencia de Tecnologías de Información de la Superintendencia",
+    "valor_estimado_monto": null
+   },
+   "execution": {
+    "lugar": "San Isidro, Lima",
+    "entregables": [
+     {
+      "nombre": "Documento emitido por el fabricante que acredite la cobertura del servicio de soporte técnico y actualización",
+      "plazo_dias": 15,
+      "plazo_texto": "Dentro de los quince (15) días calendario siguientes a la suscripción del contrato"
+     },
+     {
+      "nombre": "Informe de Actualización",
+      "plazo_dias": 5,
+      "plazo_texto": "Dentro de los cinco (5) días calendario siguientes a la culminación de la actividad"
+     },
+     {
+      "nombre": "Informes técnicos detallados en casos de avería",
+      "plazo_dias": 5,
+      "plazo_texto": "Dentro de los cinco (5) días calendario siguientes a la culminación de la atención de la avería"
+     }
+    ]
+   },
+   "payment": {
+    "tipo": "pago_unico",
+    "armadas": [],
+    "detalle": "El pago total se realizará al finalizar el año de soporte técnico y actualización, previa conformidad del Departamento de Ciberseguridad.",
+    "plazo_pago_dias": 10
+   },
+   "requirements": {
+    "provider": [
+     {
+      "tipo": "other",
+      "monto": null,
+      "evidencia": "Carta del fabricante o del distribuidor autorizado",
+      "descripcion": "Representante autorizado en el Perú para comercializar y brindar el servicio de soporte técnico del software ADAudit Plus",
+      "obligatorio": true
+     }
+    ],
+    "equipment": [],
+    "insurance": [
+     {
+      "tipo": "SCTR",
+      "descripcion": "Seguro contra todo riesgo (SCTR) vigente para el personal técnico que ingrese a los centros de datos",
+      "obligatorio": true
+     }
+    ],
+    "key_personnel": [],
+    "proposal_documents": [
+     "Carta del fabricante o distribuidor autorizado",
+     "Propuesta técnica y económica"
+    ]
+   },
+   "summary": {
+    "descripcion_corta": "Contratación del servicio de soporte técnico y actualización del software ADAudit Plus por un periodo de un año. El servicio incluye atención 24x7x365, soporte de fabricante y local, y migración de versiones. El pago es único al finalizar el periodo contractual. Se requiere ser representante autorizado del fabricante en Perú.",
+    "observaciones_clave": [
+     "El tiempo máximo de resolución de averías es de 5 horas.",
+     "Se requiere atención 24x7x365.",
+     "El postor debe ser representante autorizado del fabricante en Perú.",
+     "El pago es único al finalizar el año de servicio.",
+     "El personal técnico debe contar con SCTR vigente para ingresos a centros de datos."
+    ]
+   }
+  }
+ },
+ {
+  "id": 2314,
+  "codigo": "CM-184-2026-SENASA",
+  "title": "SERVICIO DE DESARROLLO EN PLATAFORMA INFORMATICA PARA LA MODIFICACION Y ADECUACION DEL PROCEDIMIENTO DE SANIDAD VEGETAL",
+  "prompt_version": "tdr_extraction_v3",
+  "old_summary": {
+   "modalidad": "no_indicada",
+   "plazo_ejecucion_dias": 60,
+   "tipo_pago": "armadas"
+  },
+  "expect": {
+   "requires_human_review": false,
+   "reasons": [],
+   "modalidad": "virtual",
+   "plazo_ejecucion_dias": 60
+  },
+  "raw": {
+   "contract": {
+    "moneda": "PEN",
+    "objeto": "Servicio de desarrollo en plataforma informática para la modificación y adecuación del procedimiento de sanidad vegetal.",
+    "entidad": "SENASA",
+    "modalidad": null,
+    "plazo_dias": 60,
+    "plazo_texto": "hasta los 60 días calendario",
+    "area_usuaria": "Oficina de Planificación y Desarrollo Institucional",
+    "lugar_ejecucion": "De manera virtual, accediendo a la plataforma de desarrollo del SENASA.",
+    "condicion_inicio": "desde el día siguiente de la suscripción del contrato y/o notificación de la Orden de Servicio",
+    "valor_estimado_monto": null
+   },
+   "execution": {
+    "lugar": "Virtual (con coordinaciones presenciales en Av. La Molina 1915 - La Molina, Sede Central)",
+    "entregables": [
+     {
+      "nombre": "Realización de actividades del inciso a y b, y entrega de resultados.",
+      "plazo_dias": 30,
+      "plazo_texto": "hasta los 30 días calendario"
+     },
+     {
+      "nombre": "Realización de actividades del inciso c y d, y entrega de resultados.",
+      "plazo_dias": 60,
+      "plazo_texto": "hasta los 60 días calendario"
+     }
+    ]
+   },
+   "payment": {
+    "tipo": "armadas",
+    "armadas": [
+     {
+      "numero": 1,
+      "condicion": "A los 30 días calendario, contados a partir del día siguiente de la suscripción del contrato y/o notificación de la Orden de Servicio.",
+      "porcentaje": 50.0
+     },
+     {
+      "numero": 2,
+      "condicion": "A los 60 días calendario, contados a partir del día siguiente de la suscripción del contrato y/o notificación de la Orden de Servicio.",
+      "porcentaje": 50.0
+     }
+    ],
+    "detalle": "Previa conformidad emitida por el Director de la Unidad de Informática y Estadística y el Director de la Subdirección de Cuarentena Vegetal.",
+    "plazo_pago_dias": 10
+   },
+   "requirements": {
+    "provider": [
+     {
+      "tipo": "legal_capacity",
+      "monto": null,
+      "evidencia": "Persona natural.",
+      "descripcion": "Persona natural.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "rnp",
+      "monto": null,
+      "evidencia": "Contar con Registro Nacional de Proveedores vigente",
+      "descripcion": "Registro Nacional de Proveedores vigente (se excluye si el valor es menor o igual a 1 UIT).",
+      "obligatorio": true
+     },
+     {
+      "tipo": "ruc_status",
+      "monto": null,
+      "evidencia": "Registro único de contribuyente (RUC) activo y habido.",
+      "descripcion": "Registro único de contribuyente (RUC) activo y habido.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "not_disqualified",
+      "monto": null,
+      "evidencia": "No tener impedimento para contratar con el estado",
+      "descripcion": "No tener impedimento para contratar con el estado.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "cci",
+      "monto": null,
+      "evidencia": "Tener Código de Cuenta Interbancaria (CCI).",
+      "descripcion": "Tener Código de Cuenta Interbancaria (CCI).",
+      "obligatorio": true
+     },
+     {
+      "tipo": "education",
+      "monto": null,
+      "evidencia": "Técnico titulado o bachiller universitario",
+      "descripcion": "Técnico titulado o bachiller universitario de Ingeniería de Sistemas y/o Ingeniería de Software y/o Ingeniería de Computación e Informática y/o ciencias de la computación y/o Computación e Informática y/o Desarrollo de Sistemas de Información y/o Desarrollo de Software.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "training",
+      "monto": null,
+      "evidencia": "Diplomados y/o cursos en",
+      "descripcion": "Diplomados o cursos en: programación de aplicaciones con Java Web y/o React, base de datos, metodologías ágiles.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "general_experience",
+      "monto": null,
+      "evidencia": "Experiencia general de tres (03) años",
+      "descripcion": "Experiencia general de tres (03) años en el sector público y/o privado en actividades vinculadas a sistemas informáticos.",
+      "obligatorio": true
+     },
+     {
+      "tipo": "specific_experience",
+      "monto": null,
+      "evidencia": "Experiencia específica mínima de dos (02) años",
+      "descripcion": "Experiencia específica mínima de dos (02) años de experiencia laboral en el sector público, realizando labores de desarrollo y/o programación y/o implementación y/o soporte de sistemas informáticos.",
+      "obligatorio": true
+     }
+    ],
+    "equipment": [],
+    "insurance": [
+     {
+      "tipo": "SCTR",
+      "descripcion": "Seguro Complementario de Trabajo de Riesgo (SCTR) de salud y pensión vigente durante toda la duración del servicio.",
+      "obligatorio": true
+     }
+    ],
+    "key_personnel": [],
+    "proposal_documents": [
+     "Copia del grado de bachiller o título profesional.",
+     "Copia de certificados, diplomas o constancias de capacitación.",
+     "Documentación que acredite la experiencia laboral (contratos, órdenes de servicio, constancias, certificados)."
+    ]
+   },
+   "summary": {
+    "descripcion_corta": "Contratación de una persona natural para brindar servicios de consultoría en desarrollo de software para la modificación y adecuación del procedimiento de sanidad vegetal en el SENASA. El servicio tiene un plazo de 60 días calendario y se ejecutará de forma virtual. El pago se realizará en dos armadas del 50% cada una, previa conformidad. Se requiere formación técnica o universitaria en sistemas, experiencia específica de 2 años en sector público y SCTR vigente.",
+    "observaciones_clave": [
+     "La subcontratación está prohibida.",
+     "El plazo de pago es de 10 días hábiles tras la conformidad.",
+     "Se requiere SCTR de salud y pensión vigente.",
+     "El personal debe rendir una evaluación de seguridad de la información antes de iniciar.",
+     "La experiencia debe acreditarse con documentos que señalen fechas exactas de inicio y fin."
+    ]
+   }
+  }
+ },
+ {
+  "id": 2315,
+  "codigo": "CM-35-2026-CORPAC S.A.",
+  "title": "SERVICIO DE ADMINISTRACIÓN DE SERVIDORES, INFRAESTRUCTURA DE VIRTUALIZACIÓN Y RESPALDO DE INFORMACIÓN DE CORPAC S.A.",
+  "prompt_version": "tdr_extraction_v3",
+  "old_summary": {
+   "modalidad": "no_indicada",
+   "plazo_ejecucion_dias": 365,
+   "tipo_pago": "mensual"
+  },
+  "expect": {
+   "requires_human_review": false,
+   "reasons": [],
+   "modalidad": "presencial",
+   "plazo_ejecucion_dias": 365
+  },
+  "raw": {
+   "contract": {
+    "moneda": "PEN",
+    "objeto": "Servicio de Administración de Servidores, Infraestructura de Virtualización y Respaldo de información de CORPAC S.A.",
+    "entidad": "CORPAC S.A.",
+    "modalidad": "Suma alzada",
+    "plazo_dias": 365,
+    "plazo_texto": "trescientos sesenta y cinco (365) días calendarios",
+    "area_usuaria": "Área de Redes, Comunicaciones y Soporte Técnico de la Gerencia de Tecnología de Información y Comunicaciones",
+    "lugar_ejecucion": "Centro de Datos de la Gerencia de Tecnologías de la Información y Comunicaciones, Sede Central, Av. Elmer Faucett N° 3400 - Aeropuerto Internacional Jorge Chávez, Callao",
+    "condicion_inicio": "desde el día siguiente de la recepción de la orden",
+    "valor_estimado_monto": null
+   },
+   "execution": {
+    "lugar": null,
+    "entregables": [
+     {
+      "nombre": "Entregable N°1",
+      "plazo_dias": 30,
+      "plazo_texto": "A los 30 días calendarios"
+     },
+     {
+      "nombre": "Entregable N°2",
+      "plazo_dias": 60,
+      "plazo_texto": "A los 60 días calendarios"
+     },
+     {
+      "nombre": "Entregable N°3",
+      "plazo_dias": 90,
+      "plazo_texto": "A los 90 días calendarios"
+     },
+     {
+      "nombre": "Entregable N°4",
+      "plazo_dias": 120,
+      "plazo_texto": "A los 120 días calendarios"
+     },
+     {
+      "nombre": "Entregable N°5",
+      "plazo_dias": 150,
+      "plazo_texto": "A los 150 días calendarios"
+     },
+     {
+      "nombre": "Entregable N°6",
+      "plazo_dias": 180,
+      "plazo_texto": "A los 180 días calendarios"
+     },
+     {
+      "nombre": "Entregable N°7",
+      "plazo_dias": 210,
+      "plazo_texto": "A los 210 días calendarios"
+     },
+     {
+      "nombre": "Entregable N°8",
+      "plazo_dias": 240,
+      "plazo_texto": "A los 240 días calendarios"
+     },
+     {
+      "nombre": "Entregable N°9",
+      "plazo_dias": 270,
+      "plazo_texto": "A los 270 días calendarios"
+     },
+     {
+      "nombre": "Entregable N°10",
+      "plazo_dias": 300,
+      "plazo_texto": "A los 300 días calendarios"
+     },
+     {
+      "nombre": "Entregable N°11",
+      "plazo_dias": 330,
+      "plazo_texto": "A los 330 días calendarios"
+     },
+     {
+      "nombre": "Entregable N°12",
+      "plazo_dias": 365,
+      "plazo_texto": "A los 365 días calendarios"
+     }
+    ]
+   },
+   "payment": {
+    "tipo": "mensual",
+    "armadas": [],
+    "detalle": "12 pagos mensuales y proporcionales, previa conformidad del área usuaria.",
+    "plazo_pago_dias": 10
+   },
+   "requirements": {
+    "provider": [
+     {
+      "tipo": "economic_experience",
+      "monto": 30000.0,
+      "evidencia": "S/ 30,000.00 (Treinta y mil con 00/100 soles)",
+      "descripcion": "Experiencia por un monto facturado acumulado equivalente a S/ 30,000.00 en servicios similares.",
+      "obligatorio": true
+     }
+    ],
+    "equipment": [],
+    "insurance": [],
+    "key_personnel": [
+     {
+      "rol": "Personal Propuesto",
+      "formacion": [
+       "Bachiller o Titulado en Ingeniería de Sistemas, Redes y Comunicaciones, Eléctrica, Electrónica o Telecomunicaciones"
+      ],
+      "experiencia": "02 años de experiencia en administración de Servidores, Infraestructura de Virtualización, Firewall, Monitoreo de Servicios de TI, Mesa de Ayuda, Gestión de Correos Exchange y Administración de Actualizaciones de Seguridad Windows.",
+      "capacitaciones": [
+       "Administración de Servidores Windows y/o Linux",
+       "Administración de Plataforma de Virtualización VMware",
+       "Administración de Servidor de Correo Exchange",
+       "Administración de Base de Datos SQL",
+       "Administración de Office 365 / Azure Administrator",
+       "Gestión de Servicios de TI (ITIL)",
+       "Hacking Ético / Seguridad de la Información",
+       "Administración y/o Gestión de Data Center"
+      ],
+      "experiencia_anios": 2.0,
+      "colegiatura_requerida": false
+     }
+    ],
+    "proposal_documents": [
+     "Copia simple de contratos u órdenes de compra con conformidad",
+     "Comprobantes de pago cancelados",
+     "Documentación que acredite formación académica del personal",
+     "Constancias o certificados de cursos del personal",
+     "Documentación que acredite experiencia del personal"
+    ]
+   },
+   "summary": {
+    "descripcion_corta": "Contratación de servicios informáticos para la administración de servidores, virtualización y respaldo de información para CORPAC S.A. El servicio tiene una duración de 365 días y se pagará en 12 cuotas mensuales. Se requiere acreditar experiencia facturada de S/ 30,000 y contar con personal calificado con formación en ingeniería y certificaciones específicas en TI.",
+    "observaciones_clave": [
+     "El plazo de ejecución es de 365 días calendario.",
+     "Se requiere acreditar experiencia por S/ 30,000 en los últimos 15 años.",
+     "El personal propuesto debe contar con 8 cursos específicos obligatorios.",
+     "La penalidad por mora tiene un tope del 10% del monto del contrato.",
+     "La conformidad se otorga en un plazo máximo de 7 días calendario."
+    ]
+   }
+  }
+ }
+]

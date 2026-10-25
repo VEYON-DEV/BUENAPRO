@@ -116,6 +116,29 @@ def existing_decision(conn: psycopg.Connection, id_contrato: int, profile_id: st
     ).fetchone()
 
 
+# A pending row is obsolete once a newer, not obsolete row exists for the same contract x company with
+# another search-card or profile hash. Shared by the poll (on writing) and the JEV pass (on reading).
+NEWER_ROW_SQL = """EXISTS (SELECT 1 FROM prod6_profile_decisions n
+                            WHERE n.id_contrato = d.id_contrato AND n.profile_id = d.profile_id
+                              AND n.policy_version = d.policy_version AND n.id > d.id
+                              AND n.decision <> 'superseded'
+                              AND (n.contract_hash <> d.contract_hash OR n.profile_hash <> d.profile_hash))"""
+
+
+def supersede_pending(conn: psycopg.Connection, *, profile_ids: list[str],
+                      policy_version: str = POLICY_VERSION) -> int:
+    """Mark as 'superseded' the pending rows that have a newer row; returns how many.
+
+    Only 'pending' rows change: accepted and rejected decisions are history and stay as they are,
+    so a second call changes nothing. A superseded row is neither scored nor shown as pending.
+    """
+    return conn.execute(
+        f"""UPDATE prod6_profile_decisions d SET decision = 'superseded', updated_at = now()
+            WHERE d.decision = 'pending' AND d.policy_version = %s AND d.profile_id = ANY(%s::uuid[])
+              AND {NEWER_ROW_SQL}""",
+        (policy_version, profile_ids)).rowcount
+
+
 def record_decision(conn: psycopg.Connection, *, item: SearchItem, segment: int, profile_id: str,
                     contract_hash: str, profile_hash: str, policy_version: str,
                     prefilter_passed: bool, prefilter_reasons: list[str],
@@ -124,6 +147,9 @@ def record_decision(conn: psycopg.Connection, *, item: SearchItem, segment: int,
 
     The row keeps its own snapshot of the search listing: rejected and pending
     contracts are deliberately not written to seace_contracts / opportunities.
+    A new row makes the other pending rows of the same contract x company obsolete
+    ('superseded'). A row that had been superseded and becomes current again (the card
+    or profile went back to an earlier hash) is revived with the fresh decision.
     """
     listing = item.model_dump(mode="json", by_alias=True)
     row = conn.execute(
@@ -139,4 +165,20 @@ def record_decision(conn: psycopg.Connection, *, item: SearchItem, segment: int,
          contract_hash, profile_hash, policy_version, prefilter_passed, prefilter_reasons,
          keyword_lines, decision, decided_by),
     ).fetchone()
-    return row is not None
+    if row is None:
+        row = conn.execute(
+            """UPDATE prod6_profile_decisions SET decision = %s, decided_by = %s, prefilter_passed = %s,
+                 prefilter_reasons = %s, keyword_lines = %s, attempts = 0, last_error = NULL,
+                 updated_at = now()
+               WHERE id_contrato = %s AND profile_id = %s AND contract_hash = %s AND profile_hash = %s
+                 AND policy_version = %s AND decision = 'superseded' RETURNING id""",
+            (decision, decided_by, prefilter_passed, prefilter_reasons, keyword_lines, item.id_contrato,
+             profile_id, contract_hash, profile_hash, policy_version)).fetchone()
+        if row is None:
+            return False
+    conn.execute(
+        """UPDATE prod6_profile_decisions SET decision = 'superseded', updated_at = now()
+           WHERE id_contrato = %s AND profile_id = %s AND policy_version = %s AND decision = 'pending'
+             AND NOT (contract_hash = %s AND profile_hash = %s)""",
+        (item.id_contrato, profile_id, policy_version, contract_hash, profile_hash))
+    return True

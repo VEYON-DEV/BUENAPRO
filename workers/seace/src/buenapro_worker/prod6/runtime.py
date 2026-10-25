@@ -44,6 +44,7 @@ from buenapro_worker.prod6.jev_screening import (
 from buenapro_worker.prod6.reading import (
     ProviderRejectedError, ReadingPolicyError, bind_reading_policy, reading_policy_context,
 )
+from buenapro_worker.prod6.document_selection import listing_items, select_reading_files
 from buenapro_worker.prod6.source_cache import SourceCache
 
 
@@ -374,15 +375,30 @@ def eligible_contract(repo: ScopedRepository, contract_id: int) -> bool:
 def enqueue_unread_documents(repo: ScopedRepository, contract_id: int) -> int:
     # process_contract historically skipped these when the file list was unchanged.
     rows = repo.conn.execute(
-        """SELECT d.id_contrato_archivo FROM contract_documents d
-           WHERE d.id_contrato=%s AND d.categoria=1
-           AND NOT EXISTS(SELECT 1 FROM tdr_extractions e
-             WHERE e.contract_document_id=d.id AND e.is_current AND e.quality<>'failed')""",
+        """SELECT d.id_contrato_archivo, d.categoria, d.filename, d.mime, d.sha256_original,
+                  d.raw_file_json, c.objeto_codigo,
+                  EXISTS(SELECT 1 FROM tdr_extractions e
+                         WHERE e.contract_document_id=d.id AND e.is_current AND e.quality<>'failed') AS read
+           FROM contract_documents d JOIN seace_contracts c ON c.id_contrato=d.id_contrato
+           WHERE d.id_contrato=%s ORDER BY d.id""",
         (contract_id,),
     ).fetchall()
+    by_archive = {int(row["id_contrato_archivo"]): row for row in rows}
+    primary, attachments = listing_items(rows)
+    try:
+        objeto = int(rows[0]["objeto_codigo"]) if rows else None
+    except (KeyError, TypeError, ValueError):
+        objeto = None
     count = 0
-    for row in rows:
-        archive_id = int(row["id_contrato_archivo"])
+    # The primary PDF, or the attachment PDF that is the requirement when there is none.
+    for item in select_reading_files(primary, attachments, objeto).files:
+        archive_id = int(item["idContratoArchivo"])
+        row = by_archive[archive_id]
+        if row.get("read"):
+            continue
+        sha = str(row.get("sha256_original") or "")
+        if sha and not sha.startswith("pending:") and row.get("mime") not in (None, "application/pdf"):
+            continue  # Downloaded already and not a PDF: asking SEACE again cannot make it readable.
         count += int(repo.enqueue("download_file", {
             "id_contrato": contract_id, "id_contrato_archivo": archive_id,
         }, queue_name="io", priority=2,
