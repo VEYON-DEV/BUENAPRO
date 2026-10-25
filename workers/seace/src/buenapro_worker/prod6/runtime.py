@@ -34,7 +34,8 @@ from buenapro_worker.seace import pacing
 from buenapro_worker.seace.egress import EgressUnavailable, check_egress, is_egress_failure, notify_ops
 from buenapro_worker.seace.pacing import (
     block_backoff_seconds, blocking_status, default_discovery_interval_seconds,
-    default_max_source_requests, min_request_interval, reading_backoff_seconds, source_stop,
+    default_max_source_requests, min_request_interval, reading_backoff_seconds,
+    reading_transient_backoff_seconds, source_stop,
 )
 from buenapro_worker.settings import Settings
 from buenapro_worker.extraction.commercial_classification import POLICY_KEY, TAXONOMY_VERSION, get_commercial_policy
@@ -62,6 +63,10 @@ READING_PAUSE_REASONS = {
     401: "Gemini: llave inválida o sin permiso (401/403)", 402: "Gemini: créditos agotados (402)",
     403: "Gemini: llave inválida o sin permiso (401/403)", 429: "Gemini: límite de uso (429)",
 }
+# Gemini saturated (not the account, not the document): a short pause that never counts against
+# the document. It alerts only when it keeps renewing for longer than TRANSIENT_ALERT_AFTER_SECONDS.
+READING_TRANSIENT_CODES = frozenset({500, 502, 503, 504, 529})
+TRANSIENT_ALERT_AFTER_SECONDS = 7200
 # Requests one free IO job can make (process_contract: detail + two file listings).
 IO_REQUEST_COST = 3
 
@@ -604,6 +609,7 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
     min_request_interval()  # An invalid pace or backoff in the environment stops the start.
     backoff_seconds = block_backoff_seconds()
     reading_backoff = reading_backoff_seconds()
+    transient_backoff = reading_transient_backoff_seconds()
     stopping = False
 
     def stop(*_args):
@@ -782,29 +788,59 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
             return until is not None and until > datetime.now(timezone.utc)
 
         def open_reading_pause(state: dict[str, Any], error: ProviderRejectedError) -> datetime:
-            """Gemini answered an account error: no paid reading until the backoff passes.
+            """Gemini answered an account error or is saturated: no paid reading until the backoff passes.
 
-            One alert per episode; a failed probe after the pause renews it silently and the
+            Account errors (``PROD6_READING_BACKOFF_SECONDS``) alert once per episode. Saturation
+            (``PROD6_READING_TRANSIENT_BACKOFF_SECONDS``) is silent until it has renewed without a
+            successful reading for more than two hours, then alerts once; the longer account pause
+            is never shortened by it. A failed probe after the pause renews it silently and the
             first successful reading closes the episode.
             """
             nonlocal reading_pause
             now = datetime.now(timezone.utc)
-            until = now + timedelta(seconds=reading_backoff)
-            reason = READING_PAUSE_REASONS[error.code]
-            if not (reading_pause and reading_pause.get("alerted")):
-                notify_ops(f"BuenaPro PROD6: lecturas Gemini en pausa ({reason}); sin lecturas hasta "
-                           f"{until.isoformat()} ({reading_backoff}s); búsqueda, JEV y descargas continúan.")
-            reading_pause = {"code": error.code, "status": error.status, "reason": reason,
-                             "since": (reading_pause or {}).get("since") or now.isoformat(),
-                             "until": until.isoformat(), "alerted": True}
+            current = reading_pause
+            current_until = parse_instant(current.get("until")) if current else None
+            current_kind = (current or {}).get("kind", "account")
+            if error.code in READING_PAUSE_REASONS:
+                until = now + timedelta(seconds=reading_backoff)
+                reason = READING_PAUSE_REASONS[error.code]
+                continuing = current is not None and current_kind == "account"
+                if not (continuing and current.get("alerted")):
+                    notify_ops(f"BuenaPro PROD6: lecturas Gemini en pausa ({reason}); sin lecturas hasta "
+                               f"{until.isoformat()} ({reading_backoff}s); búsqueda, JEV y descargas continúan.")
+                reading_pause = {"kind": "account", "code": error.code, "status": error.status, "reason": reason,
+                                 "since": (current["since"] if continuing and current.get("since") else now.isoformat()),
+                                 "until": until.isoformat(), "alerted": True}
+            else:
+                if current_kind == "account" and current_until is not None and current_until > now:
+                    return current_until  # The account pause is longer and rules.
+                until = now + timedelta(seconds=transient_backoff)
+                reason = f"Gemini saturado ({error.code})"
+                # A pause that lapsed unused for long is a new episode; an expired account pause
+                # (this was its probe) continues its episode, which already alerted.
+                grace = timedelta(seconds=2 * max(transient_backoff, interval_seconds))
+                continuing = current is not None and (current_kind == "account"
+                                                      or (current_until is not None and now <= current_until + grace))
+                since = parse_instant(current.get("since")) if continuing else None
+                since = since or now
+                alerted = bool(continuing and current.get("alerted"))
+                if not alerted and (now - since).total_seconds() > TRANSIENT_ALERT_AFTER_SECONDS:
+                    notify_ops(f"BuenaPro PROD6: Gemini saturado desde hace >2 h ({reason}); lecturas pagadas en "
+                               f"pausas de {transient_backoff}s, siguiente intento tras {until.isoformat()}; "
+                               "búsqueda, JEV y descargas continúan.")
+                    alerted = True
+                reading_pause = {"kind": "transient", "code": error.code, "status": error.status, "reason": reason,
+                                 "since": since.isoformat(), "until": until.isoformat(), "alerted": alerted}
             state.update(reading_pause=reading_pause, reading_paused_until=reading_pause["until"])
             write_state(receipt_dir / "state.json", state)
             return until
 
         def reading_recovered(state: dict[str, Any]) -> None:
+            """A saturation episode that never alerted ends silently."""
             nonlocal reading_pause
             if reading_pause is not None:
-                notify_ops("BuenaPro PROD6: lecturas Gemini reanudadas; primera lectura exitosa tras la pausa.")
+                if reading_pause.get("alerted"):
+                    notify_ops("BuenaPro PROD6: lecturas Gemini reanudadas; primera lectura exitosa tras la pausa.")
                 reading_pause = None
                 state.pop("reading_pause", None)
                 state.pop("reading_paused_until", None)
@@ -813,13 +849,14 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
             """Gemini answered an HTTP error: nothing was billed and the reading may be retried.
 
             Like a source stop, the claim's attempt is given back. Account errors (401/402/403/429)
-            pause every paid reading and do not penalize the document; other codes reschedule
-            this job and count, and the third rejection of the same document goes to manual review.
+            and saturation (500/502/503/504/529) pause every paid reading and do not penalize the
+            document; other codes reschedule this job and count, and the third rejection of the
+            same document goes to manual review.
             """
-            account = error.code in READING_PAUSE_REASONS
-            run_after = (open_reading_pause(state, error) if account
+            paused = error.code in READING_PAUSE_REASONS or error.code in READING_TRANSIENT_CODES
+            run_after = (open_reading_pause(state, error) if paused
                          else datetime.now(timezone.utc) + timedelta(seconds=interval_seconds))
-            count = int(rejected.payload.get("provider_error_count") or 0) + (0 if account else 1)
+            count = int(rejected.payload.get("provider_error_count") or 0) + (0 if paused else 1)
             if count >= PROVIDER_ERROR_LIMIT:
                 hold_document(state, rejected, error.code, count=count, provider=error)
                 return

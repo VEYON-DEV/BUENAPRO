@@ -8,7 +8,8 @@ between consecutive requests no matter how many threads or clients exist:
 ``PROD6_MAX_SOURCE_REQUESTS``           default of the runtime's ``--max-source-requests`` (40).
 ``PROD6_DISCOVERY_INTERVAL_SECONDS``    default of the runtime's ``--discovery-interval-seconds`` (7200, ``0`` = every cycle).
 ``PROD6_BLOCK_BACKOFF_SECONDS``         pause after a 403/429 from the source (default 10800).
-``PROD6_READING_BACKOFF_SECONDS``       pause of paid readings after Gemini answers 402/429 (default 3600).
+``PROD6_READING_BACKOFF_SECONDS``       pause of paid readings after Gemini answers 401/402/403/429 (default 3600).
+``PROD6_READING_TRANSIENT_BACKOFF_SECONDS``  short pause after Gemini is saturated, 500/502/503/504/529 (default 900).
 
 The pace is fixed and low on purpose: there is no jitter, rotation or evasion.
 
@@ -31,6 +32,7 @@ DEFAULT_MAX_SOURCE_REQUESTS = 40
 DEFAULT_DISCOVERY_INTERVAL_SECONDS = 7200
 DEFAULT_BLOCK_BACKOFF_SECONDS = 10800
 DEFAULT_READING_BACKOFF_SECONDS = 3600
+DEFAULT_READING_TRANSIENT_BACKOFF_SECONDS = 900
 # A denial from the WAF, never retried: more requests only prolong the block.
 BLOCK_STATUSES = frozenset({403, 429})
 
@@ -87,6 +89,11 @@ def block_backoff_seconds() -> int:
 
 def reading_backoff_seconds() -> int:
     return _env_number("PROD6_READING_BACKOFF_SECONDS", DEFAULT_READING_BACKOFF_SECONDS, minimum=1, kind=int)
+
+
+def reading_transient_backoff_seconds() -> int:
+    return _env_number("PROD6_READING_TRANSIENT_BACKOFF_SECONDS", DEFAULT_READING_TRANSIENT_BACKOFF_SECONDS,
+                       minimum=1, kind=int)
 
 
 def blocking_status(error: BaseException) -> int | None:

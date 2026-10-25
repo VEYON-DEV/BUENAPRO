@@ -585,8 +585,8 @@ incierto ya no autoriza otro.
 El runtime (`prod6/runtime.py`) trata `ProviderRejectedError` así:
 
 - El job vuelve a `pending` y devuelve su intento (`attempts-1`, como los bloqueos de fuente).
-  Se distinguen dos clases de error:
-  - **Errores del documento o pasajeros** (400, 404, 413, 422, 5xx y cualquier otro código):
+  Se distinguen tres clases de error:
+  - **Errores del documento** (400, 404, 413, 422 y cualquier otro 4xx que no sea de cuenta):
     suman a `payload.provider_error_count`, el job se reprograma para el siguiente ciclo
     (`run_after = ahora + --interval-seconds`), sin pausa global ni alerta. Al **tercero** del mismo
     job pasa a `manual_review_required` (`source_document_block.provider_http_status`), el ciclo
@@ -594,17 +594,34 @@ El runtime (`prod6/runtime.py`) trata `ProviderRejectedError` así:
   - **Errores de la cuenta** (401, 402, 403, 429): no dicen nada del documento, así que **no suman**
     a `provider_error_count` y nunca lo mandan a revisión manual, por muchas veces que se repitan.
     Pausan la lectura como se describe a continuación.
+  - **Saturación del proveedor** (500, 502, 503, 504 y 529): pasajera y ajena al documento (en una
+    prueba real Gemini devolvió 503 `UNAVAILABLE` en 5 de 7 intentos), así que tampoco **suma** a
+    `provider_error_count` ni manda el documento a revisión manual. Aplica una pausa **corta** de
+    lecturas pagadas para no martillar al proveedor; ver más abajo.
 - **401/403, 402 y 429** ("Gemini: llave inválida o sin permiso (401/403)", "Gemini: créditos
   agotados (402)", "Gemini: límite de uso (429)") pausan **todas** las lecturas pagadas durante
   `PROD6_READING_BACKOFF_SECONDS` (3600 por defecto): el job vuelve con `run_after` al fin de la
   pausa, `extract_tdr` no se reclama mientras dure, y búsqueda, JEV, descargas, listados y
-  `derive_summary` siguen. `state.json` guarda `reading_pause` (`code`, `status`, `reason`, `since`,
-  `until`, `alerted`) y `reading_paused_until`; sobrevive a reinicios. El estado del ciclo es
+  `derive_summary` siguen. `state.json` guarda `reading_pause` (`kind`, `code`, `status`, `reason`,
+  `since`, `until`, `alerted`) y `reading_paused_until`; sobrevive a reinicios. El estado del ciclo es
   `reading_paused` (`--once` sale con 2). `notify_ops` avisa **una vez por episodio**
   con ese motivo legible; pasada la hora, la siguiente
   lectura es la sonda: si vuelve a fallar la pausa se renueva sin otra alerta, y la primera lectura
   en que Gemini respondió (no una reutilizada ni reproducida de recibo) cierra el episodio con
   un aviso de reanudación.
+- **500/502/503/504/529** ("Gemini saturado (503)") usan el mismo mecanismo `reading_pause` (`kind`
+  `transient`) pero con `PROD6_READING_TRANSIENT_BACKOFF_SECONDS` (900 por defecto), y **sin alerta**
+  en la primera ocurrencia: una saturación breve se resuelve sola. Cada sonda fallida renueva la
+  pausa; si el episodio sigue renovándose de forma continua por **más de 2 horas** (`since` es el
+  inicio del episodio) se envía **una** alerta ("Gemini saturado desde hace >2 h") y el campo
+  `alerted` pasa a `true`; el aviso de reanudación solo se envía si hubo alerta, y la primera lectura
+  en que Gemini respondió cierra el episodio. Una pausa corta que venció sin sonda durante más de
+  el doble de `max(pausa corta, --interval-seconds)` no cuenta como continua y el siguiente fallo
+  abre un episodio nuevo. **Una pausa de cuenta vigente manda**: la saturación no la acorta ni la
+  reemplaza; si la sonda tras vencer una pausa de cuenta recibe saturación, el episodio continúa como
+  corto conservando su alerta ya enviada (y su aviso de reanudación), y un error de cuenta durante
+  una saturación pasa a la pausa de cuenta con su alerta. Un `reading_pause` guardado sin `kind` (de
+  antes de este cambio) se lee como pausa de cuenta.
 - Reanudar manualmente tras recargar crédito: borrar `reading_pause` y `reading_paused_until` de
   `state.json` con el servicio detenido, o esperar a que termine la pausa.
 
@@ -617,8 +634,9 @@ requiere revisión.` Se avisa una vez por parada: `state.json` guarda `attention
 ciclo que termina sin parada cierra el episodio. Los fallos de arranque (antes de tomar el
 candado) no pueden deduplicarse y avisan en cada intento.
 
-**Variable**: `PROD6_READING_BACKOFF_SECONDS` (3600), del entorno del proceso; un valor inválido
-detiene el arranque. `pacing.py` ya se copia en la imagen PROD6 y el resto del cambio vive en
+**Variables**: `PROD6_READING_BACKOFF_SECONDS` (3600, errores de cuenta) y
+`PROD6_READING_TRANSIENT_BACKOFF_SECONDS` (900, saturación), del entorno del proceso; un valor
+inválido detiene el arranque. `pacing.py` ya se copia en la imagen PROD6 y el resto del cambio vive en
 `prod6/`, así que `infra/docker/prod6.Dockerfile` no necesita archivos nuevos.
 
 #### Calidad de las lecturas PROD6: revisión determinista, modalidad, plazo y documento (PROD6)

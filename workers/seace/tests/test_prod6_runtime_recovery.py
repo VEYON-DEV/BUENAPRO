@@ -1106,6 +1106,7 @@ def test_invalid_request_budget_is_rejected_before_the_database(options, tmp_pat
 @pytest.mark.parametrize("name,value", [("PROD6_MIN_REQUEST_INTERVAL_SECONDS", "-2"),
                                         ("PROD6_BLOCK_BACKOFF_SECONDS", "never"),
                                         ("PROD6_READING_BACKOFF_SECONDS", "0"),
+                                        ("PROD6_READING_TRANSIENT_BACKOFF_SECONDS", "0"),
                                         ("PROD6_MAX_SOURCE_REQUESTS", "0")])
 def test_invalid_pacing_environment_is_rejected_before_the_database(monkeypatch, tmp_path, name, value):
     monkeypatch.setenv(name, value)
@@ -1235,8 +1236,8 @@ def test_pause_length_comes_from_the_environment(offline_runtime, egress, clock,
 
 
 @pytest.mark.parametrize("code,status", [(400, "INVALID_ARGUMENT"), (404, "NOT_FOUND"),
-                                         (413, None), (422, None), (500, "INTERNAL"), (503, "UNAVAILABLE")])
-def test_document_or_transient_gemini_errors_only_reschedule_and_count_against_that_job(offline_runtime, egress, clock, code, status):
+                                         (413, None), (422, None), (418, None)])
+def test_document_gemini_errors_only_reschedule_and_count_against_that_job(offline_runtime, egress, clock, code, status):
     h = offline_runtime
     asked = typed_claims(h, [poll_job(1, "extract_tdr"), poll_job(2, "extract_tdr")])
     dispatching(h, {1: ProviderRejectedError(code, status)})
@@ -1254,13 +1255,13 @@ def test_third_rejection_of_the_same_document_goes_to_manual_review_and_the_cycl
         offline_runtime, egress, clock):
     h = offline_runtime
     typed_claims(h, [poll_job(1, "extract_tdr", provider_error_count=2), poll_job(2, "derive_summary")])
-    dispatching(h, {1: ProviderRejectedError(503, "UNAVAILABLE")})
+    dispatching(h, {1: ProviderRejectedError(400, "INVALID_ARGUMENT")})
     assert h.run(once=True) == 2
     assert deferrals(h) == []
     (sql, values), = holds(h)
-    assert json.loads(values[0]) == {"source_document_block": {"provider_http_status": 503,
-        "provider_status": "UNAVAILABLE", "reason": "manual_review_required"}, "provider_error_count": 3}
-    assert "Gemini reading HTTP 503" in values[1] and values[2:] == (1, "prod6-only-v1:veyon", runtime.NAMESPACE, "veyon")
+    assert json.loads(values[0]) == {"source_document_block": {"provider_http_status": 400,
+        "provider_status": "INVALID_ARGUMENT", "reason": "manual_review_required"}, "provider_error_count": 3}
+    assert "Gemini reading HTTP 400" in values[1] and values[2:] == (1, "prod6-only-v1:veyon", runtime.NAMESPACE, "veyon")
     state = h.states[-1]
     assert state["status"] == "sweep_blocked" and state["blocked_documents"][0]["job_id"] == 1
     assert state["done"] == {"derive_summary": 1}
@@ -1293,6 +1294,158 @@ def test_document_errors_count_even_when_an_account_error_paused_readings_before
     h.run(once=True)
     (_, values), = holds(h)
     assert json.loads(values[0])["provider_error_count"] == 3 and egress.alerts == []
+
+
+SATURATION_CODES = [500, 502, 503, 504, 529]
+
+
+def read_state(h):
+    return json.loads((h.folder / "state.json").read_text())
+
+
+@pytest.mark.parametrize("code", SATURATION_CODES)
+def test_gemini_saturation_pauses_readings_briefly_without_penalty_or_alert(offline_runtime, egress, clock, code):
+    h = offline_runtime
+    asked = typed_claims(h, [poll_job(1, "extract_tdr", provider_error_count=1), poll_job(2, "extract_tdr"),
+                             poll_job(3, "derive_summary")])
+    dispatching(h, {1: ProviderRejectedError(code, "UNAVAILABLE")})
+    assert h.run(once=True) == 2
+    until = clock.now + timedelta(seconds=900)
+    assert reading_deferrals(h) == [(until, {"provider_error_count": 1}, 1)]  # The count is untouched.
+    assert [call.args[2].id for call in h.dispatch.call_args_list] == [1, 3]
+    assert not any("extract_tdr" in types for types in asked[1:])
+    state = h.states[-1]
+    assert state["status"] == "reading_paused" and state["reading_deferred"][0]["provider_error_count"] == 1
+    assert state["reading_pause"]["kind"] == "transient" and state["reading_pause"]["alerted"] is False
+    assert state["reading_pause"]["reason"] == f"Gemini saturado ({code})"
+    assert datetime.fromisoformat(state["reading_paused_until"]) == until
+    assert read_state(h)["reading_pause"]["code"] == code
+    assert egress.alerts == [] and holds(h) == []
+
+
+def test_saturation_pause_length_comes_from_the_environment(offline_runtime, egress, clock, monkeypatch):
+    h = offline_runtime
+    monkeypatch.setenv("PROD6_READING_TRANSIENT_BACKOFF_SECONDS", "60")
+    typed_claims(h, [poll_job(1, "extract_tdr")])
+    dispatching(h, {1: ProviderRejectedError(503, "UNAVAILABLE")})
+    h.run(once=True)
+    assert reading_deferrals(h)[0][0] == clock.now + timedelta(seconds=60)
+
+
+def test_saturation_never_sends_the_document_to_manual_review(offline_runtime, egress, clock):
+    h = offline_runtime
+    for _ in range(4):
+        typed_claims(h, [poll_job(1, "extract_tdr", provider_error_count=2)])
+        dispatching(h, {1: ProviderRejectedError(503, "UNAVAILABLE")})
+        h.run(once=True)
+        clock.now += timedelta(seconds=901)
+    assert holds(h) == []
+    assert [patch for _, patch, _ in reading_deferrals(h)] == [{"provider_error_count": 2}] * 4
+
+
+def test_saturation_pause_survives_a_restart(offline_runtime, egress, clock):
+    h = offline_runtime
+    typed_claims(h, [poll_job(1, "extract_tdr")])
+    dispatching(h, {1: ProviderRejectedError(503, "UNAVAILABLE")})
+    h.run(once=True)
+    clock.now += timedelta(seconds=600)  # A new process, inside the pause.
+    asked = typed_claims(h, [poll_job(1, "extract_tdr")])
+    assert h.run(once=True) == 2
+    assert not any("extract_tdr" in types for types in asked)
+    assert h.states[-1]["status"] == "reading_paused" and h.states[-1]["reading_pause"]["kind"] == "transient"
+    clock.now += timedelta(seconds=301)  # Ended: the next reading is the probe, and it recovers silently.
+    typed_claims(h, [poll_job(1, "extract_tdr")])
+    dispatching(h, {}, {"outcome": "read_or_reused", "provider_answered": True})
+    assert h.run(once=True) == 0
+    assert "reading_pause" not in read_state(h) and egress.alerts == []
+
+
+def test_continuous_saturation_alerts_once_after_two_hours_and_recovery_is_announced(offline_runtime, egress, clock):
+    h = offline_runtime
+    start = clock.now
+    for _ in range(12):  # Probes every 901 s: the episode lasts 3 hours.
+        typed_claims(h, [poll_job(1, "extract_tdr")])
+        dispatching(h, {1: ProviderRejectedError(503, "UNAVAILABLE")})
+        h.run(once=True)
+        if clock.now - start <= timedelta(hours=2):
+            assert egress.alerts == []
+        clock.now += timedelta(seconds=901)
+    assert len(egress.alerts) == 1 and "saturado desde hace >2 h" in egress.alerts[0]
+    assert read_state(h)["reading_pause"]["alerted"] is True
+    assert datetime.fromisoformat(read_state(h)["reading_pause"]["since"]) == start
+    typed_claims(h, [poll_job(1, "extract_tdr")])
+    dispatching(h, {}, {"outcome": "read_or_reused", "provider_answered": True})
+    assert h.run(once=True) == 0
+    assert len(egress.alerts) == 2 and "reanudadas" in egress.alerts[1]
+    assert "reading_pause" not in read_state(h)
+
+
+def test_an_old_lapsed_saturation_pause_starts_a_new_episode(offline_runtime, egress, clock):
+    h = offline_runtime
+    typed_claims(h, [poll_job(1, "extract_tdr")])
+    dispatching(h, {1: ProviderRejectedError(503, "UNAVAILABLE")})
+    h.run(once=True)
+    clock.now += timedelta(hours=5)  # Nothing was read meanwhile.
+    typed_claims(h, [poll_job(1, "extract_tdr")])
+    h.run(once=True)
+    assert egress.alerts == []
+    assert read_state(h)["reading_pause"]["since"] == clock.now.isoformat()
+
+
+def test_account_pause_rules_over_saturation_while_it_lasts(offline_runtime, egress, clock):
+    h = offline_runtime
+    jobs = [poll_job(1, "extract_tdr"), poll_job(2, "extract_tdr")]
+    # Ignores the pause on purpose (a second reading already claimed): only the IO claims get nothing.
+    h.claim.side_effect = lambda worker_id, job_types=runtime.JOB_TYPES: (
+        jobs.pop(0) if jobs and tuple(job_types) != runtime.IO_TYPES else None)
+    dispatching(h, {1: ProviderRejectedError(402, "RESOURCE_EXHAUSTED"), 2: ProviderRejectedError(503, "UNAVAILABLE")})
+    h.run(once=True)
+    until = clock.now + timedelta(seconds=3600)
+    assert [run_after for run_after, _, _ in reading_deferrals(h)] == [until, until]
+    pause = read_state(h)["reading_pause"]
+    assert pause["kind"] == "account" and pause["code"] == 402 and pause["alerted"] is True
+    assert len(egress.alerts) == 1 and "créditos agotados" in egress.alerts[0]
+
+
+def test_saturation_after_an_account_probe_keeps_the_alerted_episode(offline_runtime, egress, clock):
+    h = offline_runtime
+    typed_claims(h, [poll_job(1, "extract_tdr")])
+    dispatching(h, {1: ProviderRejectedError(402, "RESOURCE_EXHAUSTED")})
+    h.run(once=True)
+    clock.now += timedelta(seconds=3601)  # The probe finds Gemini saturated.
+    typed_claims(h, [poll_job(1, "extract_tdr")])
+    dispatching(h, {1: ProviderRejectedError(503, "UNAVAILABLE")})
+    h.run(once=True)
+    pause = read_state(h)["reading_pause"]
+    assert pause["kind"] == "transient" and pause["alerted"] is True
+    assert datetime.fromisoformat(read_state(h)["reading_paused_until"]) == clock.now + timedelta(seconds=900)
+    assert len(egress.alerts) == 1
+    clock.now += timedelta(seconds=901)
+    typed_claims(h, [poll_job(1, "extract_tdr")])
+    dispatching(h, {}, {"outcome": "read_or_reused", "provider_answered": True})
+    h.run(once=True)
+    assert len(egress.alerts) == 2 and "reanudadas" in egress.alerts[1]
+
+
+def test_account_error_after_saturation_alerts_and_takes_over(offline_runtime, egress, clock):
+    h = offline_runtime
+    typed_claims(h, [poll_job(1, "extract_tdr")])
+    dispatching(h, {1: ProviderRejectedError(503, "UNAVAILABLE")})
+    h.run(once=True)
+    clock.now += timedelta(seconds=901)
+    typed_claims(h, [poll_job(1, "extract_tdr")])
+    dispatching(h, {1: ProviderRejectedError(429, "RESOURCE_EXHAUSTED")})
+    h.run(once=True)
+    assert read_state(h)["reading_pause"]["kind"] == "account"
+    assert datetime.fromisoformat(read_state(h)["reading_paused_until"]) == clock.now + timedelta(seconds=3600)
+    assert len(egress.alerts) == 1 and "límite de uso" in egress.alerts[0]
+
+
+def test_a_pause_recorded_before_the_saturation_kind_existed_is_an_account_pause(tmp_path):
+    path = tmp_path / "state.json"
+    path.write_text(json.dumps({"reading_pause": {"until": "2026-10-25T12:00:00+00:00", "code": 402,
+                                                  "alerted": True}}))
+    assert runtime.load_reading_pause(path).get("kind", "account") == "account"
 
 
 def test_reading_pause_survives_a_restart_then_one_probe_and_one_recovery_alert(
