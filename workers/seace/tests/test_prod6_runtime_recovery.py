@@ -31,7 +31,12 @@ def http_failure(status):
 
 @pytest.fixture
 def offline_runtime(monkeypatch, tmp_path):
-    """All database, source HTTP and dispatch boundaries are mocked before run."""
+    """All database, source HTTP and dispatch boundaries are mocked before run.
+
+    The search interval is 0 here (the search runs in every cycle, as before it existed);
+    the scheduling tests pass their own interval.
+    """
+    monkeypatch.setenv("PROD6_DISCOVERY_INTERVAL_SECONDS", "0")
     conn = MagicMock()
     conn.execute.return_value.fetchone.return_value = {"locked": True}
     conn.execute.return_value.rowcount = 1
@@ -63,9 +68,9 @@ def offline_runtime(monkeypatch, tmp_path):
 
     monkeypatch.setattr(runtime, "write_state", write_state)
 
-    def run(*, once=True):
+    def run(*, once=True, **options):
         return runtime.run(MagicMock(), profile_ids=["veyon"], receipt_dir=tmp_path,
-                           once=once, interval_seconds=1800, io_workers=2)
+                           once=once, interval_seconds=1800, io_workers=2, **options)
 
     def stop():
         callbacks[signal.SIGTERM](signal.SIGTERM, None)
@@ -867,7 +872,7 @@ def clock(monkeypatch):
     return fake
 
 
-def run_cycles(h, clock, cycles, *, step=1800):
+def run_cycles(h, clock, cycles, *, step=1800, **options):
     waits = []
 
     def wait(should_stop, interval_seconds):
@@ -877,7 +882,7 @@ def run_cycles(h, clock, cycles, *, step=1800):
             h.stop()
 
     h.wait.side_effect = wait
-    return h.run(once=False)
+    return h.run(once=False, **options)
 
 
 def test_no_prod6_request_until_the_pause_ends_then_one_probe_and_one_recovery_alert(
@@ -1446,3 +1451,268 @@ def test_dispatch_lets_a_rejected_reading_retry_even_as_a_replay_only_job(monkey
     outcome = dispatch(2)
     assert outcome == {"outcome": "read_or_reused", "extraction_id": 99, "provider_answered": True}
     assert client.models.generate_content.call_count == 2
+
+
+# --- Search cadence: the search runs once per lap interval, IO gets the cycles in between -------
+
+INTERVAL = 7200
+
+
+def lap(index, searched, *, complete=False, requests=22, count=6):
+    """A search that covered ``searched`` streams and left the cursor at ``index``."""
+    return dict(SOURCE_STATS, http_requests=requests, streams_searched=searched, cursor={
+        "next_stream_index": index, "next_stream": [1, 43], "stream_count": count, "complete": complete})
+
+
+def searching(h, *results, requests=22):
+    """A search stand-in that spends its requests on the pacer like the real client."""
+    queue = deque(results)
+
+    def poll(*_args, **_kwargs):
+        for _ in range(requests):
+            pacing.PACER.acquire()
+        return queue.popleft()
+
+    h.poll.side_effect = poll
+
+
+def io_costing(h, requests):
+    def execute(settings, profile_id, job, receipts, **_kwargs):
+        for _ in range(requests):
+            pacing.PACER.acquire()
+        return {"files_changed": True}
+
+    h.execute_io.side_effect = execute
+
+
+def finished(h):
+    """The final state of each cycle, in order."""
+    return list({state["batch_id"]: state for state in h.states if "finished_at" in state}.values())
+
+
+def test_the_first_cycle_searches_and_a_complete_lap_starts_the_wait(offline_runtime, clock):
+    h = offline_runtime
+    searching(h, lap(0, 6, complete=True))
+    assert h.run(once=True, discovery_interval_seconds=INTERVAL) == 0
+    h.poll.assert_called_once()
+    assert h.poll.call_args.kwargs["start_stream"] == 0 and h.poll.call_args.kwargs["max_streams"] is None
+    state = json.loads((h.folder / "state.json").read_text())
+    assert state["last_discovery_completed_at"] == clock.now.isoformat()
+    discovery = state["discovery"]
+    assert discovery["due"] is True and discovery["skipped_reason"] is None
+    assert discovery["next_due_at"] == (clock.now + timedelta(seconds=INTERVAL)).isoformat()
+    assert discovery["interval_seconds"] == INTERVAL and discovery["complete"] is True
+    assert state["source_coverage"] == "configured_scope_complete"
+
+
+def test_cycles_inside_the_interval_skip_the_search_and_io_takes_the_whole_budget(
+        offline_runtime, egress, clock):
+    h = offline_runtime
+    searching(h, lap(0, 6, complete=True), lap(0, 6, complete=True))
+    io_costing(h, 4)
+    queued = deque(poll_job(number, "process_contract") for number in range(1, 40))
+    h.claim.side_effect = lambda worker_id, job_types=runtime.JOB_TYPES: (
+        queued.popleft() if job_types == runtime.IO_TYPES and queued else None)
+    assert run_cycles(h, clock, 5, discovery_interval_seconds=INTERVAL) == 0
+    cycles = finished(h)
+    assert [state["discovery"]["due"] for state in cycles] == [True, False, False, False, True]
+    assert h.poll.call_count == 2  # First cycle and, two hours after the lap ended, the fifth.
+    assert h.jev.call_count == 5  # Screening and admission run in every cycle.
+    first, second = cycles[0], cycles[1]
+    # Searching cycle: 22 of 40 requests went to the search, so only four 4-request jobs fit.
+    assert first["source_requests"] == {"used": 38, "max": 40, "budget_reached": True}
+    assert first["source_pacing"]["max_requests"] == 40
+    # Cycle without search: all 40 requests are for IO (ten jobs).
+    assert second["source_requests"] == {"used": 40, "max": 40, "budget_reached": True}
+    assert second["source"] == {} and "source_seconds" not in second
+    assert second["discovery"]["skipped_reason"] == (
+        "not_due_until " + (datetime(2026, 10, 24, 12, 0, tzinfo=timezone.utc)
+                            + timedelta(seconds=INTERVAL)).isoformat())
+    assert second["discovery"]["next_due_at"] == second["discovery"]["skipped_reason"].split(" ")[1]
+    assert second["source_coverage"] == "bounded_partial"  # The IO queue is longer than the budget.
+    assert h.execute_io.call_count == 4 + 10 + 10 + 10 + 4
+    assert cycles[4]["discovery"]["skipped_reason"] is None
+    assert egress.alerts == []
+
+
+def test_cycle_without_search_and_with_nothing_to_do_reports_discovery_not_due(offline_runtime, clock):
+    h = offline_runtime
+    searching(h, lap(0, 6, complete=True))
+    assert run_cycles(h, clock, 2, discovery_interval_seconds=INTERVAL) == 0
+    second = finished(h)[1]
+    assert second["status"] == "sweep_drained" and second["source_coverage"] == "discovery_not_due"
+    assert second["discovery"]["due"] is False
+    assert second["source_requests"] == {"used": 0, "max": 40, "budget_reached": False}
+
+
+def test_an_unfinished_lap_continues_in_the_next_cycle_without_waiting_for_the_interval(offline_runtime, clock):
+    h = offline_runtime
+    searching(h, lap(2, 2, requests=24), lap(0, 4, complete=True, requests=12), requests=0)
+    assert run_cycles(h, clock, 4, discovery_interval_seconds=INTERVAL) == 0
+    cycles = finished(h)
+    assert [state["discovery"]["due"] for state in cycles] == [True, True, False, False]
+    first = cycles[0]
+    assert "last_discovery_completed_at" not in first  # The lap is not complete: the wait has not started.
+    assert first["discovery"]["complete"] is False and first["discovery"]["next_due_at"] is None
+    assert (first["discovery"]["pass_origin_index"], first["discovery"]["pass_streams_searched"]) == (0, 2)
+    # Next cycle: resumes at the cursor and only searches what the lap still lacks (4 of 6 streams).
+    second_call = h.poll.call_args_list[1].kwargs
+    assert second_call["start_stream"] == 2 and second_call["max_streams"] == 4
+    second = cycles[1]
+    assert second["last_discovery_completed_at"] == (datetime(2026, 10, 24, 12, 30, tzinfo=timezone.utc)).isoformat()
+    assert second["discovery"]["pass_streams_searched"] == 6 and second["discovery"]["complete"] is True
+    # Third cycle: the lap closed, so the interval counts from the end of the second.
+    assert cycles[2]["discovery"]["skipped_reason"].startswith("not_due_until 2026-10-24T14:30:00")
+    assert h.poll.call_count == 2
+
+
+def test_a_cursor_from_the_previous_version_without_lap_counters_still_continues(offline_runtime, clock):
+    h = offline_runtime
+    # What the version before this one left behind: a cursor, but no lap counters and no stamp.
+    (h.folder / "state.json").write_text(json.dumps({"discovery": {
+        "next_stream_index": 3, "next_stream": [2, 43], "stream_count": 6, "complete": False}}))
+    searching(h, lap(0, 6, complete=True))
+    assert h.run(once=True, discovery_interval_seconds=INTERVAL) == 0
+    assert h.poll.call_args.kwargs["start_stream"] == 3 and h.poll.call_args.kwargs["max_streams"] is None
+
+
+def test_after_the_interval_the_search_runs_again_and_resumes_at_the_cursor(offline_runtime, clock):
+    h = offline_runtime
+    searching(h, lap(0, 6, complete=True), lap(0, 6, complete=True))
+    assert run_cycles(h, clock, 5, discovery_interval_seconds=INTERVAL, step=1800) == 0
+    cycles = finished(h)
+    assert cycles[4]["discovery"]["due"] is True and cycles[4]["discovery"]["skipped_reason"] is None
+    assert cycles[4]["last_discovery_completed_at"] == (
+        datetime(2026, 10, 24, 14, 0, tzinfo=timezone.utc).isoformat())
+    assert cycles[3]["last_discovery_completed_at"] == datetime(2026, 10, 24, 12, 0, tzinfo=timezone.utc).isoformat()
+
+
+def test_the_wait_survives_a_restart_and_a_fresh_folder_searches(offline_runtime, clock, tmp_path):
+    h = offline_runtime
+    searching(h, lap(0, 6, complete=True), lap(0, 6, complete=True), lap(0, 6, complete=True))
+    assert h.run(once=True, discovery_interval_seconds=INTERVAL) == 0
+    assert h.poll.call_count == 1
+    clock.now += timedelta(seconds=INTERVAL - 60)
+    assert h.run(once=True, discovery_interval_seconds=INTERVAL) == 0  # A new process reads state.json.
+    assert h.poll.call_count == 1
+    assert json.loads((h.folder / "state.json").read_text())["discovery"]["skipped_reason"].startswith("not_due_until")
+    clock.now += timedelta(seconds=60)
+    assert h.run(once=True, discovery_interval_seconds=INTERVAL) == 0
+    assert h.poll.call_count == 2
+    other = tmp_path / "other"
+    assert runtime.run(MagicMock(), profile_ids=["veyon"], receipt_dir=other, once=True,
+                       discovery_interval_seconds=INTERVAL) == 0
+    assert h.poll.call_count == 3  # No state: the one-shot run searches.
+
+
+@pytest.mark.parametrize("content", ["not json", "[]", json.dumps({"last_discovery_completed_at": "ayer"}),
+                                     json.dumps({"last_discovery_completed_at": 5}), None])
+def test_an_unreadable_stamp_means_no_complete_lap_on_record(tmp_path, content):
+    path = tmp_path / "state.json"
+    if content is not None:
+        path.write_text(content)
+    assert runtime.load_discovery_completed_at(path) is None
+    path.write_text(json.dumps({"last_discovery_completed_at": "2026-10-24T12:00:00+00:00"}))
+    assert runtime.load_discovery_completed_at(path) == datetime(2026, 10, 24, 12, 0, tzinfo=timezone.utc)
+
+
+def test_schedule_decisions():
+    now = datetime(2026, 10, 24, 14, 0, tzinfo=timezone.utc)
+    done = {"complete": True, "next_stream_index": 0}
+    due = runtime.discovery_schedule
+    assert due(None, None, now, 7200) == {"due": True, "reason": "never_completed", "next_due_at": None}
+    assert due(done, None, now, 7200)["reason"] == "never_completed"
+    assert due({"complete": False}, now, now, 7200) == {
+        "due": True, "reason": "partial_pass_pending", "next_due_at": None}
+    assert due(done, now - timedelta(seconds=7199), now, 7200)["due"] is False
+    assert due(done, now - timedelta(seconds=7200), now, 7200)["reason"] == "interval_elapsed"
+    assert due(done, now, now, 0)["due"] is True  # 0 searches in every cycle.
+    future = due(done, now + timedelta(days=3), now, 7200)  # A stamp from the future never stalls the search.
+    assert future["due"] is False and future["next_due_at"] == (now + timedelta(seconds=7200)).isoformat()
+
+
+def test_search_denied_while_due_reports_the_pause_and_the_search_waits_for_it(offline_runtime, egress, clock):
+    h = offline_runtime
+    h.poll.side_effect = [http_failure(403), lap(0, 6, complete=True)]
+    assert run_cycles(h, clock, 7, discovery_interval_seconds=INTERVAL) == 0
+    cycles = finished(h)
+    assert h.poll.call_count == 2  # The denied one and one probe once the three hours passed (cycle 7).
+    assert cycles[1]["discovery"]["due"] is True and cycles[1]["discovery"]["skipped_reason"] == "source_blocked"
+    assert "last_discovery_completed_at" not in cycles[1]
+    assert cycles[-1]["discovery"]["skipped_reason"] is None and "last_discovery_completed_at" in cycles[-1]
+
+
+def test_a_cycle_without_search_probes_the_source_with_io_and_closes_the_pause(offline_runtime, egress, clock):
+    h = offline_runtime
+    searching(h, lap(0, 6, complete=True), requests=0)
+    pending = deque()
+    h.claim.side_effect = lambda worker_id, job_types=runtime.JOB_TYPES: (
+        pending.popleft() if job_types == runtime.IO_TYPES and pending else None)
+    calls = []
+
+    def execute(settings, profile_id, job, receipts, **_kwargs):
+        calls.append(job.id)
+        pacing.PACER.acquire()
+        if job.id == 1:
+            denied_download(403)(settings, profile_id, job, receipts)
+        return {"files_changed": True}
+
+    h.execute_io.side_effect = execute
+    waits = []
+
+    def wait(should_stop, interval_seconds):
+        waits.append(interval_seconds)
+        clock.now += timedelta(seconds=1800)
+        if len(waits) == 1:
+            pending.append(poll_job(1))  # Cycle 2: its download is denied.
+        if len(waits) == 7:
+            pending.append(poll_job(2))  # Cycle 8: the pause (three hours) is over.
+        if len(waits) == 8:
+            h.stop()
+
+    h.wait.side_effect = wait
+    assert h.run(once=False, discovery_interval_seconds=10 * INTERVAL) == 0
+    assert h.poll.call_count == 1  # Never due again in these four hours.
+    assert calls == [1, 2]
+    cycles = finished(h)
+    assert cycles[1]["status"] == "source_blocked"
+    assert cycles[7]["status"] == "sweep_drained" and "source_block" not in cycles[7]
+    assert len(egress.alerts) == 2 and "blocked" in egress.alerts[0] and "recovered" in egress.alerts[1]
+    final = json.loads((h.folder / "state.json").read_text())
+    assert "source_blocked_until" not in final and "source_block" not in final
+
+
+def test_discovery_interval_comes_from_the_argument_then_the_environment(offline_runtime, monkeypatch):
+    h = offline_runtime
+    monkeypatch.delenv("PROD6_DISCOVERY_INTERVAL_SECONDS")
+    assert h.run(once=True) == 0
+    assert h.states[-1]["discovery"]["interval_seconds"] == 7200  # The default.
+    monkeypatch.setenv("PROD6_DISCOVERY_INTERVAL_SECONDS", "5400")
+    assert h.run(once=True) == 0
+    assert h.states[-1]["discovery"]["interval_seconds"] == 5400
+    assert h.run(once=True, discovery_interval_seconds=60) == 0
+    assert h.states[-1]["discovery"]["interval_seconds"] == 60
+
+
+def test_invalid_discovery_interval_is_rejected_before_the_database(monkeypatch, tmp_path):
+    connect = MagicMock()
+    monkeypatch.setattr(runtime, "connect", connect)
+    with pytest.raises(ValueError, match="discovery interval"):
+        runtime.run(MagicMock(), profile_ids=["a"], receipt_dir=tmp_path, discovery_interval_seconds=-1)
+    for value in ("-5", "soon"):
+        monkeypatch.setenv("PROD6_DISCOVERY_INTERVAL_SECONDS", value)
+        with pytest.raises(ValueError, match="PROD6_DISCOVERY_INTERVAL_SECONDS"):
+            runtime.run(MagicMock(), profile_ids=["a"], receipt_dir=tmp_path)
+    connect.assert_not_called()
+
+
+def test_discovery_interval_option_reaches_the_runtime(monkeypatch, tmp_path):
+    run = MagicMock(return_value=0)
+    monkeypatch.setattr(runtime, "run", run)
+    monkeypatch.setattr(runtime, "Settings", MagicMock())
+    for arguments, expected in (([], None), (["--discovery-interval-seconds", "3600"], 3600)):
+        monkeypatch.setattr("sys.argv", ["prod6-runtime", "--profile-id", "a",
+                                         "--receipt-dir", str(tmp_path), *arguments])
+        with pytest.raises(SystemExit):
+            runtime.main()
+        assert run.call_args.kwargs["discovery_interval_seconds"] == expected

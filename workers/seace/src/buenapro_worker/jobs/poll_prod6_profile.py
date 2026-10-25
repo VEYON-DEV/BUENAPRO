@@ -112,6 +112,7 @@ def poll_prod6_profiles(
     search_parallelism: int = 1,
     max_requests: int | None = None,
     start_stream: int = 0,
+    max_streams: int | None = None,
 ) -> dict[str, Any]:
     """One search sweep for every profile: each (object, segment) stream is read once.
 
@@ -124,7 +125,9 @@ def poll_prod6_profiles(
     budget is left to the free IO jobs). The sweep starts at ``start_stream`` (an index
     into the stream list, wrapped) and the returned ``cursor`` names where the next
     sweep should start: the first stream that did not finish, or 0 after a full pass.
-    The result holds flat integer counters (summed over profiles), ``by_profile`` and
+    ``max_streams`` limits the sweep to that many streams from the start (the rest of a
+    lap that an earlier sweep began); finishing them is a complete sweep and the cursor
+    then names the stream after the last one. The result holds flat integer counters (summed over profiles), ``by_profile`` and
     ``cursor``.
 
     Existing SEACE contracts remain global and deduplicated by official ID.
@@ -140,6 +143,8 @@ def poll_prod6_profiles(
         raise ValueError("Search parallelism must be an integer from 1 to 4")
     if type(start_stream) is not int or start_stream < 0:
         raise ValueError("The start stream must be a non-negative index")
+    if max_streams is not None and (type(max_streams) is not int or max_streams < 1):
+        raise ValueError("The stream limit must be a positive integer")
     snapshots: dict[str, dict[str, Any]] = {}
     profile_segments: dict[str, set[int]] = {}
     for profile_id in profile_ids:
@@ -211,7 +216,7 @@ def poll_prod6_profiles(
     streams = [(objeto, segment) for objeto in (1, 2)
                for segment in sorted(set().union(*profile_segments.values()))]
     start = start_stream % len(streams)
-    order = streams[start:] + streams[:start]
+    order = (streams[start:] + streams[:start])[:max_streams]
     unfinished: int | None = None  # Position in ``order`` of the first stream that did not finish.
     if search_parallelism == 1:
         # Default retains the original lazy traversal and shared serial client:
@@ -298,12 +303,15 @@ def poll_prod6_profiles(
                         unfinished = position
                     _mark_stop(flags, stop)
 
-    next_index = 0 if unfinished is None else (start + unfinished) % len(streams)
+    if unfinished is not None:
+        next_index = (start + unfinished) % len(streams)
+    else:
+        next_index = 0 if len(order) == len(streams) else (start + len(order)) % len(streams)
     result: dict[str, Any] = {
         **{key: sum(stats[key] for stats in per_profile.values()) for key in PROFILE_KEYS},
         "limit_reached": max(stats["limit_reached"] for stats in per_profile.values()),
         **totals, **flags,
-        "streams": len(streams), "streams_searched": len(streams) if unfinished is None else unfinished,
+        "streams": len(streams), "streams_searched": len(order) if unfinished is None else unfinished,
     }
     result["by_profile"] = per_profile
     result["cursor"] = {"next_stream_index": next_index, "next_stream": list(streams[next_index]),

@@ -33,8 +33,8 @@ from buenapro_worker.queue.repository import Job, JobRepository
 from buenapro_worker.seace import pacing
 from buenapro_worker.seace.egress import EgressUnavailable, check_egress, is_egress_failure, notify_ops
 from buenapro_worker.seace.pacing import (
-    block_backoff_seconds, blocking_status, default_max_source_requests, min_request_interval,
-    reading_backoff_seconds, source_stop,
+    block_backoff_seconds, blocking_status, default_discovery_interval_seconds,
+    default_max_source_requests, min_request_interval, reading_backoff_seconds, source_stop,
 )
 from buenapro_worker.settings import Settings
 from buenapro_worker.extraction.commercial_classification import POLICY_KEY, TAXONOMY_VERSION, get_commercial_policy
@@ -160,6 +160,69 @@ def load_discovery_cursor(path: Path) -> dict[str, Any] | None:
 def stream_start(cursor: dict[str, Any] | None) -> int:
     """Index to start from: where the previous sweep stopped (a changed stream list only shifts the rotation)."""
     return cursor["next_stream_index"] if cursor else 0
+
+
+def load_discovery_completed_at(path: Path) -> datetime | None:
+    """When the last COMPLETE search lap ended, as recorded by an earlier process in state.json."""
+    try:
+        previous = json.loads(path.read_text(encoding="utf-8"))
+        completed = previous.get("last_discovery_completed_at") if isinstance(previous, dict) else None
+    except (OSError, ValueError):
+        return None
+    return parse_instant(completed)
+
+
+def discovery_schedule(cursor: dict[str, Any] | None, completed_at: datetime | None, now: datetime,
+                       interval_seconds: int) -> dict[str, Any]:
+    """Whether this cycle runs the search, and when the next lap is planned.
+
+    A lap over every stream may take several cycles (``complete`` false in the cursor): it
+    continues in the very next cycle, without waiting for the interval. Only a complete lap
+    starts the wait; with none on record (first run, fresh receipt folder) the search runs.
+    ``next_due_at`` is None while the next search is simply the next cycle.
+    """
+    if cursor is not None and cursor.get("complete") is False:
+        return {"due": True, "reason": "partial_pass_pending", "next_due_at": None}
+    if completed_at is None:
+        return {"due": True, "reason": "never_completed", "next_due_at": None}
+    next_due = min(completed_at, now) + timedelta(seconds=interval_seconds)  # A future stamp never stalls it.
+    if now >= next_due:
+        return {"due": True, "reason": "interval_elapsed", "next_due_at": next_due.isoformat()}
+    return {"due": False, "reason": f"not_due_until {next_due.isoformat()}", "next_due_at": next_due.isoformat()}
+
+
+def discovery_lap(previous: dict[str, Any] | None, start: int, searched: int, now: datetime) -> dict[str, Any]:
+    """Progress of the lap over all streams, which a limit or a pause can split across cycles."""
+    if (previous is not None and previous.get("complete") is False
+            and type(previous.get("pass_origin_index")) is int
+            and type(previous.get("pass_streams_searched")) is int
+            and isinstance(previous.get("pass_started_at"), str)):
+        origin, done, began = (previous["pass_origin_index"], previous["pass_streams_searched"],
+                               previous["pass_started_at"])
+    else:
+        origin, done, began = start, 0, now.isoformat()
+    return {"pass_origin_index": origin, "pass_streams_searched": done + searched, "pass_started_at": began}
+
+
+def streams_left_in_lap(cursor: dict[str, Any] | None) -> int | None:
+    """Streams a resumed lap still has to search, so it ends where it began instead of repeating them."""
+    if (cursor is None or cursor.get("complete") is not False
+            or type(cursor.get("pass_streams_searched")) is not int
+            or type(cursor.get("stream_count")) is not int):
+        return None
+    left = cursor["stream_count"] - cursor["pass_streams_searched"]
+    return left if left >= 1 else None
+
+
+# Re-derived at each cycle; never carried over from the cursor of an earlier one.
+DISCOVERY_SCHEDULE_KEYS = ("due", "skipped_reason", "next_due_at", "interval_seconds")
+
+
+def discovery_record(cursor: dict[str, Any] | None, *, due: bool, skipped_reason: str | None,
+                     next_due_at: str | None, interval_seconds: int) -> dict[str, Any]:
+    kept = {key: value for key, value in (cursor or {}).items() if key not in DISCOVERY_SCHEDULE_KEYS}
+    return {**kept, "due": due, "skipped_reason": skipped_reason, "next_due_at": next_due_at,
+            "interval_seconds": interval_seconds}
 
 
 def _wait_for_poll(should_stop, interval_seconds: int) -> None:
@@ -494,7 +557,8 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
         interval_seconds: int = 1800, max_pages: int = 5, max_candidates: int = 200,
         http_workers: int = 3, io_workers: int = 2, max_jev_requests: int = 200,
         jev_threshold: float = 60, llm1_commercial_taxonomy: str | None = None,
-        max_source_requests: int | None = None, max_discovery_requests: int = 24) -> int:
+        max_source_requests: int | None = None, max_discovery_requests: int = 24,
+        discovery_interval_seconds: int | None = None) -> int:
     profile_ids = list(dict.fromkeys(profile_ids))
     if not profile_ids:
         raise ValueError("At least one profile is required")
@@ -514,8 +578,13 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
     if max_discovery_requests < 1 or max_discovery_requests < max_pages:
         raise ValueError("The discovery request limit must be positive and cover max-pages, "
                          "or a stream could never finish")
-    # Discovery never takes more than this share of the cycle: the rest is left to IO.
+    # Discovery never takes more than this share of a cycle that searches: the rest is left to IO.
+    # A cycle without search leaves the whole budget to IO.
     discovery_limit = min(max_discovery_requests, max_source_requests)
+    if discovery_interval_seconds is None:
+        discovery_interval_seconds = default_discovery_interval_seconds()
+    if discovery_interval_seconds < 0:
+        raise ValueError("The discovery interval must not be negative (0 searches in every cycle)")
     min_request_interval()  # An invalid pace or backoff in the environment stops the start.
     backoff_seconds = block_backoff_seconds()
     reading_backoff = reading_backoff_seconds()
@@ -564,9 +633,20 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
         source_block = load_source_block(receipt_dir / "state.json")
         # The rotation of the search sweep survives restarts the same way.
         discovery_cursor = load_discovery_cursor(receipt_dir / "state.json")
+        # So does the end of the last complete lap, which sets when the search is due again.
+        discovery_completed_at = load_discovery_completed_at(receipt_dir / "state.json")
         # So do a Gemini reading pause and the stop already reported to operations.
         reading_pause = load_reading_pause(receipt_dir / "state.json")
         attention_alerted = load_attention_alert(receipt_dir / "state.json")
+
+        def publish_discovery(state: dict[str, Any], *, due: bool, skipped_reason: str | None = None) -> None:
+            """Search schedule in state.json: this cycle's decision and the next planned lap."""
+            planned = discovery_schedule(discovery_cursor, discovery_completed_at,
+                                         datetime.now(timezone.utc), discovery_interval_seconds)
+            state["discovery"] = discovery_record(discovery_cursor, due=due, skipped_reason=skipped_reason,
+                next_due_at=planned["next_due_at"], interval_seconds=discovery_interval_seconds)
+            if discovery_completed_at is not None:
+                state["last_discovery_completed_at"] = discovery_completed_at.isoformat()
 
         def egress_alert(reason: str) -> None:
             nonlocal egress_down
@@ -775,8 +855,13 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
                 "parallelism": {"http": http_workers, "io": io_workers, "paid_reading": 1},
                 "source_pacing": {"min_interval_seconds": min_request_interval(),
                                   "max_requests": max_source_requests}}
-            if discovery_cursor:
-                state["discovery"] = discovery_cursor
+            # The search runs only when due: the first time, while a lap is unfinished, or once the
+            # interval since the last complete lap has passed. Other cycles keep the whole budget for IO.
+            schedule = discovery_schedule(discovery_cursor, discovery_completed_at, started,
+                                          discovery_interval_seconds)
+            discovery_due = schedule["due"]
+            discovery_skipped = None  # Why a due or undue search did not run in this cycle.
+            publish_discovery(state, due=discovery_due)
             if source_block:
                 state["source_block"] = source_block
                 if block_active:
@@ -798,6 +883,8 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
                 if block_active:
                     # The pause from an earlier cycle/process still runs: nothing reaches PROD6.
                     state.update(status="source_blocked", phase="source_blocked")
+                    discovery_skipped = "source_blocked"
+                    publish_discovery(state, due=discovery_due, skipped_reason=discovery_skipped)
                     write_state(receipt_dir / "state.json", state)
                 else:
                     state["phase"] = "egress_check"
@@ -809,64 +896,76 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
                             return 2
                         _wait_for_poll(lambda: stopping, interval_seconds)
                         continue
-                    state["phase"] = "source_discovery"
-                    source_started = time.monotonic()
-                    try:
-                        # One sweep for every active company: each stream is read once and
-                        # every page feeds each company whose segments include its segment.
-                        with conn.transaction():
-                            polled = poll_prod6_profiles(settings, repo, profile_ids=active_ids,
-                                max_pages_per_segment=max_pages, max_candidates=max_candidates,
-                                batch_id=batch_id, search_parallelism=http_workers,
-                                max_requests=discovery_limit, start_stream=stream_start(discovery_cursor))
-                        by_profile = polled.pop("by_profile", None)
-                        cursor = polled.pop("cursor", None)
-                        for key, value in polled.items():
-                            state["source"][key] = state["source"].get(key, 0) + value
-                        if by_profile is not None:
-                            state["source_by_profile"] = by_profile
-                        if cursor is not None:
-                            discovery_cursor = state["discovery"] = {
-                                **cursor, "max_requests": discovery_limit,
-                                "requests": polled.get("http_requests", 0)}
-                        if polled.get("source_blocked") or pacing.PACER.blocked:
-                            open_block(state, pacing.PACER.blocked_status)
-                        elif polled.get("budget_reached") or pacing.PACER.budget_reached:
-                            state["source"]["budget_reached"] = 1
-                    except Exception as error:
-                        if is_egress_failure(error):
-                            egress_backoff(state, type(error).__name__)
-                            if once:
-                                return 2
-                            _wait_for_poll(lambda: stopping, interval_seconds)
-                            continue
-                        stop_kind = source_stop(error)
-                        if stop_kind == "blocked":
-                            open_block(state, blocking_status(error) or pacing.PACER.blocked_status)
-                        elif stop_kind == "budget":
-                            state["source"]["budget_reached"] = 1
-                        else:
-                            source_error = free_http_failure(error)
-                            if source_error is None:
-                                if isinstance(error, httpx.HTTPStatusError):
-                                    state["source_error"] = {"error_type": type(error).__name__,
-                                                             "http_status": error.response.status_code}
-                                raise
-                            state.update(status="source_backoff", source_error=source_error,
-                                         retry_after_seconds=interval_seconds)
-                            write_state(receipt_dir / "state.json", state)
-                            write_state(receipt_dir / f"{batch_id}.json", state)
-                            print(json.dumps(state), flush=True)
-                            if once:
-                                return 2
-                            _wait_for_poll(lambda: stopping, interval_seconds)
-                            continue
+                    if not discovery_due:
+                        discovery_skipped = schedule["reason"]
+                        publish_discovery(state, due=False, skipped_reason=discovery_skipped)
+                    else:
+                        state["phase"] = "source_discovery"
+                        source_started = time.monotonic()
+                        try:
+                            # One sweep for every active company: each stream is read once and
+                            # every page feeds each company whose segments include its segment.
+                            with conn.transaction():
+                                polled = poll_prod6_profiles(settings, repo, profile_ids=active_ids,
+                                    max_pages_per_segment=max_pages, max_candidates=max_candidates,
+                                    batch_id=batch_id, search_parallelism=http_workers,
+                                    max_requests=discovery_limit, start_stream=stream_start(discovery_cursor),
+                                    max_streams=streams_left_in_lap(discovery_cursor))
+                            by_profile = polled.pop("by_profile", None)
+                            cursor = polled.pop("cursor", None)
+                            for key, value in polled.items():
+                                state["source"][key] = state["source"].get(key, 0) + value
+                            if by_profile is not None:
+                                state["source_by_profile"] = by_profile
+                            if cursor is not None:
+                                discovery_cursor = {
+                                    **cursor, "max_requests": discovery_limit,
+                                    "requests": polled.get("http_requests", 0),
+                                    **discovery_lap(discovery_cursor, stream_start(discovery_cursor),
+                                                    polled.get("streams_searched", 0), datetime.now(timezone.utc))}
+                            if polled.get("source_blocked") or pacing.PACER.blocked:
+                                open_block(state, pacing.PACER.blocked_status)
+                            elif polled.get("budget_reached") or pacing.PACER.budget_reached:
+                                state["source"]["budget_reached"] = 1
+                            elif cursor is not None and cursor.get("complete"):
+                                # The lap over every stream ended: the wait for the next one starts now.
+                                discovery_completed_at = datetime.now(timezone.utc)
+                        except Exception as error:
+                            if is_egress_failure(error):
+                                egress_backoff(state, type(error).__name__)
+                                if once:
+                                    return 2
+                                _wait_for_poll(lambda: stopping, interval_seconds)
+                                continue
+                            stop_kind = source_stop(error)
+                            if stop_kind == "blocked":
+                                open_block(state, blocking_status(error) or pacing.PACER.blocked_status)
+                            elif stop_kind == "budget":
+                                state["source"]["budget_reached"] = 1
+                            else:
+                                source_error = free_http_failure(error)
+                                if source_error is None:
+                                    if isinstance(error, httpx.HTTPStatusError):
+                                        state["source_error"] = {"error_type": type(error).__name__,
+                                                                 "http_status": error.response.status_code}
+                                    raise
+                                state.update(status="source_backoff", source_error=source_error,
+                                             retry_after_seconds=interval_seconds)
+                                write_state(receipt_dir / "state.json", state)
+                                write_state(receipt_dir / f"{batch_id}.json", state)
+                                print(json.dumps(state), flush=True)
+                                if once:
+                                    return 2
+                                _wait_for_poll(lambda: stopping, interval_seconds)
+                                continue
                     if egress_down:
                         notify_ops("BuenaPro PROD6: SEACE egress recovered.")
                         egress_down = False
                     if not pacing.PACER.blocked and pacing.PACER.used > 0:
                         block_recovered(state)  # The probe after a pause got through.
-                    state["source_seconds"] = round(time.monotonic() - source_started, 3)
+                    if discovery_due:
+                        state["source_seconds"] = round(time.monotonic() - source_started, 3)
+                        publish_discovery(state, due=True)
                 state["phase"] = "jev_screening"
                 state["jev"] = jev_cycle(repo, active_ids, max_requests=max_jev_requests,
                                          threshold=jev_threshold, batch_id=batch_id)
@@ -1039,6 +1138,8 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
                     state["suppressed"] = repo.suppressed
                     state["updated_at"] = datetime.now(timezone.utc).isoformat()
                     write_state(receipt_dir / "state.json", state)
+                if not block_active and not pacing.PACER.blocked and pacing.PACER.used > 0:
+                    block_recovered(state)  # A cycle without search: the first IO request was the probe.
                 state["suppressed"] = repo.suppressed
                 incomplete = bool(state.get("blocked_documents") or repo.suppressed.get("source_document_blocked"))
                 jev_unavailable = state["jev"]["status"] == "jev_unavailable"
@@ -1063,8 +1164,11 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
                 elif (state["source"].get("capped_segments") or state["source"].get("limit_reached")
                         or state["source"].get("discovery_limit_reached") or budget_reached):
                     state["source_coverage"] = "bounded_partial"
+                elif not discovery_due:
+                    state["source_coverage"] = "discovery_not_due"
                 else:
                     state["source_coverage"] = "configured_scope_complete"
+                publish_discovery(state, due=discovery_due, skipped_reason=discovery_skipped)
                 state["finished_at"] = datetime.now(timezone.utc).isoformat()
                 attention_alerted = None  # A cycle that ended without a stop closes the previous one.
                 write_state(receipt_dir / f"{batch_id}.json", state)
@@ -1107,7 +1211,13 @@ def main() -> None:
     parser.add_argument("--max-discovery-requests", type=int, default=24,
                         help="Search requests per cycle (one sweep for all companies); the rest of "
                              "--max-source-requests stays for contract detail/file/download jobs. The sweep "
-                             "resumes next cycle at the stream where it stopped")
+                             "resumes next cycle at the stream where it stopped; "
+                             "it applies only in cycles that search (see --discovery-interval-seconds)")
+    parser.add_argument("--discovery-interval-seconds", type=int,
+                        help="Run the search only when the last COMPLETE lap over all streams is older than "
+                             "this (default PROD6_DISCOVERY_INTERVAL_SECONDS or 7200; 0 searches in every "
+                             "cycle). A lap cut short by a limit or a pause continues in the next cycle; "
+                             "cycles without search leave all of --max-source-requests to IO")
     parser.add_argument("--llm1-commercial-taxonomy", choices=[TAXONOMY_VERSION],
                         help="Explicit fresh receipt namespace only: commercial classification in new readings")
     args = parser.parse_args()

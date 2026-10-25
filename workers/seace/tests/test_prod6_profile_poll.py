@@ -573,6 +573,30 @@ def test_limit_cuts_the_sweep_and_the_next_one_resumes_there_until_a_full_pass(d
     assert result["cursor"]["next_stream_index"] == 0 and result["cursor"]["complete"]
 
 
+def test_a_resumed_lap_searches_only_the_streams_left_and_then_counts_as_complete(decisions, monkeypatch):
+    snapshots = segment_snapshots(a=[43, 81])
+    source = RecordingSource()
+    # A lap began at stream 0 and covered two streams; two are left, ending where it began.
+    result = poll_many(source, ["a"], snapshots, monkeypatch, start_stream=2, max_streams=2)
+    assert source.streams() == [(2, 43), (2, 81)]
+    assert result["streams_searched"] == 2 and result["http_requests"] == 2
+    assert result["cursor"] == {"next_stream_index": 0, "next_stream": [1, 43], "stream_count": 4,
+                                "complete": True}
+    source = RecordingSource()
+    result = poll_many(source, ["a"], snapshots, monkeypatch, start_stream=1, max_streams=2)
+    assert source.streams() == [(1, 81), (2, 43)]
+    assert result["cursor"]["next_stream_index"] == 3 and result["cursor"]["complete"]  # After the last one.
+    source = RecordingSource()
+    result = poll_many(source, ["a"], snapshots, monkeypatch, start_stream=1, max_streams=3, max_requests=2)
+    assert source.streams() == [(1, 81), (2, 43)]
+    assert result["cursor"]["next_stream_index"] == 3 and not result["cursor"]["complete"]
+    source = RecordingSource()
+    result = poll_many(source, ["a"], snapshots, monkeypatch, start_stream=1, max_streams=9)
+    assert len(source.streams()) == 4 and result["cursor"]["next_stream_index"] == 0  # Never more than a lap.
+    with pytest.raises(ValueError):
+        poll_many(RecordingSource(), ["a"], snapshots, monkeypatch, max_streams=0)
+
+
 def test_a_stream_cut_mid_pagination_is_resumed_from_its_first_page(decisions, monkeypatch):
     source = RecordingSource(pages=3)
     result = poll_many(source, ["a"], segment_snapshots(a=[43]), monkeypatch, max_requests=4,

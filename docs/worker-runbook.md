@@ -436,7 +436,8 @@ peruana, así que el runtime va lento y, ante un 403, se detiene mucho tiempo.
 - **Tope por ciclo y reserva para IO**: `--max-source-requests` (por defecto
   `PROD6_MAX_SOURCE_REQUESTS` o 40) cuenta las peticiones PROD6 de todo el ciclo y
   `--max-discovery-requests` (24, nunca más que el tope del ciclo) limita las del
-  descubrimiento, así que lo que resta queda para `process_contract` y descargas. Debe cubrir
+  descubrimiento en los ciclos que buscan (ver "Cadencia de la búsqueda"), así que lo que
+  resta queda para `process_contract` y descargas; un ciclo sin búsqueda deja las 40 al IO. Debe cubrir
   `--max-pages` (por defecto 5, páginas por stream y ciclo) o se rechaza el arranque. Al llegar
   al límite de descubrimiento la búsqueda se corta sin error (`source.discovery_limit_reached`,
   cobertura `bounded_partial`), conserva las decisiones ya registradas y
@@ -482,11 +483,62 @@ peruana, así que el runtime va lento y, ante un 403, se detiene mucho tiempo.
   (`blocked_documents`), para no reintentar eternamente un documento prohibido. Los 401/404/410
   de una descarga siguen yendo a revisión manual de inmediato.
 - **Variables**: `PROD6_MIN_REQUEST_INTERVAL_SECONDS` (6), `PROD6_MAX_SOURCE_REQUESTS` (40, valor
-  por defecto de `--max-source-requests`), `PROD6_BLOCK_BACKOFF_SECONDS` (10800). Se leen del
+  por defecto de `--max-source-requests`), `PROD6_DISCOVERY_INTERVAL_SECONDS` (7200, valor por
+  defecto de `--discovery-interval-seconds`), `PROD6_BLOCK_BACKOFF_SECONDS` (10800). Se leen del
   entorno del proceso (como las del proxy de salida), no de `.env.local`; un valor inválido
   detiene el arranque antes de abrir la base. El intervalo afecta a todo `SeaceClient`: los
   workers legados que lo usen (p. ej. `schedule-refresh`) también irían a un ritmo de 6 s por
   petición salvo que su entorno lo cambie.
+
+#### Cadencia de la búsqueda (PROD6)
+
+La búsqueda unificada gastaba ~22 de las 40 peticiones de **cada** ciclo (cada 30 min) aunque
+casi todo ya estuviera decidido, y a los contratos aprobados por JEV les quedaban ~18 peticiones
+para `process_contract` y descargas. Ahora la búsqueda corre solo cuando toca y el resto de los
+ciclos entrega todo el tope a IO.
+
+- **`--discovery-interval-seconds`** (por defecto `PROD6_DISCOVERY_INTERVAL_SECONDS` o 7200;
+  `0` busca en todos los ciclos, como antes). Un ciclo busca si ocurre cualquiera de:
+  1. nunca hubo una vuelta completa (primer arranque, carpeta de recibos nueva o `state.json`
+     sin `last_discovery_completed_at`; también el primer ciclo tras actualizar desde una versión
+     anterior): `discovery.due=true`, razón `never_completed`;
+  2. quedó una vuelta a medias (`discovery.complete=false`: tope de descubrimiento, tope de
+     candidatos, 403/429 o presupuesto): continúa en el **siguiente ciclo sin esperar el
+     intervalo**, razón `partial_pass_pending`, y solo recorre los streams que le faltan a esa
+     vuelta (`discovery.pass_origin_index`, `pass_streams_searched`, `pass_started_at`; el poll
+     recibe `max_streams`), de modo que termina donde empezó en vez de repetir lo ya buscado;
+  3. la última vuelta completa terminó hace al menos el intervalo (`interval_elapsed`).
+  Una vuelta completa es la que recorrió todos los streams, en uno o varios ciclos; al cerrarla
+  se guarda `last_discovery_completed_at` (nivel superior de `state.json`, sobrevive a reinicios).
+- **Ciclos sin búsqueda**: se salta solo el descubrimiento. El chequeo de salida (egress), la
+  puntuación JEV de pendientes y la admisión (no gastan peticiones a PROD6), el IO, las lecturas
+  y los resúmenes corren igual. Como la reserva `--max-discovery-requests` solo existe donde se
+  busca, el IO puede usar las 40 peticiones (con el pacer de 6 s, unos 4 min). Si el circuito
+  estaba abierto y ya venció, la primera petición de IO es la sonda y cierra el bloqueo con su
+  aviso de recuperación, igual que lo hacía la búsqueda.
+- **`state.json`**: `discovery.due` (si ese ciclo debía buscar), `discovery.skipped_reason`
+  (`not_due_until <iso>` cuando no toca, `source_blocked` si tocaba pero el circuito estaba
+  abierto, `null` si buscó), `discovery.next_due_at` (el siguiente momento previsto; `null`
+  mientras la próxima búsqueda sea simplemente el siguiente ciclo), `discovery.interval_seconds`
+  y `source_coverage: "discovery_not_due"` en un ciclo sin búsqueda ni topes. El resto de
+  `discovery` (`next_stream_index`, `complete`, ...) no cambia. El estado `source_blocked`, la
+  pausa de lecturas Gemini, las alertas y `--once` se comportan como antes; un `--once` sin
+  estado previo busca, y con una vuelta reciente solo hace IO/JEV.
+- **Granularidad**: el intervalo se evalúa al inicio de cada ciclo, que dura el tiempo de
+  trabajo más `--interval-seconds` (30 min), así que con 7200 s la búsqueda real cae cada 4 a 5
+  ciclos (~2 h 20 min con ciclos de ~35 min).
+- **Estimación de contratos procesables por hora** (tope de peticiones, no incluye la lectura
+  Gemini, que no usa PROD6 y sigue en serie). Un contrato nuevo cuesta ~4 peticiones (3 de
+  `process_contract` más ~1 descarga de TDR) y hay ~1,7 ciclos por hora:
+  - Antes: la búsqueda gastaba ~22 de 40 en cada ciclo, quedaban 18 para IO: ~4,5 contratos por
+    ciclo, **~8 contratos/hora**, y ~37 de las ~68 peticiones por hora iban a buscar.
+  - Después: de cada 5 ciclos, 4 dan 40 peticiones a IO (10 contratos) y 1 da ~18 (4,5): media
+    ~35,6 peticiones, ~8,9 contratos por ciclo, **~15 contratos/hora** (los ciclos sin búsqueda
+    solos: ~17/hora), y la búsqueda baja a ~9 peticiones por hora. Es un máximo con cola
+    suficiente; con poca cola el ciclo usa menos de 40.
+  - Costo: los contratos nuevos se descubren con hasta ~2 h de retraso en vez de ~30 min, y una
+    empresa o segmento recién agregado no se busca hasta la siguiente vuelta (o poner el
+    intervalo en 0 / borrar `last_discovery_completed_at` para forzarla).
 
 #### Descarga única
 
