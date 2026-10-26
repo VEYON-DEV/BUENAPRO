@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from buenapro_worker.prod6.runtime import (
-    HashBoundExtractor, JOB_TYPES, NAMESPACE, ScopedRepository, dispatch,
+    HashBoundExtractor, IO_TYPES, JOB_TYPES, NAMESPACE, ScopedRepository, dispatch,
     enqueue_unread_documents, execute_io_job, profile_enabled, run, write_state,
 )
 from buenapro_worker.queue.repository import Job
@@ -35,7 +35,7 @@ def test_all_ingestion_jobs_carry_explicit_ownership_and_single_attempt(enqueue)
     assert enqueue.call_args.kwargs["dedup_key"].startswith(f"{NAMESPACE}:veyon:")
 
 
-def test_claim_requires_namespace_profile_and_four_allowed_job_types():
+def test_claim_requires_namespace_profile_and_the_allowed_job_types():
     repo = repository()
     repo.conn.execute.return_value.fetchone.return_value = None
     assert repo.claim_scoped("worker") is None
@@ -52,7 +52,9 @@ def test_parallel_claim_is_restricted_to_free_io_types():
     assert repo.claim_scoped("worker", ("process_contract", "download_file")) is None
     assert repo.conn.execute.call_args.args[1][-1] == ["process_contract", "download_file"]
     with pytest.raises(ValueError):
-        repo.claim_scoped("worker", ("analyze_match",))
+        repo.claim_scoped("worker", ("route_contract_profiles",))
+    # LLM2 is claimable (serially, by the coordinator) but never by the free IO executor.
+    assert "analyze_match" in JOB_TYPES and "analyze_match" not in IO_TYPES
 
 
 @patch("buenapro_worker.prod6.runtime.connect")

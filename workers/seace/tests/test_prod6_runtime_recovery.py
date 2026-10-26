@@ -1606,6 +1606,98 @@ def test_dispatch_lets_a_rejected_reading_retry_even_as_a_replay_only_job(monkey
     assert client.models.generate_content.call_count == 2
 
 
+# --- Automatic evaluation (analyze_match) shares the protections of the paid readings ----------
+
+def evaluation_job(job_id, **payload):
+    from buenapro_worker.prod6.evaluation import AUTO_ORIGIN
+    return Job(job_id, "analyze_match", "llm", {"id_contrato": 40 + job_id, "profile_id": "veyon",
+        "batch_id": "b", "source": "automatic", "origin": AUTO_ORIGIN, **payload}, 1)
+
+
+@pytest.mark.parametrize("code,reason", ACCOUNT_ERRORS)
+def test_evaluation_account_error_pauses_every_paid_job_without_penalizing_the_pair(
+        offline_runtime, egress, clock, code, reason):
+    h = offline_runtime
+    asked = typed_claims(h, [evaluation_job(1), evaluation_job(2), poll_job(3, "extract_tdr"),
+                             poll_job(4, "derive_summary")])
+    dispatching(h, {1: ProviderRejectedError(code, "RESOURCE_EXHAUSTED")})
+    assert h.run(once=True) == 2
+    # The rejected evaluation is back to pending; neither paid job type is claimed during the pause.
+    assert [call.args[2].id for call in h.dispatch.call_args_list] == [1, 4]
+    assert reading_deferrals(h) == [(clock.now + timedelta(seconds=3600), {}, 1)]
+    assert not any("analyze_match" in types or "extract_tdr" in types for types in asked[1:])
+    state = h.states[-1]
+    assert state["status"] == "reading_paused" and state["done"] == {"derive_summary": 1}
+    assert state["reading_pause"]["code"] == code and state["reading_deferred"][0]["job_type"] == "analyze_match"
+    assert len(egress.alerts) == 1 and reason in egress.alerts[0]
+    assert holds(h) == []
+
+
+@pytest.mark.parametrize("code", SATURATION_CODES)
+def test_evaluation_saturation_pauses_briefly_without_penalty_or_alert(offline_runtime, egress, clock, code):
+    h = offline_runtime
+    asked = typed_claims(h, [evaluation_job(1, provider_error_count=1), evaluation_job(2)])
+    dispatching(h, {1: ProviderRejectedError(code, "UNAVAILABLE")})
+    assert h.run(once=True) == 2
+    assert [call.args[2].id for call in h.dispatch.call_args_list] == [1]
+    assert reading_deferrals(h) == [(clock.now + timedelta(seconds=900), {"provider_error_count": 1}, 1)]
+    assert h.states[-1]["reading_pause"]["kind"] == "transient"
+    assert egress.alerts == [] and holds(h) == []
+
+
+def test_evaluation_document_errors_count_and_the_third_goes_to_manual_review(offline_runtime, egress, clock):
+    h = offline_runtime
+    typed_claims(h, [evaluation_job(1), evaluation_job(2)])
+    dispatching(h, {1: ProviderRejectedError(400, "INVALID_ARGUMENT")})
+    assert h.run(once=True) == 0
+    assert reading_deferrals(h) == [(clock.now + timedelta(seconds=1800), {"provider_error_count": 1}, 1)]
+    assert [call.args[2].id for call in h.dispatch.call_args_list] == [1, 2]  # The next pair still runs.
+    typed_claims(h, [evaluation_job(1, provider_error_count=2), evaluation_job(2)])
+    assert h.run(once=True) == 2
+    (sql, values), = holds(h)
+    assert json.loads(values[0])["provider_error_count"] == 3 and "Gemini evaluation HTTP 400" in values[1]
+    assert h.states[-1]["status"] == "sweep_blocked" and h.states[-1]["done"] == {"analyze_match": 1}
+    assert egress.alerts == []
+
+
+def test_uncertain_evaluation_stops_the_service_and_alerts_once(offline_runtime, egress):
+    h = offline_runtime
+    h.queues(serial=[evaluation_job(1), evaluation_job(2)])
+    h.dispatch.side_effect = GuardedReadingError(SECRET)
+    assert h.run(once=False) == 2
+    assert [call.args[2].id for call in h.dispatch.call_args_list] == [1]  # Nothing else is sent.
+    state = h.states[-1]
+    assert state["status"] == "attention_required" and state["job_type"] == "analyze_match"
+    assert egress.alerts == ["BuenaPro PROD6: servicio detenido (attention_required): "
+                             "GuardedReadingError en analyze_match; requiere revisión."]
+    assert SECRET not in json.dumps(h.states) + json.dumps(egress.alerts)
+
+
+def test_an_evaluation_answered_by_gemini_closes_a_reading_pause_episode(offline_runtime, egress, clock):
+    h = offline_runtime
+    typed_claims(h, [poll_job(1, "extract_tdr")])
+    dispatching(h, {1: ProviderRejectedError(402, "RESOURCE_EXHAUSTED")})
+    h.run(once=True)
+    clock.now += timedelta(seconds=3601)  # The pause ended: the first paid job of either type is the probe.
+    typed_claims(h, [evaluation_job(2)])
+    dispatching(h, {}, {"outcome": "evaluated", "provider_answered": True})
+    assert h.run(once=True) == 0
+    assert len(egress.alerts) == 2 and "reanudadas" in egress.alerts[1]
+    assert "reading_pause" not in json.loads((h.folder / "state.json").read_text())
+
+
+def test_a_replayed_or_unchanged_evaluation_does_not_end_the_pause(offline_runtime, egress, clock):
+    h = offline_runtime
+    typed_claims(h, [evaluation_job(1)])
+    dispatching(h, {1: ProviderRejectedError(429, "RESOURCE_EXHAUSTED")})
+    h.run(once=True)
+    clock.now += timedelta(seconds=3601)
+    typed_claims(h, [evaluation_job(2)])
+    dispatching(h, {}, {"outcome": "unchanged"})
+    h.run(once=True)
+    assert len(egress.alerts) == 1 and "reading_pause" in json.loads((h.folder / "state.json").read_text())
+
+
 # --- Search cadence: the search runs once per lap interval, IO gets the cycles in between -------
 
 INTERVAL = 7200

@@ -73,26 +73,24 @@ class MatchAnalyzer:
         # an additional paid call merely to hide an error or malformed response.
         return self._analyze_with_model(self.settings.gemini_model, payload)
 
-    def _analyze_with_model(self, model: str, payload: str) -> MatchAnalysisResult:
-        response = self.client.models.generate_content(
-            model=model,
-            contents=[payload],
-            config=types.GenerateContentConfig(
-                system_instruction=self.prompt,
-                response_mime_type="application/json",
-                response_schema=SubstantiveMatchAnalysis if self.prompt_version in SUBSTANTIVE_PROMPT_FILES else MatchAnalysisV1,
-                temperature=0,
-                max_output_tokens=8192,
-            ),
+    @property
+    def _schema(self):
+        return SubstantiveMatchAnalysis if self.prompt_version in SUBSTANTIVE_PROMPT_FILES else MatchAnalysisV1
+
+    def _config(self) -> types.GenerateContentConfig:
+        return types.GenerateContentConfig(
+            system_instruction=self.prompt,
+            response_mime_type="application/json",
+            response_schema=self._schema,
+            temperature=0,
+            max_output_tokens=8192,
         )
-        if is_truncated(response):
-            raise TruncatedResponseError("Match analysis truncated by max output tokens")
-        raw_json = parse_json_response(response.text or "{}")
-        schema = SubstantiveMatchAnalysis if self.prompt_version in SUBSTANTIVE_PROMPT_FILES else MatchAnalysisV1
-        analysis = schema.model_validate(raw_json)
-        usage = response.usage_metadata
-        input_tokens = int(getattr(usage, "prompt_token_count", 0) or 0)
-        output_tokens = int(getattr(usage, "candidates_token_count", 0) or 0)
+
+    def _result_from_text(self, model: str, text: str | None, input_tokens: int,
+                          output_tokens: int) -> MatchAnalysisResult:
+        """Validate the model's JSON; shared by a live answer and a locally replayed one."""
+        raw_json = parse_json_response(text or "{}")
+        analysis = self._schema.model_validate(raw_json)
         return MatchAnalysisResult(
             analysis=analysis,
             raw_json=raw_json,
@@ -102,6 +100,15 @@ class MatchAnalyzer:
             output_tokens=output_tokens,
             cost_usd=estimate_cost(model, input_tokens, output_tokens),
         )
+
+    def _analyze_with_model(self, model: str, payload: str) -> MatchAnalysisResult:
+        response = self.client.models.generate_content(model=model, contents=[payload], config=self._config())
+        if is_truncated(response):
+            raise TruncatedResponseError("Match analysis truncated by max output tokens")
+        usage = response.usage_metadata
+        input_tokens = int(getattr(usage, "prompt_token_count", 0) or 0)
+        output_tokens = int(getattr(usage, "candidates_token_count", 0) or 0)
+        return self._result_from_text(model, response.text, input_tokens, output_tokens)
 
 
 def read_analysis_prompt(filename: str = ANALYSIS_PROMPT_FILENAME) -> str:

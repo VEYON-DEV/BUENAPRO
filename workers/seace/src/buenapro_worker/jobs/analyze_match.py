@@ -148,7 +148,16 @@ def analyze_match_job(
     fit_score: int | None = None,
     fit_level: int | None = None,
     keyword_hits: list[dict] | None = None,
+    analyzer: MatchAnalyzer | None = None,
+    notifications: bool = True,
+    extra_meta: dict | None = None,
 ) -> dict[str, object]:
+    """Evaluate one contract against one company.
+
+    ``analyzer`` replaces the plain Gemini caller (the PROD6 runtime passes one with durable
+    payment receipts). ``notifications=False`` creates neither notification rows nor
+    ``send_notification`` jobs. ``extra_meta`` is merged into ``breakdown_json.meta``.
+    """
     profile = repo.conn.execute(
         "SELECT * FROM company_profiles WHERE id = %s AND is_active = true",
         (profile_id,),
@@ -205,7 +214,7 @@ def analyze_match_job(
                 and meta.get("context_version") == COMPACT_PROFILE_VERSION
                 and meta.get("semantic_guard_version") == "economic_comparison_guard_v1"
                 and meta.get("extraction_id") == contract["extraction_id"]):
-            if source == "automatic":
+            if source == "automatic" and notifications:
                 enqueue_match_notifications(
                     repo,
                     match_id=int(existing["id"]),
@@ -223,7 +232,7 @@ def analyze_match_job(
         return value if len(value) <= limit else f"{value[:limit].rsplit(' ', 1)[0]}…"
 
     profile_evidence = evidence_only_profile({field: profile[field] for field in PROFILE_FIELDS})
-    result = MatchAnalyzer(settings).analyze(
+    result = (analyzer or MatchAnalyzer(settings)).analyze(
         perfil=profile_evidence,
         oportunidad={
             "codigo": contract["codigo"],
@@ -334,6 +343,7 @@ def analyze_match_job(
             "fit_score": fit_score,
             "fit_level": fit_level,
             "keyword_hits": keyword_hits or [],
+            **(extra_meta or {}),
         }
     )
 
@@ -379,7 +389,9 @@ def analyze_match_job(
         ),
     )
 
-    if source == "automatic":
+    if not notifications:
+        pass
+    elif source == "automatic":
         enqueue_match_notifications(repo, match_id=match_id, reason="automatic_evaluation")
     elif existing is None:
         enqueue_match_notifications(repo, match_id=match_id, reason="new_match")

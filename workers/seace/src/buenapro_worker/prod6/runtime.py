@@ -1,8 +1,11 @@
-"""PROD6 discovery and document ingestion without legacy schedulers or LLM2.
+"""PROD6 discovery, document ingestion and automatic evaluation without legacy schedulers.
 
 The existing queues are retained, but claims require this runtime's namespace,
-explicit profile and four allowed job types. A session advisory lock prevents
+explicit profile and five allowed job types. A session advisory lock prevents
 two instances. Provider responses are durably cached before database writes.
+
+LLM2 (``analyze_match``) runs only for a contract whose current JEV decision for the company
+is ``accepted`` (``prod6/evaluation.py``); notifications and the legacy gate stay off.
 """
 from __future__ import annotations
 
@@ -24,6 +27,7 @@ import psycopg
 from dotenv import dotenv_values
 
 from buenapro_worker.db.connection import connect
+from buenapro_worker.jobs.analyze_match import analyze_match_job
 from buenapro_worker.jobs.derive_summary import derive_summary_job
 from buenapro_worker.jobs.download_file import download_file_job
 from buenapro_worker.jobs.extract_tdr import enqueue_derive_summary, extract_tdr_job
@@ -42,6 +46,10 @@ from buenapro_worker.extraction.commercial_classification import POLICY_KEY, TAX
 from buenapro_worker.prod6.jev_screening import (
     JevScreeningClient, admit_accepted, score_pending, unadmitted_accepted,
 )
+from buenapro_worker.prod6.evaluation import (
+    AUTO_ORIGIN, enqueue_evaluations, evaluation_rows, skip_reason,
+)
+from buenapro_worker.prod6.evaluation_guard import GuardedMatchAnalyzer
 from buenapro_worker.prod6.reading import (
     ProviderRejectedError, ReadingPolicyError, bind_reading_policy, reading_policy_context,
 )
@@ -50,8 +58,10 @@ from buenapro_worker.prod6.source_cache import SourceCache
 
 
 NAMESPACE = "prod6-only-v1"
-JOB_TYPES = ("process_contract", "download_file", "extract_tdr", "derive_summary")
+JOB_TYPES = ("process_contract", "download_file", "extract_tdr", "derive_summary", "analyze_match")
 IO_TYPES = ("process_contract", "download_file")
+# Paid Gemini jobs run one at a time on the coordinator and stop together during a reading pause.
+PAID_TYPES = ("extract_tdr", "analyze_match")
 LOCK = (2061013, 6)
 # A document whose own request was denied this many times goes to manual review.
 SOURCE_BLOCK_LIMIT = 3
@@ -265,9 +275,12 @@ class ScopedRepository(JobRepository):
     shared per contract, so the scope only names which coordinator owns the jobs.
     """
 
-    def __init__(self, conn, *, profile_id: str, batch_id: str, reading_policy=None):
+    def __init__(self, conn, *, profile_id: str, batch_id: str, reading_policy=None,
+                 profile_ids: list[str] | None = None):
         super().__init__(conn)
         self.profile_id, self.batch_id = profile_id, batch_id
+        # Companies this runtime evaluates (the first one is also the queue scope).
+        self.profile_ids = list(dict.fromkeys(profile_ids or [profile_id]))
         self.reading_policy = reading_policy_context(reading_policy)
         self.suppressed: dict[str, int] = {}
         # Cleanups (temporary source copies) that may run only once the work is committed.
@@ -281,9 +294,15 @@ class ScopedRepository(JobRepository):
             except Exception as error:  # A leftover temporary never fails a saved job.
                 print(json.dumps({"cleanup_failed": type(error).__name__}), flush=True)
 
+    def dedup_prefix(self) -> str:
+        return f"{NAMESPACE}:{self.profile_id}:"
+
     def enqueue(self, job_type, payload=None, **kwargs):
-        if job_type not in JOB_TYPES:
-            # Ingestion does not authorize historical LLM2 or notifications.
+        # Ingestion does not authorize historical LLM2 or notifications. The one LLM2 job allowed
+        # is the automatic evaluation of a JEV-accepted pair queued by prod6/evaluation.py.
+        if job_type not in JOB_TYPES or (job_type == "analyze_match" and not (
+                (payload or {}).get("source") == "automatic" and (payload or {}).get("origin") == AUTO_ORIGIN
+                and (payload or {}).get("profile_id") in self.profile_ids)):
             self.suppressed[job_type] = self.suppressed.get(job_type, 0) + 1
             return None
         payload = dict(payload or {}) | {
@@ -302,13 +321,13 @@ class ScopedRepository(JobRepository):
             if blocked:
                 self.suppressed["source_document_blocked"] = self.suppressed.get("source_document_blocked", 0) + 1
                 return None
-        kwargs["dedup_key"] = f"{NAMESPACE}:{self.profile_id}:{kwargs.get('dedup_key') or job_type}"
+        kwargs["dedup_key"] = f"{self.dedup_prefix()}{kwargs.get('dedup_key') or job_type}"
         kwargs["max_attempts"] = 1
         return super().enqueue(job_type, payload, **kwargs)
 
     def claim_scoped(self, worker_id: str, job_types: tuple[str, ...] = JOB_TYPES) -> Job | None:
         if not job_types or not set(job_types).issubset(JOB_TYPES):
-            raise ValueError("Claims must stay inside the ingestion whitelist")
+            raise ValueError("Claims must stay inside the PROD6 whitelist")
         row = self.conn.execute(
             """UPDATE worker_jobs SET status='claimed', claimed_by=%s,
                  claimed_at=now(), attempts=attempts+1
@@ -446,6 +465,42 @@ def release_source_copy(repo: ScopedRepository, cache: SourceCache, contract_id:
     repo.after_commit.append(partial(cache.discard, document_sha(repo.conn, contract_id, archive_id)))
 
 
+def evaluate_match(settings: Settings, repo: ScopedRepository, job: Job, receipt_dir: Path) -> dict[str, Any]:
+    """LLM2 for one JEV-accepted pair; everything that can be checked for free is checked first.
+
+    The decision, the company rules, the reading and the match are read again at run time: a job
+    waiting in the queue never pays for a pair that stopped qualifying. Notifications stay off.
+    """
+    payload = job.payload
+    if payload.get("source") != "automatic" or payload.get("origin") != AUTO_ORIGIN:
+        raise ValueError("analyze_match outside the automatic PROD6 evaluation origin")
+    contract_id, profile_id = int(payload["id_contrato"]), str(payload["profile_id"])
+    if profile_id not in repo.profile_ids:
+        return {"outcome": "skipped", "reason": "profile_out_of_scope"}
+    if not profile_enabled(repo, profile_id):
+        return {"outcome": "skipped", "reason": "profile_paused"}
+    rows = evaluation_rows(repo.conn, profile_ids=[profile_id], contract_id=contract_id)
+    reason = skip_reason(rows[0], include_stale=True) if rows else "decision_not_accepted"
+    if reason:
+        return {"outcome": "skipped", "reason": reason}
+    row = rows[0]
+    # A job that was already claimed once may only replay its own durable answer, unless the
+    # provider proved with an HTTP error that nothing was billed.
+    guarded = GuardedMatchAnalyzer(settings, receipt_dir / "evaluations",
+                                   allow_new_requests=job.attempts <= 1)
+    try:
+        result = analyze_match_job(
+            settings, repo, id_contrato=contract_id, profile_id=profile_id,
+            business_line_id=payload.get("business_line_id"), source="automatic",
+            analyzer=guarded, notifications=False,
+            extra_meta={"evaluation_origin": AUTO_ORIGIN, "jev_decision_id": int(row["decision_id"]),
+                        "jev_score": float(row["score"]) if row["score"] is not None else None})
+    finally:
+        guarded.close()
+    return {"outcome": "unchanged" if result.get("skipped") else "evaluated", **result,
+            **({"provider_answered": True} if guarded.provider_answered else {})}
+
+
 def dispatch(settings: Settings, repo: ScopedRepository, job: Job, receipt_dir: Path):
     payload = job.payload
     contract_id = int(payload["id_contrato"])
@@ -546,8 +601,17 @@ def dispatch(settings: Settings, repo: ScopedRepository, job: Job, receipt_dir: 
         return {"outcome": "read_or_reused", "extraction_id": extraction_id,
                 **({"provider_answered": True} if guarded.provider_answered else {})}
     if job.job_type == "derive_summary":
-        return derive_summary_job(repo, id_contrato=contract_id,
-                                  extraction_id=int(payload["extraction_id"]), **common)
+        result = derive_summary_job(repo, id_contrato=contract_id,
+                                    extraction_id=int(payload["extraction_id"]), **common)
+        if not result["requires_human_review"]:
+            # The reading is usable: queue the evaluation of every company JEV accepted it for.
+            queued = enqueue_evaluations(repo, profile_ids=repo.profile_ids, contract_id=contract_id,
+                                         include_stale=True)
+            result["evaluations"] = {key: queued[key] for key in
+                                     ("candidates", "enqueued", "already_queued", "daily_limited", "skipped")}
+        return result
+    if job.job_type == "analyze_match":
+        return evaluate_match(settings, repo, job, receipt_dir)
     raise ValueError("Job outside PROD6 runtime scope")
 
 
@@ -730,7 +794,8 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
                 block = {"provider_http_status": http_status,
                          **({"provider_status": provider.status} if provider.status else {}),
                          "reason": "manual_review_required"}
-                count_key, origin = "provider_error_count", "Gemini reading"
+                count_key = "provider_error_count"
+                origin = "Gemini evaluation" if held.job_type == "analyze_match" else "Gemini reading"
             with conn.transaction():
                 changed = conn.execute(HOLD_DOCUMENT_SQL, (
                     json.dumps({"source_document_block": block,
@@ -894,7 +959,7 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
         while not stopping:
             batch_id = f"prod6-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}-{os.getpid()}"
             repo = ScopedRepository(conn, profile_id=profile_id, batch_id=batch_id,
-                                    reading_policy=effective_policy)
+                                    reading_policy=effective_policy, profile_ids=profile_ids)
             started = datetime.now(timezone.utc)
             block_until = parse_instant(source_block.get("until")) if source_block else None
             block_active = block_until is not None and block_until > started
@@ -932,6 +997,7 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
                 # The scope profile was checked above; a paused extra company is skipped.
                 active_ids = [profile_id] + [other for other in profile_ids[1:]
                                              if profile_enabled(repo, other)]
+                repo.profile_ids = active_ids  # A paused extra company is not evaluated either.
                 state["source"] = {}
                 if block_active:
                     # The pause from an earlier cycle/process still runs: nothing reaches PROD6.
@@ -1146,7 +1212,7 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
                     # during a Gemini pause the reading itself waits as well.
                     claimable = tuple(kind for kind in JOB_TYPES
                                       if (io_open or kind not in IO_TYPES)
-                                      and not (kind == "extract_tdr" and reading_paused()))
+                                      and not (kind in PAID_TYPES and reading_paused()))
                     with conn.transaction():
                         job = (repo.claim_scoped(worker_id) if claimable == JOB_TYPES
                                else repo.claim_scoped(worker_id, claimable))
@@ -1183,7 +1249,7 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
                         write_state(receipt_dir / "state.json", state)
                         print(json.dumps(state), flush=True)
                         return 2
-                    if job.job_type == "extract_tdr" and outcome.get("provider_answered"):
+                    if job.job_type in PAID_TYPES and outcome.get("provider_answered"):
                         reading_recovered(state)
                     state["done"][job.job_type] = state["done"].get(job.job_type, 0) + 1
                     state["last_outcome"] = {"job_id": job.id, "contract_id": job.payload["id_contrato"],

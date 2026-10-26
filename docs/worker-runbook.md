@@ -762,8 +762,105 @@ reiniciar workers, relecturas ni llamadas pagadas.
 La imagen PROD6 copia todo `prod6/` (incluye `source_cache.py`) y, de fuera de esa carpeta,
 `seace/client.py`, `seace/pacing.py`, `seace/egress.py`, `jobs/download_file.py`,
 `jobs/process_contract.py`, `jobs/extract_tdr.py`, `jobs/poll_prod6_profile.py`, `jobs/derive_summary.py`,
-`normalization/facets.py`, `documents/pdf.py` y los prompts `prod6_*_reading_v1.txt`; las
+`jobs/analyze_match.py`, `matching/analyzer.py`, `normalization/facets.py`, `documents/pdf.py` y los prompts `prod6_*_reading_v1.txt`; las
 constantes JEV se importan de `prod2/analysis.py` de la imagen base (sin cambios desde el 1.er sync).
+
+#### Evaluación automática (LLM2) de los aceptados por JEV (PROD6)
+
+Desde 25/10/2026 el runtime PROD6 evalúa solo lo que JEV aceptó. Antes (flujo legacy) la evaluación
+se encolaba desde `route_contract_profiles` con un filtro de palabras clave; ese router sigue
+suprimido (`suppressed.route_contract_profiles`) y el filtro ahora es la decisión JEV.
+
+**Qué se evalúa.** Un par (contrato, empresa del runtime) se encola como `analyze_match` (cola `llm`,
+prioridad 4, `source=automatic`, `origin=prod6_jev_accepted_v1`) solo si se cumple todo:
+
+1. La decisión vigente de esa empresa para ese contrato en `prod6_profile_decisions` (la fila más
+   nueva de la política `prod6_screening_v2` que no esté `superseded`) es `accepted` y `decided_by='jev'`
+   (puntaje >= umbral 60 al decidir). `rejected`, `pending`, `superseded` y aceptaciones de otro origen
+   no se evalúan; el cliente puede evaluar a mano desde la web, que no cambia.
+2. `automation_rules` de la empresa: `enabled` (sin fila de reglas se asume habilitada, como en el flujo
+   legacy), `max_daily_evaluations` (0 = sin límite; cuenta los jobs `analyze_match` automáticos creados
+   hoy en UTC para esa empresa, enviados o no) y `min_hours_before_close` (no evalúa si faltan menos horas;
+   sin fecha de cierre no aplica). `min_fit_level` ya no se usa: lo reemplaza JEV.
+3. Contrato vigente (estado 2, bien o servicio, cierre futuro o sin cierre).
+4. Lectura vigente (la última extracción `is_current` del contrato, la misma que usa `analyze_match`)
+   con `quality<>'failed'`, **sin `requires_human_review`** y con requisitos (`requirement_facets`).
+   Las lecturas en revisión no se evalúan, igual que antes.
+5. Sin match de esa empresa para esa lectura (`matches.breakdown_json.meta.extraction_id` igual a la
+   extracción vigente). Si el match viene de una lectura anterior (el documento cambió) se vuelve a
+   evaluar desde el gancho; un match de origen desconocido (por ejemplo las recomendaciones de PROD2 de
+   DIN) nunca se sobrescribe.
+
+**Cuándo se encola.** (a) Al terminar `derive_summary` de un contrato sin `requires_human_review`
+(`state.json.last_outcome.result.evaluations` resume candidatos, encolados, ya encolados, limitados por
+día y motivos de descarte). (b) Con el backfill descrito abajo. No hay barrido periódico: un par que el
+límite diario dejó fuera, o una empresa activada después, se recupera ejecutando el backfill. La
+deduplicación es `prod6-only-v1:<perfil de alcance>:analyze_match:<empresa>:<contrato>` mientras el job
+esté `pending` o `claimed`; un job en revisión manual (ver abajo) sigue `pending` y bloquea otro igual.
+`ScopedRepository.enqueue` rechaza cualquier otro `analyze_match` (por ejemplo el que `derive_summary`
+encola cuando cambian los requisitos) y cualquier empresa fuera de `--profile-id`.
+
+**Ejecución.** `analyze_match` lo reclama solo el coordinador, en serie, junto con `extract_tdr` (una
+llamada pagada a la vez); nunca el ejecutor de IO libre. Antes de pagar vuelve a comprobar gratis la
+decisión, las reglas, la lectura y el match: un job que esperó en la cola y dejó de calificar termina
+como `skipped` con el motivo. No llama a SEACE (solo PostgreSQL y Gemini) y no consume el tope de
+peticiones a PROD6. Guarda el match con `source=automatic` (`meta.execution=worker_auto`,
+`match_events.event_type=automatic_analysis`) más `meta.evaluation_origin`, `jev_decision_id` y
+`jev_score`, con tokens y costo reales. **No crea notificaciones**: `analyze_match_job(...,
+notifications=False)` no inserta filas en `notifications` ni jobs `send_notification` (en el flujo legacy
+sí lo hacía, aun con `send_notification` suprimido).
+
+**Errores de Gemini.** Mismo trato que las lecturas (ver "Errores de Gemini, pausa de lecturas y alerta de
+parada"), con la misma `reading_pause` compartida: 401/402/403/429 pausan todas las llamadas pagadas
+(lecturas y evaluaciones) con alerta una vez; 500/502/503/504/529 pausan unos minutos sin penalizar ni
+alertar; los demás 4xx suman a `provider_error_count` del job y al tercero pasa a revisión manual
+(`source_document_block`, mensaje "Gemini evaluation HTTP ..."); un fallo incierto deja
+`attention_required` y alerta una vez (`<error> en analyze_match`). La primera respuesta real de Gemini,
+de una lectura o de una evaluación, cierra el episodio de pausa.
+
+**Pago incierto.** `analyze_match` no tenía recibos. `prod6/evaluation_guard.py` (`GuardedMatchAnalyzer`)
+aplica el contrato de `reading.py` a su única llamada, con recibos privados en
+`<receipt-dir>/evaluations/` (0700/0600; solo la respuesta JSON del modelo y los tokens, nunca la petición
+ni el perfil):
+
+- `<clave>.started.private.json` antes de enviar; la clave es el hash del modelo, el texto del prompt y el
+  payload exacto (otro perfil, otros requisitos u otro prompt son otra petición).
+- Un error HTTP de Gemini (`APIError`) prueba que no hay respuesta facturable: recibo `provider_error`,
+  se retira el `started`, sin guard, y se permite reintentar esa petición una vez (el recibo se consume al
+  reenviar).
+- Cualquier otro fallo tras enviar (timeout, corte, interrupción, fallo al escribir) abre
+  `evaluations/guard.json` y lanza `GuardedReadingError`: ningún envío nuevo hasta que un operador lo revise
+  (servicio detenido en `attention_required`). Un `started` sin respuesta ni `provider_error` del mismo intento
+  también bloquea todo envío.
+- La respuesta se guarda (`.response.private.json`, con hash) **antes** de validarla o escribir en
+  PostgreSQL. Si la base falla o la respuesta es inutilizable (truncada, JSON o esquema inválido, uso
+  desconocido) el guard se abre y la respuesta queda preservada: un job posterior de la misma petición la
+  reproduce localmente sin volver a pagar, incluso con el guard abierto.
+- Un job reclamado antes (`attempts > 1`) solo puede reproducir su propia respuesta o reintentar tras un
+  `provider_error`; nunca envía por primera vez.
+
+Resolver un guard abierto (servicio detenido): revisar `evaluations/guard.json` y los `started` sin
+respuesta, mover el guard a `evaluations/resolved-<fecha>/` y reiniciar el job, como se hizo con las
+lecturas el 25/10. Si el envío pudo facturarse, decidir con el panel de uso de Google AI Studio antes de
+liberar el guard.
+
+**Costo estimado** (`gemini-3.1-flash-lite`, US$0,25 / 1M entrada y US$1,50 / 1M salida): con las
+evaluaciones pasadas de la base local, la salida ronda 500 tokens. VEYON (~4 000 tokens de entrada) cuesta
+~US$ 0,0018 por evaluación (histórico v2: US$ 0,0014 promedio, máx. 0,0039). DIN envía un perfil mucho más
+grande (~51 500 tokens de entrada medidos con el payload real) y cuesta ~US$ 0,014 (histórico v4: US$ 0,0155).
+La salida incluye los tokens de razonamiento, que Google factura como salida.
+
+**Backfill.** `python -m buenapro_worker.prod6.backfill_evaluations --profile-id <primera empresa> --profile-id
+<segunda>` (mismo orden que el runtime: la primera es el alcance de la cola). Dry-run por defecto: lista lo
+que encolaría (`planned`, el que cierra antes primero), los motivos de descarte y el desglose por empresa;
+`--apply` encola (una transacción, idempotente), `--limit N` acota y `--include-stale` incluye matches de
+una lectura anterior. Solo escribe en `worker_jobs`; no llama a SEACE, JEV ni Gemini: el pago ocurre después,
+una evaluación a la vez, cuando el runtime reclama los jobs. Para activar DIN: poner `automation_rules.enabled=true`
+y ejecutar el backfill (el runtime no repasa por sí solo).
+
+**Despliegue.** La imagen completa de `worker.Dockerfile` ya lo incluye; `infra/docker/prod6.Dockerfile` copia además
+`jobs/analyze_match.py` y `matching/analyzer.py`. Sin migración. Actualizar el código no autoriza reiniciar el
+runtime ni encolar: sin `--apply` y sin reinicio no hay llamadas pagadas.
 
 ## Salida peruana para SEACE (proxy egress)
 
