@@ -839,13 +839,21 @@ ni el perfil):
 - Un job reclamado antes (`attempts > 1`) solo puede reproducir su propia respuesta o reintentar tras un
   `provider_error`; nunca envía por primera vez.
 
-**Respuesta incompleta.** Si Gemini omite o reordena requisitos (o cita evidencia que no existe),
-`bind_substantive_requirements` lanza `ModelOutputMismatch`. Solo falla ese par contrato × empresa: la
-respuesta se aparta a `<key>.invalid<n>.private.json` (auditoría) y se reenvía una vez (un pago más). Si la
-segunda también es inválida, el job termina `done` con `runtime_result.outcome = invalid_model_output` y el
-par no se vuelve a encolar para esa lectura (`skip_reason = model_output_invalid`); el cliente puede usar
-"Evaluar con mi perfil". Una lectura nueva del documento lo habilita otra vez. Antes del 26/10 este caso
-detenía todo el servicio (`attention_required: ValueError`).
+**Respuesta incompleta.** Gemini suele omitir los "documentos de propuesta" que solo dicen cómo se
+acredita otro requisito (copias de contratos, SCTR, títulos). Esos, y solo esos, pasan a la lista
+`administrative_checklist` ("Documentos para presentar", sin efecto en el puntaje) y la evaluación se
+guarda; un documento de propuesta que el modelo sí evaluó (SLA, documentación técnica) sigue siendo requisito.
+Si omite o reordena cualquier otro requisito (o cita evidencia que no existe), `ModelOutputMismatch`: solo
+falla ese par contrato × empresa, el job termina `done` con `runtime_result.outcome = invalid_model_output`,
+la respuesta queda en su recibo (temperatura 0: reenviar devolvería lo mismo) y el par no se vuelve a encolar
+para esa lectura (`skip_reason = model_output_invalid`). El cliente puede usar "Evaluar con mi perfil".
+Antes del 26/10 este caso detenía todo el servicio (`attention_required: ValueError`).
+
+**Ritmo de Gemini.** Cada llamada pagada que Gemini respondió (lectura o evaluación) retrasa el siguiente
+envío lo que tardan sus tokens a `PROD6_GEMINI_TOKENS_PER_MINUTE` (150 000; `0` lo apaga): una evaluación de
+DIN (~58 000 tokens) espera ~23 s, una de VEYON ~1,6 s. La espera ocurre antes del recibo `started`. Un 429
+cuya cuota es por minuto (`quotaId` con `PerMinute`) pausa `PROD6_GEMINI_RATE_BACKOFF_SECONDS` (120) sin
+alerta; uno diario o sin detalle sigue siendo pausa de cuenta (1 h, con alerta).
 
 Resolver un guard abierto (servicio detenido): revisar `evaluations/guard.json` y los `started` sin
 respuesta, mover el guard a `evaluations/resolved-<fecha>/` y reiniciar el job, como se hizo con las

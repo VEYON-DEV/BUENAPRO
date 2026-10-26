@@ -10,6 +10,7 @@ between consecutive requests no matter how many threads or clients exist:
 ``PROD6_BLOCK_BACKOFF_SECONDS``         pause after a 403/429 from the source (default 10800).
 ``PROD6_READING_BACKOFF_SECONDS``       pause of paid readings after Gemini answers 401/402/403/429 (default 3600).
 ``PROD6_READING_TRANSIENT_BACKOFF_SECONDS``  short pause after Gemini is saturated, 500/502/503/504/529 (default 900).
+``PROD6_GEMINI_RATE_BACKOFF_SECONDS``   pause after a 429 whose quota is per minute (default 120).
 
 The pace is fixed and low on purpose: there is no jitter, rotation or evasion.
 
@@ -33,6 +34,7 @@ DEFAULT_DISCOVERY_INTERVAL_SECONDS = 7200
 DEFAULT_BLOCK_BACKOFF_SECONDS = 10800
 DEFAULT_READING_BACKOFF_SECONDS = 3600
 DEFAULT_READING_TRANSIENT_BACKOFF_SECONDS = 900
+DEFAULT_GEMINI_RATE_BACKOFF_SECONDS = 120
 # A denial from the WAF, never retried: more requests only prolong the block.
 BLOCK_STATUSES = frozenset({403, 429})
 
@@ -93,6 +95,11 @@ def reading_backoff_seconds() -> int:
 
 def reading_transient_backoff_seconds() -> int:
     return _env_number("PROD6_READING_TRANSIENT_BACKOFF_SECONDS", DEFAULT_READING_TRANSIENT_BACKOFF_SECONDS,
+                       minimum=1, kind=int)
+
+
+def gemini_rate_backoff_seconds() -> int:
+    return _env_number("PROD6_GEMINI_RATE_BACKOFF_SECONDS", DEFAULT_GEMINI_RATE_BACKOFF_SECONDS,
                        minimum=1, kind=int)
 
 

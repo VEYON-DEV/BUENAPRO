@@ -259,44 +259,28 @@ def mismatch():
     return ModelOutputMismatch("requirement_coverage_changed", "Substantive requirement coverage/order changed")
 
 
-def test_an_answer_that_skips_requirements_is_sent_once_more_and_the_second_one_is_stored(evaluator):
-    """Production 26/10: Gemini judged 4 of 8 requirements and the whole service stopped."""
-    evaluator.analyze.side_effect = [mismatch(), {"match_id": 3, "verdict": "rojo", "score": 20}]
-    evaluator.guarded.allow_new_requests = True
-    evaluator.guarded.retire_invalid_answer.return_value = 1
+def test_an_answer_that_skips_requirements_fails_only_that_pair_and_is_not_resent(evaluator):
+    """Production 26/10: Gemini judged 4 of 8 requirements and the whole service stopped. With
+    temperature 0 a resend returned the same answer, so the pair fails at once."""
+    evaluator.analyze.side_effect = [mismatch()]
     outcome = evaluator.run(evaluation_job())
-    assert outcome["outcome"] == "evaluated" and outcome["score"] == 20
-    assert evaluator.analyze.call_count == 2
-    evaluator.guarded.retire_invalid_answer.assert_called_once()
+    assert outcome == {"outcome": INVALID_OUTCOME, "reason": "requirement_coverage_changed",
+                       "extraction_id": 7, "provider_answered": True}
+    assert evaluator.analyze.call_count == 1
     evaluator.guarded.close.assert_called_once()
 
 
-def test_a_second_invalid_answer_fails_only_that_pair_without_stopping_the_service(evaluator):
-    evaluator.analyze.side_effect = [mismatch(), mismatch()]
-    evaluator.guarded.allow_new_requests = True
-    evaluator.guarded.retire_invalid_answer.side_effect = [1, 2]
-    outcome = evaluator.run(evaluation_job())
-    assert outcome == {"outcome": INVALID_OUTCOME, "reason": "requirement_coverage_changed",
-                       "invalid_answers": 2, "extraction_id": 7, "provider_answered": True}
-    assert evaluator.analyze.call_count == 2
-
-
-def test_a_replay_only_job_with_an_invalid_answer_never_pays_again(evaluator):
+def test_a_replayed_invalid_answer_is_reported_without_a_provider_answer(evaluator):
     evaluator.analyze.side_effect = [mismatch()]
-    evaluator.guarded.allow_new_requests = False
     evaluator.guarded.provider_answered = False
-    evaluator.guarded.retire_invalid_answer.return_value = 1
     outcome = evaluator.run(evaluation_job(attempts=2))
-    assert outcome == {"outcome": INVALID_OUTCOME, "reason": "requirement_coverage_changed",
-                       "invalid_answers": 1, "extraction_id": 7}
-    assert evaluator.analyze.call_count == 1
+    assert outcome == {"outcome": INVALID_OUTCOME, "reason": "requirement_coverage_changed", "extraction_id": 7}
 
 
 def test_any_other_failure_still_stops_the_service(evaluator):
     evaluator.analyze.side_effect = ValueError("Contract not found: 42")
     with pytest.raises(ValueError, match="Contract not found"):
         evaluator.run(evaluation_job())
-    evaluator.guarded.retire_invalid_answer.assert_not_called()
 
 
 # --- GuardedMatchAnalyzer: the paid call and its receipts ----------------------------------------------
@@ -472,34 +456,34 @@ def test_an_unusable_answer_is_preserved_blocks_new_sends_and_is_never_paid_for_
     assert gemini.call_count == 1
 
 
-def test_an_invalid_answer_is_set_aside_for_audit_and_the_same_request_may_be_sent_again(gemini, tmp_path):
-    gemini.return_value = reply()
-    first = analyzer_in(tmp_path)
-    ask(first)
-    assert first.retire_invalid_answer() == 1
-    folder = tmp_path / "evaluations"
-    assert receipts(tmp_path, "response") == receipts(tmp_path, "started") == []
-    assert len(list(folder.glob("*.invalid1.private.json"))) == len(list(folder.glob("*.invalid1_started.private.json"))) == 1
-    second = analyzer_in(tmp_path)
-    ask(second)  # Same request: sent again, not replayed, and no guard is opened.
-    assert gemini.call_count == 2 and second.provider_answered is True
-    assert not (folder / "guard.json").exists()
-    assert second.retire_invalid_answer() == 2
-    assert len(list(folder.glob("*.invalid2.private.json"))) == 1
-
-
-def test_setting_aside_needs_an_answer_of_this_instance(gemini, tmp_path):
-    with pytest.raises(GuardedReadingError):
-        analyzer_in(tmp_path).retire_invalid_answer()
-
-
-def test_a_replayed_invalid_answer_can_also_be_set_aside(gemini, tmp_path):
+def test_each_answered_evaluation_paces_the_next_send_by_its_tokens(gemini, tmp_path, monkeypatch):
+    from buenapro_worker.prod6 import evaluation_guard
+    events = []
+    pacer = MagicMock()
+    pacer.wait.side_effect = lambda: events.append(("wait", len(receipts(tmp_path, "started"))))
+    pacer.spent.side_effect = lambda i, o: events.append(("spent", i, o))
+    monkeypatch.setattr(evaluation_guard, "GEMINI_PACER", pacer)
     gemini.return_value = reply()
     ask(analyzer_in(tmp_path))
-    replay = analyzer_in(tmp_path, allow_new_requests=False)
-    ask(replay)
-    assert gemini.call_count == 1 and replay.provider_answered is False
-    assert replay.retire_invalid_answer() == 1
+    # The wait comes before the started receipt; the tokens (thinking included) after the answer.
+    assert events == [("wait", 0), ("spent", 1200, 340)]
+    ask(analyzer_in(tmp_path, allow_new_requests=False))  # A replay sends nothing and never waits.
+    assert len(events) == 2
+
+
+def test_a_rejected_evaluation_spends_nothing_and_keeps_its_quota_window(gemini, tmp_path, monkeypatch):
+    from buenapro_worker.prod6 import evaluation_guard
+    pacer = MagicMock()
+    monkeypatch.setattr(evaluation_guard, "GEMINI_PACER", pacer)
+    gemini.side_effect = genai_errors.ClientError(429, {"error": {
+        "code": 429, "message": SECRET, "status": "RESOURCE_EXHAUSTED",
+        "details": [{"@type": "type.googleapis.com/google.rpc.QuotaFailure", "violations": [
+            {"quotaId": "GenerateContentInputTokensPerModelPerMinute-FreeTier"}]}]}})
+    with pytest.raises(ProviderRejectedError) as rejected:
+        ask(analyzer_in(tmp_path))
+    assert (rejected.value.code, rejected.value.quota) == (429, "minute")
+    pacer.wait.assert_called_once()
+    pacer.spent.assert_not_called()
 
 
 def test_a_tampered_answer_receipt_is_refused(gemini, tmp_path):
@@ -931,42 +915,42 @@ def complete(db, job, outcome):
     db.execute("UPDATE worker_jobs SET status = 'done', finished_at = now() WHERE id = %s", (job.id,))
 
 
-def partial_analysis():
-    return ANALYSIS  # Judges source_index 1 only.
-
-
-def full_analysis():
-    second = {**ANALYSIS["requisitos"][0], "requisito": "Servidor 1", "source_index": 2}
-    return {**ANALYSIS, "requisitos": [*ANALYSIS["requisitos"], second]}
+def add_proposal_document(db, number, extraction, label):
+    db.execute("""INSERT INTO requirement_facets (id_contrato, extraction_id, facet, label, required,
+                    details_json, facet_hash) VALUES (%s, %s, 'proposal_document', %s, true, '{}'::jsonb, %s)""",
+               (number, extraction, label, f"hash-{number}-{label}"))
 
 
 @needs_db
-def test_an_incomplete_answer_is_resent_once_and_the_complete_one_is_stored(db, world, gemini, tmp_path):
+def test_proposal_documents_the_model_leaves_out_become_paperwork_and_the_evaluation_is_stored(
+        db, world, gemini, tmp_path):
     veyon, _ = world.companies
-    number, _ = contract(db, facets=2)
+    number, extraction = contract(db, facets=1)
+    add_proposal_document(db, number, extraction, "Copia de contratos y su conformidad")
     decide(db, number, veyon)
     enqueue_evaluations(world.scoped(), profile_ids=world.companies, contract_id=number)
-    gemini.side_effect = [reply(partial_analysis()), reply(full_analysis())]
-    job = claim_evaluation(db, world)
-    outcome = runtime.dispatch(settings(), world.scoped(), job, tmp_path)
-    assert outcome["outcome"] == "evaluated" and gemini.call_count == 2
-    assert stored_match(db, number, veyon) is not None
-    assert not (tmp_path / "evaluations" / "guard.json").exists()
+    gemini.return_value = reply()  # Judges the equipment requirement only (source_index 1).
+    outcome = runtime.dispatch(settings(), world.scoped(), claim_evaluation(db, world), tmp_path)
+    assert outcome["outcome"] == "evaluated" and gemini.call_count == 1
+    breakdown = stored_match(db, number, veyon)["breakdown_json"]
+    assert [r["source_index"] for r in breakdown["requisitos"]] == [1]
+    assert {"tipo": "proposal_document", "requisito": "Copia de contratos y su conformidad",
+            "estado": "preparar", "score_impact": False} in breakdown["administrative_checklist"]
 
 
 @needs_db
-def test_two_incomplete_answers_leave_the_pair_without_evaluation_and_it_is_not_queued_again(
+def test_any_other_omitted_requirement_fails_only_that_pair_once_and_it_is_not_queued_again(
         db, world, gemini, tmp_path):
     veyon, _ = world.companies
     number, extraction = contract(db, facets=2)
     decide(db, number, veyon)
     enqueue_evaluations(world.scoped(), profile_ids=world.companies, contract_id=number)
-    gemini.side_effect = [reply(partial_analysis()), reply(partial_analysis())]
+    gemini.return_value = reply()  # Judges 1 of the 2 equipment requirements.
     job = claim_evaluation(db, world)
     outcome = runtime.dispatch(settings(), world.scoped(), job, tmp_path)
     assert outcome == {"outcome": INVALID_OUTCOME, "reason": "requirement_coverage_changed",
-                       "invalid_answers": 2, "extraction_id": extraction, "provider_answered": True}
-    assert stored_match(db, number, veyon) is None
+                       "extraction_id": extraction, "provider_answered": True}
+    assert gemini.call_count == 1 and stored_match(db, number, veyon) is None
     assert not (tmp_path / "evaluations" / "guard.json").exists()
     complete(db, job, outcome)
     again = enqueue_evaluations(world.scoped(), profile_ids=world.companies, contract_id=number)

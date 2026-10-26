@@ -9,7 +9,7 @@ from buenapro_worker.jobs.send_notification import enqueue_match_notifications
 from buenapro_worker.matching.analyzer import ANALYSIS_PROMPT_VERSION, MatchAnalyzer, read_analysis_prompt
 from buenapro_worker.matching.profile_evidence import EVIDENCE_POLICY_VERSION, evidence_only_profile, guard_participation_actions
 from buenapro_worker.matching.compact_context import COMPACT_PROFILE_VERSION, build_compact_match_profile
-from buenapro_worker.matching.substantive_policy import split_match_requirements, bind_substantive_requirements, guard_economic_comparisons
+from buenapro_worker.matching.substantive_policy import split_match_requirements, bind_substantive_requirements, checklist_omitted_proposal_documents, guard_economic_comparisons
 from buenapro_worker.normalization.facets import canonical_hash
 from buenapro_worker.queue.repository import JobRepository
 from buenapro_worker.settings import Settings
@@ -243,8 +243,10 @@ def analyze_match_job(
         requisitos=requisitos,
     )
     analysis = result.analysis
+    judged = [item.model_dump() for item in analysis.requisitos]
+    requisitos = checklist_omitted_proposal_documents(judged, requisitos, administrative_checklist)
     requisitos_final = bind_substantive_requirements(
-        [item.model_dump() for item in analysis.requisitos], requisitos, build_compact_match_profile(profile_evidence),
+        judged, requisitos, build_compact_match_profile(profile_evidence),
     )
     validation_issues = guard_economic_comparisons(requisitos_final, requisitos, build_compact_match_profile(profile_evidence))
     validation_issues += [

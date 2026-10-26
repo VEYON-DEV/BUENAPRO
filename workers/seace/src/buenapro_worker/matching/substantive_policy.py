@@ -58,6 +58,26 @@ SOURCE_CATEGORIES = {
 }
 
 
+def checklist_omitted_proposal_documents(results: list[dict], expected: list[dict],
+                                         checklist: list[dict]) -> list[dict]:
+    """Proposal documents the model did not judge become paperwork to prepare.
+
+    They usually say how another requirement is proven (contract copies, SCTR policy, degrees),
+    and the model leaves them out. Those, and only those, move to ``checklist``; the requirements
+    still expected are returned. A proposal document the model did judge (an SLA, technical
+    documentation) stays a requirement, and any other omission still fails the binding.
+    """
+    judged = {result.get("source_index") for result in results}
+    kept = []
+    for requirement in expected:
+        if requirement["tipo"] == "proposal_document" and requirement["source_index"] not in judged:
+            checklist.append({"tipo": requirement["tipo"], "requisito": requirement["requisito"],
+                              "estado": "preparar", "score_impact": False})
+        else:
+            kept.append(requirement)
+    return kept
+
+
 def bind_substantive_requirements(results: list[dict], expected: list[dict], compact_profile: dict) -> list[dict]:
     """Bind every judgement to a source requirement and existing evidence IDs."""
     if [r.get("source_index") for r in results] != [r["source_index"] for r in expected]:

@@ -55,6 +55,7 @@ from buenapro_worker.extraction.commercial_classification import (
     POLICY_KEY, TAXONOMY_VERSION, get_commercial_policy, prompt_with_commercial,
     schema_with_commercial, validate_commercial_payload, version_with_commercial,
 )
+from buenapro_worker.prod6.gemini_pacing import GEMINI_PACER
 from buenapro_worker.prod6.reading_schema import EettExtractionV3, TdrExtractionV3
 from buenapro_worker.settings import Settings
 
@@ -78,9 +79,32 @@ class ProviderRejectedError(RuntimeError):
     request content and are never stored or logged.
     """
 
-    def __init__(self, code: int, status: str | None = None) -> None:
+    def __init__(self, code: int, status: str | None = None, quota: str | None = None) -> None:
         super().__init__(f"Gemini answered HTTP {code}; no billable response")
         self.code, self.status = code, status
+        # "minute" or "day" when a 429 names its quota; only that word is kept.
+        self.quota = quota
+
+
+def quota_window(error: BaseException) -> str | None:
+    """"day" or "minute" from the quota IDs of a provider error (a daily quota rules), else None."""
+    ids: list[str] = []
+
+    def walk(value: Any) -> None:
+        if isinstance(value, dict):
+            for name, item in value.items():
+                if name == "quotaId" and isinstance(item, str):
+                    ids.append(item)
+                else:
+                    walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+
+    walk(getattr(error, "details", None))
+    if any("PerDay" in quota for quota in ids):
+        return "day"
+    return "minute" if any("PerMinute" in quota for quota in ids) else None
 
 
 def provider_rejection(error: BaseException) -> tuple[int, str | None] | None:
@@ -526,6 +550,7 @@ class GuardedGeminiExtractor:
             # authorize yet another send if this one ends uncertain.
             for document_key in self._document_keys(identity):
                 _remove_receipt(self.receipt_dir / f"{document_key}.provider_error.private.json")
+            GEMINI_PACER.wait()
             started = {
                 "version": 1, "request_key": key, "identity": identity,
                 "state": "started", "started_at": _now(),
@@ -554,6 +579,7 @@ class GuardedGeminiExtractor:
                     "cost_status": "known" if usage["known"] else "uncertain",
                 }
                 _write_json(response_path, saved)
+                GEMINI_PACER.spent(usage["input_tokens"], usage["output_tokens"])
             except ProviderRejectedError:
                 raise
             except BaseException:
@@ -591,7 +617,7 @@ class GuardedGeminiExtractor:
             _remove_receipt(started_path)
         except OSError:
             pass  # The matching provider_error receipt already resolves it.
-        return ProviderRejectedError(code, status)
+        return ProviderRejectedError(code, status, quota_window(error))
 
     @staticmethod
     def _usage(raw: Any) -> dict[str, Any]:

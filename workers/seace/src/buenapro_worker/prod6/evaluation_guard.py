@@ -12,10 +12,6 @@ Same contract as ``prod6/reading.py``, for the one Gemini call of ``analyze_matc
   Known answers are always replayed, also while the guard is open.
 * Any other failure after sending (timeout, dropped connection, interrupt, local write, an answer
   that cannot be parsed) opens ``guard.json``: no new send until an operator reviews it.
-* A parsed answer that cannot be bound to the requirements it was asked about (the model skipped
-  or reordered some) is set aside by ``retire_invalid_answer``: its receipts are renamed to
-  ``<key>.invalid<n>`` for audit and the same request may be sent again. The caller decides how
-  many times (``prod6/runtime.py`` allows one resend).
 
 The request identity hashes the model, the prompt text and the exact payload, so a different
 profile, requirement set or prompt is a different request. The directory belongs to one
@@ -25,7 +21,6 @@ from __future__ import annotations
 
 import fcntl
 import os
-import re
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -38,13 +33,13 @@ from buenapro_worker.extraction.gemini import (
 from buenapro_worker.matching.analyzer import MatchAnalysisResult, MatchAnalyzer
 from buenapro_worker.prod6.reading import (
     GuardedReadingError, ProviderRejectedError, ReadingBlockedError, _canonical, _now, _read_json,
-    _remove_receipt, _sha, _write_json, provider_rejection,
+    _remove_receipt, _sha, _write_json, provider_rejection, quota_window,
 )
+from buenapro_worker.prod6.gemini_pacing import GEMINI_PACER
 from buenapro_worker.settings import Settings
 
 RECEIPT_KIND = "prod6_match_analysis_v1"
 GUARD_FILENAME = "guard.json"
-INVALID_RESPONSE = re.compile(r"\.invalid(\d+)\.private\.json$")
 
 
 class GuardedMatchAnalyzer(MatchAnalyzer):
@@ -56,8 +51,6 @@ class GuardedMatchAnalyzer(MatchAnalyzer):
         self.allow_new_requests = allow_new_requests
         # True once the provider returned an answer in this instance (not a local replay).
         self.provider_answered = False
-        # Request of the last answer handed to the caller (replayed or new).
-        self.last_request_key: str | None = None
         self.receipt_dir = Path(receipt_dir)
         self.guard_path = self.receipt_dir / GUARD_FILENAME
         self.receipt_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -144,7 +137,6 @@ class GuardedMatchAnalyzer(MatchAnalyzer):
         with self._lock():
             response_path = self._path(key, "response")
             if response_path.exists():
-                self.last_request_key = key
                 return self._parse(key, identity, self._load_response(response_path, identity, key))
             self._check_new_send()
             if not self.allow_new_requests and self._provider_error(key) is None:
@@ -152,6 +144,7 @@ class GuardedMatchAnalyzer(MatchAnalyzer):
             # A new attempt consumes the earlier HTTP-error receipt, so it cannot authorize yet
             # another send if this one ends uncertain.
             _remove_receipt(self._path(key, "provider_error"))
+            GEMINI_PACER.wait()
             started = {"version": 1, "request_key": key, "identity": identity,
                        "state": "started", "started_at": _now(), "cost_status": "uncertain"}
             started_path = self._path(key, "started")
@@ -171,6 +164,7 @@ class GuardedMatchAnalyzer(MatchAnalyzer):
                     name: getattr(usage, name, None)
                     for name in ("prompt_token_count", "candidates_token_count", "thoughts_token_count")})
                 _write_json(response_path, saved)
+                GEMINI_PACER.spent(saved["usage"]["input_tokens"], saved["usage"]["output_tokens"])
             except ProviderRejectedError:
                 raise
             except BaseException:
@@ -178,27 +172,7 @@ class GuardedMatchAnalyzer(MatchAnalyzer):
                 raise GuardedReadingError(
                     "PROD6 evaluation request may have been sent; response/usage uncertain; "
                     "new sends blocked") from None
-            self.last_request_key = key
             return self._parse(key, identity, saved)
-
-    def retire_invalid_answer(self) -> int:
-        """Set aside the last answer, which did not cover its requirements; returns how many
-        answers of that same request have been set aside, this one included."""
-        key = self.last_request_key
-        if key is None:
-            raise GuardedReadingError("No PROD6 evaluation answer to set aside")
-        with self._lock():
-            previous = [int(match[1]) for path in self.receipt_dir.glob(f"{key}.invalid*.private.json")
-                        if (match := INVALID_RESPONSE.search(path.name))]
-            number = max(previous, default=0) + 1
-            # The started receipt goes first: a crash in between leaves a replayable answer,
-            # never a started receipt without one (which would open the guard).
-            started = self._path(key, "started")
-            if started.exists():
-                os.replace(started, self._path(key, f"invalid{number}_started"))
-            os.replace(self._path(key, "response"), self._path(key, f"invalid{number}"))
-        self.last_request_key = None
-        return number
 
     def _record_provider_error(self, key: str, identity: dict[str, Any], started: dict[str, Any],
                                started_path: Path, error: BaseException) -> ProviderRejectedError | None:
@@ -218,7 +192,7 @@ class GuardedMatchAnalyzer(MatchAnalyzer):
             _remove_receipt(started_path)
         except OSError:
             pass  # The matching provider_error receipt already resolves it.
-        return ProviderRejectedError(code, status)
+        return ProviderRejectedError(code, status, quota_window(error))
 
     @staticmethod
     def _usage(raw: dict[str, Any]) -> dict[str, Any]:

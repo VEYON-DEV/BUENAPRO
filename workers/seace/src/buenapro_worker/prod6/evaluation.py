@@ -19,9 +19,8 @@ from buenapro_worker.jobs.match import _automatic_jobs_today
 from buenapro_worker.prod6.screening import POLICY_VERSION
 
 AUTO_ORIGIN = "prod6_jev_accepted_v1"
-# A model answer that skips or reorders requirements is sent once more; a second invalid answer
-# leaves the pair (for that reading) without automatic evaluation.
-INVALID_ANSWER_RESENDS = 1
+# A model answer that skips or reorders requirements leaves the pair (for that reading) without
+# automatic evaluation.
 INVALID_OUTCOME = "invalid_model_output"
 
 # Newest decision of each contract x company that is not 'superseded' (accepted and rejected rows

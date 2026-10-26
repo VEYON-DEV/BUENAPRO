@@ -39,7 +39,7 @@ from buenapro_worker.seace import pacing
 from buenapro_worker.seace.egress import EgressUnavailable, check_egress, is_egress_failure, notify_ops
 from buenapro_worker.seace.pacing import (
     block_backoff_seconds, blocking_status, default_discovery_interval_seconds,
-    default_max_source_requests, min_request_interval, reading_backoff_seconds,
+    default_max_source_requests, gemini_rate_backoff_seconds, min_request_interval, reading_backoff_seconds,
     reading_transient_backoff_seconds, source_stop,
 )
 from buenapro_worker.settings import Settings
@@ -48,7 +48,7 @@ from buenapro_worker.prod6.jev_screening import (
     JevScreeningClient, admit_accepted, score_pending, unadmitted_accepted,
 )
 from buenapro_worker.prod6.evaluation import (
-    AUTO_ORIGIN, INVALID_ANSWER_RESENDS, INVALID_OUTCOME, enqueue_evaluations, evaluation_rows, skip_reason,
+    AUTO_ORIGIN, INVALID_OUTCOME, enqueue_evaluations, evaluation_rows, skip_reason,
 )
 from buenapro_worker.prod6.evaluation_guard import GuardedMatchAnalyzer
 from buenapro_worker.prod6.reading import (
@@ -490,24 +490,19 @@ def evaluate_match(settings: Settings, repo: ScopedRepository, job: Job, receipt
     guarded = GuardedMatchAnalyzer(settings, receipt_dir / "evaluations",
                                    allow_new_requests=job.attempts <= 1)
     try:
-        while True:
-            try:
-                result = analyze_match_job(
-                    settings, repo, id_contrato=contract_id, profile_id=profile_id,
-                    business_line_id=payload.get("business_line_id"), source="automatic",
-                    analyzer=guarded, notifications=False,
-                    extra_meta={"evaluation_origin": AUTO_ORIGIN, "jev_decision_id": int(row["decision_id"]),
-                                "jev_score": float(row["score"]) if row["score"] is not None else None})
-                break
-            except ModelOutputMismatch as error:
-                # The model skipped or reordered requirements: only this pair fails. Nothing was
-                # written yet, so the same request may be sent once more; after that the pair
-                # stays without automatic evaluation (skip_reason) and the web offers the manual one.
-                invalid = guarded.retire_invalid_answer()
-                if invalid > INVALID_ANSWER_RESENDS or not guarded.allow_new_requests:
-                    return {"outcome": INVALID_OUTCOME, "reason": error.code, "invalid_answers": invalid,
-                            "extraction_id": int(row["extraction_id"]),
-                            **({"provider_answered": True} if guarded.provider_answered else {})}
+        result = analyze_match_job(
+            settings, repo, id_contrato=contract_id, profile_id=profile_id,
+            business_line_id=payload.get("business_line_id"), source="automatic",
+            analyzer=guarded, notifications=False,
+            extra_meta={"evaluation_origin": AUTO_ORIGIN, "jev_decision_id": int(row["decision_id"]),
+                        "jev_score": float(row["score"]) if row["score"] is not None else None})
+    except ModelOutputMismatch as error:
+        # The model skipped or reordered requirements: only this pair fails. Nothing was written;
+        # the answer stays replayable (temperature 0 repeats it, so resending would only pay again)
+        # and skip_reason keeps the pair out of the queue for this reading. The web offers the
+        # manual evaluation.
+        return {"outcome": INVALID_OUTCOME, "reason": error.code, "extraction_id": int(row["extraction_id"]),
+                **({"provider_answered": True} if guarded.provider_answered else {})}
     finally:
         guarded.close()
     return {"outcome": "unchanged" if result.get("skipped") else "evaluated", **result,
@@ -687,6 +682,7 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
     backoff_seconds = block_backoff_seconds()
     reading_backoff = reading_backoff_seconds()
     transient_backoff = reading_transient_backoff_seconds()
+    rate_backoff = gemini_rate_backoff_seconds()
     stopping = False
 
     def stop(*_args):
@@ -879,7 +875,9 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
             current = reading_pause
             current_until = parse_instant(current.get("until")) if current else None
             current_kind = (current or {}).get("kind", "account")
-            if error.code in READING_PAUSE_REASONS:
+            # A 429 whose quota is per minute is not the account: a short pause, like saturation.
+            per_minute = error.code == 429 and getattr(error, "quota", None) == "minute"
+            if error.code in READING_PAUSE_REASONS and not per_minute:
                 until = now + timedelta(seconds=reading_backoff)
                 reason = READING_PAUSE_REASONS[error.code]
                 continuing = current is not None and current_kind == "account"
@@ -892,8 +890,8 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
             else:
                 if current_kind == "account" and current_until is not None and current_until > now:
                     return current_until  # The account pause is longer and rules.
-                until = now + timedelta(seconds=transient_backoff)
-                reason = f"Gemini saturado ({error.code})"
+                until = now + timedelta(seconds=rate_backoff if per_minute else transient_backoff)
+                reason = "Gemini: límite por minuto (429)" if per_minute else f"Gemini saturado ({error.code})"
                 # A pause that lapsed unused for long is a new episode; an expired account pause
                 # (this was its probe) continues its episode, which already alerted.
                 grace = timedelta(seconds=2 * max(transient_backoff, interval_seconds))

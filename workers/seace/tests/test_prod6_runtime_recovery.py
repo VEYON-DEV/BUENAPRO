@@ -1645,6 +1645,27 @@ def test_evaluation_saturation_pauses_briefly_without_penalty_or_alert(offline_r
     assert egress.alerts == [] and holds(h) == []
 
 
+def test_a_per_minute_429_pauses_briefly_without_alert_and_a_daily_one_stays_an_account_pause(
+        offline_runtime, egress, clock):
+    h = offline_runtime
+    typed_claims(h, [evaluation_job(1), evaluation_job(2)])
+    dispatching(h, {1: ProviderRejectedError(429, "RESOURCE_EXHAUSTED", "minute")})
+    assert h.run(once=True) == 2
+    assert reading_deferrals(h) == [(clock.now + timedelta(seconds=120), {}, 1)]
+    pause = h.states[-1]["reading_pause"]
+    assert pause["kind"] == "transient" and pause["reason"] == "Gemini: límite por minuto (429)"
+    assert egress.alerts == [] and holds(h) == []
+
+
+def test_a_daily_429_keeps_the_hour_long_account_pause(offline_runtime, egress, clock):
+    h = offline_runtime
+    typed_claims(h, [evaluation_job(1)])
+    dispatching(h, {1: ProviderRejectedError(429, "RESOURCE_EXHAUSTED", "day")})
+    assert h.run(once=True) == 2
+    assert reading_deferrals(h) == [(clock.now + timedelta(seconds=3600), {}, 1)]
+    assert h.states[-1]["reading_pause"]["kind"] == "account" and len(egress.alerts) == 1
+
+
 def test_evaluation_document_errors_count_and_the_third_goes_to_manual_review(offline_runtime, egress, clock):
     h = offline_runtime
     typed_claims(h, [evaluation_job(1), evaluation_job(2)])
