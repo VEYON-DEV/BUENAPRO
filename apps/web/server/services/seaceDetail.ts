@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { query } from "@/server/db/client";
 import { prod6QuotationWindow } from "@/lib/procurementSchedule";
+import { seaceFetch } from "@/server/services/seaceEgress";
 
 const SEACE_BASE_URL = process.env.SEACE_BASE_URL ?? "https://prod6.seace.gob.pe/v1/s8uit-services";
 const DETAIL_TTL_MS = 6 * 60 * 60 * 1000; // 6 horas
@@ -48,19 +49,13 @@ export async function refreshContractDetailIfStale(idContrato: number): Promise<
 
   let detail: AnyRecord;
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-    const response = await fetch(
+    // Refresco de fondo: si la salida a SEACE está ocupada o en pausa se sirve lo cacheado.
+    const response = await seaceFetch(
       `${SEACE_BASE_URL}/buscadorpublico/contrataciones/listar-completo?id_contrato=${idContrato}`,
-      {
-        headers: { "User-Agent": "BuenaPro/0.1 (worker)" },
-        signal: controller.signal,
-        cache: "no-store",
-      },
+      { headers: { Accept: "application/json" }, wait: false, timeoutMs: FETCH_TIMEOUT_MS },
     );
-    clearTimeout(timer);
     if (!response.ok) return;
-    detail = await response.json();
+    detail = (await response.json()) as AnyRecord;
   } catch {
     return;
   }

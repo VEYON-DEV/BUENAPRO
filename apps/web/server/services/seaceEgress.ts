@@ -1,0 +1,196 @@
+import { createHash } from "node:crypto";
+import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fetch as undiciFetch, ProxyAgent } from "undici";
+
+/**
+ * Salida de la web hacia SEACE.
+ *
+ * SEACE bloquea la IP de la VM, así que, igual que el worker, la web sale por el proxy peruano
+ * (`SEACE_EGRESS_PROXY`) solo para `seace.gob.pe` y `*.seace.gob.pe`; con `SEACE_EGRESS_REQUIRED`
+ * nunca sale directo. La IP de salida es la misma que usa el worker, así que la web pide poco:
+ * ritmo mínimo entre peticiones, tope por hora, pausa larga ante 403/429 y caché de documentos.
+ */
+
+export type SeaceUnavailableReason = "blocked" | "busy" | "egress" | "network" | "upstream" | "not_pdf";
+
+export class SeaceUnavailable extends Error {
+  readonly reason: SeaceUnavailableReason;
+  readonly status?: number;
+
+  constructor(reason: SeaceUnavailableReason, status?: number) {
+    super(`SEACE unavailable: ${reason}${status ? ` (${status})` : ""}`);
+    this.name = "SeaceUnavailable";
+    this.reason = reason;
+    this.status = status;
+  }
+}
+
+const DEFAULT_USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
+const MAX_DOCUMENT_BYTES = 40 * 1024 * 1024;
+
+function numberEnv(name: string, fallback: number): number {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
+function settings() {
+  return {
+    proxy: process.env.SEACE_EGRESS_PROXY?.trim() || null,
+    required: /^(1|true|yes)$/i.test(process.env.SEACE_EGRESS_REQUIRED?.trim() ?? ""),
+    userAgent: process.env.SEACE_USER_AGENT?.trim() || DEFAULT_USER_AGENT,
+    minIntervalMs: numberEnv("WEB_SEACE_MIN_INTERVAL_SECONDS", 8) * 1000,
+    maxWaitMs: numberEnv("WEB_SEACE_MAX_WAIT_SECONDS", 20) * 1000,
+    maxPerHour: numberEnv("WEB_SEACE_MAX_REQUESTS_PER_HOUR", 20),
+    blockMs: numberEnv("WEB_SEACE_BLOCK_BACKOFF_SECONDS", 10800) * 1000,
+    timeoutMs: numberEnv("WEB_SEACE_TIMEOUT_SECONDS", 30) * 1000,
+    cacheDir: process.env.SEACE_DOCUMENT_CACHE_DIR?.trim() || join(tmpdir(), "buenapro-seace-documents"),
+    cacheTtlMs: numberEnv("SEACE_DOCUMENT_CACHE_HOURS", 24) * 3600 * 1000,
+  };
+}
+
+type EgressState = {
+  nextSlotAt: number;
+  blockedUntil: number;
+  recent: number[];
+  agent: { proxy: string; dispatcher: ProxyAgent } | null;
+  inflight: Map<string, Promise<Buffer>>;
+  fetchImpl: typeof undiciFetch;
+};
+
+// Un solo estado por proceso aunque Next empaquete el módulo en varias rutas.
+const STATE_KEY = Symbol.for("buenapro.seaceEgress");
+function state(): EgressState {
+  const holder = globalThis as unknown as Record<symbol, EgressState | undefined>;
+  holder[STATE_KEY] ??= {
+    nextSlotAt: 0, blockedUntil: 0, recent: [], agent: null, inflight: new Map(), fetchImpl: undiciFetch,
+  };
+  return holder[STATE_KEY]!;
+}
+
+export function resetSeaceEgressForTests(fetchImpl?: typeof undiciFetch): void {
+  const holder = globalThis as unknown as Record<symbol, EgressState | undefined>;
+  delete holder[STATE_KEY];
+  if (fetchImpl) state().fetchImpl = fetchImpl;
+}
+
+export function isSeaceUrl(raw: string): boolean {
+  try {
+    const url = new URL(raw);
+    const host = url.hostname.toLowerCase();
+    return url.protocol === "https:" && !url.username && !url.password
+      && (host === "seace.gob.pe" || host.endsWith(".seace.gob.pe"));
+  } catch {
+    return false;
+  }
+}
+
+function dispatcherFor(proxy: string): ProxyAgent {
+  const current = state();
+  if (current.agent?.proxy !== proxy) current.agent = { proxy, dispatcher: new ProxyAgent(proxy) };
+  return current.agent.dispatcher;
+}
+
+/** Reserva un turno; `wait: false` no espera (refrescos de fondo que pueden omitirse). */
+async function acquireSlot(wait: boolean): Promise<void> {
+  const config = settings();
+  const current = state();
+  const now = Date.now();
+  if (current.blockedUntil > now) throw new SeaceUnavailable("blocked");
+  current.recent = current.recent.filter((at) => at > now - 3600_000);
+  if (current.recent.length >= config.maxPerHour) throw new SeaceUnavailable("busy");
+  const slot = Math.max(now, current.nextSlotAt);
+  const delay = slot - now;
+  if (delay > (wait ? config.maxWaitMs : 0)) throw new SeaceUnavailable("busy");
+  current.nextSlotAt = slot + config.minIntervalMs;
+  current.recent.push(slot);
+  if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+}
+
+export async function seaceFetch(
+  url: string,
+  options: { headers?: Record<string, string>; wait?: boolean; timeoutMs?: number } = {},
+) {
+  if (!isSeaceUrl(url)) throw new SeaceUnavailable("upstream");
+  const config = settings();
+  if (!config.proxy && config.required) throw new SeaceUnavailable("egress");
+  await acquireSlot(options.wait ?? true);
+  let response;
+  try {
+    response = await state().fetchImpl(url, {
+      headers: { ...options.headers, "User-Agent": config.userAgent },
+      signal: AbortSignal.timeout(options.timeoutMs ?? config.timeoutMs),
+      ...(config.proxy ? { dispatcher: dispatcherFor(config.proxy) } : {}),
+    });
+  } catch {
+    // Proxy caído o red: no es un bloqueo de SEACE y no abre la pausa larga.
+    throw new SeaceUnavailable(config.proxy ? "egress" : "network");
+  }
+  if (response.status === 403 || response.status === 429) {
+    state().blockedUntil = Date.now() + config.blockMs;
+    console.warn(JSON.stringify({ seace_web_block: response.status, paused_seconds: config.blockMs / 1000 }));
+  }
+  return response;
+}
+
+async function readCached(path: string, ttlMs: number): Promise<Buffer | null> {
+  try {
+    const info = await stat(path);
+    if (Date.now() - info.mtimeMs > ttlMs) return null;
+    return await readFile(path);
+  } catch {
+    return null;
+  }
+}
+
+async function pruneCache(dir: string, ttlMs: number): Promise<void> {
+  const now = Date.now();
+  for (const name of await readdir(dir).catch(() => [] as string[])) {
+    const path = join(dir, name);
+    const info = await stat(path).catch(() => null);
+    if (info && now - info.mtimeMs > ttlMs) await rm(path, { force: true });
+  }
+}
+
+async function downloadPdf(url: string, path: string, dir: string, ttlMs: number): Promise<Buffer> {
+  const response = await seaceFetch(url, { headers: { Accept: "application/pdf,*/*" } });
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new SeaceUnavailable("upstream", response.status);
+  }
+  if (Number(response.headers.get("content-length") ?? 0) > MAX_DOCUMENT_BYTES) {
+    await response.body?.cancel();
+    throw new SeaceUnavailable("not_pdf");
+  }
+  const body = Buffer.from(await response.arrayBuffer());
+  // Una página de error del WAF con 200 nunca se guarda como PDF.
+  if (body.length > MAX_DOCUMENT_BYTES || body.subarray(0, 5).toString("latin1") !== "%PDF-") {
+    throw new SeaceUnavailable("not_pdf");
+  }
+  await mkdir(dir, { recursive: true });
+  const temporary = `${path}.${process.pid}.${Date.now()}.tmp`;
+  await writeFile(temporary, body);
+  await rename(temporary, path);
+  await pruneCache(dir, ttlMs);
+  return body;
+}
+
+/**
+ * PDF de SEACE desde la caché local; si no está, una sola descarga aunque varias rutas
+ * (miniatura y visor) lo pidan a la vez.
+ */
+export async function getSeacePdf(url: string): Promise<Buffer> {
+  const config = settings();
+  const key = createHash("sha256").update(url, "utf8").digest("hex");
+  const path = join(config.cacheDir, `${key}.pdf`);
+  const cached = await readCached(path, config.cacheTtlMs);
+  if (cached) return cached;
+  const inflight = state().inflight;
+  const pending = inflight.get(key);
+  if (pending) return pending;
+  const download = downloadPdf(url, path, config.cacheDir, config.cacheTtlMs).finally(() => inflight.delete(key));
+  inflight.set(key, download);
+  return download;
+}

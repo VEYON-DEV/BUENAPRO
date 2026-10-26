@@ -892,6 +892,18 @@ bloqueo de SEACE y nunca escribe `source_access_blocked` ni cuenta como 403/429:
 
 La imagen PROD6 (`infra/docker/prod6.Dockerfile`) copia también `seace/egress.py` y `seace/pacing.py`.
 
+- **Web** (`apps/web/server/services/seaceEgress.ts`): la vista previa del TDR (miniatura y visor) y
+  el refresco del detalle de la ficha usan las mismas `SEACE_EGRESS_PROXY`, `SEACE_EGRESS_REQUIRED` y
+  `SEACE_USER_AGENT`. Como comparte la IP de salida con el worker, pide poco: un turno cada
+  `WEB_SEACE_MIN_INTERVAL_SECONDS` (8), tope `WEB_SEACE_MAX_REQUESTS_PER_HOUR` (20) y espera máxima
+  `WEB_SEACE_MAX_WAIT_SECONDS` (20); un 403/429 pausa toda la salida web
+  `WEB_SEACE_BLOCK_BACKOFF_SECONDS` (10800). Cada PDF se descarga una vez y queda en
+  `SEACE_DOCUMENT_CACHE_DIR` (por defecto el tmp del contenedor) `SEACE_DOCUMENT_CACHE_HOURS` (24) horas;
+  una respuesta que no empieza con `%PDF-` nunca se guarda. Si SEACE no está disponible, el visor muestra
+  "Vista previa no disponible" con el enlace "Abrir en SEACE" (el navegador del usuario descarga directo),
+  con 503 propio en vez del 502 que Cloudflare reemplazaba. El refresco del detalle nunca espera turno:
+  si la salida está ocupada sirve lo guardado. El estado (ritmo, pausa) es por proceso de la web.
+
 ## Pausa de emergencia
 
 ```bash

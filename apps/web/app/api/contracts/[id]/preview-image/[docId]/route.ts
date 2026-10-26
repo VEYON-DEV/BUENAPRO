@@ -7,6 +7,7 @@ import { NextResponse } from "next/server";
 import { requireTenantId } from "@/server/auth/tenant";
 import { tenantCanAccessContract } from "@/server/services/crud";
 import { getDocumentSource } from "@/server/services/contracts";
+import { getSeacePdf, SeaceUnavailable } from "@/server/services/seaceEgress";
 
 export const runtime = "nodejs";
 
@@ -27,19 +28,22 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   const isPdf = document.mime === "application/pdf" || document.filename.toLowerCase().endsWith(".pdf");
   if (!isPdf) return NextResponse.json({ error: "Preview is only available for PDF documents" }, { status: 415 });
 
-  const response = await fetch(document.seace_download_url, {
-    headers: {
-      Accept: "application/pdf,*/*",
-      "User-Agent": "BuenaPro/1.0 PDF Preview",
-    },
-  });
-  if (!response.ok) return NextResponse.json({ error: "Could not fetch document" }, { status: 502 });
+  let pdf: Buffer;
+  try {
+    pdf = await getSeacePdf(document.seace_download_url);
+  } catch (error) {
+    if (!(error instanceof SeaceUnavailable)) console.error(error);
+    return NextResponse.json(
+      { error: "Preview unavailable" },
+      { status: 503, headers: { "Cache-Control": "no-store", "Retry-After": "600" } },
+    );
+  }
 
   const dir = await mkdtemp(join(tmpdir(), "buenapro-pdf-preview-"));
   try {
     const pdfPath = join(dir, "source.pdf");
     const outputBase = join(dir, "page");
-    await writeFile(pdfPath, Buffer.from(await response.arrayBuffer()));
+    await writeFile(pdfPath, pdf);
     await execFileAsync("pdftoppm", ["-f", "1", "-singlefile", "-png", "-r", "128", pdfPath, outputBase], {
       timeout: 20_000,
     });

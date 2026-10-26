@@ -701,8 +701,10 @@ export async function OpportunityDetailPage({
                 <a
                   className={styles.pdfOpen}
                   href={`/api/contracts/${contract.id_contrato}/original/${primaryDoc.id}`}
+                  rel="noopener noreferrer"
+                  target="_blank"
                 >
-                  Abrir original
+                  Abrir en SEACE
                 </a>
               ) : null}
             </div>

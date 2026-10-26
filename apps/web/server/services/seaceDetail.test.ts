@@ -20,21 +20,21 @@ function harness(detail: unknown, options: { fresh?: boolean; fails?: boolean } 
     updates.push({ sql, values });
     return { rows: [] };
   };
+  const seaceFetch = async () => {
+    requests += 1;
+    if (options.fails) return { ok: false };
+    return { ok: true, json: async () => detail };
+  };
   vm.runInNewContext(compiled, {
     exports,
     require: (id: string) => {
       if (id === "node:crypto") return crypto;
       if (id === "@/server/db/client") return { query };
       if (id === "@/lib/procurementSchedule") return { prod6QuotationWindow };
+      if (id === "@/server/services/seaceEgress") return { seaceFetch };
       throw new Error(`Unexpected service dependency: ${id}`);
     },
     process: { env: { SEACE_BASE_URL: "https://example.invalid/qa" } },
-    AbortController, setTimeout, clearTimeout,
-    fetch: async () => {
-      requests += 1;
-      if (options.fails) return { ok: false };
-      return { ok: true, json: async () => detail };
-    },
   });
   return { refresh: exports.refreshContractDetailIfStale!, updates, requests: () => requests };
 }

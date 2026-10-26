@@ -26,7 +26,7 @@
 .toolbar button,
 .modalActions button,
 .downloadLink,
-.previewFallback button {
+.previewFallback a {
   background: white;
   border: 1px solid rgb(255 255 255 / 20%);
   border-radius: var(--bp-radius-sm);
@@ -70,7 +70,7 @@
 .toolbar button:focus-visible,
 .modalActions button:focus-visible,
 .downloadLink:focus-visible,
-.previewFallback button:focus-visible {
+.previewFallback a:focus-visible {
   outline: 2px solid var(--bp-color-brand);
   outline-offset: 2px;
 }
@@ -95,9 +95,10 @@
   line-height: 18px;
 }
 
-.previewFallback button {
+.previewFallback a {
   border-color: var(--bp-color-border-strong);
   margin-top: var(--bp-space-2);
+  text-decoration: none;
 }
 
 .modal {
@@ -153,7 +154,7 @@
 .toolbar button:hover,
 .modalActions button:hover,
 .downloadLink:hover,
-.previewFallback button:hover {
+.previewFallback a:hover {
   background: var(--bp-color-subtle);
   border-color: var(--bp-color-border-strong);
 }
