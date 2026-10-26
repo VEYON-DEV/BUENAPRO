@@ -9,7 +9,8 @@ export function OpportunitySourceTabs({ source, profileId, withScore = false, co
     if (target === "prod2") params.set("source", target);
     if (profileId) params.set("profile_id", profileId);
     if (withScore) params.set("with_score", "true");
-    COMMERCIAL_FILTER_KEYS.forEach(key => { if (commercialFilters[key]) params.set(key, commercialFilters[key]); });
+    // Solo los contratos menores tienen filtro de categoría (clasificación de las bases).
+    if (target === "prod6") COMMERCIAL_FILTER_KEYS.forEach(key => { if (commercialFilters[key]) params.set(key, commercialFilters[key]); });
     return `/feed${params.size ? `?${params.toString()}` : ""}`;
   }
   return (

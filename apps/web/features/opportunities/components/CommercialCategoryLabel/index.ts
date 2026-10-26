@@ -1,1 +1,0 @@
-export { CommercialCategoryLabel } from "./CommercialCategoryLabel";

@@ -15,11 +15,6 @@ const singleResponse = {
   content: json({ $ref: "#/components/schemas/SingleResponse" }),
 };
 
-const jevSubcategories = [
-  "licencias_software", "servicios_informacion", "hardware_ti", "desarrollo_sistemas", "soporte_ti", "redes_telecom",
-  "automatizacion_industrial", "electrico_instrumentacion", "capacitacion", "otro",
-] as const;
-
 const idPathParam = { name: "id", in: "path", required: true, schema: { type: "integer" } };
 const uuidPathParam = { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } };
 
@@ -103,7 +98,7 @@ export const openApiSpec = {
       get: {
         tags: ["Contracts"],
         summary: "Explora oportunidades SEACE con puntajes del perfil activo primero",
-        description: "Orden global antes de paginar: puntaje documental guardado 0–100 descendente, incluyendo provisionales y cero; después afinidad y fechas. No convierte afinidad en puntaje. profile_id debe pertenecer al tenant y estar activo. Cada fila añade los campos jev_* del perfil seleccionado (decisión JEV más reciente) sin cambiar filtros ni orden; son null cuando no hay decisión.",
+        description: "Orden global antes de paginar: puntaje documental guardado 0–100 descendente, incluyendo provisionales y cero; después afinidad y fechas. No convierte afinidad en puntaje. profile_id debe pertenecer al tenant y estar activo.",
         parameters: [
           ...paginationParams,
           { name: "q", in: "query", schema: { type: "string" } },
@@ -122,10 +117,7 @@ export const openApiSpec = {
           { name: "closing_before", in: "query", schema: { type: "string", format: "date-time" } },
         ],
         responses: {
-          "200": {
-            description: "Contratos cargados con ID legado, metadatos canónicos de oportunidad y afinidad JEV del perfil activo",
-            content: json({ $ref: "#/components/schemas/ContractListResponse" }),
-          },
+          "200": { ...paginatedResponse, description: "Contratos cargados con ID legado y metadatos canónicos de oportunidad" },
           "400": { $ref: "#/components/responses/BadRequest" },
           "404": { description: "El perfil solicitado no está activo o no pertenece al tenant" },
           "401": { $ref: "#/components/responses/Unauthorized" },
@@ -204,7 +196,7 @@ export const openApiSpec = {
         parameters: [idPathParam],
         responses: {
           "200": {
-            description: "Contrato con facets, documentos, match, metadatos canónicos de oportunidad y afinidad JEV por empresa (jev_by_company)",
+            description: "Contrato con facets, documentos, match, metadatos canónicos de oportunidad",
             content: json({ $ref: "#/components/schemas/ContractDetailResponse" }),
           },
           "404": { $ref: "#/components/responses/NotFound" },
@@ -1587,47 +1579,6 @@ export const openApiSpec = {
           },
         },
       },
-      Prod6JevListFields: {
-        type: "object",
-        description: "Calificación preliminar de afinidad comercial (JEV) del perfil activo; no evalúa requisitos ni elegibilidad. Toma la decisión más reciente por contrato y perfil, con prioridad para decided_by = jev.",
-        properties: {
-          jev_score: { type: ["number", "null"], minimum: 0, maximum: 100, description: "Puntaje JEV 0–100; null sin decisión o mientras está pendiente" },
-          jev_decision: { type: ["string", "null"], enum: ["accepted", "rejected", "pending", null] },
-          jev_subcategory: { type: ["string", "null"], enum: [...jevSubcategories, null] },
-          jev_threshold: { type: ["number", "null"], minimum: 0, maximum: 100, description: "Umbral de aprobación aplicado" },
-          jev_decided_at: { type: ["string", "null"], format: "date-time" },
-        },
-      },
-      Prod6JevCompanyAffinity: {
-        type: "object",
-        description: "Decisión JEV más reciente de una empresa activa del tenant para el contrato.",
-        required: ["profile_id", "profile_name", "is_current_profile", "decision", "decided_by"],
-        properties: {
-          profile_id: { type: "string", format: "uuid" },
-          profile_name: { type: ["string", "null"], description: "Razón social del perfil" },
-          is_current_profile: { type: "boolean", description: "true para el perfil activo seleccionado; se lista primero" },
-          score: { type: ["number", "null"], minimum: 0, maximum: 100 },
-          threshold: { type: ["number", "null"], minimum: 0, maximum: 100 },
-          decision: { type: "string", enum: ["accepted", "rejected", "pending"] },
-          decided_by: { type: "string", enum: ["prefilter", "keywords", "jev"] },
-          subcategory: { type: ["string", "null"], enum: [...jevSubcategories, null] },
-          domain: { type: ["string", "null"], enum: ["informatica", "industrial_electrica", "otro", "ambiguo", null] },
-          information: { type: ["string", "null"], enum: ["claro", "insuficiente", null] },
-          decided_at: { type: ["string", "null"], format: "date-time" },
-        },
-      },
-      ContractListResponse: {
-        type: "object",
-        required: ["data", "meta"],
-        properties: {
-          data: {
-            type: "array",
-            items: { allOf: [{ $ref: "#/components/schemas/Prod6JevListFields" }], type: "object", additionalProperties: true },
-          },
-          meta: { $ref: "#/components/schemas/PaginatedResponse/properties/meta" },
-          profile: { type: ["object", "null"], properties: { id: { type: "string", format: "uuid" }, name: { type: "string" } } },
-        },
-      },
       ContractDetailResponse: {
         type: "object",
         properties: {
@@ -1648,11 +1599,6 @@ export const openApiSpec = {
           },
           facets: { type: "array", items: { type: "object", additionalProperties: true } },
           documents: { type: "array", items: { type: "object", additionalProperties: true } },
-          jev_by_company: {
-            type: "array",
-            description: "Una fila por empresa activa del tenant con decisión JEV para el contrato; perfil activo primero y luego mayor puntaje. [] si no hay decisiones.",
-            items: { $ref: "#/components/schemas/Prod6JevCompanyAffinity" },
-          },
         },
       },
       WorkerJobDetailResponse: {

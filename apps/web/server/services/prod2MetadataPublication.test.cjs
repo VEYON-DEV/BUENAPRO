@@ -14,7 +14,7 @@ function service(row, profiles = [{ id: profileId, razon_social: 'Empresa QA' }]
       if (text.includes('FROM prod2_discoveries')) return { rows: row ? [row] : [] };
       return { rows: [] };
     } },
-    '@/lib/prod2Analysis': { normalizeProd2Schedule: value => Array.isArray(value) ? value : [], prod2Affinity: () => null,
+    '@/lib/prod2Analysis': { normalizeProd2Schedule: value => Array.isArray(value) ? value : [],
       buildProd2Analysis: ({ extraction, facets, match }) => ({ extraction, facets, match }) },
     './prod2DocumentStorage': { prod2StorageAvailable: () => false }, './prod2OfficialDocument': {},
     './keywordTextScoring': { keywordTextFitLateralSql: () => '' }, './savedOpportunities': { savedOpportunityIds: async () => new Set() },
@@ -32,7 +32,7 @@ test('metadata-only publication preserves its actual disposition without inventi
   for (const row of [listing.data[0], detail.process]) {
     assert.equal(row.has_official_detail, false);
     assert.equal(row.publication_status, 'rejected_below_60');
-    assert.equal(row.publication_status_label, 'Descartada por JEV');
+    assert.equal(row.publication_status_label, 'Descartada en la revisión previa');
     assert.equal(row.source_presence_label, 'Datos del listado PROD2');
     assert.equal(row.detail_fetched_at, null);
     assert.equal(row.proposals_closes_at, null);
@@ -54,11 +54,18 @@ test('count, list and detail require a real detail or an explicit current-hash p
     assert.match(row.text, /prod2_discoveries p LEFT JOIN prod2_details d USING\(id_convocatoria\)/);
     assert.match(row.text, /LEFT JOIN prod2_feed_publications pf ON pf\.id_convocatoria = p\.id_convocatoria AND pf\.source_row_hash = p\.row_hash/);
     assert.match(row.text, /\(d\.id_convocatoria IS NOT NULL OR pf\.id_convocatoria IS NOT NULL\)/);
-    assert.doesNotMatch(row.text, /WHERE[^]*pf\.accepted = true/, 'closed and JEV-rejected publications remain visible');
+    assert.doesNotMatch(row.text, /WHERE[^]*pf\.accepted = true/, 'closed and previously rejected publications remain visible');
   }
-  assert.match(selections[0].text, /effective_commercial\.categories && \$4::text\[\]/);
+  // Un commercial_category de un enlace antiguo se ignora: ni predicado ni categorías por título (JEV).
+  assert.doesNotMatch(selections[0].text, /effective_commercial|prod2_title_classifications/);
   assert.deepEqual(plain(selections[1].values.slice(-2)), [5, 5]);
   assert.match(selections[2].text, /AND p\.id_convocatoria = \$2::bigint/);
+});
+
+test('obsolete commercial_* links are accepted and ignored instead of rejected', () => {
+  const { value } = service(metadataRow);
+  const params = value.parseProd2ListParams(new URLSearchParams('commercial_category=industrial&commercial_area=no_existe&commercial_status=x'));
+  assert.equal('commercial' in params, false);
 });
 
 test('only known observed publication statuses become labels; none assert current legal availability', async () => {

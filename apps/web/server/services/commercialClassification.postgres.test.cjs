@@ -1,6 +1,6 @@
 const { describe, test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { randomUUID, createHash } = require('node:crypto');
+const { randomUUID } = require('node:crypto');
 const { commercial: api, commercialSql: sql, loadCommercialModule: load } = require('./commercialClassification.test-support.cjs');
 const dsn = process.env.BUENAPRO_COMMERCIAL_TEST_DATABASE_URL;
 const plain = value => JSON.parse(JSON.stringify(value));
@@ -70,10 +70,6 @@ describe('commercial SQL against a disposable loopback PostgreSQL fixture', { sk
       CREATE TABLE seace_contracts (id_contrato bigint PRIMARY KEY);
       CREATE TABLE contract_documents (id bigint PRIMARY KEY, id_contrato bigint);
       CREATE TABLE tdr_extractions (id bigint PRIMARY KEY, contract_document_id bigint, is_current boolean, quality text, created_at timestamptz, raw_extraction_json jsonb, summary_json jsonb)`);
-    await db.query(`CREATE TABLE prod2_title_classifications (convocation_id bigint PRIMARY KEY, source_title text, source_title_sha256 text,
-      request_hash text, categories text[], decision text, policy_version text);
-      CREATE TABLE prod2_title_category_receipts (request_hash text PRIMARY KEY, status text, model text, policy_version text,
-        result_json jsonb, request_json jsonb, normalized_title text, title_sha256 text, catalog_sha256 text, prompt_sha256 text)`);
     for (const [index, rows] of fixtures.entries()) {
       const id = index + 1;
       await db.query('INSERT INTO prod2_discoveries VALUES($1,$2)', [id, `Título documental ${id}`]);
@@ -94,7 +90,6 @@ describe('commercial SQL against a disposable loopback PostgreSQL fixture', { sk
   });
 
   const sources = [
-    { name: 'PROD2', from: 'prod2_discoveries p', id: 'p.id_convocatoria', join: sql.PROD2_COMMERCIAL_JOIN },
     { name: 'menores', from: 'seace_contracts c', id: 'c.id_contrato', join: sql.PROD6_COMMERCIAL_JOIN },
   ];
   for (const source of sources) {
@@ -172,80 +167,6 @@ describe('commercial SQL against a disposable loopback PostgreSQL fixture', { sk
     }
   });
 
-  test('PROD2 title fallback validates current identity and receipts without changing documentary filters or category pagination', async () => {
-    const sha = value => createHash('sha256').update(value).digest('hex');
-    const policy = 'title_commercial_classification_v1', model = 'jev-1.13.0';
-    const ids = api.commercialCategories.categories.map(row => row.id);
-    const catalog = sha(JSON.stringify(ids));
-    const title = '  ADQUISICIÓN\u00a0DE\tTABLEROS\nELÉCTRICOS  ';
-    const normalized = title.trim().split(/\s+/).join(' ');
-    const cases = [
-      {}, { decision: 'other', categories: [] }, { decision: 'unclear', categories: [] },
-      { source_title: 'Título antiguo' }, { source_title_sha256: '0'.repeat(64) }, { policy_version: 'old' },
-      { receipt: { model: 'wrong' } }, { receipt: { status: 'running' } },
-      { result: { categories: ['ia_automatizacion'] } }, { categories: ['unknown'] }, { categories: ['industrial', 'industrial'] },
-      { categories: [null] },
-      { documentary: classification({ work_types: ['licencias_suscripciones'] }) },
-      { documentary: classification() },
-      { documentary: { ...classification(), taxonomy_version: 'old' } },
-      { request: { model: 'wrong' } }, { receipt: { catalog_sha256: '0'.repeat(64) } },
-      { receipt: { title_sha256: '0'.repeat(64) } }, { result: { decision: 'unclear' } },
-      { result: { basis: 'guess' } }, { result: { preliminary: false } }, { result: { policy_version: 'old' } },
-      { request: { state: { titulo: 'Otro título' } } }, { receipt: { status: 'uncertain' } },
-      { categories: ['industrial', 'soporte_mantenimiento'] },
-      { receipt: { normalized_title: 'Otro título', title_sha256: sha('Otro título') }, request: { state: { titulo: 'Otro título' } } },
-      { receipt: { prompt_sha256: '0'.repeat(64) } },
-      { result: { derivation: null } }, { result: { derivation: 'unknown' } }, { omitDerivation: true },
-    ];
-    const expected = cases.map((row, index) => {
-      if (index === 12) return ['document', 'classified', ['licencias_suscripciones']];
-      if (index === 13) return ['document', 'other', []];
-      if ([0, 14, 24].includes(index)) return ['title', 'classified', row.categories || ['industrial']];
-      if (index === 1 || index === 2) return ['title', row.decision, []];
-      return [null, 'unclassified', []];
-    });
-    for (const [index, patch] of cases.entries()) {
-      const id = 501 + index, requestHash = sha(String(id));
-      const categories = patch.categories || ['industrial'], decision = patch.decision || 'classified';
-      const receipt = { status: 'done', model, policy_version: policy, normalized_title: normalized,
-        title_sha256: sha(normalized), catalog_sha256: catalog,
-        prompt_sha256: '641d7969735a8359de2bd53c09224fb1bfa9f916e3884f8f42968882dfd11e35', ...patch.receipt };
-      const result = { categories, decision, policy_version: policy, derivation: 'title_category_projection_v2', basis: 'title_jev', preliminary: true, ...patch.result };
-      if (patch.omitDerivation) delete result.derivation;
-      const request = { model, state: { titulo: normalized }, ...patch.request };
-      await db.query('INSERT INTO prod2_discoveries VALUES($1,$2)', [id, title]);
-      await db.query('INSERT INTO prod2_title_classifications VALUES($1,$2,$3,$4,$5,$6,$7)',
-        [id, patch.source_title || title, patch.source_title_sha256 || sha(title), requestHash, categories, decision, patch.policy_version || policy]);
-      await db.query('INSERT INTO prod2_title_category_receipts VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
-        [requestHash, receipt.status, receipt.model, receipt.policy_version, result, request, receipt.normalized_title, receipt.title_sha256, receipt.catalog_sha256, receipt.prompt_sha256]);
-      if (patch.documentary) await db.query('INSERT INTO prod2_document_extractions VALUES($1,$2,true,\'auto\',now(),$3,$4)',
-        [id * 10, id, { commercial_classification: patch.documentary }, {}]);
-    }
-    const from = `FROM prod2_discoveries p ${sql.PROD2_COMMERCIAL_JOIN} ${sql.PROD2_TITLE_CATEGORY_JOIN}`;
-    const rows = await db.query(`SELECT p.id_convocatoria, ${sql.PROD2_COMMERCIAL_SELECT} ${from} WHERE p.id_convocatoria >= 501 ORDER BY p.id_convocatoria`);
-    for (const [index, row] of rows.rows.entries()) assert.deepEqual([
-      row.commercial_classification_source, row.commercial_classification_state, row.commercial_categories,
-    ], expected[index], `title fixture ${index}`);
-    const filter = api.parseCommercialFilters(new URLSearchParams('commercial_category=industrial'));
-    const values = [], where = [];
-    sql.appendCommercialPredicates(filter, values, where, 'prod2_effective');
-    const matchingIds = expected.flatMap((row, index) => row[2].includes('industrial') ? [501 + index] : []);
-    for (const offset of [0, 1, 2]) {
-      const result = await db.query(`SELECT p.id_convocatoria, count(*) OVER()::int AS total ${from}
-        WHERE p.id_convocatoria >= 501 AND ${where.join(' AND ')} ORDER BY p.id_convocatoria LIMIT $2 OFFSET $3`, [...values, 2, offset]);
-      assert.deepEqual(result.rows.map(row => Number(row.id_convocatoria)), matchingIds.slice(offset, offset + 2));
-      for (const row of result.rows) assert.equal(row.total, matchingIds.length);
-    }
-    const advanced = [], predicates = [];
-    sql.appendCommercialPredicates(api.parseCommercialFilters(new URLSearchParams('commercial_category=industrial&commercial_work=suministro_equipos')), advanced, predicates, 'prod2_effective');
-    assert.equal((await db.query(`SELECT p.id_convocatoria ${from} WHERE p.id_convocatoria >= 501 AND ${predicates.join(' AND ')}`, advanced)).rowCount, 0,
-      'a title category never supplies work-type evidence to advanced documentary filters');
-    await db.query('DELETE FROM prod2_document_extractions WHERE id_convocatoria >= 501');
-    await db.query('DELETE FROM prod2_title_classifications');
-    await db.query('DELETE FROM prod2_title_category_receipts');
-    await db.query('DELETE FROM prod2_discoveries WHERE id_convocatoria >= 501');
-  });
-
   test('PROD2 actual feed count includes only real detail or exact-hash opt-in publications, retaining rejected/closed rows', async () => {
     await db.query(`ALTER TABLE prod2_discoveries ADD COLUMN row_hash text;
       CREATE TABLE prod2_details (id_convocatoria bigint PRIMARY KEY);
@@ -253,7 +174,7 @@ describe('commercial SQL against a disposable loopback PostgreSQL fixture', { sk
     const statements = [];
     const service = load('prod2Opportunities.ts', {
       '@/server/db/client': { query: async (text, values) => { statements.push({ text, values }); return { rows: [] }; } },
-      '@/lib/prod2Analysis': { normalizeProd2Schedule: () => [], prod2Affinity: () => null },
+      '@/lib/prod2Analysis': { normalizeProd2Schedule: () => [] },
       './prod2DocumentStorage': {}, './prod2OfficialDocument': {}, './keywordTextScoring': { keywordTextFitLateralSql: () => '' },
       './savedOpportunities': { savedOpportunityIds: async () => new Set() },
     });

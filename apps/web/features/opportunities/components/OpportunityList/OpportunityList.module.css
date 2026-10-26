@@ -169,13 +169,6 @@
   min-width: 0;
 }
 
-/* Con afinidad JEV el indicador actual queda debajo; sin ella la celda no cambia. */
-.matchStack {
-  align-items: flex-start;
-  flex-direction: column;
-  gap: 8px;
-}
-
 .analysisReview { color: var(--bp-color-text-2); display: grid; font-size: 11px; gap: 4px; line-height: 1.4; min-width: 0; }
 .analysisReview strong { align-items: center; color: var(--bp-color-ink); display: inline-flex; font-weight: 650; gap: 5px; }
 .analysisReview svg { flex: none; }

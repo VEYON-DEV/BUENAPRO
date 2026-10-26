@@ -10,16 +10,14 @@ import { participationReading } from "@/lib/participationTerms";
 import { keywordAffinitySummary } from "@/lib/keywordAffinity";
 import { scoreTone } from "@/lib/scorePresentation";
 import type { ProcurementScheduleStage } from "@/lib/procurementSchedule";
-import type { CommercialCategoryPresentation } from "@/lib/commercialTaxonomy";
 import { verdictShortLabels } from "@/lib/extraction/opportunity";
 import { formatShortDateTime } from "@/lib/format/date";
 import { seaceDetailRequest } from "../../api/seaceDetail";
 import { SaveButton } from "../SaveButton";
-import { CommercialCategoryLabel } from "../CommercialCategoryLabel";
 import { analysisPresentation, provisionalAnalysisScore } from "../../model/analysisPresentation";
 import styles from "./Prod4OpportunityList.module.css";
 
-export type Prod4OpportunitySummary = Partial<CommercialCategoryPresentation> & {
+export type Prod4OpportunitySummary = {
   id_procedimiento: string;
   id_convocatoria?: string;
   opportunity_id: string;
@@ -45,8 +43,6 @@ export type Prod4OpportunitySummary = Partial<CommercialCategoryPresentation> & 
   documents_count: number;
   source_window_status: "current" | "exited" | "observed";
   official_schedule?: ProcurementScheduleStage[];
-  affinity?: { index: number | null; label: string };
-  commercial_affinity?: { index: number; label: string; basis: "title" } | null;
   actionability: string;
   fit_points: number | null;
   keyword_points?: number | null;
@@ -128,23 +124,11 @@ function AffinityMark({ row, source }: { row: Prod4OpportunitySummary; source: "
     );
   }
   if (source === "prod2") {
-    const commercial = row.commercial_affinity;
-    if (commercial?.basis === "title" && Number.isFinite(commercial.index) && commercial.index >= 0 && commercial.index <= 100) {
-      const label = `${commercial.index} de 100 de afinidad comercial con tu empresa, por título. No evalúa requisitos ni acredita elegibilidad.`;
-      return <span aria-label={label} className={[styles.preliminaryAffinity, styles.commercialAffinity].join(" ")} title={label}>
-        <strong>{commercial.index} / 100</strong><span>Afinidad comercial</span><small>Por título</small>
-      </span>;
-    }
     const affinity = keywordAffinitySummary(row);
     if (!affinity) return <span className={styles.noAffinity}>Sin afinidad calculada</span>;
     return <span aria-label={affinity.description} className={[styles.preliminaryAffinity, styles.keywordAffinity].join(" ")} title={affinity.description}>
       <span aria-hidden="true" className={styles.fitDots}>{[1, 2, 3].map(dot => <i className={dot <= affinity.level ? styles.fitDotOn : styles.fitDotOff} key={dot} />)}</span>
       <strong>{affinity.label}</strong>
-    </span>;
-  }
-  if (row.affinity?.index != null) {
-    return <span className={styles.preliminaryAffinity} title="Índice de afinidad comercial. No es porcentaje de cumplimiento ni probabilidad de adjudicación.">
-      <strong>{Math.round(row.affinity.index)} / 100</strong><span>{row.affinity.label}</span>
     </span>;
   }
   const level = Number(row.fit_level);
@@ -230,7 +214,7 @@ export function Prod4OpportunityList({ rows, source = "prod4", profileId }: { ro
     <section className={[styles.board, primary ? "" : styles.noPreview, source === "prod2" ? styles.withSave : ""].join(" ")}>
       <div className={styles.list}>
         <div className={styles.listHead}>
-          <span>Procedimiento / objeto</span><span>Entidad</span>{source === "prod2" ? <span>Categoría</span> : null}<span>Subcontratación</span><span>Consorcio</span><span>Próxima fecha</span><span>Análisis / afinidad</span>
+          <span>Procedimiento / objeto</span><span>Entidad</span><span>Subcontratación</span><span>Consorcio</span><span>Próxima fecha</span><span>Análisis / afinidad</span>
           {source === "prod2" ? <span className={styles.saveHeading}><span className={styles.srOnly}>Guardar</span></span> : null}
         </div>
         <div className={styles.rows}>
@@ -247,7 +231,6 @@ export function Prod4OpportunityList({ rows, source = "prod4", profileId }: { ro
                   <span>{row.buyer_name || "Entidad no informada"}</span>
                   <span className={styles.meta}>{row.region || "Perú"}</span>
                 </div>
-                {source === "prod2" ? <div className={styles.categoryCell}><CommercialCategoryLabel {...row} compact /></div> : null}
                 <div className={styles.participationCell}><ParticipationStatus label="Subcontratación" term={participationReading(row.participation_extraction).subcontratacion} /></div>
                 <div className={styles.participationCell}><ParticipationStatus label="Consorcio" kind="consorcio" term={participationReading(row.participation_extraction).consorcio} /></div>
                 <div className={styles.dateCell}>
@@ -276,16 +259,15 @@ export function Prod4OpportunityList({ rows, source = "prod4", profileId }: { ro
           <div className={styles.previewAffinityGroup}>
             <div className={styles.previewAffinity}><span>{previewAnalysis !== "none" ? "Análisis de requisitos" : "Afinidad con tu empresa"}</span><AffinityMark row={detail?.process ?? primary} source={source} /></div>
             {previewAnalysis === "review" ? <p className={styles.analysisContext}>El análisis está disponible en el detalle. El puntaje sigue por validar.</p> : null}
-            {previewAffinity && !previewRow?.commercial_affinity ? <p className={styles.keywordContext} title={previewAffinity.description}>
+            {previewAffinity ? <p className={styles.keywordContext} title={previewAffinity.description}>
               <strong>{previewAffinity.lineName}</strong><span>{previewAffinity.pointLabel} de 45 puntos por palabras clave</span>
               <span>{previewAffinity.hits.length ? `Coincidencias: ${previewAffinity.hits.join(", ")}` : "Sin coincidencias de palabras clave"}</span>
             </p> : null}
           </div>
           <Link className={styles.openOfficial} href={`${source === "prod2" ? "/oportunidad/prod2" : "/oportunidad/seace"}/${rowId(primary)}${source === "prod2" && profileId ? `?profile_id=${encodeURIComponent(profileId)}` : ""}`}>Ver detalle completo →</Link>
           {source === "prod2" ? <SaveButton code={primary.nomenclatura} idContrato={rowId(primary)} endpoint={`/api/prod2/opportunities/${rowId(primary)}/saved`} initialSaved={Boolean(primary.is_saved)} showLabel /> : null}
-          <p className={styles.eligibility}>Revisa el cronograma y la modalidad antes de participar. La afinidad comercial no confirma que puedas presentar una oferta.</p>
+          <p className={styles.eligibility}>Revisa el cronograma y la modalidad antes de participar. La afinidad con tus líneas de negocio no confirma que puedas presentar una oferta.</p>
           <dl className={styles.facts}>
-            {source === "prod2" ? <div><dt>Categoría</dt><dd><CommercialCategoryLabel {...(previewRow ?? primary)} /></dd></div> : null}
             <div><dt>Entidad</dt><dd>{primary.buyer_name || "No informada"}</dd></div>
             <div><dt>Tipo de proceso</dt><dd>{primary.procedure_type || "Por confirmar"}</dd></div>
           </dl>

@@ -1,11 +1,6 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import { FileCheck2, Search, SlidersHorizontal } from "lucide-react";
+import { FileCheck2, Search } from "lucide-react";
 import { Input } from "@/components/ui/Input";
-import { CommercialFilterFields, CommercialFilterHiddenInputs } from "../CommercialFilterFields";
 import { COMMERCIAL_FILTER_KEYS } from "@/lib/commercialTaxonomy";
-import { commercialCategoryDraftDefaults, commercialDefaultsKey, commercialSelectionCount } from "../../model/commercialFilters";
 import { scoreFilterHref } from "../../model/analysisPresentation";
 import styles from "./Prod4OpportunityToolbar.module.css";
 
@@ -18,19 +13,13 @@ function filterHref(defaults: Record<string, string>, object: string, source: "p
   return `/feed?${next.toString()}`;
 }
 
-export function Prod4OpportunityToolbar({ defaults, source = "prod4" }: { defaults: Record<string, string>; source?: "prod2" | "prod4" }) {
+export function Prod4OpportunityToolbar({ defaults: received, source = "prod4" }: { defaults: Record<string, string>; source?: "prod2" | "prod4" }) {
+  // Los enlaces antiguos con commercial_* se ignoran: este buscador ya no filtra por categoría.
+  const defaults = Object.fromEntries(Object.entries(received).filter(([key]) => !(COMMERCIAL_FILTER_KEYS as readonly string[]).includes(key)));
   const object = defaults.object ?? "";
-  const count = commercialSelectionCount(defaults);
-  const [filtersOpen, setFiltersOpen] = useState(count > 0);
-  const [filtersApplying, setFiltersApplying] = useState(false);
-  const [categoryDraft, setCategoryDraft] = useState<string | null>(null);
-  const categoryKey = commercialDefaultsKey(defaults);
-  const currentDefaults = categoryDraft === null ? defaults : commercialCategoryDraftDefaults(defaults, categoryDraft);
-  useEffect(() => { setFiltersApplying(false); setCategoryDraft(null); }, [categoryKey]);
   return (
     <section className={styles.toolbar}>
       <form action="/feed" className={styles.searchForm}>
-        {source === "prod2" ? <CommercialFilterHiddenInputs defaults={currentDefaults} /> : null}
         <input name="source" type="hidden" value={source} />
         {source === "prod2" && defaults.profile_id ? <input name="profile_id" type="hidden" value={defaults.profile_id} /> : null}
         {object ? <input name="object" type="hidden" value={object} /> : null}
@@ -45,29 +34,17 @@ export function Prod4OpportunityToolbar({ defaults, source = "prod4" }: { defaul
       <div className={styles.secondaryFilters}>
         <div aria-label="Objeto de contratación" className={styles.objectChoices} role="group">
           {[["", "Todos"], ["good", "Bienes"], ["service", "Servicios"]].map(([value, label]) => (
-            <a aria-current={object === value ? "page" : undefined} className={object === value ? styles.active : ""} href={filterHref(currentDefaults, value, source)} key={value}>
+            <a aria-current={object === value ? "page" : undefined} className={object === value ? styles.active : ""} href={filterHref(defaults, value, source)} key={value}>
               {label}
             </a>
           ))}
         </div>
         {source === "prod2" ? <a aria-current={defaults.with_score === "true" ? "page" : undefined}
           className={[styles.analysisFilter, defaults.with_score === "true" ? styles.active : ""].join(" ")}
-          href={scoreFilterHref(currentDefaults, source)}>
+          href={scoreFilterHref(defaults, source)}>
           <FileCheck2 aria-hidden="true" size={16} />Con puntaje
         </a> : null}
-        {source === "prod2" ? <button aria-controls="prod2-commercial-filters" aria-expanded={filtersOpen} className={styles.analysisFilter}
-          onClick={() => setFiltersOpen(previous => !previous)} type="button">
-          <SlidersHorizontal aria-hidden="true" size={16} />Filtros{count ? ` (${count})` : ""}
-        </button> : null}
       </div>
-      {source === "prod2" && filtersOpen ? <form action="/feed" aria-busy={filtersApplying || undefined} className={styles.filtersPanel} id="prod2-commercial-filters"
-        onSubmit={() => setFiltersApplying(true)}>
-        {Object.entries(defaults).filter(([key]) => ![...COMMERCIAL_FILTER_KEYS, "page", "open_only", "closing_before"].includes(key)).map(([key, value]) =>
-          <input key={key} name={key} type="hidden" value={value} />)}
-        {!defaults.source ? <input name="source" type="hidden" value="prod2" /> : null}
-        <CommercialFilterFields applyOnChange defaults={defaults} key={categoryKey} onCategoryChange={setCategoryDraft} />
-        <div className={styles.filterActions}><button aria-live="polite" className={styles.searchButton} type="submit">{filtersApplying ? "Aplicando…" : "Aplicar filtros"}</button></div>
-      </form> : null}
     </section>
   );
 }

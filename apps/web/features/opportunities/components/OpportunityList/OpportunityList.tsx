@@ -12,8 +12,6 @@ import { formatDeadline, formatDateTime, formatShortDateTime } from "@/lib/forma
 import { formatMoney } from "@/lib/format/money";
 import { scoreTone } from "@/lib/scorePresentation";
 import { FIT_EXACTO, FIT_RELACIONADO, cotizacionStatus, fitLabel, fitScore, fitShortLabel, opportunityFacts, plazoLabel, verdictShortLabels } from "@/lib/extraction/opportunity";
-import { jevAffinity } from "@/lib/jevAffinity";
-import { JevAffinityMark } from "../JevAffinityMark";
 import { SaveButton } from "../SaveButton";
 import { analysisPresentation, provisionalAnalysisScore } from "../../model/analysisPresentation";
 import styles from "./OpportunityList.module.css";
@@ -174,7 +172,6 @@ export function OpportunityList({ rows, profileId }: { rows: any[]; profileId?: 
     ? [primary.departamento, primary.provincia].filter(Boolean).join(", ") || "Perú"
     : "";
   const previewAnalysis = primary ? analysisPresentation({ matchId: primary.match_id, score: primary.score, verdict: primary.verdict, reviewRequired: primary.match_review_required }) : "none";
-  const previewJev = primary ? jevAffinity(primary) : null;
   const previewProvisionalScore = primary ? provisionalAnalysisScore({ matchId: primary.match_id, score: primary.score, verdict: primary.verdict, reviewRequired: primary.match_review_required }, primary.provisional_score) : null;
 
   return (
@@ -194,7 +191,6 @@ export function OpportunityList({ rows, profileId }: { rows: any[]; profileId?: 
             const urgency = deadlineUrgency(row.fec_fin_cotizacion);
             const analysis = analysisPresentation({ matchId: row.match_id, score: row.score, verdict: row.verdict, reviewRequired: row.match_review_required });
             const provisionalScore = provisionalAnalysisScore({ matchId: row.match_id, score: row.score, verdict: row.verdict, reviewRequired: row.match_review_required }, row.provisional_score);
-            const jev = jevAffinity(row);
             return (
               <article
                 className={[styles.row, row.id_contrato === primary?.id_contrato ? styles.active : ""].join(" ")}
@@ -230,8 +226,7 @@ export function OpportunityList({ rows, profileId }: { rows: any[]; profileId?: 
                     <strong className={styles[urgency]}>{formatDeadline(row.fec_fin_cotizacion)}</strong>
                     <span className={styles.meta}>{formatShortDateTime(row.fec_fin_cotizacion)}</span>
                   </div>
-                  <div className={[styles.matchCell, jev ? styles.matchStack : ""].join(" ")}>
-                    {jev ? <JevAffinityMark affinity={jev} /> : null}
+                  <div className={styles.matchCell}>
                     {analysis === "review" ? <PendingAnalysisMark provisionalScore={provisionalScore} /> : analysis === "evaluated" ? (
                       <ScoreMark verdict={row.verdict} score={row.score} />
                     ) : (
@@ -284,8 +279,6 @@ export function OpportunityList({ rows, profileId }: { rows: any[]; profileId?: 
               </>
             )}
           </div>
-
-          {previewJev ? <JevAffinityMark affinity={previewJev} variant="inspector" /> : null}
 
           <div className={styles.previewActions}>
             <Link className={styles.openLink} href={`/oportunidad/${primary.id_contrato}${profileId ? `?profile_id=${encodeURIComponent(profileId)}` : ""}`}>

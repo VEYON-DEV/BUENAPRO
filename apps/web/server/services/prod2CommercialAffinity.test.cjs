@@ -46,7 +46,7 @@ test('strict commercial JEV SQL binds current profile/tenant/version/title and n
   assert.deepEqual(none, [profile]);
 });
 
-test('list/detail retain 32/64-hex profile bindings and publish a distinct commercial zero without documentary score', async () => {
+test('list orders by the strict 32/64-hex bound JEV affinity but neither list nor detail publish it', async () => {
   for (const currentHash of [currentDinProfileHash, profileHash]) {
   const statements = [];
   const service = load('prod2Opportunities.ts', {
@@ -55,25 +55,25 @@ test('list/detail retain 32/64-hex profile bindings and publish a distinct comme
       if (text.includes('SELECT id::text, razon_social FROM company_profiles')) return { rows: [{ id: profile, razon_social: 'DIN' }] };
       if (text.includes('SELECT cp.profile_hash')) return { rows: [{ profile_hash: currentHash, commercial_description: 'Industrial', active_business_lines: ['Tableros'] }] };
       if (text.includes('count(*)::int AS total FROM prod2_discoveries')) return { rows: [{ total: 1 }] };
-      if (text.includes('FROM prod2_discoveries')) return { rows: [{ id_convocatoria: '123', opportunity_id: 'op', commercial_affinity_index: 0, commercial_jev_result: { private_receipt: true }, match_id: null, match_score: null }] };
+      if (text.includes('FROM prod2_discoveries')) return { rows: [{ id_convocatoria: '123', opportunity_id: 'op', match_id: null, match_score: null }] };
       return { rows: [] };
     } },
-    '@/lib/prod2Analysis': { normalizeProd2Schedule: () => [], prod2Affinity: () => null, buildProd2Analysis: () => ({ match: null }) },
+    '@/lib/prod2Analysis': { normalizeProd2Schedule: () => [], buildProd2Analysis: () => ({ match: null }) },
     './prod2DocumentStorage': { prod2StorageAvailable: () => false }, './prod2OfficialDocument': {},
     './keywordTextScoring': { keywordTextFitLateralSql: () => '' }, './savedOpportunities': { savedOpportunityIds: async () => new Set() },
   });
   const result = await service.listProd2OpportunitiesForTenant(tenant, { object: null, q: '', page: 1, pageSize: 5, profileId: profile, withScore: true });
   const detail = await service.getProd2OpportunityForTenant(tenant, '123', profile);
   for (const row of [result.data[0], detail.process]) {
-    assert.deepEqual(plain(row.commercial_affinity), { index: 0, label: 'Afinidad comercial', basis: 'title' });
+    for (const key of ['commercial_affinity', 'affinity', 'commercial_jev_result', 'commercial_affinity_index']) assert.equal(key in row, false, key);
     assert.equal(row.match_score, null); assert.equal(row.provisional_score, null);
-    assert.equal(row.commercial_jev_result, undefined);
   }
   const selections = statements.filter(row => row.text.includes('FROM prod2_discoveries'));
   for (const row of selections.slice(0, 2)) assert.match(row.text, /matched\.id IS NOT NULL AND matched\.score BETWEEN 0 AND 100/);
   assert.doesNotMatch(selections[0].text, /commercial_jev/);
   assert.ok(selections[1].values.includes(currentHash), 'Strict page query must retain the current profile identity');
-  assert.ok(selections[2].values.includes(currentHash), 'Strict detail query must retain the current profile identity');
+  assert.doesNotMatch(selections[1].text, /commercial_jev\.result_json|AS commercial_affinity_index/, 'the affinity only orders; it is never selected');
+  assert.doesNotMatch(selections[2].text, /commercial_jev/, 'the detail does not read the internal affinity');
   assert.match(selections[1].text, /matched\.score ELSE NULL END DESC NULLS LAST, commercial_jev\.affinity_index DESC NULLS LAST/);
   assert.deepEqual(plain(selections[1].values.slice(-2)), [5, 0]);
   }

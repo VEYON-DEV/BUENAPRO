@@ -33,7 +33,6 @@ const { CommercialFilterFields } = load(path.join(webRoot, 'features/opportuniti
 const { OpportunityToolbar } = load(path.join(webRoot, 'features/opportunities/components/OpportunityToolbar'));
 const { Prod4OpportunityToolbar } = load(path.join(webRoot, 'features/opportunities/components/Prod4OpportunityToolbar'));
 const { OpportunitySourceTabs } = load(path.join(webRoot, 'features/opportunities/components/OpportunitySourceTabs'));
-const { CommercialCategoryLabel } = load(path.join(webRoot, 'features/opportunities/components/CommercialCategoryLabel'));
 const { Prod4OpportunityList } = load(path.join(webRoot, 'features/opportunities/components/Prod4OpportunityList'));
 const selected = { source: 'prod2', profile_id: 'profile-1', q: 'tableros', page: '3', with_score: 'true',
   commercial_area: 'inteligencia_artificial,industrial_electrica', commercial_work: 'licencias_suscripciones',
@@ -66,61 +65,44 @@ test('one category selector exposes exactly the six approved choices and preserv
   assert.equal(model.commercialCategorySelection({}), '');
 });
 
-test('a pending category replaces legacy criteria without losing other toolbar defaults', () => {
-  const next = model.commercialCategoryDraftDefaults(selected, 'industrial');
-  assert.equal(next.commercial_category, 'industrial');
-  for (const key of ['commercial_area', 'commercial_work', 'commercial_specialty', 'commercial_status']) assert.equal(next[key], undefined);
-  for (const key of ['source', 'profile_id', 'q', 'with_score']) assert.equal(next[key], selected[key]);
-  const cleared = model.commercialCategoryDraftDefaults(next, '');
-  assert.equal(cleared.commercial_category, undefined);
-  assert.equal(cleared.profile_id, selected.profile_id);
-  assert.equal(selected.commercial_work, 'licencias_suscripciones', 'Applied defaults remain immutable');
-});
-
-test('previous advanced bookmarks retain their exact hidden filters without expanding a complex UI', () => {
-  const html = render(Prod4OpportunityToolbar, { source: 'prod2', defaults: selected });
+test('previous advanced bookmarks retain their exact hidden filters in the minor-contract toolbar', () => {
+  const html = render(OpportunityToolbar, { defaults: { ...selected, source: 'prod6' } });
   assert.ok(html.includes('Selección anterior'));
   assert.match(html, /name="commercial_area"[^>]*value="inteligencia_artificial,industrial_electrica"/);
-  assert.match(html, /aria-controls="prod2-commercial-filters" aria-expanded="true"/);
   assert.doesNotMatch(html, /type="checkbox"|Tipo de trabajo|Estado de clasificación/);
-  assert.equal((html.match(/<form\b/g) || []).length, 2);
-  const search = html.slice(html.indexOf('<form'), html.indexOf('</form>'));
-  for (const name of ['commercial_area', 'commercial_work', 'commercial_specialty', 'commercial_status']) assert.ok(search.includes(`name="${name}"`), name);
-  const filterForm = html.slice(html.lastIndexOf('<form'));
-  assert.doesNotMatch(filterForm, /name="page"/);
   assert.equal(model.commercialCategorySelection(selected), 'previous');
   assert.equal(model.commercialCategorySelection({ commercial_category: 'industrial,licencias_suscripciones' }), 'previous');
 });
 
-test('simple category survives both source forms and navigation; clear removes it while retaining profile', () => {
-  const simple = { source: 'prod2', profile_id: 'profile-1', q: 'tableros', with_score: 'true', page: '3', commercial_category: 'industrial' };
-  for (const [Component, props] of [[Prod4OpportunityToolbar, { source: 'prod2', defaults: simple }], [OpportunityToolbar, { defaults: { ...simple, source: 'prod6' } }]]) {
-    const html = render(Component, props);
-    const search = html.slice(html.indexOf('<form'), html.indexOf('</form>'));
-    assert.match(search, /name="commercial_category"[^>]*value="industrial"/);
-    for (const url of hrefs(html).filter(url => url.searchParams.has('commercial_category'))) {
-      assert.equal(url.searchParams.get('commercial_category'), 'industrial');
-      assert.equal(url.searchParams.get('profile_id'), 'profile-1');
-      assert.equal(url.searchParams.has('page'), false);
-    }
+test('the category survives the minor-contract search form; clearing removes it while retaining profile', () => {
+  const simple = { source: 'prod6', profile_id: 'profile-1', q: 'tableros', with_score: 'true', page: '3', commercial_category: 'industrial' };
+  const html = render(OpportunityToolbar, { defaults: simple });
+  const search = html.slice(html.indexOf('<form'), html.indexOf('</form>'));
+  assert.match(search, /name="commercial_category"[^>]*value="industrial"/);
+  for (const url of hrefs(html).filter(url => url.searchParams.has('commercial_category'))) {
+    assert.equal(url.searchParams.get('commercial_category'), 'industrial');
+    assert.equal(url.searchParams.get('profile_id'), 'profile-1');
+    assert.equal(url.searchParams.has('page'), false);
   }
-  const urls = hrefs(render(OpportunitySourceTabs, { source: 'prod2', profileId: 'profile-1', commercialFilters: simple }));
-  for (const url of urls) assert.equal(url.searchParams.get('commercial_category'), 'industrial');
   const cleared = new URL(model.clearCommercialFiltersHref(simple), 'http://qa.invalid');
   assert.equal(cleared.searchParams.has('commercial_category'), false);
   assert.equal(cleared.searchParams.get('profile_id'), 'profile-1');
   assert.equal(cleared.searchParams.get('q'), 'tableros');
 });
 
-test('SEACE object and score links preserve all commercial criteria while resetting page', () => {
+test('the SEACE search has no category control and drops obsolete commercial_* parameters from forms and links', () => {
   const html = render(Prod4OpportunityToolbar, { source: 'prod2', defaults: selected });
-  const links = hrefs(html).filter(url => url.searchParams.has('object') || url.searchParams.get('with_score') !== 'true');
-  assert.ok(links.length >= 2);
-  for (const url of links.filter(url => url.searchParams.has('commercial_area'))) {
-    assert.equal(url.searchParams.get('commercial_area'), selected.commercial_area);
-    assert.equal(url.searchParams.get('commercial_work'), selected.commercial_work);
+  assert.doesNotMatch(html, /commercial_|Categoría|Filtros|prod2-commercial-filters|Selección anterior|<select/);
+  assert.equal((html.match(/<form\b/g) || []).length, 1);
+  const links = hrefs(html);
+  assert.ok(links.length >= 4);
+  for (const url of links) {
+    for (const name of ['commercial_area', 'commercial_work', 'commercial_specialty', 'commercial_status', 'commercial_category']) assert.equal(url.searchParams.has(name), false, name);
     assert.equal(url.searchParams.has('page'), false);
+    assert.equal(url.searchParams.get('profile_id'), 'profile-1');
   }
+  const search = html.slice(html.indexOf('<form'), html.indexOf('</form>'));
+  assert.match(search, /name="profile_id"[^>]*value="profile-1"/); assert.match(search, /name="with_score"/);
 });
 
 test('minor contracts retain the commercial filter through search, quick views and type links', () => {
@@ -136,53 +118,40 @@ test('minor contracts retain the commercial filter through search, quick views a
   assert.ok(goods); assert.equal(goods.searchParams.get('commercial_specialty'), 'chatbot');
 });
 
-test('switching sources keeps the same commercial filters and profile without carrying pagination', () => {
+test('switching to minor contracts keeps the category filters and profile; the SEACE tab carries none', () => {
   const html = render(OpportunitySourceTabs, { source: 'prod2', profileId: 'profile-1', withScore: true, commercialFilters: selected });
   const urls = hrefs(html); assert.equal(urls.length, 2);
   for (const url of urls) {
-    assert.equal(url.searchParams.get('commercial_area'), selected.commercial_area);
-    assert.equal(url.searchParams.get('commercial_status'), 'needs_review');
     assert.equal(url.searchParams.get('profile_id'), 'profile-1');
     assert.equal(url.searchParams.get('with_score'), 'true');
     assert.equal(url.searchParams.has('page'), false);
   }
   assert.equal(urls[0].searchParams.get('source'), 'prod2');
+  for (const name of ['commercial_area', 'commercial_status']) assert.equal(urls[0].searchParams.has(name), false, name);
   assert.equal(urls[1].searchParams.has('source'), false);
+  assert.equal(urls[1].searchParams.get('commercial_area'), selected.commercial_area);
+  assert.equal(urls[1].searchParams.get('commercial_status'), 'needs_review');
 });
 
-test('default filters stay collapsed; the retired PROD4 toolbar receives no new commercial control', () => {
-  const html = render(Prod4OpportunityToolbar, { source: 'prod2', defaults: {} });
-  assert.match(html, /aria-expanded="false"/); assert.doesNotMatch(html, /<h3>Clasificación comercial/);
+test('the retired PROD4 toolbar receives no commercial control', () => {
   const old = render(Prod4OpportunityToolbar, { source: 'prod4', defaults: {} });
   assert.doesNotMatch(old, /prod2-commercial-filters|commercial_area|Filtros/);
 });
 
-test('title category is a compact neutral label with accessible complete labels and preliminary origin', () => {
-  const html = render(CommercialCategoryLabel, { commercial_categories: ['licencias_suscripciones', 'soporte_mantenimiento'],
-    commercial_classification_source: 'title', commercial_classification_state: 'classified', compact: true });
-  assert.match(html, />Licencias y suscripciones</); assert.match(html, />\+1</); assert.match(html, />Por título</);
-  assert.match(html, /aria-label="Licencias y suscripciones; Soporte y mantenimiento\. Por título: clasificación preliminar/);
-  const expanded = render(CommercialCategoryLabel, { commercial_categories: ['industrial', 'ia_automatizacion'], commercial_classification_source: 'document', commercial_classification_state: 'classified' });
-  assert.match(expanded, />Industrial</); assert.match(expanded, />IA y automatización</); assert.doesNotMatch(expanded, /Por título/);
-  for (const [state, label] of [['unclassified', 'Por clasificar'], ['other', 'Otros'], ['unclear', 'Por confirmar']]) {
-    assert.ok(render(CommercialCategoryLabel, { commercial_classification_state: state }).includes(label));
-  }
-});
-
-test('only PROD2 receives a category column; PROD4 retains its existing list contract', () => {
+test('no PROD2 or PROD4 list shows categories, title (JEV) classification or its origin', () => {
   const row = { id_convocatoria: '123', id_procedimiento: '456', nomenclatura: 'LP-2026', title: 'Licencias completas', object_type: 'good',
     commercial_categories: ['licencias_suscripciones'], commercial_classification_source: 'title', commercial_classification_state: 'classified' };
-  const current = render(Prod4OpportunityList, { rows: [row], source: 'prod2', profileId: 'DIN' });
-  assert.match(current, />Categoría</); assert.match(current, />Licencias y suscripciones</); assert.match(current, />Por título</);
-  const retired = render(Prod4OpportunityList, { rows: [row], source: 'prod4' });
-  assert.doesNotMatch(retired, />Categoría<|>Por título<|>Licencias y suscripciones</);
+  for (const source of ['prod2', 'prod4']) {
+    const html = render(Prod4OpportunityList, { rows: [row], source, profileId: 'DIN' });
+    assert.doesNotMatch(html, />Categoría<|>Por título<|>Licencias y suscripciones<|JEV/);
+  }
 });
 
 test('explicit listing-only publication stays visibly unread without claiming a consulted schedule or zero official documents', () => {
   const row = { id_convocatoria: '123', id_procedimiento: '456', nomenclatura: 'LP-2026', title: 'Tableros eléctricos', object_type: 'good',
-    has_official_detail: false, documents_count: 0, publication_status: 'rejected_below_60', publication_status_label: 'Descartada por JEV' };
+    has_official_detail: false, documents_count: 0, publication_status: 'rejected_below_60', publication_status_label: 'Descartada en la revisión previa' };
   const html = render(Prod4OpportunityList, { rows: [row], source: 'prod2' });
   assert.match(html, /Solo datos del listado/); assert.match(html, /Ficha por consultar/);
-  assert.match(html, /Descartada por JEV/); assert.match(html, /Por leer/);
+  assert.match(html, /Descartada en la revisión previa/); assert.match(html, /Por leer/); assert.doesNotMatch(html, /JEV/);
   assert.doesNotMatch(html, /Cronograma consultado|0 documentos/);
 });

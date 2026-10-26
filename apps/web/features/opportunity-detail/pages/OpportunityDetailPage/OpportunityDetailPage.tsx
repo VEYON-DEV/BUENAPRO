@@ -21,7 +21,6 @@ import { refreshContractDetailIfStale } from "@/server/services/seaceDetail";
 import { MatchEvents } from "@/features/tracking";
 import { AnalyzeButton } from "../../components/AnalyzeButton";
 import { AdministrativeChecklist } from "../../components/AdministrativeChecklist";
-import { CompanyAffinity } from "../../components/CompanyAffinity";
 import { DecisionOverview } from "../../components/DecisionOverview";
 import { DetailSectionNavigator } from "../../components/DetailSectionNavigator";
 import { PdfPreview } from "../../components/PdfPreview/PdfPreview";
@@ -244,7 +243,7 @@ export async function OpportunityDetailPage({
 
   const history = await getHistoricalComparables(tenantId, idContrato);
 
-  const { contract, facets, documents, jev_by_company: jevByCompany } = data as any;
+  const { contract, facets, documents } = data as any;
   const facts = opportunityFacts(contract);
   const extraction: AnyRecord = contract.raw_extraction_json ?? {};
   const rawDetail: AnyRecord = contract.raw_detail_json ?? {};
@@ -383,8 +382,6 @@ export async function OpportunityDetailPage({
           </>
         }
       />
-
-      <CompanyAffinity rows={jevByCompany} />
 
       {!contract.verdict ? (
         <div className={styles.analyzeBar}>

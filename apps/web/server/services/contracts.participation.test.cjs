@@ -20,7 +20,6 @@ function serviceWithCurrentReading({ matchId = null, score = null, matchReviewRe
     require(name) {
       if (name === '@/lib/commercialTaxonomy') return commercial;
       if (name === './commercialClassification') return commercialSql;
-      if (name === './prod6JevAffinity') return loadCommercialModule('prod6JevAffinity.ts');
       if (name === '@/server/db/client') return { query: async (sql, values) => {
         statements.push({ sql, values });
         if (sql.includes('SELECT id::text, razon_social FROM company_profiles')) return { rows: profileRows };

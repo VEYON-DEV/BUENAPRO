@@ -74,13 +74,13 @@ test('published listing metadata never claims a ficha, documents, deadline or ev
   assert.doesNotMatch(html, /Abrir bases en PDF|<strong>0<\/strong>/);
 });
 
-test('DIN commercial title affinity is distinct from a pending documentary evaluation in the detail', () => {
+test('internal JEV affinity never reaches the client detail, even if a stale payload carries it', () => {
   const detail = fixture(null, []);
   detail.analysis.extraction = null;
-  detail.process.commercial_affinity = { index: 0, label: 'Afinidad comercial', basis: 'title' };
+  detail.process.commercial_affinity = { index: 88, label: 'Afinidad comercial', basis: 'title' };
+  detail.process.affinity = { index: 77, label: 'Afinidad comercial' };
   const html = render(detail);
-  assert.match(html, /0 \/ 100 · Afinidad comercial por título/);
-  assert.match(html, /Comparación del título con el perfil comercial actual de tu empresa/);
+  assert.doesNotMatch(html, /JEV|Afinidad comercial|88 \/ 100|77 \/ 100|por título/i);
   assert.match(html, /Evaluación documental pendiente/);
   assert.doesNotMatch(html, /Puntaje provisional|<strong>0<\/strong>/);
 });

@@ -18,15 +18,6 @@ export type CommercialClassification = {
   support_status: CommercialStatus;
   evidence: CommercialEvidence[];
 };
-export type CommercialClassificationSource = "document" | "title" | null;
-export type CommercialClassificationState = "classified" | "other" | "unclear" | "unclassified";
-export type CommercialCategoryPresentation = {
-  commercial_categories: string[];
-  commercial_classification_source: CommercialClassificationSource;
-  commercial_classification_state: CommercialClassificationState;
-};
-export const PROD2_TITLE_CATEGORY_POLICY = "title_commercial_classification_v1";
-export const PROD2_TITLE_CATEGORY_MODEL = "jev-1.13.0";
 
 export class CommercialFilterError extends Error {
   readonly status = 400;
@@ -119,24 +110,4 @@ export function deriveCommercialCategories(classification: unknown): string[] {
   return commercialCategories.categories.filter(category => category.match_any.areas.some(id => areas.has(id))
     || category.match_any.work_types.some(id => current.work_types.includes(id))
     || category.match_any.specialties.some(id => current.specialties.includes(id))).map(category => category.id);
-}
-
-/** Title labels are preliminary navigation metadata, never documentary evidence. */
-export function prod2CommercialCategoryPresentation(classification: unknown, retained: {
-  commercial_categories?: unknown; commercial_classification_source?: unknown; commercial_classification_state?: unknown;
-}): CommercialCategoryPresentation {
-  const document = normalizeCommercialClassification(classification);
-  if (document.support_status !== "unclassified") {
-    const categories = deriveCommercialCategories(document);
-    return { commercial_categories: categories, commercial_classification_source: "document",
-      commercial_classification_state: categories.length ? "classified" : "other" };
-  }
-  const categories = retained.commercial_categories;
-  const state = retained.commercial_classification_state;
-  if (retained.commercial_classification_source === "title" && validAxis(categories, categoryIds)
-    && ((state === "classified" && categories.length > 0) || ((state === "other" || state === "unclear") && categories.length === 0))) {
-    return { commercial_categories: commercialCategories.categories.filter(category => categories.includes(category.id)).map(category => category.id),
-      commercial_classification_source: "title", commercial_classification_state: state };
-  }
-  return { commercial_categories: [], commercial_classification_source: null, commercial_classification_state: "unclassified" };
 }

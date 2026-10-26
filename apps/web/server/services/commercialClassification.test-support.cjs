@@ -17,7 +17,6 @@ function load(file, mocks = {}) {
     if (name === '@/lib/commercialTaxonomy') return load('../../lib/commercialTaxonomy.ts');
     if (name === './commercialClassification') return load('commercialClassification.ts');
     if (name === './prod2CommercialAffinity') return load('prod2CommercialAffinity.ts');
-    if (name === './prod6JevAffinity') return load('prod6JevAffinity.ts');
     if (name === 'node:crypto') return require(name);
     throw new Error(`Unexpected offline test module: ${name}`);
   } });

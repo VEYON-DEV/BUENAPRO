@@ -53,13 +53,6 @@ test('same numeric extraction ID from a different source or revision never expos
   assert.equal(analysis.buildProd2Analysis(failed).match, null);
 });
 
-test('affinity index and confidence remain independent', () => {
-  const affinity = analysis.prod2Affinity({ affinity_index: 65, affinity_confidence: 0.92, domain: 'informatica', information: 'insuficiente', needs_detail: true });
-  assert.equal(affinity.index, 65); assert.equal(affinity.confidence, 0.92); assert.equal(affinity.needsDetail, true);
-  assert.equal(analysis.prod2Affinity({ affinity_index: 105, affinity_confidence: 92 }).index, null);
-  assert.equal(analysis.prod2Affinity({ affinity_confidence: 0.9 }).index, null);
-});
-
 test('profile selection verifies tenant ownership before reading evaluations', async () => {
   const statements = [];
   const service = load('prod2Opportunities.ts', { '@/server/db/client': { query: async (sql, values) => { statements.push({ sql, values }); return { rows: [] }; } },
@@ -109,7 +102,7 @@ function scoreProjectionService({ storedScore = 95, scoreValidated, sourceReview
     ...(scoreValidated === undefined ? {} : { score_validated: scoreValidated, raw_model_score: storedScore }) };
   const breakdown = { meta, resumen: 'Verificar respaldo compatible.', requisitos: [{ requisito: 'Experiencia compatible', estado: 'requiere_revision' }],
     administrative_checklist: [{ tipo: 'rnp', requisito: 'RNP Vigente', estado: 'preparar', score_impact: false }] };
-  const row = { id_convocatoria: '123', schedule_json: [], jev_result: null, documents_count: 0, match_id: matchId, match_profile_id: profileId,
+  const row = { id_convocatoria: '123', schedule_json: [], documents_count: 0, match_id: matchId, match_profile_id: profileId,
     match_review_required: scoreValidated === false || sourceReviewRequired,
     provisional_score: suppliedProvisionalScore === undefined ? (scoreValidated === false || sourceReviewRequired ? storedScore : null) : suppliedProvisionalScore,
     match_score: publishedScore, match_verdict: publishedVerdict, breakdown_json: breakdown, missing_actions_json: [{ accion: 'Validar experiencia.' }],
@@ -278,9 +271,9 @@ test('legacy PROD2 scores and explicitly validated zero keep their score, verdic
   }
 });
 
-test('list and detail use current profile keyword fit while preserving historical Jev and documentary provenance', async () => {
+test('list and detail use current profile keyword fit and never expose JEV affinity, while preserving documentary provenance', async () => {
   const statements = [];
-  const row = { id_convocatoria: '123', schedule_json: [], jev_result: { affinity_index: 98 },
+  const row = { id_convocatoria: '123', schedule_json: [],
     keyword_points: 35, fit_points: 35, fit_level: 3, business_line_name: 'Software e integración',
     keyword_hits: [{ keyword: 'software', match: 'strong_term', points: 10 }], documents_count: 0 };
   const service = load('prod2Opportunities.ts', { '@/server/db/client': { query: async (sql, values) => {
@@ -296,7 +289,8 @@ test('list and detail use current profile keyword fit while preserving historica
     assert.equal(result.keyword_points, 35); assert.equal(result.fit_score, null);
     assert.equal(result.business_line_name, 'Software e integración');
     assert.equal(result.keyword_hits, row.keyword_hits); assert.equal(result.fit_basis, 'profile_keywords');
-    assert.equal(result.affinity.index, 98);
+    // JEV es interno: ni el índice histórico ni el comercial ni las categorías por título salen en la respuesta.
+    for (const key of ['affinity', 'commercial_affinity', 'jev_result', 'commercial_jev_result', 'commercial_affinity_index', 'commercial_classification', 'commercial_categories']) assert.equal(key in result, false, key);
   }
   for (const query of statements.filter(s => s.sql.includes('FROM prod2_discoveries') && !s.sql.includes('count(*)::int AS total FROM prod2_discoveries'))) {
     assert.match(query.sql, /WHERE cp\.id = \$1::uuid AND cp\.is_active/);
@@ -306,13 +300,16 @@ test('list and detail use current profile keyword fit while preserving historica
     assert.equal(query.values[0], profileId);
   }
   assert.doesNotMatch(statements.map(s => s.sql).join('\n'), /worker_jobs|\b(?:INSERT|UPDATE|DELETE)\b/);
+  for (const { sql } of statements.filter(s => s.sql.includes('FROM prod2_discoveries'))) {
+    assert.doesNotMatch(sql, /jev_result|commercial_jev_result|AS commercial_affinity_index|commercial_classification|prod2_title_classifications|effective_commercial/);
+  }
 });
 
 test('participation in PROD2 list and detail comes only from the current convocatoria reading', async () => {
   const statements = [];
   const reading = { id: '72', quality: 'partial', requires_human_review: true, page_scope: 'combined',
     participation: { subcontratacion: { status: 'prohibited', clause: 'No se podrá subcontratar.', page: 12, conditions: [] } } };
-  const row = { id_convocatoria: '123', schedule_json: [], jev_result: null, documents_count: 0, participation_extraction: reading };
+  const row = { id_convocatoria: '123', schedule_json: [], documents_count: 0, participation_extraction: reading };
   const service = load('prod2Opportunities.ts', { '@/server/db/client': { query: async (sql) => {
     statements.push(sql);
     return { rows: sql.includes('count(*)::int AS total') ? [{ total: 1 }] : sql.includes('FROM prod2_discoveries') ? [row] : [] };
@@ -366,7 +363,7 @@ test('converted ZIP preview keeps original hash distinct and verifies convocator
 function documentDetailService(events, publicationsCount = events?.length ?? 1, options = {}) {
   const statements = [];
   const officialUrl = `https://alfprod.seace.gob.pe/alfresco/service/osce/downloadDoc?id=${documentCode}`;
-  const row = { id_convocatoria: '123', schedule_json: [], jev_result: null, documents_count: 1,
+  const row = { id_convocatoria: '123', schedule_json: [], documents_count: 1,
     document_inventory_total: publicationsCount, document_inventory_complete: true,
     document_publication_events: events, document_publication_events_count: publicationsCount };
   const document = { codigo_alfresco: documentCode, name: 'bases.pdf', document_type: 'Bases Administrativas',

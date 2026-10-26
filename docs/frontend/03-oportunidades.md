@@ -163,24 +163,23 @@ sin ficha ni publicación no aparece. `has_official_detail=false` muestra **Solo
 datos del listado**, **Ficha por consultar** y la ausencia de documentos/cronograma
 registrados, sin crear fechas ni puntajes. `publication_status` y
 `publication_status_label` conservan el resultado de la última revisión: descartada
-por JEV, cerrada al revisar, apertura por confirmar, lectura por revisar, documento
+en la revisión previa (antes «Descartada por JEV»; el motivo técnico no se muestra), cerrada al revisar, apertura por confirmar, lectura por revisar, documento
 por seleccionar o lectura previa conservada. Son observaciones del lote, no una
 declaración de vigencia actual. Las filas cerradas o descartadas no se ocultan por
 ese estado y mantienen los filtros, la identidad, el perfil y la paginación.
 
 El motor comparte las reglas léxicas de menores: raíces españolas, frase en orden 15 puntos, término explícito 10, identidad general de empresa hasta 10; términos limitados a 30 y total a 45. Las palabras cubiertas por una frase no se cuentan otra vez. Se elige una sola línea activa, sin sumar señales de líneas diferentes. El inspector y detalle explican la línea y coincidencias. Cambiar keywords actualiza la siguiente lectura, sin jobs ni modelos.
 
-El orden global se aplica en PostgreSQL antes de paginar: primero el puntaje documental guardado válido de 0 a 100, de mayor a menor, incluyendo provisionales y cero. Después se conservan las palabras clave y fecha/identidad como desempate estable. Las filas sin puntaje siguen disponibles después; la afinidad comercial no se usa como puntaje ni acredita requisitos. El Jev histórico se conserva en la API, pero no dirige los puntos visibles.
+El orden global se aplica en PostgreSQL antes de paginar: primero el puntaje documental guardado válido de 0 a 100, de mayor a menor, incluyendo provisionales y cero. Después se conservan las palabras clave y fecha/identidad como desempate estable. Las filas sin puntaje siguen disponibles después; la afinidad comercial no se usa como puntaje ni acredita requisitos. El JEV histórico se conserva en la base de datos, pero ni se muestra ni dirige los puntos visibles.
 
-Desde el 20/10/2026, las evaluaciones JEV individuales del perfil DIN con política
-`din_title_commercial_affinity_v1` pueden aportar `commercial_affinity` como señal
-separada: **0–100 · Afinidad comercial · Por título**. Se valida el perfil activo
-actual, tenant, hash comercial, versión, recibo conocido, convocatoria y hash del
-título/fila antes de presentarla. Los resultados históricos conjuntos no se
-reutilizan como afinidad individual de DIN. El orden pasa a puntaje documental
-válido, afinidad comercial JEV individual y palabras clave; todos antes de paginar.
-El número JEV no crea análisis documental, nota de cumplimiento, match ni
-elegibilidad. **Con puntaje** y `analysis=done` mantienen sus condiciones de LLM2.
+JEV es interno (25/10/2026): la afinidad comercial JEV de título (`commercial_affinity`,
+evaluaciones `din_title_commercial_affinity_v1`) y el índice JEV histórico (`affinity`) dejaron
+de mostrarse al cliente y de salir en `GET /api/prod2/opportunities` y en el detalle. Las
+evaluaciones se conservan en PostgreSQL y la afinidad comercial individual validada del perfil
+activo sigue usándose, sin exponerla, solo como desempate interno del orden global:
+puntaje documental válido, afinidad interna y palabras clave; todos antes de paginar.
+El indicador visible de filas sin análisis es la afinidad por palabras clave. **Con puntaje**
+y `analysis=done` mantienen sus condiciones de LLM2. Ver «JEV es interno» más abajo.
 
 Desde el 15/10/2026, la cápsula existente se llama **Con puntaje** (`with_score=true`) y selecciona únicamente números documentales válidos de 0 a 100, antes del conteo y paginación. Conserva búsqueda, tipo, perfil y plazo; los menores vencidos requieren «Cualquier cierre». Ambos listados resuelven un único perfil activo del tenant y rechazan perfiles ajenos o inactivos. Las pestañas, búsqueda, paginación, inspector y detalle conservan ese perfil. En menores también se limita afinidad y selección del match al mismo perfil. No se considera «Por leer» como analizado ni se inventa una nota desde afinidad.
 
@@ -191,60 +190,49 @@ Por solicitud explícita del usuario del 13/10/2026, ambos listados e inspectore
 La vista rápida consulta `GET /api/prod2/opportunities/:id?profile_id=...`. Incluye cronograma con precisión original, documentos y acceso al detalle. No usa CUBSO o regiones inferidos de palabras ni encola análisis manuales. El enlace oficial abre el buscador estable de PROD2: SEACE requiere una sesión para abrir una ficha, por lo que no se promete un permalink del procedimiento.
 
 
-### Categoría: filtro simple (20/10/2026)
+### Categoría: filtro simple (20/10/2026; Buscador SEACE retirado el 25/10/2026)
 
-En Buscador SEACE, la columna **Categoría** y la vista rápida muestran las categorías
-efectivas del procedimiento. La clasificación documental válida más reciente tiene
-prioridad; únicamente cuando falta se usan etiquetas preliminares calculadas desde
-el título completo. Estas últimas llevan **Por título** y no acreditan requisitos,
-vigencia ni capacidad de la empresa. La fila muestra una etiqueta compacta y `+N`
-cuando existen más; el nombre accesible y la vista rápida conservan todas.
-`Otros`, `Por confirmar` y `Por clasificar` distinguen fuera de catálogo,
-ambigüedad y ausencia de clasificación. El filtro de las seis categorías usa esa
-misma selección antes del conteo y la paginación. Los filtros documentales avanzados
-siguen requiriendo evidencia documental y no aceptan etiquetas de título como respaldo.
-La API PROD2 añade `commercial_classification_source` (`document`, `title` o null)
-y `commercial_classification_state` (`classified`, `other`, `unclear`, `unclassified`)
-junto a `commercial_categories`; conserva la clasificación documental original
-normalizada en `commercial_classification`. Títulos cambiados o recibos incompletos,
-inciertos o de otra política/modelo/catálogo/prompt no habilitan el respaldo por título.
+**Solo Contratos menores** conserva el selector **Categoría** (Filtros → Categoría y el
+botón Aplicar filtros). Opciones: Todas, Licencias y suscripciones, Desarrollo de software,
+IA y automatización, Industrial, Cloud e infraestructura, Soporte y mantenimiento. Las seis
+categorías se derivan con reglas del catálogo JSON compartido por web y Python sobre la
+clasificación LLM1 válida de las bases (no es JEV). La API filtra en PostgreSQL antes de
+count/paginación; no clasifica una página en React ni llama un modelo adicional. Una
+oportunidad puede pertenecer a varias categorías. Todas conserva también casos históricos
+sin etiquetas; no se inventa su clasificación desde el título. No cambia puntaje, afinidad,
+modalidad jurídica ni guardadas. Contrato: [Clasificación comercial](../opportunity-classification.md).
 
-Ambas fuentes comparten **Filtros → Categoría**: un único selector y el botón
-Aplicar filtros. Opciones: Todas, Licencias y suscripciones, Desarrollo de software,
-IA y automatización, Industrial, Cloud e infraestructura, Soporte y mantenimiento.
-Se conservan los controles existentes de vigencia, puntaje y guardadas; la
-clasificación comercial detallada deja de aparecer en el flujo normal.
+El selector envía `commercial_category`. Búsqueda, tipo, vistas rápidas y paginación
+conservan categoría y perfil. Quitar categoría limpia solo los criterios comerciales. Un
+enlace antiguo con ejes detallados muestra Selección anterior y conserva sus valores;
+elegir una categoría o Todas los reemplaza.
 
-En Buscador SEACE, elegir una categoría la aplica de inmediato y anuncia
-**Aplicando…** mientras navega. La selección se serializa después de actualizar
-el control y retirar criterios comerciales anteriores; conserva perfil,
-búsqueda y tipo, y reinicia la página. Así no queda un borrador seleccionado
-frente a una lista con otra categoría. Buscar y los enlaces de tipo/puntaje
-comparten también la categoría pendiente: una nueva búsqueda durante la carga
-conserva esa selección y el texto recién escrito. Contratos menores conserva el envío
-manual con **Aplicar filtros** para combinar sus distintos controles.
+**Buscador SEACE ya no tiene categoría.** La columna **Categoría**, la etiqueta **Por
+título**, el botón **Filtros** y el selector se retiraron porque casi todas las categorías de
+PROD2 provenían de la clasificación JEV del título (interna). `GET /api/prod2/opportunities`
+ya no devuelve `commercial_classification`, `commercial_categories`,
+`commercial_classification_source` ni `commercial_classification_state`, y no filtra por
+`commercial_*`. Un enlace antiguo con esos parámetros se acepta y se ignora (sin error 400);
+la barra de búsqueda, los enlaces de tipo/puntaje y la paginación los descartan. La pestaña
+«Buscador SEACE» tampoco los hereda desde Contratos menores. Los datos
+(`prod2_title_classifications` y recibos) siguen en PostgreSQL.
 
-El selector envía `commercial_category`. Búsqueda, tipo, vistas rápidas, cambio de
-fuente y paginación conservan categoría y perfil. Quitar categoría limpia solo los
-criterios comerciales. Un enlace antiguo con ejes detallados muestra Selección
-anterior y conserva sus valores; elegir una categoría o Todas los reemplaza.
+### JEV es interno (25/10/2026)
 
-Las seis categorías se derivan con reglas del catálogo JSON compartido por web y
-Python sobre la clasificación LLM1 válida. La API filtra en PostgreSQL antes de
-count/paginación; no clasifica una página en React ni llama un modelo adicional.
-Una oportunidad puede pertenecer a varias categorías. Todas conserva también
-casos históricos sin etiquetas; no se inventa su clasificación desde el título.
-No cambia puntaje, afinidad, modalidad jurídica ni guardadas. Publicación y
-activación de lectores se verifican aparte. Contrato: [Clasificación comercial](../opportunity-classification.md).
+Decisión del dueño del producto: todo lo clasificado o filtrado por JEV (clasificador LLM de
+TypeSafe) es técnico y **no se muestra al cliente**. Se conservan los datos y el filtrado
+en el backend; desaparece de la web:
 
-### Afinidad JEV en Contratos menores (25/10/2026)
-
-La lista de `/feed` (Contratos menores) muestra la calificación preliminar de afinidad comercial JEV del **perfil activo** junto al indicador existente de la columna «Análisis / afinidad». Lee `prod6_profile_decisions` en solo lectura; no llama a SEACE, a JEV ni a Gemini, y no cambia filtros ni orden (JEV no reordena la lista en este MVP).
-
-- `GET /api/contracts` añade por fila `jev_score` (0–100), `jev_decision` (`accepted|rejected|pending`), `jev_subcategory`, `jev_threshold` y `jev_decided_at`; todos `null` sin decisión.
-- Un par contrato × perfil puede tener varias filas (la clave incluye hashes y versión de política). Se usa la más reciente, con prioridad para `decided_by = 'jev'` y luego `updated_at`/`id` descendentes. La tabla vacía no produce error.
-- La fila muestra «**78 / 100** · Afinidad JEV» sobre el indicador actual (puntaje documental, provisional o afinidad por palabras clave), que no cambia. La subcategoría legible, el umbral y la aclaración «no evalúa requisitos ni elegibilidad» viven en la vista rápida. El tooltip de la fila contiene el texto completo.
-- Sin puntaje JEV válido (sin decisión, pendiente o decidida por prefiltro) la fila conserva exactamente el comportamiento anterior.
-- El violeta identifica afinidad (información); no se aplica la regla rojo/amarillo/verde de puntajes documentales, que sigue reservada a esos puntajes.
-- Etiquetas en español en `apps/web/lib/jevAffinity.ts`; componente `features/opportunities/components/JevAffinityMark/`.
-- La vista por omisión conserva `has_extraction=true` y `estado=2`; un contrato aprobado por JEV sin extracción aparece al pasar `has_extraction=` vacío.
+- **Contratos menores** (`/feed`, `/oportunidad/[id]`): se retiran el marcador «Afinidad JEV N / 100» de la
+  fila y el inspector (`JevAffinityMark`) y la sección «Afinidad por empresa» (`CompanyAffinity`)
+  junto con `lib/jevAffinity.ts`. `GET /api/contracts` ya no devuelve `jev_*` y
+  `GET /api/contracts/:id` ya no devuelve `jev_by_company`. Se eliminó la lectura de
+  `prod6_profile_decisions` en la web (`prod6JevAffinity.ts`); la columna de análisis vuelve a mostrar
+  solo puntaje documental, provisional o afinidad por palabras clave.
+- **Buscador SEACE**: se retiran «Afinidad comercial · Por título» (fila, vista rápida y detalle), el
+  índice JEV histórico y la categoría por título (ver arriba). El texto de estado «Descartada por JEV» pasó a
+  «Descartada en la revisión previa».
+- **Se mantiene** (no es JEV): afinidad por palabras clave («Afinidad alta/media/baja», «General»,
+  «Relacionado»), segmentos CUBSO, puntaje y veredicto LLM2, brechas, subcontratación/consorcio y la
+  categoría documental de Contratos menores.
+- La vista por omisión de Contratos menores conserva `has_extraction=true` y `estado=2`.

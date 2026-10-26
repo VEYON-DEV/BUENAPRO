@@ -25,7 +25,7 @@ function service(file, rows = [], profileRows = [{ id: profileId, razon_social: 
     return { rows: [] };
   };
   const value = load(file, {
-    '@/server/db/client': { query }, '@/lib/prod2Analysis': { normalizeProd2Schedule: () => [], prod2Affinity: () => null, buildProd2Analysis: () => ({}) },
+    '@/server/db/client': { query }, '@/lib/prod2Analysis': { normalizeProd2Schedule: () => [], buildProd2Analysis: () => ({}) },
     './prod2DocumentStorage': { prod2StorageAvailable: () => false }, './prod2OfficialDocument': {}, './keywordTextScoring': { keywordTextFitLateralSql: () => '' },
     './savedOpportunities': { savedOpportunityIds: async () => new Set() },
     '@/server/services/crud': { pagination: params => {
@@ -167,7 +167,7 @@ test('only explicit unverified commercial citation audit downgrades retained raw
   for (const audit of [undefined, {}, { errors: [] }, { errors: [{ kind: 'unverified_facet_citation' }] }, { errors: 'malformed' }]) {
     assert.equal(api.commercialClassificationFromExtraction({ commercial_classification: original, retrieval_evidence_audit: audit, requires_human_review: true }, {}).support_status, 'evidence_backed');
   }
-  assert.match(sql.PROD2_COMMERCIAL_JOIN, /unverified_commercial_citation/);
+  assert.match(sql.PROD6_COMMERCIAL_JOIN, /unverified_commercial_citation/);
   assert.match(sql.PROD6_COMMERCIAL_JOIN, /jsonb_build_object\('support_status', 'needs_review'\)/);
 });
 
@@ -196,11 +196,10 @@ test('category SQL reads only validated tags, binds category IDs, and keeps the 
   assert.match(where[0], /secondary_areas.*\?\| category\.areas/);
   assert.match(where[1], /work_types.*\?\| \$3::text\[\]/);
   assert.match(where[2], /support_status.*ANY\(\$4::text\[\]\)/);
-  assert.equal(sql.hasCommercialFilters({ ...api.parseCommercialFilters(new URLSearchParams()), categories: ['industrial'] }), true);
 });
 
 test('current extraction is selected before tags, excludes failed/noncurrent and never falls back to older tagged rows', () => {
-  for (const join of [sql.PROD2_COMMERCIAL_JOIN, sql.PROD6_COMMERCIAL_JOIN]) {
+  for (const join of [sql.PROD6_COMMERCIAL_JOIN]) {
     const source = join.slice(0, join.indexOf('cc_source ON true'));
     assert.match(source, /is_current = true AND \w+\.quality <> 'failed'/);
     assert.match(source, /ORDER BY \w+\.created_at DESC, \w+\.id DESC LIMIT 1/);
@@ -215,51 +214,24 @@ test('current extraction is selected before tags, excludes failed/noncurrent and
   }
 });
 
-test('PROD2 commercial predicates apply identically before count/page and retain tenant-owned profile/provenance', async () => {
-  const { value, statements } = service('prod2Opportunities.ts', [{ id_convocatoria: '123', opportunity_id: '1', commercial_classification: classified(), match_id: '9', match_score: 0 }]);
+test('PROD2 ignores commercial and category parameters: no category SQL, no title (JEV) categories, no 400', async () => {
+  const { value, statements } = service('prod2Opportunities.ts', [{ id_convocatoria: '123', opportunity_id: '1', match_id: '9', match_score: 0 }]);
   const params = value.parseProd2ListParams(new URLSearchParams({ profile_id: profileId, q: 'software', page: '3', page_size: '5', analysis: 'done',
-    commercial_area: 'software_ti,inteligencia_artificial', commercial_work: 'desarrollo_software', commercial_specialty: 'chatbot', commercial_status: 'evidence_backed' }));
-  const result = await value.listProd2OpportunitiesForTenant('tenant-qa', params);
-  assert.equal(result.total, 17); assert.equal(result.data[0].match_score, 0);
-  assert.equal(result.data[0].commercial_classification.primary_area, 'inteligencia_artificial');
-  assert.deepEqual(plain(statements[0].values), ['tenant-qa', profileId]);
-  const selections = statements.filter(item => item.text.includes('FROM prod2_discoveries'));
-  assert.equal(selections.length, 2);
-  for (const selection of selections) {
-    assert.match(selection.text, /m\.profile_id = \$1::uuid/);
-    assert.match(selection.text, /provenance\.id_convocatoria = p\.id_convocatoria/);
-    assert.match(selection.text, /COALESCE\(commercial\.classification->>'primary_area', 'sin_clasificar'\) = ANY\(\$3::text\[\]\)/);
-    assert.match(selection.text, /work_types.*\?\| \$4::text\[\]/);
-    assert.match(selection.text, /specialties.*\?\| \$5::text\[\]/);
-    assert.match(selection.text, /'unclassified'\) = ANY\(\$6::text\[\]\)/);
-  }
-  assert.deepEqual(plain(selections[0].values), [profileId, '%software%', ['software_ti', 'inteligencia_artificial'], ['desarrollo_software'], ['chatbot'], ['evidence_backed']]);
-  assert.deepEqual(plain(selections[1].values.slice(-2)), [5, 10]);
-  assert.ok(selections[1].text.lastIndexOf('ANY($6::text[])') < selections[1].text.lastIndexOf('LIMIT $7 OFFSET $8'));
-});
-
-test('PROD2 commercial selection cannot borrow a profile belonging to another tenant', async () => {
-  const { value, statements } = service('prod2Opportunities.ts', [], []);
-  const params = value.parseProd2ListParams(new URLSearchParams({ profile_id: profileId, commercial_status: 'unclassified' }));
-  await assert.rejects(value.listProd2OpportunitiesForTenant('foreign-tenant', params), error => error.status === 404);
-  assert.equal(statements.length, 1);
-  assert.match(statements[0].text, /tenant_id = \$1/);
-});
-
-test('category filtering reaches PROD2 count/page before pagination and list/detail expose the same derived IDs', async () => {
-  const { value, statements } = service('prod2Opportunities.ts', [{ id_convocatoria: '123', opportunity_id: '1', commercial_classification: classified(), match_score: 0 }]);
-  const params = value.parseProd2ListParams(new URLSearchParams({ profile_id: profileId, commercial_category: 'ia_automatizacion,industrial', commercial_status: 'needs_review', page: '2', page_size: '5' }));
+    commercial_category: 'ia_automatizacion,industrial', commercial_area: 'software_ti', commercial_work: 'desarrollo_software', commercial_status: 'bad-value' }));
   const result = await value.listProd2OpportunitiesForTenant('tenant-qa', params);
   const detail = await value.getProd2OpportunityForTenant('tenant-qa', '123', profileId);
-  assert.deepEqual(plain(result.data[0].commercial_categories), ['desarrollo_software', 'ia_automatizacion']);
-  assert.deepEqual(plain(detail.process.commercial_categories), plain(result.data[0].commercial_categories));
-  const selections = statements.filter(row => row.text.includes('FROM prod2_discoveries'));
-  for (const row of selections.slice(0, 2)) {
-    assert.match(row.text, /effective_commercial\.categories && \$2::text\[\]/);
-    assert.match(row.text, /'unclassified'\) = ANY\(\$3::text\[\]\)/);
+  assert.equal(result.total, 17); assert.equal(result.data[0].match_score, 0);
+  for (const row of [result.data[0], detail.process]) {
+    for (const key of ['commercial_classification', 'commercial_categories', 'commercial_classification_source', 'commercial_classification_state']) assert.equal(key in row, false, key);
   }
-  assert.deepEqual(plain(selections[0].values), [profileId, ['ia_automatizacion', 'industrial'], ['needs_review']]);
-  assert.deepEqual(plain(selections[1].values.slice(-2)), [5, 5]);
+  const selections = statements.filter(item => item.text.includes('FROM prod2_discoveries'));
+  assert.equal(selections.length, 3);
+  for (const selection of selections) {
+    assert.match(selection.text, /m\.profile_id = \$1::uuid/);
+    assert.doesNotMatch(selection.text, /commercial\.classification|effective_commercial|prod2_title_|title_category|commercial_classification/);
+  }
+  assert.deepEqual(plain(selections[0].values), [profileId, '%software%']);
+  assert.deepEqual(plain(selections[1].values.slice(-2)), [5, 10]);
 });
 
 test('minor list and detail expose the same normalized classification independently of stored score', async () => {
@@ -284,11 +256,6 @@ test('minor list and detail expose the same normalized classification independen
 
 test('missing current tags in either source stay unclassified without suppressing historic stored scores', async () => {
   for (const raw of [undefined, null, { ...classified(), support_status: 'future_status' }]) {
-    const p2 = service('prod2Opportunities.ts', [{ id_convocatoria: '123', opportunity_id: '1', commercial_classification: raw, match_score: 84 }]);
-    const p2Result = await p2.value.listProd2OpportunitiesForTenant('tenant-qa', { object: null, q: '', page: 1, pageSize: 10, profileId: null });
-    assert.equal(p2Result.data[0].commercial_classification.support_status, 'unclassified');
-    assert.deepEqual(plain(p2Result.data[0].commercial_categories), []);
-    assert.equal(p2Result.data[0].match_score, 84);
     const minor = service('contracts.ts', [{ id_contrato: 123, commercial_classification: raw, score: 84 }]);
     const minorResult = await minor.value.listContractsForTenant('tenant-qa', new URLSearchParams());
     assert.equal(minorResult.data[0].commercial_classification.support_status, 'unclassified');
@@ -298,9 +265,6 @@ test('missing current tags in either source stay unclassified without suppressin
 });
 
 test('invalid commercial API filters reject before querying profiles or opportunities', async () => {
-  const p2 = service('prod2Opportunities.ts');
-  assert.throws(() => p2.value.parseProd2ListParams(new URLSearchParams('commercial_status=approved')), error => error.status === 400);
-  assert.equal(p2.statements.length, 0);
   for (const file of ['contracts.ts', 'feed.ts']) {
     const tested = service(file);
     await assert.rejects(file === 'contracts.ts' ? tested.value.listContractsForTenant('tenant-qa', new URLSearchParams('commercial_specialty=LLM'))

@@ -112,7 +112,4 @@
   }
 }
 
-.filtersPanel { border-top: 1px solid var(--bp-color-border); flex-basis: 100%; min-width: 0; padding-block-start: 14px; width: 100%; }
-.filterActions { display: flex; justify-content: flex-end; margin-block-start: 16px; }
-.analysisFilter { background: rgb(255 255 255 / .7); cursor: pointer; font-family: inherit; }
-@media (max-width: 600px) { .filterActions .searchButton { width: 100%; } }
+.analysisFilter { background: rgb(255 255 255 / .7); }

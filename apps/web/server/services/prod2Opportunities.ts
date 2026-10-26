@@ -1,19 +1,17 @@
 import { query } from "@/server/db/client";
-import { buildProd2Analysis, normalizeProd2Schedule, prod2Affinity, type Prod2Extraction } from "@/lib/prod2Analysis";
+import { buildProd2Analysis, normalizeProd2Schedule, type Prod2Extraction } from "@/lib/prod2Analysis";
 import type { Prod4DocumentMatch, Prod4RequirementFacet } from "@/lib/prod4Analysis";
 import { prod2StorageAvailable, signedProd2DocumentUrl, validProd2PreviewKey } from "./prod2DocumentStorage";
 import { prod2OfficialDocumentReference, resolveProd2OfficialDocument } from "./prod2OfficialDocument";
 import { keywordTextFitLateralSql } from "./keywordTextScoring";
 import { savedOpportunityIds } from "./savedOpportunities";
-import { CommercialFilterError, normalizeCommercialClassification, parseCommercialFilters, prod2CommercialCategoryPresentation, type CommercialFilters } from "@/lib/commercialTaxonomy";
-import { appendCommercialPredicates, PROD2_COMMERCIAL_SELECT, hasCommercialFilters, PROD2_COMMERCIAL_JOIN, PROD2_TITLE_CATEGORY_JOIN } from "./commercialClassification";
 import { prod2CommercialAffinityJoin, prod2CommercialContext } from "./prod2CommercialAffinity";
 
 export class Prod2RequestError extends Error {
   constructor(message: string, public status = 400) { super(message); }
 }
 
-export type Prod2ListParams = { object: "good" | "service" | null; q: string; page: number; pageSize: number; profileId: string | null; analysis?: "done" | null; withScore?: boolean; commercial?: CommercialFilters };
+export type Prod2ListParams = { object: "good" | "service" | null; q: string; page: number; pageSize: number; profileId: string | null; analysis?: "done" | null; withScore?: boolean };
 type Prod2Row = Record<string, any> & {
   id_convocatoria: string; id_procedimiento: string; opportunity_id: string; source_key: "seace_prod2";
   nomenclatura: string; title: string; description: string; object_type: "good" | "service";
@@ -23,11 +21,9 @@ type Prod2Row = Record<string, any> & {
   procedure_type: string | null; schedule_json: unknown; item_states: string[];
   document_inventory_total: number | null; document_inventory_complete: boolean; documents_count: number;
   document_publication_events: unknown; document_publication_events_count: number;
-  jev_result: unknown; match_id: string | null; match_review_required: boolean; provisional_score: number | null; match_score: number | null; match_verdict: string | null;
+  match_id: string | null; match_review_required: boolean; provisional_score: number | null; match_score: number | null; match_verdict: string | null;
   participation_extraction: unknown;
-  commercial_categories?: unknown; commercial_classification_source?: unknown; commercial_classification_state?: unknown;
   has_official_detail?: boolean; publication_status?: string | null;
-  commercial_jev_result?: unknown; commercial_affinity_index?: number | null;
 };
 type Prod2DocumentRow = {
   codigo_alfresco: string; name: string; document_type: string; stage_name: string; published_at: string | null;
@@ -54,10 +50,8 @@ export function parseProd2ListParams(params: URLSearchParams): Prod2ListParams {
   if (analysis && analysis !== "done") throw new Prod2RequestError("analysis must be done");
   const withScore = params.get("with_score");
   if (withScore && withScore !== "true" && withScore !== "false") throw new Prod2RequestError("with_score must be true or false");
-  let commercial: CommercialFilters;
-  try { commercial = parseCommercialFilters(params); }
-  catch (error) { if (error instanceof CommercialFilterError) throw new Prod2RequestError(error.message); throw error; }
-  return { object: object as Prod2ListParams["object"], q, page, pageSize, profileId, analysis: analysis ? "done" : null, withScore: withScore === "true", commercial };
+  // Los parámetros commercial_* de enlaces antiguos se ignoran: el buscador ya no filtra por categoría.
+  return { object: object as Prod2ListParams["object"], q, page, pageSize, profileId, analysis: analysis ? "done" : null, withScore: withScore === "true" };
 }
 
 async function resolveProfile(tenantId: string, profileId: string | null) {
@@ -108,7 +102,7 @@ const PUBLISHED_FROM = `prod2_discoveries p LEFT JOIN prod2_details d USING(id_c
   LEFT JOIN prod2_feed_publications pf ON pf.id_convocatoria = p.id_convocatoria AND pf.source_row_hash = p.row_hash`;
 const PUBLISHED_VISIBILITY = "(d.id_convocatoria IS NOT NULL OR pf.id_convocatoria IS NOT NULL)";
 const publicationLabels: Record<string, string> = {
-  closed_without_reading: "Cerrada al revisar", rejected_below_60: "Descartada por JEV",
+  closed_without_reading: "Cerrada al revisar", rejected_below_60: "Descartada en la revisión previa",
   opening_not_confirmed: "Apertura por confirmar", needs_review: "Lectura por revisar",
   selection_needs_review: "Documento por seleccionar", llm1_complete: "Lectura previa conservada",
 };
@@ -131,12 +125,6 @@ const MATCH_JOIN = `LEFT JOIN LATERAL (
     AND m.breakdown_json->'meta'->>'profile_hash' = provenance.profile_hash
   ORDER BY m.updated_at DESC LIMIT 1
 ) matched ON true`;
-const JEV_JOIN = `LEFT JOIN LATERAL (
-  SELECT result_json FROM prod2_evaluations
-  WHERE id_convocatoria = p.id_convocatoria AND kind = 'jev_affinity' AND status = 'done'
-    AND (profile_id = $1::uuid OR profile_id IS NULL)
-  ORDER BY (profile_id IS NOT NULL) DESC, completed_at DESC, id DESC LIMIT 1
-) jev ON true`;
 
 // Keep the durable match and its evidence visible while its model score is
 // under review. Missing metadata preserves already published legacy scores.
@@ -161,10 +149,8 @@ function provisionalScore(row: Prod2Row) {
 }
 
 function processRow(row: Prod2Row) {
-  const { schedule_json, jev_result, commercial_jev_result: _commercialJev, commercial_affinity_index: _commercialIndex,
-    document_publication_events: _publicationEvents, ...process } = row;
-  const classification = normalizeCommercialClassification(row.commercial_classification);
-  return { ...process, commercial_classification: classification, ...prod2CommercialCategoryPresentation(classification, row),
+  const { schedule_json, document_publication_events: _publicationEvents, ...process } = row;
+  return { ...process,
     has_official_detail: row.has_official_detail !== false,
     publication_status: row.publication_status && row.publication_status in publicationLabels ? row.publication_status : null,
     publication_status_label: row.publication_status ? publicationLabels[row.publication_status] ?? null : null,
@@ -173,10 +159,7 @@ function processRow(row: Prod2Row) {
     fit_score: null, fit_level: row.fit_level ?? null, business_line_name: row.business_line_name ?? null,
     keyword_hits: row.keyword_hits ?? [], fit_basis: "profile_keywords" as const,
     source_window_status: "observed" as const, source_presence_label: row.has_official_detail === false ? "Datos del listado PROD2" : "Consultada en PROD2",
-    commercial_affinity: typeof row.commercial_affinity_index === "number" && Number.isFinite(row.commercial_affinity_index)
-      && row.commercial_affinity_index >= 0 && row.commercial_affinity_index <= 100
-      ? { index: row.commercial_affinity_index, label: "Afinidad comercial", basis: "title" as const } : null,
-    affinity: prod2Affinity(jev_result), official_schedule: normalizeProd2Schedule(schedule_json) };
+    official_schedule: normalizeProd2Schedule(schedule_json) };
 }
 
 function publicationHistory(events: unknown, document: Prod2DocumentRow): Prod2PublicationEvent[] {
@@ -206,19 +189,17 @@ export async function listProd2OpportunitiesForTenant(tenantId: string, params: 
   // and the chosen tenant-owned profile establish availability, never score > 0.
   if (params.analysis === "done") where.push("matched.id IS NOT NULL");
   if (params.withScore) where.push(`${AVAILABLE_MATCH_SCORE} IS NOT NULL`);
-  appendCommercialPredicates(params.commercial, values, where, "prod2_effective");
   const predicate = where.join(" AND ");
   const count = await query<{ total: number }>(`SELECT count(*)::int AS total FROM ${PUBLISHED_FROM}
     ${params.analysis === "done" || params.withScore ? MATCH_JOIN : ""}
-    ${hasCommercialFilters(params.commercial) ? `${PROD2_COMMERCIAL_JOIN} ${PROD2_TITLE_CATEGORY_JOIN}` : ""}
     WHERE ($1::uuid IS NULL OR $1::uuid IS NOT NULL) AND ${predicate}`, values);
   const pageValues = [...values];
+  // Orden interno: la afinidad JEV de título solo desempata; la web ya no la muestra.
   const commercialAffinityJoin = prod2CommercialAffinityJoin(pageValues, commercialContext, tenantId);
-  const rows = await query<Prod2Row>(`SELECT ${BASE}, ${KEYWORD_FIT_SELECT}, ${PROD2_COMMERCIAL_SELECT}, jev.result_json AS jev_result,
-    commercial_jev.result_json AS commercial_jev_result, commercial_jev.affinity_index AS commercial_affinity_index,
+  const rows = await query<Prod2Row>(`SELECT ${BASE}, ${KEYWORD_FIT_SELECT},
     ${MATCH_STATUS_SELECT}, ${PUBLISHED_MATCH_SCORE} AS match_score, ${PUBLISHED_MATCH_VERDICT} AS match_verdict
     FROM ${PUBLISHED_FROM}
-    ${MATCH_JOIN} ${JEV_JOIN} ${commercialAffinityJoin} ${KEYWORD_FIT_JOIN} ${PROD2_COMMERCIAL_JOIN} ${PROD2_TITLE_CATEGORY_JOIN}
+    ${MATCH_JOIN} ${commercialAffinityJoin} ${KEYWORD_FIT_JOIN}
     WHERE ${predicate}
     ORDER BY ${AVAILABLE_MATCH_SCORE} DESC NULLS LAST, commercial_jev.affinity_index DESC NULLS LAST, fit.keyword_points DESC NULLS LAST,
       ${PUBLISHED_MATCH_SCORE} DESC NULLS LAST,
@@ -232,17 +213,14 @@ export async function listProd2OpportunitiesForTenant(tenantId: string, params: 
 export async function getProd2OpportunityForTenant(tenantId: string, id: string, profileId: string | null = null) {
   if (profileId && !uuidPattern.test(profileId)) throw new Prod2RequestError("profile_id must be a UUID");
   const profile = await resolveProfile(tenantId, profileId);
-  const commercialContext = await currentCommercialContext(tenantId, profile?.id ?? null);
   const values: unknown[] = [profile?.id ?? null, id];
-  const commercialAffinityJoin = prod2CommercialAffinityJoin(values, commercialContext, tenantId);
-  const result = await query<Prod2Row>(`SELECT ${BASE}, ${KEYWORD_FIT_SELECT}, ${PROD2_COMMERCIAL_SELECT}, jev.result_json AS jev_result,
-    commercial_jev.result_json AS commercial_jev_result, commercial_jev.affinity_index AS commercial_affinity_index,
+  const result = await query<Prod2Row>(`SELECT ${BASE}, ${KEYWORD_FIT_SELECT},
     ${MATCH_STATUS_SELECT}, matched.profile_id::text AS match_profile_id,
     ${PUBLISHED_MATCH_SCORE} AS match_score, ${PUBLISHED_MATCH_VERDICT} AS match_verdict,
     matched.breakdown_json, matched.missing_actions_json,
     matched.matched_at::text, matched.updated_at::text AS match_updated_at, matched.evaluated_profile_hash
     FROM ${PUBLISHED_FROM}
-    ${MATCH_JOIN} ${JEV_JOIN} ${commercialAffinityJoin} ${KEYWORD_FIT_JOIN} ${PROD2_COMMERCIAL_JOIN} ${PROD2_TITLE_CATEGORY_JOIN}
+    ${MATCH_JOIN} ${KEYWORD_FIT_JOIN}
     WHERE ${PUBLISHED_VISIBILITY} AND p.id_convocatoria = $2::bigint`, values);
   const row = result.rows[0];
   if (!row) return null;

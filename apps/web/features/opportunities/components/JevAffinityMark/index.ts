@@ -1,1 +1,0 @@
-export { JevAffinityMark } from "./JevAffinityMark";

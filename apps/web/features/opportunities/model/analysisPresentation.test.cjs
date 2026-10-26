@@ -39,15 +39,12 @@ function loadSource(filename) {
       cotizacionStatus: () => ({ key: "abierta", label: "Cotización abierta" }),
       opportunityFacts: row => ({ descripcionCorta: row?.descripcion, roles: [] }), plazoLabel: () => "Por definir",
     };
-    if (specifier === "@/lib/jevAffinity") return loadSource(path.resolve(feature, "../../lib/jevAffinity.ts"));
-    if (specifier === "../JevAffinityMark") return loadSource(path.join(feature, "components/JevAffinityMark/JevAffinityMark.tsx"));
     if (specifier === "../SaveButton") return { SaveButton: () => null };
     if (specifier === "../../api/seaceDetail") return { seaceDetailRequest: () => { throw new Error("SSR must not fetch"); } };
     if (specifier === "../../model/analysisPresentation") return loadSource(path.join(__dirname, "analysisPresentation.ts"));
     if (specifier === "@/lib/commercialTaxonomy") return loadSource(path.resolve(feature, "../../lib/commercialTaxonomy.ts"));
     if (specifier === "../../model/commercialFilters") return loadSource(path.join(__dirname, "commercialFilters.ts"));
     if (specifier === "../CommercialFilterFields") return loadSource(path.join(feature, "components/CommercialFilterFields/CommercialFilterFields.tsx"));
-    if (specifier === "../CommercialCategoryLabel") return loadSource(path.join(feature, "components/CommercialCategoryLabel/CommercialCategoryLabel.tsx"));
     return normalRequire(specifier);
   };
   loaded.set(filename, local);
@@ -169,16 +166,18 @@ test("legacy PROD2 zero displays its ring instead of a retained-score label", ()
   assert.doesNotMatch(html, /Puntaje por validar/);
 });
 
-test("commercial DIN JEV is a title-affinity number and cannot masquerade as a documentary score", () => {
-  for (const index of [0, 75, 100]) {
-    const html = render(Prod4OpportunityList, { rows: [procedure({ match_id: null, match_score: null, commercial_affinity: { index, label: "Afinidad comercial", basis: "title" } })], source: "prod2" });
-    assert.match(html, new RegExp(`${index} / 100`));
-    assert.match(html, /Afinidad comercial/); assert.match(html, /Por título/);
-    assert.doesNotMatch(html, /Analizado|Puntaje provisional|Evaluación de requisitos|scoreRing/);
-  }
-  const evaluated = render(Prod4OpportunityList, { rows: [procedure({ match_score: 42, match_verdict: "ambar", commercial_affinity: { index: 100, label: "Afinidad comercial", basis: "title" } })], source: "prod2" });
+test("internal JEV affinity and title categories never render in PROD2, even if a stale payload carries them", () => {
+  const jev = { commercial_affinity: { index: 75, label: "Afinidad comercial", basis: "title" }, affinity: { index: 66, label: "Afinidad comercial" },
+    commercial_categories: ["industrial"], commercial_classification_source: "title", commercial_classification_state: "classified" };
+  const pending = render(Prod4OpportunityList, { rows: [procedure({ match_id: null, match_score: null, ...jev })], source: "prod2" });
+  assert.doesNotMatch(pending, /JEV|75 \/ 100|66 \/ 100|Afinidad comercial|Por título|Categoría|Industrial/i);
+  assert.match(pending, /Afinidad alta/, "the keyword fit stays as the preliminary indicator");
+  const evaluated = render(Prod4OpportunityList, { rows: [procedure({ match_score: 42, match_verdict: "ambar", ...jev })], source: "prod2" });
   assert.match(evaluated, /Evaluación de requisitos: 42 de 100/);
-  assert.doesNotMatch(evaluated, />100 \/ 100</);
+  assert.doesNotMatch(evaluated, /JEV|>75 \/ 100<|Categoría/);
+  const noFit = render(Prod4OpportunityList, { rows: [procedure({ match_id: null, match_score: null, fit_points: null, ...jev })], source: "prod2" });
+  assert.match(noFit, /Sin afinidad calculada/);
+  assert.doesNotMatch(noFit, /75 \/ 100|66 \/ 100/);
 });
 
 test("minor row and inspector show the existing analysis instead of a prompt to rerun IA", () => {
@@ -320,21 +319,12 @@ test("minor inspector ignores a previous profile detail immediately and keeps th
   assert.match(html, /Puntaje provisional: 72 de 100/);
 });
 
-test("minor rows add the JEV affinity next to the current indicator and leave rows without a decision untouched", () => {
+test("minor rows never render JEV affinity, even if a stale payload carries jev_* fields", () => {
   const jev = { jev_score: 77.6, jev_decision: "accepted", jev_subcategory: "soporte_ti", jev_threshold: 60, jev_decided_at: "2026-10-25T00:00:00Z" };
-  const withJev = render(OpportunityList, { rows: [minor({ match_id: "916", score: 55, verdict: "ambar", ...jev })] });
-  assert.equal((withJev.match(/data-jev-affinity/g) ?? []).length, 2, "row and inspector");
-  assert.match(withJev, /matchCell matchStack/);
-  assert.match(withJev, /<strong>78 \/ 100<\/strong><span>Afinidad JEV<\/span>/);
-  assert.match(withJev, /Soporte TI/);
-  assert.match(withJev, /scoreRing[^>]*>55<\/span>/, "the documentary score keeps its own indicator");
-  assert.ok(withJev.indexOf("Afinidad JEV") < withJev.indexOf("scoreRing"), "JEV goes first in the cell");
-  const rowCell = withJev.slice(withJev.indexOf("matchCell"), withJev.indexOf("</article>")).replace(/ title="[^"]*"/g, "");
-  assert.doesNotMatch(rowCell, /Soporte TI/, "the visible subcategory stays in the inspector; the row only has it in its tooltip");
-
-  for (const row of [minor({ match_id: null }), minor({ match_id: null, jev_score: null, jev_decision: "pending" }), minor({ match_id: null, jev_score: "78" })]) {
-    const html = render(OpportunityList, { rows: [row] });
-    assert.doesNotMatch(html, /data-jev-affinity|matchStack|Afinidad JEV/);
-    assert.match(html, /Afinidad preliminar · análisis pendiente/);
-  }
+  const evaluated = render(OpportunityList, { rows: [minor({ match_id: "916", score: 55, verdict: "ambar", ...jev })] });
+  assert.match(evaluated, /scoreRing[^>]*>55<\/span>/, "the documentary score keeps its own indicator");
+  assert.doesNotMatch(evaluated, /JEV|data-jev-affinity|matchStack|78 \/ 100|Soporte TI/i);
+  const pending = render(OpportunityList, { rows: [minor({ match_id: null, ...jev })] });
+  assert.match(pending, /Afinidad preliminar · análisis pendiente/);
+  assert.doesNotMatch(pending, /JEV|data-jev-affinity|matchStack|78 \/ 100|Soporte TI/i);
 });
