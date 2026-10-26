@@ -213,7 +213,10 @@ def upsert_files(repo: JobRepository, settings: Settings, id_contrato: int, file
             ON CONFLICT (id_contrato, id_contrato_archivo)
             DO UPDATE SET
               filename = EXCLUDED.filename,
-              mime = EXCLUDED.mime,
+              -- Once downloaded, the type comes from the content (download_file); the listing's
+              -- descripcionMime ("application/octet-stream" for some PDFs) never overwrites it.
+              mime = CASE WHEN contract_documents.sha256_original LIKE 'pending:%%'
+                          THEN EXCLUDED.mime ELSE contract_documents.mime END,
               size_original_bytes = EXCLUDED.size_original_bytes,
               seace_download_url = EXCLUDED.seace_download_url,
               doc_class = CASE

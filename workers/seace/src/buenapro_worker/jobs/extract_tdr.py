@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 
+from buenapro_worker.documents.pdf import detect_mime
 from buenapro_worker.extraction.gemini import GeminiExtractor, prompt_version_for_doc_class
 from buenapro_worker.queue.repository import JobRepository
 from buenapro_worker.seace.client import SeaceClient
@@ -96,8 +97,11 @@ def extract_tdr_job(
             with SeaceClient(settings) as client:
                 pdf_bytes = client.download_file(id_contrato_archivo)
 
+        # The bytes decide: a PDF whose stored type was overwritten is still read as a PDF.
+        mime = ("application/pdf" if detect_mime(pdf_bytes) == "application/pdf"
+                else document["mime"] or "application/pdf")
         result = (extractor or GeminiExtractor(settings)).extract(
-            pdf_bytes, mime=document["mime"] or "application/pdf", doc_class=doc_class
+            pdf_bytes, mime=mime, doc_class=doc_class
         )
 
     row = repo.conn.execute(

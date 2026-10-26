@@ -110,13 +110,13 @@ def extraction_result():
                            requires_human_review=False)
 
 
-def extract_repo(sha=SHA):
+def extract_repo(sha=SHA, mime="application/pdf"):
     repo = MagicMock()
 
     def execute(sql, params=()):
         cursor = MagicMock()
         if "SELECT d.id" in sql:
-            cursor.fetchone.return_value = {"id": 7, "mime": "application/pdf",
+            cursor.fetchone.return_value = {"id": 7, "mime": mime,
                                             "sha256_original": sha, "objeto_codigo": 2}
         elif "INSERT INTO tdr_extractions" in sql:
             cursor.fetchone.return_value = {"id": 88}
@@ -155,6 +155,27 @@ def test_without_a_copy_the_reading_downloads_once(jobs, tmp_path):
     extract_tdr_job(MagicMock(), extract_repo(), id_contrato=10, id_contrato_archivo=20,
                     extractor=extractor, source_cache=cache)
     assert jobs.downloads == [20] and extractor.extract.call_args.args[0] == PDF
+
+
+@pytest.mark.parametrize("stored", ["application/octet-stream", None])
+def test_a_pdf_whose_stored_type_was_overwritten_is_still_read_as_a_pdf(jobs, tmp_path, stored):
+    """Production 26/10: a listing refresh stored "application/octet-stream" for a downloaded PDF
+    and the guarded reading refused it, which stopped the whole PROD6 service."""
+    cache = SourceCache(tmp_path / "source-cache")
+    cache.store(PDF)
+    extractor = SimpleNamespace(extract=MagicMock(return_value=extraction_result()))
+    extract_tdr_job(MagicMock(), extract_repo(mime=stored), id_contrato=10, id_contrato_archivo=20,
+                    extractor=extractor, source_cache=cache)
+    assert extractor.extract.call_args.kwargs["mime"] == "application/pdf"
+
+
+def test_content_that_is_not_a_pdf_keeps_its_stored_type(jobs, tmp_path):
+    jobs.content = b"PK\x03\x04 not a pdf"
+    extractor = SimpleNamespace(extract=MagicMock(return_value=extraction_result()))
+    extract_tdr_job(MagicMock(), extract_repo(sha=hashlib.sha256(jobs.content).hexdigest(),
+                                              mime="application/zip"),
+                    id_contrato=10, id_contrato_archivo=20, extractor=extractor)
+    assert extractor.extract.call_args.kwargs["mime"] == "application/zip"
 
 
 def test_corrupt_copy_is_replaced_by_a_download(jobs, tmp_path):

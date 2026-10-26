@@ -320,6 +320,31 @@ def test_listing_classifies_primary_and_attachments_and_upgrades_an_earlier_otro
 
 
 @needs_db
+def test_a_listing_refresh_never_overwrites_the_type_of_a_downloaded_document(db):
+    """Production 26/10: SEACE lists some PDFs as application/octet-stream; the refresh replaced
+    the type download_file had detected and the reading of that PDF stopped the service."""
+    from buenapro_worker.queue.repository import JobRepository
+    contract = random.randint(9_000_000_000, 9_900_000_000)
+    db.execute("""INSERT INTO seace_contracts (id_contrato, codigo, anio, objeto_codigo, estado_codigo, descripcion,
+                    hash_search, raw_search_json) VALUES (%s, %s, 2026, 2, 2, 'x', 'h', '{}'::jsonb)""",
+               (contract, f"TEST-{contract}"))
+    settings = Settings(database_url="postgresql://unused", gemini_api_key="unused")
+    listed = [{"nombre": "contratoArchivo.pdf", "idTipoArchivo": 1, "idContratoArchivo": 420167, "_categoria": 1,
+               "descripcionMime": "application/octet-stream", "descripcionExtension": ".pdf"},
+              {"nombre": "ANEXOS.docx", "idTipoArchivo": 2, "idContratoArchivo": 420168, "_categoria": 2,
+               "descripcionMime": "application/msword", "descripcionExtension": ".docx"}]
+    process.upsert_files(JobRepository(db), settings, contract, listed)
+    db.execute("""UPDATE contract_documents SET sha256_original = %s, mime = 'application/pdf'
+                  WHERE id_contrato = %s AND id_contrato_archivo = 420167""", ("a" * 64, contract))
+    listed[1]["descripcionMime"] = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    process.upsert_files(JobRepository(db), settings, contract, listed)
+    mimes = {row["id_contrato_archivo"]: row["mime"] for row in db.execute(
+        "SELECT id_contrato_archivo, mime FROM contract_documents WHERE id_contrato = %s", (contract,))}
+    assert mimes[420167] == "application/pdf"  # Downloaded: the content's type stays.
+    assert mimes[420168] == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"  # Pending: listing.
+
+
+@needs_db
 def test_enqueue_unread_documents_reads_the_real_rows(db):
     from buenapro_worker.queue.repository import JobRepository
     contract = random.randint(9_000_000_000, 9_900_000_000)
