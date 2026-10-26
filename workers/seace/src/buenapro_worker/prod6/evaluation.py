@@ -19,6 +19,10 @@ from buenapro_worker.jobs.match import _automatic_jobs_today
 from buenapro_worker.prod6.screening import POLICY_VERSION
 
 AUTO_ORIGIN = "prod6_jev_accepted_v1"
+# A model answer that skips or reorders requirements is sent once more; a second invalid answer
+# leaves the pair (for that reading) without automatic evaluation.
+INVALID_ANSWER_RESENDS = 1
+INVALID_OUTCOME = "invalid_model_output"
 
 # Newest decision of each contract x company that is not 'superseded' (accepted and rejected rows
 # are history; a newer row of another card/profile hash replaces them). The current reading is the
@@ -46,7 +50,14 @@ SELECT l.decision_id, l.id_contrato, l.profile_id, l.decision, l.decided_by, l.s
        te.extraction_id, te.quality, te.requires_human_review,
        (SELECT count(*) FROM requirement_facets f WHERE f.id_contrato = l.id_contrato
           AND f.extraction_id = te.extraction_id AND f.is_current) AS facets,
-       m.id AS match_id, m.breakdown_json->'meta'->>'extraction_id' AS match_extraction_id
+       m.id AS match_id, m.breakdown_json->'meta'->>'extraction_id' AS match_extraction_id,
+       EXISTS (SELECT 1 FROM worker_jobs j
+               WHERE j.job_type = 'analyze_match' AND j.status = 'done'
+                 AND j.payload->>'origin' = %(origin)s
+                 AND j.payload->>'profile_id' = l.profile_id::text
+                 AND j.payload->>'id_contrato' = l.id_contrato::text
+                 AND j.payload->'runtime_result'->>'outcome' = %(invalid)s
+                 AND j.payload->'runtime_result'->>'extraction_id' = te.extraction_id::text) AS invalid_answer
 FROM latest l
 JOIN seace_contracts c ON c.id_contrato = l.id_contrato
 LEFT JOIN company_profiles cp ON cp.id = l.profile_id AND cp.is_active
@@ -73,7 +84,8 @@ ORDER BY (bl.nombre = ANY(%s)) DESC, bl.nombre LIMIT 1
 def evaluation_rows(conn, *, profile_ids: list[str], contract_id: int | None = None,
                     only_accepted: bool = False) -> list[dict[str, Any]]:
     return conn.execute(ROWS_SQL, {"policy": POLICY_VERSION, "profiles": list(profile_ids),
-                                   "contract": contract_id, "only_accepted": only_accepted}).fetchall()
+                                   "contract": contract_id, "only_accepted": only_accepted,
+                                   "origin": AUTO_ORIGIN, "invalid": INVALID_OUTCOME}).fetchall()
 
 
 def skip_reason(row: dict[str, Any], *, include_stale: bool = False) -> str | None:
@@ -98,6 +110,8 @@ def skip_reason(row: dict[str, Any], *, include_stale: bool = False) -> str | No
         return "reading_requires_review"
     if not row["facets"]:
         return "no_requirements"
+    if row.get("invalid_answer") and row["match_id"] is None:
+        return "model_output_invalid"
     if row["match_id"] is not None:
         known = row["match_extraction_id"]
         if known == str(row["extraction_id"]):

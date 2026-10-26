@@ -28,6 +28,7 @@ from dotenv import dotenv_values
 
 from buenapro_worker.db.connection import connect
 from buenapro_worker.jobs.analyze_match import analyze_match_job
+from buenapro_worker.matching.substantive_policy import ModelOutputMismatch
 from buenapro_worker.jobs.derive_summary import derive_summary_job
 from buenapro_worker.jobs.download_file import download_file_job
 from buenapro_worker.jobs.extract_tdr import enqueue_derive_summary, extract_tdr_job
@@ -47,7 +48,7 @@ from buenapro_worker.prod6.jev_screening import (
     JevScreeningClient, admit_accepted, score_pending, unadmitted_accepted,
 )
 from buenapro_worker.prod6.evaluation import (
-    AUTO_ORIGIN, enqueue_evaluations, evaluation_rows, skip_reason,
+    AUTO_ORIGIN, INVALID_ANSWER_RESENDS, INVALID_OUTCOME, enqueue_evaluations, evaluation_rows, skip_reason,
 )
 from buenapro_worker.prod6.evaluation_guard import GuardedMatchAnalyzer
 from buenapro_worker.prod6.reading import (
@@ -489,12 +490,24 @@ def evaluate_match(settings: Settings, repo: ScopedRepository, job: Job, receipt
     guarded = GuardedMatchAnalyzer(settings, receipt_dir / "evaluations",
                                    allow_new_requests=job.attempts <= 1)
     try:
-        result = analyze_match_job(
-            settings, repo, id_contrato=contract_id, profile_id=profile_id,
-            business_line_id=payload.get("business_line_id"), source="automatic",
-            analyzer=guarded, notifications=False,
-            extra_meta={"evaluation_origin": AUTO_ORIGIN, "jev_decision_id": int(row["decision_id"]),
-                        "jev_score": float(row["score"]) if row["score"] is not None else None})
+        while True:
+            try:
+                result = analyze_match_job(
+                    settings, repo, id_contrato=contract_id, profile_id=profile_id,
+                    business_line_id=payload.get("business_line_id"), source="automatic",
+                    analyzer=guarded, notifications=False,
+                    extra_meta={"evaluation_origin": AUTO_ORIGIN, "jev_decision_id": int(row["decision_id"]),
+                                "jev_score": float(row["score"]) if row["score"] is not None else None})
+                break
+            except ModelOutputMismatch as error:
+                # The model skipped or reordered requirements: only this pair fails. Nothing was
+                # written yet, so the same request may be sent once more; after that the pair
+                # stays without automatic evaluation (skip_reason) and the web offers the manual one.
+                invalid = guarded.retire_invalid_answer()
+                if invalid > INVALID_ANSWER_RESENDS or not guarded.allow_new_requests:
+                    return {"outcome": INVALID_OUTCOME, "reason": error.code, "invalid_answers": invalid,
+                            "extraction_id": int(row["extraction_id"]),
+                            **({"provider_answered": True} if guarded.provider_answered else {})}
     finally:
         guarded.close()
     return {"outcome": "unchanged" if result.get("skipped") else "evaluated", **result,

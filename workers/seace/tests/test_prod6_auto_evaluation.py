@@ -14,8 +14,9 @@ import pytest
 from google.genai import errors as genai_errors
 
 from buenapro_worker.jobs.analyze_match import analyze_match_job
+from buenapro_worker.matching.substantive_policy import ModelOutputMismatch
 from buenapro_worker.prod6 import backfill_evaluations, evaluation, runtime
-from buenapro_worker.prod6.evaluation import AUTO_ORIGIN, enqueue_evaluations, skip_reason
+from buenapro_worker.prod6.evaluation import AUTO_ORIGIN, INVALID_OUTCOME, enqueue_evaluations, skip_reason
 from buenapro_worker.prod6.evaluation_guard import GuardedMatchAnalyzer
 from buenapro_worker.prod6.reading import (
     GuardedReadingError, ProviderRejectedError, ReadingBlockedError,
@@ -74,6 +75,12 @@ def test_skip_reasons(fields, reason):
 
 def test_exactly_the_minimum_hours_still_evaluates():
     assert skip_reason(pair(hours_left=4.0, min_hours=4)) is None
+
+
+def test_a_pair_whose_answers_were_invalid_for_this_reading_is_not_sent_again():
+    assert skip_reason(pair(invalid_answer=True)) == "model_output_invalid"
+    assert skip_reason(pair(invalid_answer=True, match_id=1, match_extraction_id="7")) == "match_current"
+    assert skip_reason(pair(invalid_answer=False)) is None
 
 
 def test_a_match_from_an_older_reading_is_re_evaluated_only_when_asked_and_unknown_ones_never():
@@ -248,6 +255,50 @@ def test_the_closed_contract_is_preserved_without_an_evaluation(evaluator, monke
     evaluator.factory.assert_not_called()
 
 
+def mismatch():
+    return ModelOutputMismatch("requirement_coverage_changed", "Substantive requirement coverage/order changed")
+
+
+def test_an_answer_that_skips_requirements_is_sent_once_more_and_the_second_one_is_stored(evaluator):
+    """Production 26/10: Gemini judged 4 of 8 requirements and the whole service stopped."""
+    evaluator.analyze.side_effect = [mismatch(), {"match_id": 3, "verdict": "rojo", "score": 20}]
+    evaluator.guarded.allow_new_requests = True
+    evaluator.guarded.retire_invalid_answer.return_value = 1
+    outcome = evaluator.run(evaluation_job())
+    assert outcome["outcome"] == "evaluated" and outcome["score"] == 20
+    assert evaluator.analyze.call_count == 2
+    evaluator.guarded.retire_invalid_answer.assert_called_once()
+    evaluator.guarded.close.assert_called_once()
+
+
+def test_a_second_invalid_answer_fails_only_that_pair_without_stopping_the_service(evaluator):
+    evaluator.analyze.side_effect = [mismatch(), mismatch()]
+    evaluator.guarded.allow_new_requests = True
+    evaluator.guarded.retire_invalid_answer.side_effect = [1, 2]
+    outcome = evaluator.run(evaluation_job())
+    assert outcome == {"outcome": INVALID_OUTCOME, "reason": "requirement_coverage_changed",
+                       "invalid_answers": 2, "extraction_id": 7, "provider_answered": True}
+    assert evaluator.analyze.call_count == 2
+
+
+def test_a_replay_only_job_with_an_invalid_answer_never_pays_again(evaluator):
+    evaluator.analyze.side_effect = [mismatch()]
+    evaluator.guarded.allow_new_requests = False
+    evaluator.guarded.provider_answered = False
+    evaluator.guarded.retire_invalid_answer.return_value = 1
+    outcome = evaluator.run(evaluation_job(attempts=2))
+    assert outcome == {"outcome": INVALID_OUTCOME, "reason": "requirement_coverage_changed",
+                       "invalid_answers": 1, "extraction_id": 7}
+    assert evaluator.analyze.call_count == 1
+
+
+def test_any_other_failure_still_stops_the_service(evaluator):
+    evaluator.analyze.side_effect = ValueError("Contract not found: 42")
+    with pytest.raises(ValueError, match="Contract not found"):
+        evaluator.run(evaluation_job())
+    evaluator.guarded.retire_invalid_answer.assert_not_called()
+
+
 # --- GuardedMatchAnalyzer: the paid call and its receipts ----------------------------------------------
 
 def reply(analysis=None, *, usage=(1200, 300, 40), finish=None, text=None):
@@ -419,6 +470,36 @@ def test_an_unusable_answer_is_preserved_blocks_new_sends_and_is_never_paid_for_
     with pytest.raises(ReadingBlockedError):
         ask(analyzer_in(tmp_path), company="OTRA EMPRESA")
     assert gemini.call_count == 1
+
+
+def test_an_invalid_answer_is_set_aside_for_audit_and_the_same_request_may_be_sent_again(gemini, tmp_path):
+    gemini.return_value = reply()
+    first = analyzer_in(tmp_path)
+    ask(first)
+    assert first.retire_invalid_answer() == 1
+    folder = tmp_path / "evaluations"
+    assert receipts(tmp_path, "response") == receipts(tmp_path, "started") == []
+    assert len(list(folder.glob("*.invalid1.private.json"))) == len(list(folder.glob("*.invalid1_started.private.json"))) == 1
+    second = analyzer_in(tmp_path)
+    ask(second)  # Same request: sent again, not replayed, and no guard is opened.
+    assert gemini.call_count == 2 and second.provider_answered is True
+    assert not (folder / "guard.json").exists()
+    assert second.retire_invalid_answer() == 2
+    assert len(list(folder.glob("*.invalid2.private.json"))) == 1
+
+
+def test_setting_aside_needs_an_answer_of_this_instance(gemini, tmp_path):
+    with pytest.raises(GuardedReadingError):
+        analyzer_in(tmp_path).retire_invalid_answer()
+
+
+def test_a_replayed_invalid_answer_can_also_be_set_aside(gemini, tmp_path):
+    gemini.return_value = reply()
+    ask(analyzer_in(tmp_path))
+    replay = analyzer_in(tmp_path, allow_new_requests=False)
+    ask(replay)
+    assert gemini.call_count == 1 and replay.provider_answered is False
+    assert replay.retire_invalid_answer() == 1
 
 
 def test_a_tampered_answer_receipt_is_refused(gemini, tmp_path):
@@ -841,3 +922,52 @@ def test_a_provider_rejection_stores_nothing_and_leaves_the_pair_retryable(db, w
         runtime.dispatch(settings(), world.scoped(), job, tmp_path)
     assert stored_match(db, number, veyon) is None
     assert not (tmp_path / "evaluations" / "guard.json").exists()
+
+
+def complete(db, job, outcome):
+    """What the runtime loop does after dispatch returns."""
+    db.execute("UPDATE worker_jobs SET payload = payload || %s::jsonb WHERE id = %s",
+               (json.dumps({"runtime_result": outcome}), job.id))
+    db.execute("UPDATE worker_jobs SET status = 'done', finished_at = now() WHERE id = %s", (job.id,))
+
+
+def partial_analysis():
+    return ANALYSIS  # Judges source_index 1 only.
+
+
+def full_analysis():
+    second = {**ANALYSIS["requisitos"][0], "requisito": "Servidor 1", "source_index": 2}
+    return {**ANALYSIS, "requisitos": [*ANALYSIS["requisitos"], second]}
+
+
+@needs_db
+def test_an_incomplete_answer_is_resent_once_and_the_complete_one_is_stored(db, world, gemini, tmp_path):
+    veyon, _ = world.companies
+    number, _ = contract(db, facets=2)
+    decide(db, number, veyon)
+    enqueue_evaluations(world.scoped(), profile_ids=world.companies, contract_id=number)
+    gemini.side_effect = [reply(partial_analysis()), reply(full_analysis())]
+    job = claim_evaluation(db, world)
+    outcome = runtime.dispatch(settings(), world.scoped(), job, tmp_path)
+    assert outcome["outcome"] == "evaluated" and gemini.call_count == 2
+    assert stored_match(db, number, veyon) is not None
+    assert not (tmp_path / "evaluations" / "guard.json").exists()
+
+
+@needs_db
+def test_two_incomplete_answers_leave_the_pair_without_evaluation_and_it_is_not_queued_again(
+        db, world, gemini, tmp_path):
+    veyon, _ = world.companies
+    number, extraction = contract(db, facets=2)
+    decide(db, number, veyon)
+    enqueue_evaluations(world.scoped(), profile_ids=world.companies, contract_id=number)
+    gemini.side_effect = [reply(partial_analysis()), reply(partial_analysis())]
+    job = claim_evaluation(db, world)
+    outcome = runtime.dispatch(settings(), world.scoped(), job, tmp_path)
+    assert outcome == {"outcome": INVALID_OUTCOME, "reason": "requirement_coverage_changed",
+                       "invalid_answers": 2, "extraction_id": extraction, "provider_answered": True}
+    assert stored_match(db, number, veyon) is None
+    assert not (tmp_path / "evaluations" / "guard.json").exists()
+    complete(db, job, outcome)
+    again = enqueue_evaluations(world.scoped(), profile_ids=world.companies, contract_id=number)
+    assert again["enqueued"] == 0 and again["skipped"].get("model_output_invalid") == 1

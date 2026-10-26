@@ -10,6 +10,14 @@ from buenapro_worker.matching.compact_context import normalized
 MATCH_POLICY_VERSION = "match_analysis_v5_concrete_evidence"
 
 
+class ModelOutputMismatch(ValueError):
+    """The model's judgements cannot be bound to the requirements it was given."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
 def is_administrative_requirement(row: dict) -> bool:
     kind = str(row.get("tipo") or row.get("facet") or row.get("categoria") or "")
     label = normalized(row.get("requisito") or row.get("label"))
@@ -53,13 +61,13 @@ SOURCE_CATEGORIES = {
 def bind_substantive_requirements(results: list[dict], expected: list[dict], compact_profile: dict) -> list[dict]:
     """Bind every judgement to a source requirement and existing evidence IDs."""
     if [r.get("source_index") for r in results] != [r["source_index"] for r in expected]:
-        raise ValueError("Substantive requirement coverage/order changed")
+        raise ModelOutputMismatch("requirement_coverage_changed", "Substantive requirement coverage/order changed")
     ids = {str(s["document_id"]) for e in compact_profile.get("experience_json", [])
            for s in e.get("documentary_summary", {}).get("sources", [])}
     for result, source in zip(results, expected, strict=True):
         refs = result.get("evidence_refs") or []
         if not set(refs) <= ids:
-            raise ValueError("Unknown company evidence reference")
+            raise ModelOutputMismatch("unknown_evidence_reference", "Unknown company evidence reference")
         result["source_facet"] = source["tipo"]
         result["categoria"] = SOURCE_CATEGORIES.get(source["tipo"], "otro")
         result["critico"] = bool(source["obligatorio"] and result.get("critico"))

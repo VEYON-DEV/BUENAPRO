@@ -839,6 +839,14 @@ ni el perfil):
 - Un job reclamado antes (`attempts > 1`) solo puede reproducir su propia respuesta o reintentar tras un
   `provider_error`; nunca envía por primera vez.
 
+**Respuesta incompleta.** Si Gemini omite o reordena requisitos (o cita evidencia que no existe),
+`bind_substantive_requirements` lanza `ModelOutputMismatch`. Solo falla ese par contrato × empresa: la
+respuesta se aparta a `<key>.invalid<n>.private.json` (auditoría) y se reenvía una vez (un pago más). Si la
+segunda también es inválida, el job termina `done` con `runtime_result.outcome = invalid_model_output` y el
+par no se vuelve a encolar para esa lectura (`skip_reason = model_output_invalid`); el cliente puede usar
+"Evaluar con mi perfil". Una lectura nueva del documento lo habilita otra vez. Antes del 26/10 este caso
+detenía todo el servicio (`attention_required: ValueError`).
+
 Resolver un guard abierto (servicio detenido): revisar `evaluations/guard.json` y los `started` sin
 respuesta, mover el guard a `evaluations/resolved-<fecha>/` y reiniciar el job, como se hizo con las
 lecturas el 25/10. Si el envío pudo facturarse, decidir con el panel de uso de Google AI Studio antes de
