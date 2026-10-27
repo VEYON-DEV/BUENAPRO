@@ -65,6 +65,26 @@ export function splitMatchRequirements(facets: JsonRecord[]) {
   return { substantive, administrativeChecklist };
 }
 
+/**
+ * Proposal documents the model did not judge become paperwork to prepare.
+ * They usually say how another requirement is proven (contract copies, SCTR policy, degrees)
+ * and the model leaves them out. Those, and only those, move to `checklist`; the requirements
+ * still expected are returned. A proposal document the model did judge (an SLA, technical
+ * documentation) stays a requirement, and any other omission still fails the binding.
+ */
+export function checklistOmittedProposalDocuments(results: JsonRecord[], expected: JsonRecord[], checklist: JsonRecord[]): JsonRecord[] {
+  const judged = new Set(results.map(result => result.source_index));
+  const kept: JsonRecord[] = [];
+  for (const requirement of expected) {
+    if (requirement.tipo === "proposal_document" && !judged.has(requirement.source_index)) {
+      checklist.push({ tipo: requirement.tipo, requisito: requirement.requisito, estado: "preparar", score_impact: false });
+    } else {
+      kept.push(requirement);
+    }
+  }
+  return kept;
+}
+
 /** Mirror the worker: a hypothetical/demo capability never becomes evidence. */
 export function evidenceOnlyProfile(value: unknown): JsonRecord {
   function hypothetical(item: unknown): boolean {
