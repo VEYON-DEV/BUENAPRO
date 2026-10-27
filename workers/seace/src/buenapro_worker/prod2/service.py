@@ -8,6 +8,11 @@ An interrupted child is never restarted or signaled by a later service process.
 A failed SEACE egress (proxy down, or a child exiting with EGRESS_EXIT_CODE) is
 not a source denial: the service waits one interval in ``egress_unavailable``
 and checks again; a child's partial epoch folder is kept renamed, never adopted.
+A shared SEACE block (403/429 seen by PROD6, the web or an earlier child, see
+``seace.shared_gate``) is not a failure either: before each cycle the service waits it out
+in ``source_paused``, with the block's source as ``reason`` and ``resume_at``.
+Operations get a best-effort alert when a pause starts, on ``attention_required`` and on
+``complete``.
 """
 from __future__ import annotations
 
@@ -29,6 +34,7 @@ import threading
 import time
 from zoneinfo import ZoneInfo
 
+from ..seace import shared_gate
 from ..seace.egress import EGRESS_EXIT_CODE, EgressUnavailable, check_egress, notify_ops
 from .keyword_chain import assess_final_report
 
@@ -251,6 +257,17 @@ def run(config_path, state_dir, *, project_root=Path("/app"), stop=None, now=Non
             if state.pop("egress_down", None):
                 notify_ops("BuenaPro PROD2: SEACE egress recovered.")
 
+        def source_pause(block):
+            """Alert once per pause; True when stopped while waiting for the shared block to end."""
+            wait = max(1.0, block["remaining_seconds"])
+            resume_at = (now() + timedelta(seconds=wait)).isoformat()
+            if not state.get("paused_since"):
+                notify_ops(f"BuenaPro PROD2: SEACE bloqueó el acceso compartido (HTTP {block['status']}, "
+                           f"origen {block['source']}); en pausa hasta {resume_at}.")
+            checkpoint("source_paused", reason=block["source"], http_status=block["status"],
+                       paused_since=state.get("paused_since") or now().isoformat(), resume_at=resume_at)
+            return stop.wait(wait)
+
         def stopping(*_):
             nonlocal termination_forwarded
             stop.set()
@@ -265,7 +282,7 @@ def run(config_path, state_dir, *, project_root=Path("/app"), stop=None, now=Non
                            reason=config.get("operator_hold") or "operator_disabled")
                 return 2
             if state.get("status") not in (None, "waiting", "complete", "blocked_source", "prepared",
-                                           "egress_unavailable"):
+                                           "egress_unavailable", "source_paused"):
                 raise ServiceError("interrupted_epoch_requires_manual_review")
             if state.get("plan") and state.get("config_sha256") != _hash(config):
                 raise ServiceError("active_configuration_changed")
@@ -273,7 +290,8 @@ def run(config_path, state_dir, *, project_root=Path("/app"), stop=None, now=Non
                 _gate(state["plan"])
                 return 0
             # A hold may be lifted only with the full explicit enabled contract.
-            if state.get("plan") and state.get("status") not in ("waiting", "egress_unavailable"):
+            if state.get("plan") and state.get("status") not in ("waiting", "egress_unavailable",
+                                                                 "source_paused"):
                 raise ServiceError("interrupted_epoch_requires_manual_review")
             if threading.current_thread() is threading.main_thread():
                 for sig in (signal.SIGTERM, signal.SIGINT):
@@ -291,12 +309,19 @@ def run(config_path, state_dir, *, project_root=Path("/app"), stop=None, now=Non
                     raise ServiceError("active_configuration_changed")
                 try:
                     check_egress()
+                    shared_block = shared_gate.blocked()
                 except EgressUnavailable as error:
                     if egress_outage(type(error).__name__, "check"):
                         break
                     continue
                 if state.get("egress_down") == "check":
                     egress_recovered()
+                if shared_block is not None:
+                    if source_pause(shared_block):
+                        break
+                    continue
+                for stale in ("paused_since", "resume_at", "http_status"):
+                    state.pop(stale, None)
                 plan = _plan(config, directory, number, now(), project_root)
                 folder = Path(plan["folder"])
                 folder.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -335,12 +360,17 @@ def run(config_path, state_dir, *, project_root=Path("/app"), stop=None, now=Non
                            plan=plan, completed_cycles=number,
                            next_cycle_at=(now() + timedelta(seconds=config["interval_seconds"])).isoformat())
                 if number >= config["max_cycles"]:
+                    notify_ops(f"BuenaPro PROD2: servicio completo; ciclos terminados: {number}.")
                     return 0
                 number += 1
             raise ServiceError("operator_stop_requires_review")
         except Exception as error:
             reason = str(error) if isinstance(error, ServiceError) else type(error).__name__
+            repeated = state.get("status") == "attention_required" and state.get("reason") == reason
             checkpoint("attention_required", reason=reason)
+            if not repeated:  # A restart loop on the same stop must not repeat the alert.
+                notify_ops(f"BuenaPro PROD2: servicio detenido (attention_required): {reason}; "
+                           "requiere revisión manual.")
             return 2
         finally:
             if child is not None and child.poll() is None:

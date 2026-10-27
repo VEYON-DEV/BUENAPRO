@@ -7,6 +7,10 @@ PROD2 discovery transport avoids Settings and the PROD6 image is an overlay.
 
 ``SEACE_EGRESS_PROXY``   proxy URL, e.g. ``http://host:8888`` (optional).
 ``SEACE_EGRESS_REQUIRED`` ``1``/``true``: fail closed when the proxy is missing.
+``SEACE_USER_AGENT``     User-Agent for SEACE clients that do not set their own (optional).
+
+``check_egress`` also pings the Redis of the shared request gate when it is on (see
+``shared_gate``), and a ``SharedGateUnavailable`` counts as an egress failure too.
 """
 from __future__ import annotations
 
@@ -52,6 +56,12 @@ def seace_http_client(**kwargs) -> httpx.Client:
     """Build the httpx.Client for SEACE. Environment proxies are never trusted."""
     proxy = _proxy_url()
     kwargs["trust_env"] = False
+    user_agent = os.environ.get("SEACE_USER_AGENT", "").strip()
+    if user_agent:
+        headers = httpx.Headers(kwargs.get("headers"))
+        if "user-agent" not in headers:  # A caller's own User-Agent always wins.
+            headers["User-Agent"] = user_agent
+            kwargs["headers"] = headers
     if proxy:
         verify = kwargs.get("verify", True)
         kwargs["mounts"] = {**kwargs.get("mounts", {}),
@@ -61,22 +71,26 @@ def seace_http_client(**kwargs) -> httpx.Client:
 
 
 def check_egress(timeout: float = 5) -> None:
-    """Open one TCP connection to the proxy; nothing is sent to SEACE."""
+    """Open one TCP connection to the proxy and ping the shared gate; nothing is sent to SEACE."""
+    from buenapro_worker.seace import shared_gate  # Lazy: shared_gate imports this module.
+
     proxy = _proxy_url()
-    if proxy is None:
-        return
-    parsed = urlsplit(proxy)
-    port = parsed.port or (443 if parsed.scheme == "https" else 80)
-    try:
-        with socket.create_connection((parsed.hostname, port), timeout=timeout):
-            pass
-    except OSError as error:
-        raise EgressUnavailable(f"SEACE egress proxy unreachable: {type(error).__name__}") from None
+    if proxy is not None:
+        parsed = urlsplit(proxy)
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        try:
+            with socket.create_connection((parsed.hostname, port), timeout=timeout):
+                pass
+        except OSError as error:
+            raise EgressUnavailable(f"SEACE egress proxy unreachable: {type(error).__name__}") from None
+    shared_gate.check()
 
 
 def is_egress_failure(error: BaseException) -> bool:
     """True when the proxy or the path to it failed, not when SEACE answered."""
-    if isinstance(error, httpx.ProxyError):
+    from buenapro_worker.seace.shared_gate import SharedGateUnavailable  # Lazy, see check_egress.
+
+    if isinstance(error, (httpx.ProxyError, SharedGateUnavailable)):
         return True
     if not isinstance(error, (httpx.ConnectError, httpx.ConnectTimeout)):
         return False

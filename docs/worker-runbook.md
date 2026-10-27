@@ -933,6 +933,40 @@ La imagen PROD6 (`infra/docker/prod6.Dockerfile`) copia también `seace/egress.p
   con 503 propio en vez del 502 que Cloudflare reemplazaba. El refresco del detalle nunca espera turno:
   si la salida está ocupada sirve lo guardado. El estado (ritmo, pausa) es por proceso de la web.
 
+### Freno compartido (PROD6 + PROD2 + web)
+
+Los tres procesos salen por la misma IP peruana, y SEACE corta la IP completa ante una ráfaga.
+Con `SEACE_SHARED_GATE=1` y `REDIS_URL` en los tres, comparten en Redis un solo turno y una
+sola pausa (`seace/shared_gate.py` y `apps/web/server/services/seaceSharedGate.ts`, mismo protocolo):
+
+- `seace:egress:next_slot_ms`: siguiente turno libre (reloj de Redis), reservado con un script Lua
+  atómico. Cada petición espera además su ritmo local (PROD6 6 s, web 8 s, PROD2 `--request-interval`).
+- `seace:egress:blocked`: JSON `{"status","source","at"}` escrito con `NX` y TTL ante cualquier 403/429.
+  Mientras existe nadie envía. El primero que lo escribe gana: no se pisa ni se alarga.
+- `SEACE_SHARED_MIN_INTERVAL_SECONDS` (6): separación mínima entre peticiones de todos los procesos.
+  `SEACE_SHARED_BLOCK_SECONDS` (10800): duración de la pausa compartida. Deben ser iguales en los tres.
+
+Con el freno activo, si Redis falla nadie envía: PROD6 y PROD2 lo tratan como salida caída
+(`egress_backoff` / `egress_unavailable`), y la web responde "ocupado". Escribir la pausa es
+de mejor esfuerzo. Si el freno está desactivado (o falta `REDIS_URL`) todo funciona como antes;
+ese es el kill switch.
+
+Reacción de cada proceso ante una pausa abierta por otro:
+
+- **PROD6**: abre su propio breaker como si hubiera recibido el 403 y persiste `source_blocked_until`.
+- **PROD2 (hijo selected)**: lo trata como el 403 que representa (`source_<status>`), y el ciclo
+  termina en `attention_required`.
+- **PROD2 (servicio)**: antes de lanzar cada ciclo, si hay pausa espera en `source_paused`
+  (`reason` = origen, `resume_at`) y alerta una vez. También alerta en `attention_required` y en
+  `complete`.
+- **Web**: sirve lo guardado o muestra "Abrir en SEACE".
+
+Diagnóstico: `docker exec docker-redis-1 redis-cli GET seace:egress:blocked`, `PTTL` de la misma
+clave y `GET seace:egress:next_slot_ms`. Borrar la pausa (`DEL seace:egress:blocked`) solo si se
+comprobó que SEACE responde.
+
+La imagen PROD6 copia también `seace/shared_gate.py`.
+
 ## Pausa de emergencia
 
 ```bash

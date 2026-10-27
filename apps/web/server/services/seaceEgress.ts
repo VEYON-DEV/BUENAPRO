@@ -3,6 +3,9 @@ import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/p
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fetch as undiciFetch, ProxyAgent } from "undici";
+import {
+  recordSharedBlock, reserveSharedSlot, setSharedGateBackendForTests, sharedGateEnabled,
+} from "./seaceSharedGate.ts";
 
 /**
  * Salida de la web hacia SEACE.
@@ -11,6 +14,8 @@ import { fetch as undiciFetch, ProxyAgent } from "undici";
  * (`SEACE_EGRESS_PROXY`) solo para `seace.gob.pe` y `*.seace.gob.pe`; con `SEACE_EGRESS_REQUIRED`
  * nunca sale directo. La IP de salida es la misma que usa el worker, así que la web pide poco:
  * ritmo mínimo entre peticiones, tope por hora, pausa larga ante 403/429 y caché de documentos.
+ * Con `SEACE_SHARED_GATE` el turno y la pausa se comparten además con los workers vía Redis
+ * (`seaceSharedGate.ts`); desactivado, todo es local al proceso.
  */
 
 export type SeaceUnavailableReason = "blocked" | "busy" | "egress" | "network" | "upstream" | "not_pdf";
@@ -73,6 +78,7 @@ function state(): EgressState {
 export function resetSeaceEgressForTests(fetchImpl?: typeof undiciFetch): void {
   const holder = globalThis as unknown as Record<symbol, EgressState | undefined>;
   delete holder[STATE_KEY];
+  setSharedGateBackendForTests(undefined);
   if (fetchImpl) state().fetchImpl = fetchImpl;
 }
 
@@ -93,8 +99,8 @@ function dispatcherFor(proxy: string): ProxyAgent {
   return current.agent.dispatcher;
 }
 
-/** Reserva un turno; `wait: false` no espera (refrescos de fondo que pueden omitirse). */
-async function acquireSlot(wait: boolean): Promise<void> {
+/** Turno local: valida bloqueo, tope por hora y ritmo, sin consumir nada. */
+function localSlot(maxWaitMs: number): { slot: number; delay: number } {
   const config = settings();
   const current = state();
   const now = Date.now();
@@ -103,9 +109,32 @@ async function acquireSlot(wait: boolean): Promise<void> {
   if (current.recent.length >= config.maxPerHour) throw new SeaceUnavailable("busy");
   const slot = Math.max(now, current.nextSlotAt);
   const delay = slot - now;
-  if (delay > (wait ? config.maxWaitMs : 0)) throw new SeaceUnavailable("busy");
-  current.nextSlotAt = slot + config.minIntervalMs;
-  current.recent.push(slot);
+  if (delay > maxWaitMs) throw new SeaceUnavailable("busy");
+  return { slot, delay };
+}
+
+/** Reserva un turno; `wait: false` no espera (refrescos de fondo que pueden omitirse). */
+async function acquireSlot(wait: boolean): Promise<void> {
+  const config = settings();
+  const current = state();
+  const maxWaitMs = wait ? config.maxWaitMs : 0;
+  let local = localSlot(maxWaitMs);
+  let sharedDelay = 0;
+  if (sharedGateEnabled()) {
+    // El turno compartido se pide antes de consumir el local: si falla, no se gasta ninguno.
+    const shared = await reserveSharedSlot(Math.max(0, maxWaitMs - local.delay));
+    if (shared.kind === "blocked") {
+      current.blockedUntil = Date.now() + shared.remainingMs;
+      throw new SeaceUnavailable("blocked");
+    }
+    if (shared.kind === "busy") throw new SeaceUnavailable("busy");
+    sharedDelay = shared.delayMs;
+    // Otra petición pudo tomar el turno local, o abrir la pausa, mientras se esperaba a Redis.
+    local = localSlot(maxWaitMs);
+  }
+  current.nextSlotAt = local.slot + config.minIntervalMs;
+  current.recent.push(local.slot);
+  const delay = Math.max(local.delay, sharedDelay);
   if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
 }
 
@@ -131,6 +160,7 @@ export async function seaceFetch(
   if (response.status === 403 || response.status === 429) {
     state().blockedUntil = Date.now() + config.blockMs;
     console.warn(JSON.stringify({ seace_web_block: response.status, paused_seconds: config.blockMs / 1000 }));
+    await recordSharedBlock(response.status);
   }
   return response;
 }

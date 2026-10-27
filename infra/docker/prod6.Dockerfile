@@ -6,6 +6,7 @@ COPY workers/seace/src/buenapro_worker/prod6 /usr/local/lib/python3.12/site-pack
 COPY workers/seace/src/buenapro_worker/seace/client.py /usr/local/lib/python3.12/site-packages/buenapro_worker/seace/client.py
 COPY workers/seace/src/buenapro_worker/seace/egress.py /usr/local/lib/python3.12/site-packages/buenapro_worker/seace/egress.py
 COPY workers/seace/src/buenapro_worker/seace/pacing.py /usr/local/lib/python3.12/site-packages/buenapro_worker/seace/pacing.py
+COPY workers/seace/src/buenapro_worker/seace/shared_gate.py /usr/local/lib/python3.12/site-packages/buenapro_worker/seace/shared_gate.py
 COPY workers/seace/src/buenapro_worker/jobs/download_file.py /usr/local/lib/python3.12/site-packages/buenapro_worker/jobs/download_file.py
 COPY workers/seace/src/buenapro_worker/jobs/process_contract.py /usr/local/lib/python3.12/site-packages/buenapro_worker/jobs/process_contract.py
 COPY workers/seace/src/buenapro_worker/jobs/extract_tdr.py /usr/local/lib/python3.12/site-packages/buenapro_worker/jobs/extract_tdr.py

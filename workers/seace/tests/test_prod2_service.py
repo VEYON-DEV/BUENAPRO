@@ -356,7 +356,8 @@ def test_egress_check_failure_waits_in_egress_unavailable_and_alerts_once(paths,
     assert [value["status"] for value in seen] == ["egress_unavailable"] * 2
     assert all(value["reason"] == "EgressUnavailable" for value in seen)
     assert clock.current == NOW + timedelta(seconds=120)
-    assert len(egress.alerts) == 2 and "unavailable" in egress.alerts[0] and "recovered" in egress.alerts[1]
+    assert len(egress.alerts) == 3 and "unavailable" in egress.alerts[0] and "recovered" in egress.alerts[1]
+    assert "completo" in egress.alerts[2]
     saved = service._read(state / "state.private.json")
     assert saved["status"] == "complete" and "egress_down" not in saved
 
@@ -387,8 +388,9 @@ def test_restart_during_an_outage_keeps_checking_without_a_second_alert(paths, m
     service._write(state_file, {**service._read(state_file), "status": "egress_unavailable"})
     second = Egress(monkeypatch, [True])
     assert service.run(config, state, project_root=ROOT, now=lambda: NOW) == 0
-    assert len(first.alerts) == 1 and len(children) == 1
-    assert second.alerts == ["BuenaPro PROD2: SEACE egress recovered."]
+    assert len(first.alerts) == 2 and "unavailable" in first.alerts[0] and "attention_required" in first.alerts[1]
+    assert len(children) == 1
+    assert second.alerts[0] == "BuenaPro PROD2: SEACE egress recovered." and len(second.alerts) == 2
 
 
 def test_child_exit_for_egress_is_not_a_gate_failure_or_source_block(paths, monkeypatch):
@@ -414,7 +416,7 @@ def test_child_exit_for_egress_is_not_a_gate_failure_or_source_block(paths, monk
     runs = sorted(path.name for path in (state / "runs").iterdir())
     assert runs[0] == children[0].folder.name and runs[1].startswith(runs[0] + ".egress-") and len(runs) == 2
     assert service._read(state / "state.private.json")["status"] == "complete"
-    assert len(egress.alerts) == 2 and "recovered" in egress.alerts[1]
+    assert len(egress.alerts) == 3 and "recovered" in egress.alerts[1] and "completo" in egress.alerts[2]
 
 
 def test_source_denial_exit_is_still_attention_required_without_egress_alert(paths, monkeypatch):
@@ -426,4 +428,150 @@ def test_source_denial_exit_is_still_attention_required_without_egress_alert(pat
     assert service.run(config, state, project_root=ROOT, now=lambda: NOW) == 2
     saved = service._read(state / "state.private.json")
     assert saved["status"] == "attention_required" and saved["reason"] == "final_report_source_access_blocked"
-    assert egress.alerts == []
+    assert len(egress.alerts) == 1 and "egress" not in egress.alerts[0]
+    assert "attention_required" in egress.alerts[0] and "final_report_source_access_blocked" in egress.alerts[0]
+
+
+# --- Shared SEACE block: pause before the cycle, resume on its own, and operations alerts ---
+
+def shared_block(gate, *, source="prod6", status=403, seconds=90):
+    gate.write_block(json.dumps({"status": status, "source": source, "at": "2026-10-26T15:00:00.000Z"}),
+                     seconds * 1000)
+
+
+def test_shared_block_pauses_before_the_cycle_and_resumes_when_it_ends(paths, monkeypatch, fake_gate):
+    config, state = paths
+    write(config, configuration())
+    children = fake_children(monkeypatch)
+    egress = Egress(monkeypatch, [])
+    shared_block(fake_gate, seconds=90)
+    clock, seen = Clock(), []
+
+    def on_wait():
+        seen.append(service._read(state / "state.private.json"))
+        fake_gate.advance(30_000 if len(seen) == 1 else 60_000)  # The pause outlives the first check.
+
+    clock.on_wait = on_wait
+    assert service.run(config, state, project_root=ROOT, now=clock.now, stop=clock) == 0
+    assert [value["status"] for value in seen] == ["source_paused"] * 2 and len(children) == 1
+    assert seen[0]["reason"] == "prod6" and seen[0]["http_status"] == 403
+    assert seen[0]["resume_at"] == (NOW + timedelta(seconds=90)).isoformat()
+    assert seen[1]["resume_at"] == (NOW + timedelta(seconds=90 + 60)).isoformat()  # Re-read: 60 s left.
+    assert clock.current == NOW + timedelta(seconds=150)
+    pauses = [alert for alert in egress.alerts if "bloqueó" in alert]
+    assert len(pauses) == 1 and "HTTP 403" in pauses[0] and "prod6" in pauses[0]  # Alerted once per pause.
+    saved = service._read(state / "state.private.json")
+    assert saved["status"] == "complete"
+    assert not {"paused_since", "resume_at", "http_status"} & set(saved)
+
+
+def test_shared_block_never_starts_a_child_and_a_stop_ends_in_attention(paths, monkeypatch, fake_gate):
+    config, state = paths
+    write(config, configuration())
+    children = fake_children(monkeypatch)
+    egress = Egress(monkeypatch, [])
+    shared_block(fake_gate, source="web", status=429)
+    clock = Clock()
+    clock.on_wait = clock.set
+    assert service.run(config, state, project_root=ROOT, now=clock.now, stop=clock) == 2
+    assert children == [] and not (state / "runs").exists()
+    saved = service._read(state / "state.private.json")
+    assert saved["status"] == "attention_required" and saved["reason"] == "operator_stop_requires_review"
+    assert saved["paused_since"] and saved["resume_at"] and saved["http_status"] == 429
+    assert len(egress.alerts) == 2 and "HTTP 429" in egress.alerts[0] and "attention_required" in egress.alerts[1]
+
+
+def test_restart_while_paused_resumes_without_a_plan(paths, monkeypatch):
+    config, state = paths
+    write(config, configuration())
+    children = fake_children(monkeypatch)
+    Egress(monkeypatch, [])
+    state.mkdir(mode=0o700)
+    service._write(state / "state.private.json", {"version": 1, "status": "source_paused", "reason": "web"})
+    assert service.run(config, state, project_root=ROOT, now=lambda: NOW) == 0
+    assert service._read(state / "state.private.json")["status"] == "complete" and len(children) == 1
+
+
+def test_restart_while_paused_in_a_later_cycle_keeps_the_previous_plan_without_gating_it(paths, monkeypatch, fake_gate):
+    config, state = paths
+    write(config, configuration(max_cycles=2))
+    children = fake_children(monkeypatch)
+    Egress(monkeypatch, [])
+    first = Clock()
+    first.on_wait = first.set  # Cycle 1 completes; the stop arrives while waiting for cycle 2.
+    assert service.run(config, state, project_root=ROOT, now=first.now, stop=first) == 2
+    state_file = state / "state.private.json"
+    paused = service._read(state_file)
+    assert paused["plan"] and paused["completed_cycles"] == 1
+    service._write(state_file, {**paused, "status": "source_paused", "reason": "prod2"})
+    real_gate, gated = service._gate, []
+    monkeypatch.setattr(service, "_gate", lambda plan: gated.append(plan["epoch_id"]) or real_gate(plan))
+    shared_block(fake_gate, source="prod2")
+    second = Clock()
+    second.on_wait = lambda: fake_gate.advance(90_000)
+    assert service.run(config, state, project_root=ROOT, now=second.now, stop=second) == 0
+    assert gated == ["synthetic-explicit-000002"]  # The old plan is not re-gated while paused.
+    assert len(children) == 2 and service._read(state_file)["status"] == "complete"
+
+
+def test_gate_outage_between_checks_is_an_egress_outage_not_a_pause(paths, monkeypatch, fake_gate):
+    config, state = paths
+    write(config, configuration())
+    children = fake_children(monkeypatch)
+    egress = Egress(monkeypatch, [])
+    fake_gate.fail = ConnectionError("down")
+    clock, seen = Clock(), []
+
+    def on_wait():
+        seen.append(service._read(state / "state.private.json"))
+        fake_gate.fail = None
+
+    clock.on_wait = on_wait
+    assert service.run(config, state, project_root=ROOT, now=clock.now, stop=clock) == 0
+    assert [value["status"] for value in seen] == ["egress_unavailable"]
+    assert seen[0]["reason"] == "SharedGateUnavailable" and len(children) == 1
+    assert "unavailable" in egress.alerts[0] and "recovered" in egress.alerts[1]
+
+
+def test_without_the_gate_nothing_pauses_and_redis_is_never_asked(paths, monkeypatch):
+    config, state = paths
+    write(config, configuration())
+    children = fake_children(monkeypatch)
+    Egress(monkeypatch, [])
+    monkeypatch.setattr(service.shared_gate, "_BACKEND", object())
+    assert service.run(config, state, project_root=ROOT, now=lambda: NOW) == 0 and len(children) == 1
+
+
+@pytest.mark.parametrize("value,status", [({"version": 1, "operator_hold": "source_403"}, "blocked_source"),
+    ({"version": 1, "enabled": False}, "prepared")])
+def test_holds_do_not_alert(paths, monkeypatch, value, status):
+    config, state = paths
+    write(config, value)
+    egress = Egress(monkeypatch, [])
+    assert service.run(config, state, project_root=ROOT, now=lambda: NOW) == 2
+    assert service._read(state / "state.private.json")["status"] == status and egress.alerts == []
+
+
+def test_reaching_complete_alerts_once_and_a_later_restart_is_silent(paths, monkeypatch):
+    config, state = paths
+    write(config, configuration())
+    fake_children(monkeypatch)
+    egress = Egress(monkeypatch, [])
+    assert service.run(config, state, project_root=ROOT, now=lambda: NOW) == 0
+    assert service.run(config, state, project_root=ROOT, now=lambda: NOW) == 0
+    assert len(egress.alerts) == 1 and "completo" in egress.alerts[0]
+
+
+def test_attention_required_alerts_with_the_reason_and_a_restart_loop_does_not_repeat_it(paths, monkeypatch):
+    config, state = paths
+    write(config, configuration())
+    fake_children(monkeypatch, exit_code=0, no_report=True)
+    egress = Egress(monkeypatch, [])
+    assert service.run(config, state, project_root=ROOT, now=lambda: NOW) == 2
+    first = service._read(state / "state.private.json")["reason"]
+    assert first == "missing_or_ambiguous_final_report"
+    assert len(egress.alerts) == 1 and first in egress.alerts[0] and "revisión manual" in egress.alerts[0]
+    for _ in range(3):  # A supervisor restarting the container finds the same stop each time.
+        assert service.run(config, state, project_root=ROOT, now=lambda: NOW) == 2
+    assert service._read(state / "state.private.json")["reason"] == "interrupted_epoch_requires_manual_review"
+    assert len(egress.alerts) == 2  # One alert for the new reason, none for the repeats.

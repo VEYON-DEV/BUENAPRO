@@ -15,6 +15,10 @@ between consecutive requests no matter how many threads or clients exist:
 
 The pace is fixed and low on purpose: there is no jitter, rotation or evasion.
 
+When the shared gate is on (``SEACE_SHARED_GATE``, see ``shared_gate``), each request also
+waits for the turn shared with PROD2 and the web, after the local gap. A pause that another
+process opened trips the breaker like a local 403 would, and nothing is sent.
+
 Outside the PROD6 runtime the pacer only paces. The runtime calls ``begin_cycle``,
 which also turns on the request budget of the cycle and the circuit breaker: once the
 source answered 403/429 (``trip``), or the budget is spent, ``acquire`` refuses before
@@ -28,6 +32,8 @@ import time
 from collections.abc import Callable
 
 import httpx
+
+from buenapro_worker.seace import shared_gate
 
 DEFAULT_MIN_REQUEST_INTERVAL_SECONDS = 6.0
 DEFAULT_MAX_SOURCE_REQUESTS = 40
@@ -195,7 +201,10 @@ class SourcePacer:
         return None if self._max is None else max(0, self._max - self._used)
 
     def acquire(self) -> None:
-        """Wait for this request's slot, or raise ``SourceStop`` without sending anything."""
+        """Wait for this request's slot, or raise ``SourceStop`` without sending anything.
+
+        The shared turn is taken after the local wait and outside ``self._lock``.
+        """
         interval = self.interval
         with self._lock:
             if self._guard:
@@ -210,11 +219,26 @@ class SourcePacer:
             self._next_slot = slot + interval
         if slot > now:
             self._sleep(slot - now)
+        try:
+            shared_gate.acquire(sleep=self._sleep)
+        except shared_gate.SharedSourceBlocked as shared:
+            self.trip(shared.status)
+            self._refund()
+            raise SourceBlocked(shared.status) from None
+        except shared_gate.SharedGateUnavailable:
+            self._refund()
+            raise
         with self._lock:
             if self._guard and self._is_blocked:
                 # Another thread was denied while this one waited: do not send.
                 self._used -= 1
                 raise SourceBlocked(self._blocked)
+
+    def _refund(self) -> None:
+        """Give back the budget unit of a request that was never sent."""
+        with self._lock:
+            if self._guard:
+                self._used -= 1
 
 
 PACER = SourcePacer()

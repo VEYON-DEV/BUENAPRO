@@ -41,7 +41,7 @@ from buenapro_worker.prod2.batch_plan import MEMBER_IDS, configured_keywords, di
 from buenapro_worker.prod2.business_batches import select_business_batches, select_keyword_preset, report_business_batches
 from buenapro_worker.prod2.batch_repository import save_participation_assessment
 from buenapro_worker.prod2.batch_runner import private_write, read_private
-from buenapro_worker.prod2.client import Prod2HttpClient, SEARCH_URL
+from buenapro_worker.prod2.client import Prod2EgressUnavailable, Prod2HttpClient, Prod2ProtocolError, SEARCH_URL
 from buenapro_worker.prod2.document_selection import (JevDocumentSelector, document_selection_request_hash,
     DOCUMENT_SELECTION_POLICY, DOCUMENT_SELECTION_POLICY_V2, DOCUMENT_SELECTION_POLICY_V3)
 from buenapro_worker.prod2.documents import METADATA_URL, download_document
@@ -57,6 +57,7 @@ from buenapro_worker.prod2.selected_payments import AuditedJevClient, paid_docum
 from buenapro_worker.prod2.staging import RedisStage
 from buenapro_worker.prod2.storage_policy import OFFICIAL_LINKS_POLICY, official_links_only, verify_completed_storage
 from buenapro_worker.prod2.completed_read_reuse import reuse_completed_read
+from buenapro_worker.seace import shared_gate
 from buenapro_worker.seace.egress import EGRESS_EXIT_CODE, EgressUnavailable, seace_http_client
 
 STOP = threading.Event()
@@ -609,11 +610,30 @@ def source_factory(pacer):
         yield Prod2HttpClient(http)
 
 
+def shared_turn():
+    """Take the SEACE turn shared with PROD6 and the web; no-op unless the gate is on.
+
+    A pause opened by another process is handled as the 403 it stands for, and a Redis
+    failure as a failed egress; in both cases the request is never sent.
+    """
+    try:
+        shared_gate.acquire()
+    except shared_gate.SharedSourceBlocked as blocked:
+        STOP.set()
+        if HANDOFF_GUARD is not None:
+            HANDOFF_GUARD.stop_access(blocked.status)
+        # Same error the client raises for a received 403/429, so sweeps classify it as source_<status>.
+        raise Prod2ProtocolError(f"PROD2 HTTP status {blocked.status}") from None
+    except shared_gate.SharedGateUnavailable:
+        raise Prod2EgressUnavailable("PROD2 SEACE egress unavailable") from None
+
+
 def source_hooks(pacer):
     def request(value):
         if STOP.is_set():
             raise LimitReached("Source stop requested")
         pacer(value)
+        shared_turn()
         if STOP.is_set():
             raise LimitReached("Source stop requested")
     def response(value):
@@ -621,6 +641,7 @@ def source_hooks(pacer):
             STOP.set()
             if HANDOFF_GUARD is not None:
                 HANDOFF_GUARD.stop_access(value.status_code)
+            shared_gate.block(value.status_code, "prod2")
     return {"request": [request], "response": [response]}
 
 

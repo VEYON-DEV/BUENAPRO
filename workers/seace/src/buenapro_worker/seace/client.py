@@ -6,7 +6,7 @@ from typing import Any
 import httpx
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
-from buenapro_worker.seace import pacing
+from buenapro_worker.seace import pacing, shared_gate
 from buenapro_worker.seace.egress import is_egress_failure, seace_http_client
 from buenapro_worker.seace.schemas import SearchResponse
 from buenapro_worker.settings import Settings
@@ -70,6 +70,7 @@ class SeaceClient:
         if response.status_code in pacing.BLOCK_STATUSES:
             # 403/429 is a block of our IP: stop every PROD6 request, not just this one.
             self._pacer.trip(response.status_code)
+            shared_gate.block(response.status_code, "prod6")
         response.raise_for_status()
         return response
 
