@@ -15,8 +15,9 @@ from buenapro_worker.prod6.jev_screening import (
     MAX_LINE_KEYWORDS, SUBCATEGORIES, admit_accepted, build_payload, company_payload, listing_text,
     request_hash, score_pending, unadmitted_accepted,
 )
+from buenapro_worker.jobs.poll_search import canonical_hash
 from buenapro_worker.prod6.screening import (
-    POLICY_VERSION, profile_snapshot, record_decision, supersede_pending,
+    POLICY_VERSION, listing_hash, profile_snapshot, record_decision, supersede_pending,
 )
 from buenapro_worker.queue.repository import JobRepository
 from buenapro_worker.seace.schemas import SearchItem
@@ -743,6 +744,153 @@ def test_accepted_but_unadmitted_contracts_are_recovered_after_a_crash(db, compa
     assert [entry["id_contrato"] for entry in recovered] == [contract]
     admit_accepted(JobRepository(db), recovered, batch_id="batch-test")
     assert unadmitted_accepted(db, profile_ids=companies, now=NOW) == []
+
+
+# --- Stable listing hash: a verdict survives a new ``secuencia`` and the move from raw hashes ---
+
+VERDICT_COLUMNS = ("score", "threshold", "decision", "decided_by", "domain", "subcategory", "information",
+                   "model", "request_hash", "input_tokens", "output_tokens", "cost_usd", "attempts")
+
+
+def record_stable(db, profile_id, id_contrato, *, secuencia, text="Licencias de software", **fields):
+    """The decision the poll records now: keyed by the listing hash, which ignores ``secuencia``."""
+    item = search_item(id_contrato, text, secuencia=secuencia, **fields)
+    return record_decision(
+        db, item=item, segment=43, profile_id=profile_id, contract_hash=listing_hash(item),
+        profile_hash=profile_snapshot(db, profile_id)["profile_hash"], policy_version=POLICY_VERSION,
+        prefilter_passed=True, prefilter_reasons=[], keyword_lines=[], decision="pending", decided_by="jev")
+
+
+def legacy_row(db, profile_id, id_contrato, *, secuencia, decision, score=None, profile_hash=None,
+               decided_by="jev", text="Licencias de software", **fields):
+    """A row as the poll saved it before the stable hash: keyed by the hash of the whole listing."""
+    listing = search_item(id_contrato, text, secuencia=secuencia, **fields).model_dump(mode="json", by_alias=True)
+    scored = score is not None
+    return db.execute(
+        """INSERT INTO prod6_profile_decisions (id_contrato, profile_id, listing_json, contract_hash, profile_hash,
+             policy_version, prefilter_passed, decision, decided_by, score, threshold, domain, subcategory,
+             information, model, request_hash, input_tokens, output_tokens, cost_usd, result_json, attempts)
+           VALUES (%s, %s, %s::jsonb, %s, %s, %s, true, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                   %s::jsonb, %s) RETURNING id""",
+        (id_contrato, profile_id, json.dumps(listing), canonical_hash(listing),
+         profile_hash or profile_snapshot(db, profile_id)["profile_hash"], POLICY_VERSION, decision, decided_by,
+         score, 60 if scored else None, "informatica" if scored else None,
+         "licencias_software" if scored else None, "claro" if scored else None,
+         "jev-1.13.0" if scored else None, f"request-{secuencia}" if scored else None,
+         1000 + secuencia if scored else None, 90 if scored else None, 0.000042 if scored else None,
+         json.dumps({"alias": "e1", "score": score, "response": {"secuencia": secuencia}}) if scored else None,
+         1 if scored else 0)).fetchone()["id"]
+
+
+def rows_of(db, id_contrato, profile_id):
+    return db.execute("SELECT * FROM prod6_profile_decisions WHERE id_contrato = %s AND profile_id = %s "
+                      "ORDER BY id", (id_contrato, profile_id)).fetchall()
+
+
+@needs_db
+def test_same_content_with_another_secuencia_reuses_the_decision_and_never_asks_jev_again(db, companies):
+    contract, me = new_contract_id(), companies[0]
+    assert record_stable(db, me, contract, secuencia=16) is True
+    handler = FakeJev(scores={"e1": 3})
+    stats, _ = run_score(db, handler, companies)
+    assert (stats["requests"], stats["accepted"]) == (1, 1)
+    # The listing moved to other positions: same contract, so same key, no new row and no new score.
+    assert record_stable(db, me, contract, secuencia=22) is False
+    assert record_stable(db, me, contract, secuencia=32) is False
+    stats, _ = run_score(db, handler, companies)
+    assert (stats["requests"], len(handler.requests)) == (0, 1)
+    rows = rows_of(db, contract, me)
+    assert [(row["decision"], row["score"]) for row in rows] == [("accepted", 75)]
+    assert rows[0]["listing_json"]["secuencia"] == 16  # The first sighting stays as it was stored.
+
+
+@needs_db
+def test_first_verdict_of_the_current_profile_is_copied_without_asking_jev(db, companies):
+    contract, me = new_contract_id(), companies[0]
+    first = legacy_row(db, me, contract, secuencia=16, decision="rejected", score=55.75)
+    legacy_row(db, me, contract, secuencia=17, decision="accepted", score=60.75)
+    legacy_row(db, me, contract, secuencia=18, decision="rejected", score=57.5)
+    legacy_row(db, me, contract, secuencia=20, decision="pending")  # Still waiting when the worker changed.
+    before = rows_of(db, contract, me)
+    assert record_stable(db, me, contract, secuencia=28) is True
+    rows = rows_of(db, contract, me)
+    copy = rows[-1]
+    assert len(rows) == 5 and copy["contract_hash"] == listing_hash(search_item(contract, "Licencias de software"))
+    assert (copy["decision"], copy["decided_by"], copy["score"]) == ("rejected", "jev", 55.75)
+    # Every result column comes from the first row; result_json also names where it came from.
+    for column in VERDICT_COLUMNS:
+        assert copy[column] == before[0][column], column
+    assert copy["result_json"] == before[0]["result_json"] | {"inherited_from": first}
+    assert copy["last_error"] is None and copy["listing_json"]["secuencia"] == 28
+    # History is untouched; only the obsolete pending row retires, as for any newer row.
+    assert rows[:3] == before[:3]
+    assert [row["decision"] for row in rows[3:]] == ["superseded", "rejected"]
+    handler = FakeJev(scores={"e1": 4})
+    stats, accepted = run_score(db, handler, companies)
+    assert (stats["requests"], accepted, handler.requests) == (0, [], [])
+    # And it stays decided however the listing moves afterwards.
+    assert record_stable(db, me, contract, secuencia=40) is False
+    assert len(rows_of(db, contract, me)) == 5
+
+
+@needs_db
+def test_rows_of_an_earlier_profile_other_companies_and_non_jev_verdicts_do_not_count(db, companies):
+    contract, me, other = new_contract_id(), companies[0], companies[1]
+    legacy_row(db, me, contract, secuencia=16, decision="accepted", score=90, profile_hash="earlier-profile")
+    legacy_row(db, other, contract, secuencia=16, decision="accepted", score=90)
+    legacy_row(db, me, contract, secuencia=17, decision="rejected", decided_by="prefilter")
+    legacy_row(db, me, contract, secuencia=18, decision="superseded")
+    assert record_stable(db, me, contract, secuencia=28) is True
+    copy = rows_of(db, contract, me)[-1]
+    assert (copy["decision"], copy["score"], copy["result_json"]) == ("pending", None, None)
+    handler = FakeJev(scores={"e1": 1})
+    stats, _ = run_score(db, handler, companies)
+    assert (stats["requests"], stats["rejected"]) == (1, 1)
+    # The earlier profile's row has the lowest id, but the first verdict of the CURRENT profile wins.
+    mixed = new_contract_id()
+    legacy_row(db, me, mixed, secuencia=16, decision="accepted", score=90, profile_hash="earlier-profile")
+    current = legacy_row(db, me, mixed, secuencia=17, decision="rejected", score=40)
+    record_stable(db, me, mixed, secuencia=30)
+    copy = rows_of(db, mixed, me)[-1]
+    assert (copy["decision"], copy["score"], copy["result_json"]["inherited_from"]) == ("rejected", 40, current)
+
+
+@needs_db
+@pytest.mark.parametrize("change", [
+    {"text": "Licencias de software y servicios en la nube"},
+    {"fecFinCotizacion": "31/12/2099 10:00:00"},
+    {"nomEntidad": "Otra Municipalidad"},
+    {"modalidad": "nueva"},  # Any other listing field, even one the schema does not know.
+])
+def test_a_real_change_of_the_listing_is_decided_again(db, companies, change):
+    contract, me = new_contract_id(), companies[0]
+    legacy_row(db, me, contract, secuencia=16, decision="accepted", score=75)
+    assert record_stable(db, me, contract, secuencia=16) is True  # Inherits: same content.
+    assert record_stable(db, me, contract, secuencia=17, **change) is True
+    rows = rows_of(db, contract, me)
+    assert (rows[-1]["decision"], rows[-1]["score"], rows[-1]["result_json"]) == ("pending", None, None)
+    assert rows[-2]["decision"] == "accepted"  # The inherited verdict stays as history.
+    handler = FakeJev(scores={"e1": 1})
+    stats, _ = run_score(db, handler, companies)
+    assert (stats["requests"], stats["rejected"]) == (1, 1)
+    assert rows_of(db, contract, me)[-1]["decision"] == "rejected"
+
+
+@needs_db
+def test_an_inherited_acceptance_is_admitted_once(db, companies):
+    contract, me = new_contract_id(), companies[0]
+    legacy_row(db, me, contract, secuencia=16, decision="accepted", score=60.75)
+    record_stable(db, me, contract, secuencia=28)
+    repo = JobRepository(db)
+    recovered = unadmitted_accepted(db, profile_ids=[me], now=NOW)
+    assert [entry["id_contrato"] for entry in recovered] == [contract]
+    assert admit_accepted(repo, recovered, batch_id="batch-test") == {"admitted": 1, "changed": 1, "enqueued": 1}
+    assert unadmitted_accepted(db, profile_ids=[me], now=NOW) == []
+    # Another position of the same listing neither re-admits nor queues a second reading.
+    assert record_stable(db, me, contract, secuencia=40) is False
+    assert admit_accepted(repo, recovered, batch_id="batch-test")["enqueued"] == 0
+    assert db.execute("SELECT count(*) AS n FROM worker_jobs WHERE job_type = 'process_contract' "
+                      "AND (payload->>'id_contrato')::bigint = %s", (contract,)).fetchone()["n"] == 1
 
 
 def test_module_reuses_the_prod2_jev_contract():

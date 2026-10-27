@@ -6,9 +6,10 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any
 
-from buenapro_worker.jobs.poll_search import LIMA_TZ, canonical_hash, upsert_search_item
+from buenapro_worker.jobs.poll_search import LIMA_TZ, upsert_search_item
 from buenapro_worker.prod6.screening import (
-    POLICY_VERSION, decide, line_matches, normalize, prefilter, profile_snapshot, record_decision,
+    POLICY_VERSION, decide, line_matches, listing_hash, normalize, prefilter, profile_snapshot,
+    record_decision,
 )
 from buenapro_worker.queue.repository import JobRepository
 from buenapro_worker.seace.client import SeaceClient
@@ -55,8 +56,7 @@ def admit_contract(repo: JobRepository, item: SearchItem, *, anio: int, segment:
             payload["batch_id"] = batch_id
         job = repo.enqueue(
             "process_contract", payload, queue_name="io", priority=2,
-            dedup_key=f"process_contract:{batch_id or 'profile'}:{item.id_contrato}:"
-                      f"{canonical_hash(item.model_dump(mode='json', by_alias=True))}",
+            dedup_key=f"process_contract:{batch_id or 'profile'}:{item.id_contrato}:{listing_hash(item)}",
         )
         enqueued = int(job is not None)
     return {"changed": int(changed), "enqueued": enqueued}
@@ -182,7 +182,7 @@ def poll_prod6_profiles(
                     continue
                 decision, decided_by = decide(passed)
                 stats["prefilter_rejected"] += int(not passed)
-                contract_hash = canonical_hash(item.model_dump(mode="json", by_alias=True))
+                contract_hash = listing_hash(item)
                 recorded = record_decision(
                     repo.conn, item=item, segment=segment, profile_id=profile_id,
                     contract_hash=contract_hash, profile_hash=snapshot["profile_hash"],
