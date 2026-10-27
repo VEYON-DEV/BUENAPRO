@@ -6,8 +6,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from buenapro_worker.jobs.poll_prod6_profile import poll_prod6_profile
+from buenapro_worker.jobs.poll_search import canonical_hash
 from buenapro_worker.prod6.screening import (
-    POLICY_VERSION, decide, existing_decision, prefilter, profile_snapshot, record_decision,
+    POLICY_VERSION, VOLATILE_LISTING_FIELDS, decide, existing_decision, listing_hash, prefilter,
+    profile_snapshot, record_decision,
 )
 from buenapro_worker.queue.repository import JobRepository
 from buenapro_worker.seace.schemas import SearchItem, SearchResponse
@@ -89,6 +91,28 @@ def test_prefilter_collects_every_failed_rule():
 def test_v2_decision_rule_never_accepts_without_jev(passed, expected):
     assert POLICY_VERSION == "prod6_screening_v2"
     assert decide(passed) == expected
+
+
+def test_listing_hash_ignores_only_the_position_in_the_results():
+    assert VOLATILE_LISTING_FIELDS == {"secuencia"}
+    base = search_item(secuencia=16, nomEntidad="Municipalidad")
+    assert listing_hash(base) == listing_hash(search_item(secuencia=32, nomEntidad="Municipalidad"))
+    assert listing_hash(base) == listing_hash(search_item(nomEntidad="Municipalidad"))
+    # The stored listing_json (a plain dict) hashes like the item it came from.
+    assert listing_hash(base) == listing_hash(base.model_dump(mode="json", by_alias=True))
+
+
+@pytest.mark.parametrize("fields", [
+    {"desObjetoContrato": "Otro objeto"},
+    {"fecFinCotizacion": "31/12/2026 10:00:00"},
+    {"fecPublica": "02/10/2026 10:00:00"},
+    {"idEstadoContrato": 3},
+    {"nomEntidad": "Otra entidad"},
+    {"campoNuevo": {"anidado": [1, 2]}},
+])
+def test_listing_hash_changes_with_any_real_content(fields):
+    same = {"secuencia": 16, "nomEntidad": "Municipalidad"}
+    assert listing_hash(search_item(**(same | fields))) != listing_hash(search_item(**same))
 
 
 def profile_rows(*lines):
@@ -299,6 +323,53 @@ def test_poll_does_not_reevaluate_decided_contracts_but_redecides_on_changes(db,
     db.execute("UPDATE business_lines SET score_umbral = 60 WHERE profile_id = %s", (profile,))
     assert run_poll(db, profile, changed)["decisions_recorded"] == 1
     assert db.execute(count, (ids,)).fetchone()["n"] == 4
+
+
+@needs_db
+def test_poll_reuses_the_decision_when_only_the_listing_position_moves(db, profile):
+    contract = new_contract_id()
+    text = "Mantenimiento de tableros eléctricos"
+    nested = {"detalle": {"lotes": [1, 2], "nota": "ñandú"}}  # Survives the jsonb round trip unchanged.
+    run_poll(db, profile, [poll_item(contract, text, secuencia=16, **nested)])
+    for secuencia in (17, 28, 32):
+        stats = run_poll(db, profile, [poll_item(contract, text, secuencia=secuencia, **nested)])
+        assert (stats["decisions_recorded"], stats["decisions_reused"]) == (0, 1)
+    rows = db.execute("SELECT * FROM prod6_profile_decisions WHERE id_contrato = %s", (contract,)).fetchall()
+    assert len(rows) == 1 and rows[0]["listing_json"]["secuencia"] == 16
+    assert rows[0]["contract_hash"] == listing_hash(rows[0]["listing_json"])
+    # A real change is a new pending decision, and the unscored one it replaces retires.
+    stats = run_poll(db, profile, [poll_item(contract, text + " y variadores", secuencia=33, **nested)])
+    assert stats["decisions_recorded"] == 1
+    assert [row["decision"] for row in db.execute(
+        "SELECT decision FROM prod6_profile_decisions WHERE id_contrato = %s ORDER BY id", (contract,))] == [
+        "superseded", "pending"]
+
+
+@needs_db
+def test_poll_inherits_the_first_verdict_of_the_current_profile_for_the_same_content(db, profile):
+    contract = new_contract_id()
+    text = "Mantenimiento de tableros eléctricos"
+    profile_hash = profile_snapshot(db, profile)["profile_hash"]
+    for secuencia, decision, score in ((16, "rejected", 55.75), (17, "accepted", 60.75), (18, "rejected", 57.5)):
+        item = SearchItem.model_validate(poll_item(contract, text, secuencia=secuencia))
+        # The old key: the hash of the whole listing, position included.
+        record_decision(
+            db, item=item, segment=39, profile_id=profile, contract_hash=canonical_hash(
+                item.model_dump(mode="json", by_alias=True)), profile_hash=profile_hash,
+            policy_version=POLICY_VERSION, prefilter_passed=True, prefilter_reasons=[],
+            keyword_lines=["Tableros"], decision="pending", decided_by="jev")
+        db.execute("""UPDATE prod6_profile_decisions SET decision = %s, score = %s, threshold = 60
+                      WHERE id_contrato = %s AND decision = 'pending'""", (decision, score, contract))
+    stats = run_poll(db, profile, [poll_item(contract, text, secuencia=28)])
+    assert (stats["decisions_recorded"], stats["decisions_reused"]) == (1, 0)
+    rows = db.execute("SELECT decision, score, decided_by FROM prod6_profile_decisions WHERE id_contrato = %s "
+                      "ORDER BY id", (contract,)).fetchall()
+    assert [(row["decision"], row["score"]) for row in rows] == [
+        ("rejected", 55.75), ("accepted", 60.75), ("rejected", 57.5), ("rejected", 55.75)]
+    assert rows[-1]["decided_by"] == "jev"
+    # The next sweep finds it by the stable key.
+    stats = run_poll(db, profile, [poll_item(contract, text, secuencia=29)])
+    assert (stats["decisions_recorded"], stats["decisions_reused"]) == (0, 1)
 
 
 @needs_db

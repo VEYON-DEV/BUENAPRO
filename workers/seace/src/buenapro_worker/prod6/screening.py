@@ -20,6 +20,21 @@ from buenapro_worker.seace.schemas import SearchItem
 
 POLICY_VERSION = "prod6_screening_v2"
 
+# Listing fields that change while the contract does not. ``secuencia`` is the position of the
+# contract in the result list: it moves every time other contracts are published.
+VOLATILE_LISTING_FIELDS = frozenset({"secuencia"})
+
+
+def listing_hash(listing: SearchItem | dict[str, Any]) -> str:
+    """Hash of what the search listing says about a contract, without its volatile fields.
+
+    Hashing the whole listing gave an unchanged contract a new key (and a new JEV score) whenever
+    its position in the results moved. Takes a ``SearchItem`` or its stored ``listing_json``.
+    """
+    if isinstance(listing, SearchItem):
+        listing = listing.model_dump(mode="json", by_alias=True)
+    return canonical_hash({key: value for key, value in listing.items() if key not in VOLATILE_LISTING_FIELDS})
+
 
 def normalize(value: str) -> str:
     value = unicodedata.normalize("NFKD", value.lower())
@@ -139,6 +154,37 @@ def supersede_pending(conn: psycopg.Connection, *, profile_ids: list[str],
         (policy_version, profile_ids)).rowcount
 
 
+def inherit_first_verdict(conn: psycopg.Connection, *, row_id: int, id_contrato: int, profile_id: str,
+                          contract_hash: str, profile_hash: str, policy_version: str) -> bool:
+    """Copy onto a pending row the first JEV verdict the current profile gave to the same listing.
+
+    Rows written before the stable hash have one ``contract_hash`` per ``secuencia``; those whose
+    ``listing_hash`` is ``contract_hash`` are the same contract text, already scored. JEV is not
+    deterministic, so the first verdict wins instead of scoring it again. Older rows are history
+    and stay untouched; the copy keeps ``inherited_from`` (source id) in ``result_json`` because
+    tokens and cost are copied too. Returns False when there is nothing to inherit.
+    """
+    candidates = conn.execute(
+        """SELECT id, listing_json FROM prod6_profile_decisions
+           WHERE id_contrato = %s AND profile_id = %s AND profile_hash = %s AND policy_version = %s
+             AND decided_by = 'jev' AND decision IN ('accepted', 'rejected') AND id <> %s
+           ORDER BY id""",
+        (id_contrato, profile_id, profile_hash, policy_version, row_id)).fetchall()
+    source = next((row["id"] for row in candidates if listing_hash(row["listing_json"]) == contract_hash), None)
+    if source is None:
+        return False
+    conn.execute(
+        """UPDATE prod6_profile_decisions t SET decision = s.decision, decided_by = s.decided_by,
+             score = s.score, threshold = s.threshold, domain = s.domain, subcategory = s.subcategory,
+             information = s.information, model = s.model, request_hash = s.request_hash,
+             input_tokens = s.input_tokens, output_tokens = s.output_tokens, cost_usd = s.cost_usd,
+             result_json = COALESCE(s.result_json, '{}'::jsonb) || jsonb_build_object('inherited_from', s.id),
+             attempts = s.attempts, last_error = NULL, updated_at = now()
+           FROM prod6_profile_decisions s WHERE t.id = %s AND s.id = %s""",
+        (row_id, source))
+    return True
+
+
 def record_decision(conn: psycopg.Connection, *, item: SearchItem, segment: int, profile_id: str,
                     contract_hash: str, profile_hash: str, policy_version: str,
                     prefilter_passed: bool, prefilter_reasons: list[str],
@@ -150,35 +196,45 @@ def record_decision(conn: psycopg.Connection, *, item: SearchItem, segment: int,
     A new row makes the other pending rows of the same contract x company obsolete
     ('superseded'). A row that had been superseded and becomes current again (the card
     or profile went back to an earlier hash) is revived with the fresh decision.
+    A new or revived row that waits for JEV first looks for a verdict the current profile
+    already gave to the same listing (``inherit_first_verdict``) and takes it instead.
     """
+    existing = existing_decision(conn, item.id_contrato, profile_id, contract_hash, profile_hash, policy_version)
+    if existing and existing["decision"] != "superseded":
+        return False
     listing = item.model_dump(mode="json", by_alias=True)
-    row = conn.execute(
-        """INSERT INTO prod6_profile_decisions (
-             id_contrato, profile_id, codigo, cubso_segmento, objeto_codigo, fec_fin_cotizacion,
-             listing_json, contract_hash, profile_hash, policy_version,
-             prefilter_passed, prefilter_reasons, keyword_lines, decision, decided_by)
-           VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s, %s, %s)
-           ON CONFLICT (id_contrato, profile_id, contract_hash, profile_hash, policy_version)
-           DO NOTHING RETURNING id""",
-        (item.id_contrato, profile_id, item.codigo, str(segment), item.objeto_codigo,
-         parse_lima_datetime(item.fec_fin_cotizacion), json.dumps(listing, ensure_ascii=False),
-         contract_hash, profile_hash, policy_version, prefilter_passed, prefilter_reasons,
-         keyword_lines, decision, decided_by),
-    ).fetchone()
-    if row is None:
+    with conn.transaction():  # The pending insert and the inherited verdict land together.
         row = conn.execute(
-            """UPDATE prod6_profile_decisions SET decision = %s, decided_by = %s, prefilter_passed = %s,
-                 prefilter_reasons = %s, keyword_lines = %s, attempts = 0, last_error = NULL,
-                 updated_at = now()
-               WHERE id_contrato = %s AND profile_id = %s AND contract_hash = %s AND profile_hash = %s
-                 AND policy_version = %s AND decision = 'superseded' RETURNING id""",
-            (decision, decided_by, prefilter_passed, prefilter_reasons, keyword_lines, item.id_contrato,
-             profile_id, contract_hash, profile_hash, policy_version)).fetchone()
+            """INSERT INTO prod6_profile_decisions (
+                 id_contrato, profile_id, codigo, cubso_segmento, objeto_codigo, fec_fin_cotizacion,
+                 listing_json, contract_hash, profile_hash, policy_version,
+                 prefilter_passed, prefilter_reasons, keyword_lines, decision, decided_by)
+               VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s, %s, %s)
+               ON CONFLICT (id_contrato, profile_id, contract_hash, profile_hash, policy_version)
+               DO NOTHING RETURNING id""",
+            (item.id_contrato, profile_id, item.codigo, str(segment), item.objeto_codigo,
+             parse_lima_datetime(item.fec_fin_cotizacion), json.dumps(listing, ensure_ascii=False),
+             contract_hash, profile_hash, policy_version, prefilter_passed, prefilter_reasons,
+             keyword_lines, decision, decided_by),
+        ).fetchone()
         if row is None:
-            return False
-    conn.execute(
-        """UPDATE prod6_profile_decisions SET decision = 'superseded', updated_at = now()
-           WHERE id_contrato = %s AND profile_id = %s AND policy_version = %s AND decision = 'pending'
-             AND NOT (contract_hash = %s AND profile_hash = %s)""",
-        (item.id_contrato, profile_id, policy_version, contract_hash, profile_hash))
+            row = conn.execute(
+                """UPDATE prod6_profile_decisions SET decision = %s, decided_by = %s, prefilter_passed = %s,
+                     prefilter_reasons = %s, keyword_lines = %s, attempts = 0, last_error = NULL,
+                     updated_at = now()
+                   WHERE id_contrato = %s AND profile_id = %s AND contract_hash = %s AND profile_hash = %s
+                     AND policy_version = %s AND decision = 'superseded' RETURNING id""",
+                (decision, decided_by, prefilter_passed, prefilter_reasons, keyword_lines, item.id_contrato,
+                 profile_id, contract_hash, profile_hash, policy_version)).fetchone()
+            if row is None:
+                return False
+        if (decision, decided_by) == ("pending", "jev"):
+            inherit_first_verdict(
+                conn, row_id=row["id"], id_contrato=item.id_contrato, profile_id=profile_id,
+                contract_hash=contract_hash, profile_hash=profile_hash, policy_version=policy_version)
+        conn.execute(
+            """UPDATE prod6_profile_decisions SET decision = 'superseded', updated_at = now()
+               WHERE id_contrato = %s AND profile_id = %s AND policy_version = %s AND decision = 'pending'
+                 AND NOT (contract_hash = %s AND profile_hash = %s)""",
+            (item.id_contrato, profile_id, policy_version, contract_hash, profile_hash))
     return True

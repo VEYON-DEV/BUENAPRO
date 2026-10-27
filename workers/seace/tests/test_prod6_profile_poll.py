@@ -8,7 +8,7 @@ from buenapro_worker.jobs.poll_prod6_profile import matches_profile_scope, poll_
 from buenapro_worker.jobs.scheduler import enqueue_poll_search_jobs
 from buenapro_worker.prod6 import screening
 from buenapro_worker.seace import pacing
-from buenapro_worker.seace.schemas import SearchResponse
+from buenapro_worker.seace.schemas import SearchItem, SearchResponse
 from buenapro_worker.settings import Settings
 
 
@@ -157,6 +157,36 @@ def test_completed_extraction_not_requeued_and_expired_not_saved(client_cls, ups
     assert decisions.by_contract()[2]["prefilter_reasons"] == ["closed"]
     assert decisions.by_contract()[2]["decision"] == "rejected"
     upsert.assert_called_once()
+
+
+@patch("buenapro_worker.jobs.poll_prod6_profile.upsert_search_item", return_value=True)
+def test_process_contract_dedup_key_ignores_the_listing_position(upsert):
+    def queued_key(**fields):
+        repo = MagicMock()
+        poll_module.admit_contract(repo, SearchItem.model_validate(item(1, "tableros eléctricos") | fields),
+                                   anio=2026, segment=39, batch_id=None)
+        return repo.enqueue.call_args.kwargs["dedup_key"]
+
+    assert queued_key(secuencia=16) == queued_key(secuencia=32) == queued_key()
+    assert queued_key(secuencia=16) != queued_key(secuencia=16, desObjetoContrato="Otro objeto")
+
+
+@patch("buenapro_worker.jobs.poll_prod6_profile.upsert_search_item", return_value=True)
+@patch("buenapro_worker.jobs.poll_prod6_profile.SeaceClient")
+def test_a_listing_that_only_moved_is_a_reused_decision(client_cls, upsert, decisions):
+    repo = MagicMock()
+    repo.conn.execute.return_value.fetchall.return_value = LINES
+    search = client_cls.return_value.__enter__.return_value.search_contracts
+
+    def sweep(secuencia, text="papelería"):
+        search.side_effect = [response([item(1, text) | {"secuencia": secuencia}]), response([])]
+        return poll_prod6_profile(settings(), repo, profile_id="profile")
+
+    assert sweep(16)["decisions_recorded"] == 1
+    moved = sweep(28)
+    assert (moved["decisions_recorded"], moved["decisions_reused"]) == (0, 1)
+    assert sweep(29, "papelería y archivadores")["decisions_recorded"] == 1
+    assert len(decisions.rows) == 2
 
 
 def test_rejects_unbounded_or_inactive_profile():

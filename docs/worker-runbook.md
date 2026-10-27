@@ -360,6 +360,19 @@ clave solo se registran en `keyword_lines` y ya no aceptan. Los rechazados y pen
 guardan solo en `prod6_profile_decisions` (con su `listing_json` de la búsqueda), sin tocar
 `seace_contracts` ni `opportunities`: solo un contrato aceptado se guarda como contrato y se encola.
 
+El hash de la ficha (`listing_hash` en `prod6/screening.py`, también usado en el `dedup_key` de
+`process_contract`) excluye los campos volátiles de `VOLATILE_LISTING_FIELDS` (hoy `secuencia`,
+la posición del contrato en la lista de resultados, que cambia cada vez que se publican
+otros): un contrato con el mismo contenido conserva su decisión y JEV no vuelve a puntuarlo.
+Las filas guardadas antes de este cambio llevan el hash de la ficha completa. Al registrar la
+primera decisión con el hash estable, `record_decision` busca en esas filas (mismo contrato,
+empresa, hash del perfil y política) la primera decisión de JEV (`accepted` o `rejected`,
+menor `id`) cuya ficha, sin `secuencia`, sea la misma, y la copia a la fila nueva (puntaje,
+umbral, clasificación, tokens, costo y `result_json` con `inherited_from` = id de la fila
+origen; el costo y los tokens quedan duplicados en la copia). Las filas de otro perfil se
+ignoran, las antiguas no se modifican, y si no hay ninguna el contrato queda `pending` como
+siempre.
+
 ### Afinidad JEV por empresa (M2, política `prod6_screening_v2`)
 
 Con la política v2 el poll deja todo contrato que pasa el prefiltro como `pending`
