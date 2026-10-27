@@ -368,8 +368,8 @@ Las filas guardadas antes de este cambio llevan el hash de la ficha completa. Al
 primera decisión con el hash estable, `record_decision` busca en esas filas (mismo contrato,
 empresa, hash del perfil y política) la primera decisión de JEV (`accepted` o `rejected`,
 menor `id`) cuya ficha, sin `secuencia`, sea la misma, y la copia a la fila nueva (puntaje,
-umbral, clasificación, tokens, costo y `result_json` con `inherited_from` = id de la fila
-origen; el costo y los tokens quedan duplicados en la copia). Las filas de otro perfil se
+umbral, clasificación y `result_json` con `inherited_from` = id de la fila origen; tokens y
+costo quedan vacíos porque la copia no se pagó). Las filas de otro perfil se
 ignoran, las antiguas no se modifican, y si no hay ninguna el contrato queda `pending` como
 siempre.
 

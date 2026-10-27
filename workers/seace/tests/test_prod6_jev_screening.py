@@ -749,7 +749,8 @@ def test_accepted_but_unadmitted_contracts_are_recovered_after_a_crash(db, compa
 # --- Stable listing hash: a verdict survives a new ``secuencia`` and the move from raw hashes ---
 
 VERDICT_COLUMNS = ("score", "threshold", "decision", "decided_by", "domain", "subcategory", "information",
-                   "model", "request_hash", "input_tokens", "output_tokens", "cost_usd", "attempts")
+                   "model", "request_hash", "attempts")
+PAID_COLUMNS = ("input_tokens", "output_tokens", "cost_usd")  # Nothing was paid for a copy.
 
 
 def record_stable(db, profile_id, id_contrato, *, secuencia, text="Licencias de software", **fields):
@@ -820,6 +821,7 @@ def test_first_verdict_of_the_current_profile_is_copied_without_asking_jev(db, c
     # Every result column comes from the first row; result_json also names where it came from.
     for column in VERDICT_COLUMNS:
         assert copy[column] == before[0][column], column
+    assert all(copy[column] is None for column in PAID_COLUMNS)
     assert copy["result_json"] == before[0]["result_json"] | {"inherited_from": first}
     assert copy["last_error"] is None and copy["listing_json"]["secuencia"] == 28
     # History is untouched; only the obsolete pending row retires, as for any newer row.

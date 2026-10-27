@@ -161,8 +161,9 @@ def inherit_first_verdict(conn: psycopg.Connection, *, row_id: int, id_contrato:
     Rows written before the stable hash have one ``contract_hash`` per ``secuencia``; those whose
     ``listing_hash`` is ``contract_hash`` are the same contract text, already scored. JEV is not
     deterministic, so the first verdict wins instead of scoring it again. Older rows are history
-    and stay untouched; the copy keeps ``inherited_from`` (source id) in ``result_json`` because
-    tokens and cost are copied too. Returns False when there is nothing to inherit.
+    and stay untouched; the copy names its source (``inherited_from`` in ``result_json``) and
+    leaves tokens and cost empty, since nothing was paid for it. Returns False when there is
+    nothing to inherit.
     """
     candidates = conn.execute(
         """SELECT id, listing_json FROM prod6_profile_decisions
@@ -177,7 +178,6 @@ def inherit_first_verdict(conn: psycopg.Connection, *, row_id: int, id_contrato:
         """UPDATE prod6_profile_decisions t SET decision = s.decision, decided_by = s.decided_by,
              score = s.score, threshold = s.threshold, domain = s.domain, subcategory = s.subcategory,
              information = s.information, model = s.model, request_hash = s.request_hash,
-             input_tokens = s.input_tokens, output_tokens = s.output_tokens, cost_usd = s.cost_usd,
              result_json = COALESCE(s.result_json, '{}'::jsonb) || jsonb_build_object('inherited_from', s.id),
              attempts = s.attempts, last_error = NULL, updated_at = now()
            FROM prod6_profile_decisions s WHERE t.id = %s AND s.id = %s""",
