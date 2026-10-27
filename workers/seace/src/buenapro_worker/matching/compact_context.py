@@ -92,5 +92,69 @@ def build_compact_match_profile(value: dict) -> dict:
     }
 
 
+# LLM2 sees the experiences closest to the contract, each one complete. A profile with up to this
+# many is sent whole; DIN had 43 (~35 000 tokens per evaluation), VEYON 2.
+MATCH_EXPERIENCE_LIMIT = 8
+# Words every procurement text shares; they say nothing about which experience fits.
+_GENERIC_TERMS = frozenset("""
+    para como entre sobre desde hasta segun donde cuando todo toda todos todas este esta estos estas
+    servicio servicios adquisicion contratacion suministro bienes compra contrato contratos entidad
+    empresa proveedor requerimiento requerimientos tecnico tecnica tecnicos tecnicas general generales
+    experiencia minima minimo acreditar acredita documento documentos copia copias similares similar
+""".split())
+
+
+def _terms(*values: Any) -> set[str]:
+    return {word for value in values for word in re.findall(r"[a-z0-9]+", normalized(value))
+            if len(word) >= 4 and word not in _GENERIC_TERMS}
+
+
+def _experience_terms(experience: dict) -> tuple[set[str], set[str]]:
+    main = _terms(*(experience.get(key) for key in ("objeto", "especialidad", "rubro", "tipo_objeto")))
+    documents = set()
+    for source in _list(_record(experience.get("documentary_summary")).get("sources")):
+        extraction = _record(_record(source).get("extraction"))
+        documents |= _terms(extraction.get("summary"), _record(extraction.get("classification")).get("specialty"))
+    return main, documents - main
+
+
+def select_relevant_experience(compact: dict, oportunidad: dict, requisitos: list[dict],
+                               limit: int = MATCH_EXPERIENCE_LIMIT) -> dict:
+    """Keep the ``limit`` experiences that share most words with the contract, complete and in order.
+
+    A word in the experience's object, specialty or sector counts twice; one in its documents once;
+    a tie goes to the most recent year. Economic areas follow their experience (an index pointing to
+    an experience that was left out becomes None), and a note tells the model that more exist.
+    """
+    experiences = _list(compact.get("experience_json"))
+    if len(experiences) <= limit:
+        return compact
+    resumen = _record(oportunidad.get("resumen"))
+    wanted = _terms(oportunidad.get("descripcion"), resumen.get("descripcion_corta"), resumen.get("objeto"),
+                    *(requisito.get("requisito") for requisito in requisitos))
+
+    def rank(index: int) -> tuple:
+        main, documents = _experience_terms(_record(experiences[index]))
+        year = str(_record(experiences[index]).get("anio") or "")
+        return (-(2 * len(wanted & main) + len(wanted & documents)), -int(year) if year.isdigit() else 0, index)
+
+    kept = sorted(sorted(range(len(experiences)), key=rank)[:limit])
+    position = {old: new for new, old in enumerate(kept)}
+    econ = _record(compact.get("econ_experience_json"))
+    areas = []
+    for value in _list(econ.get("areas")):
+        area = dict(_record(value))
+        if isinstance(area.get("source_record_index"), int):
+            area["source_record_index"] = position.get(area["source_record_index"])
+        areas.append(area)
+    return {
+        **compact,
+        "experience_json": [experiences[index] for index in kept],
+        "experience_note": (f"Se incluyen las {len(kept)} experiencias más relacionadas con esta contratación "
+                            f"de {len(experiences)} registradas por la empresa."),
+        "econ_experience_json": {**econ, "areas": areas},
+    }
+
+
 def compact_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))

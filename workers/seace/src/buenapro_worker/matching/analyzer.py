@@ -16,7 +16,9 @@ from buenapro_worker.extraction.gemini import (
 )
 from buenapro_worker.matching.schemas import MatchAnalysisV1
 from buenapro_worker.matching.schemas import SubstantiveMatchAnalysis
-from buenapro_worker.matching.compact_context import build_compact_match_profile, compact_json
+from buenapro_worker.matching.compact_context import (
+    build_compact_match_profile, compact_json, select_relevant_experience,
+)
 from buenapro_worker.matching.substantive_policy import MATCH_POLICY_VERSION
 from buenapro_worker.settings import Settings
 
@@ -66,6 +68,8 @@ class MatchAnalyzer:
         analisis_previo: dict[str, Any] | None = None,
     ) -> MatchAnalysisResult:
         current_profile = build_compact_match_profile(perfil) if self.prompt_version in SUBSTANTIVE_PROMPT_FILES else perfil
+        if self.prompt_version in SUBSTANTIVE_PROMPT_FILES:
+            current_profile = select_relevant_experience(current_profile, oportunidad, requisitos)
         body: dict[str, Any] = {"perfil": current_profile, "oportunidad": oportunidad, "requisitos": requisitos}
         # Previous scores are not evidence and must not anchor fresh evaluations.
         payload = compact_json(body)
