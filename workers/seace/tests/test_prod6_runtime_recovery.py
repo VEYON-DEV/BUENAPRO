@@ -301,18 +301,18 @@ def test_free_io_is_deferred_once_with_ownership_and_other_work_preserved(offlin
     assert SECRET not in json.dumps(h.states) + str(values) + capsys.readouterr().out
 
 
-def test_mixed_io_transient_and_integrity_failure_settle_then_stop(offline_runtime):
+def test_mixed_io_transient_and_database_failure_settle_then_stop(offline_runtime):
     h = offline_runtime
     h.queues(io=[Job(i, "download_file", "io", {"id_contrato": i, "batch_id": "batch"}, 1)
                  for i in (1, 2)])
 
     def execute(settings, profile_id, job, receipts):
-        raise http_failure(503) if job.id == 1 else ValueError(SECRET)
+        raise http_failure(503) if job.id == 1 else psycopg.OperationalError(SECRET)
 
     h.execute_io.side_effect = execute
     assert h.run(once=True) == 2 and h.execute_io.call_count == 2
     assert h.states[-1]["status"] == "attention_required"
-    assert h.states[-1]["io_errors"] == [{"job_id": 2, "error_type": "ValueError"}]
+    assert h.states[-1]["io_errors"] == [{"job_id": 2, "error_type": "OperationalError"}]
     assert h.states[-1]["deferred_io"][0]["job_id"] == 1
     h.dispatch.assert_not_called()
     h.wait.assert_not_called()
@@ -324,11 +324,15 @@ def test_serial_or_paid_stage_never_uses_free_http_retry_policy(offline_runtime,
     h = offline_runtime
     h.queues(serial=[Job(1, kind, "llm", {"id_contrato": 42, "batch_id": "original"}, 1)])
     h.dispatch.side_effect = error
-    assert h.run(once=False) == 2 and h.dispatch.call_count == 1
+    assert h.run(once=True) == 2 and h.dispatch.call_count == 1
     h.wait.assert_not_called()
-    assert h.states[-1]["status"] == "attention_required"
-    assert h.states[-1]["job_type"] == kind
     assert "deferred_io" not in h.states[-1]
+    if isinstance(error, ReadingBlockedError):  # A payment doubt still stops the service.
+        assert h.states[-1]["status"] == "attention_required" and h.states[-1]["job_type"] == kind
+    else:  # Any other failure holds that job only.
+        assert h.states[-1]["held_jobs"] == [{"job_id": 1, "job_type": kind, "contract_id": 42,
+                                              "error_type": "HTTPStatusError"}]
+        assert len(holds(h)) == 1
 
 
 def test_changed_io_ownership_blocks_recovery_before_any_further_work(offline_runtime):
@@ -496,8 +500,9 @@ def test_egress_check_failure_backs_off_before_any_source_call_and_alerts_once(o
     h.wait.side_effect = wait
     assert h.run(once=False) == 0
     backoffs = [state for state in h.states if state["status"] == "egress_backoff"]
-    assert backoffs and all(state["egress_error"] == "EgressUnavailable" and state["retry_after_seconds"] == 1800
+    assert backoffs and all(state["egress_error"] == "EgressUnavailable" and state["retry_after_seconds"] == 300
                             for state in backoffs)
+    assert waits[:2] == [300, 300]  # The egress is checked again after 5 minutes, not a whole cycle.
     assert not any(state["status"] in {"source_backoff", "attention_required"} for state in h.states)
     assert h.poll.call_count == 1  # Only the cycle after the proxy came back.
     assert len(egress.alerts) == 2 and "unavailable" in egress.alerts[0] and "recovered" in egress.alerts[1]
@@ -1031,12 +1036,12 @@ def test_reading_that_needs_a_new_download_is_deferred_not_failed_or_counted_as_
     assert datetime.fromisoformat(state["source_blocked_until"]) == values[0]
 
 
-def test_other_serial_failures_still_stop_the_cycle(offline_runtime):
+def test_other_serial_failures_hold_only_that_job(offline_runtime):
     h = offline_runtime
     h.queues(serial=[poll_job(1, "derive_summary")])
     h.dispatch.side_effect = http_failure(403)  # derive_summary never talks to PROD6.
     assert h.run(once=True) == 2
-    assert h.states[-1]["status"] == "attention_required"
+    assert h.states[-1]["status"] == "sweep_blocked" and len(holds(h)) == 1
 
 
 def test_budget_ends_discovery_without_error_and_leaves_io_for_the_next_cycle(offline_runtime, egress):
@@ -1527,9 +1532,9 @@ def test_uncertain_reading_stops_the_service_and_alerts_once_per_stop(offline_ru
     assert len(egress.alerts) == 1
     # Another cause is a new stop.
     h.queues(serial=[poll_job(1, "extract_tdr")])
-    h.dispatch.side_effect = ValueError(SECRET)
+    h.dispatch.side_effect = psycopg.OperationalError(SECRET)
     assert h.run(once=False) == 2
-    assert len(egress.alerts) == 2 and "ValueError en extract_tdr" in egress.alerts[1]
+    assert len(egress.alerts) == 2 and "OperationalError en extract_tdr" in egress.alerts[1]
     # A cycle that ends normally closes the episode, so the old cause alerts again.
     h.dispatch.side_effect = None
     h.queues(serial=[poll_job(1, "derive_summary")])
@@ -1544,10 +1549,77 @@ def test_uncertain_reading_stops_the_service_and_alerts_once_per_stop(offline_ru
 def test_io_failure_alerts_with_the_error_and_job_types(offline_runtime, egress):
     h = offline_runtime
     h.queues(io=[poll_job(1, "download_file")])
-    h.execute_io.side_effect = RuntimeError(SECRET)
+    h.execute_io.side_effect = psycopg.OperationalError(SECRET)
     assert h.run(once=True) == 2
     assert egress.alerts == ["BuenaPro PROD6: servicio detenido (attention_required): "
-                             "RuntimeError en download_file; requiere revisión."]
+                             "OperationalError en download_file; requiere revisión."]
+
+
+# --- One job's failure is that job's problem (26/10: two ValueErrors stopped the service) ----
+
+@pytest.mark.parametrize("error", [ValueError(SECRET), KeyError(SECRET), RuntimeError(SECRET)])
+def test_a_job_specific_failure_holds_that_job_alerts_once_and_the_cycle_goes_on(offline_runtime, egress, error):
+    h = offline_runtime
+    h.queues(serial=[poll_job(1, "extract_tdr"), poll_job(2, "extract_tdr"), poll_job(3, "derive_summary")])
+
+    def dispatch(settings, repo, job, receipts):
+        if job.id in (1, 2):
+            raise error
+        return {"outcome": "summarized"}
+
+    h.dispatch.side_effect = dispatch
+    assert h.run(once=True) == 2
+    assert h.dispatch.call_count == 3  # The third job still ran.
+    state = h.states[-1]
+    assert state["status"] == "sweep_blocked" and state["done"] == {"derive_summary": 1}
+    kind = type(error).__name__
+    assert [held["job_id"] for held in state["held_jobs"]] == [1, 2]
+    assert all(held["error_type"] == kind for held in state["held_jobs"])
+    (sql, values), _ = holds(h)
+    assert json.loads(values[0]) == {"job_failure": {"error_type": kind, "reason": "manual_review_required"}}
+    assert values[1] == f"PROD6 extract_tdr failed: {kind}; manual review; no automatic retry" and values[2] == 1
+    # One alert for the same job type and error, never the error message itself.
+    assert egress.alerts == [f"BuenaPro PROD6: el trabajo extract_tdr del contrato 41 falló ({kind}) "
+                             "y quedó en revisión manual; el servicio sigue."]
+    assert SECRET not in json.dumps(h.states) + json.dumps(egress.alerts)
+
+
+def test_a_job_specific_io_failure_holds_that_job_and_other_io_goes_on(offline_runtime, egress):
+    h = offline_runtime
+    h.queues(io=[poll_job(1, "download_file"), poll_job(2, "process_contract")])
+
+    def execute(settings, profile_id, job, receipts):
+        if job.id == 1:
+            raise ValueError(SECRET)
+        return {"files_changed": True}
+
+    h.execute_io.side_effect = execute
+    assert h.run(once=True) == 2
+    state = h.states[-1]
+    assert state["status"] == "sweep_blocked" and state["done"] == {"process_contract": 1}
+    assert state["held_jobs"] == [{"job_id": 1, "job_type": "download_file", "contract_id": 41,
+                                   "error_type": "ValueError"}]
+    assert "io_errors" not in state and len(egress.alerts) == 1
+
+
+def test_a_reading_that_needed_the_source_waits_for_the_egress(offline_runtime, monkeypatch):
+    h = offline_runtime
+    monkeypatch.setenv("PROD6_EGRESS_RETRY_SECONDS", "120")
+    h.queues(serial=[poll_job(1, "extract_tdr"), poll_job(2, "derive_summary")])
+
+    def dispatch(settings, repo, job, receipts):
+        if job.id == 1:
+            raise httpx.ProxyError("proxy unreachable")
+        return {"outcome": "summarized"}
+
+    h.dispatch.side_effect = dispatch
+    assert h.run(once=True) == 2
+    state = h.states[-1]
+    assert state["egress_deferred"] == [{"job_id": 1, "job_type": "extract_tdr",
+                                         "error_type": "ProxyError", "retry_after_seconds": 120}]
+    assert "held_jobs" not in state and holds(h) == []
+    (sql, values), = deferrals(h)
+    assert values[2] == "PROD6 deferred: egress unavailable" and values[3] == 1
 
 
 def test_cycle_level_failure_and_startup_failure_alert_without_details(offline_runtime, egress):
@@ -1982,3 +2054,11 @@ def test_discovery_interval_option_reaches_the_runtime(monkeypatch, tmp_path):
         with pytest.raises(SystemExit):
             runtime.main()
         assert run.call_args.kwargs["discovery_interval_seconds"] == expected
+
+
+def test_a_missing_egress_configuration_still_stops_the_service(offline_runtime, egress):
+    h = offline_runtime
+    h.queues(serial=[poll_job(1, "extract_tdr")])
+    h.dispatch.side_effect = runtime.EgressNotConfigured("SEACE_EGRESS_PROXY missing")
+    assert h.run(once=True) == 2
+    assert h.states[-1]["status"] == "attention_required" and holds(h) == [] and deferrals(h) == []

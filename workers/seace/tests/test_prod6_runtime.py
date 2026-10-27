@@ -2,6 +2,7 @@ import hashlib
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import psycopg
 import pytest
 
 from buenapro_worker.prod6.runtime import (
@@ -97,7 +98,7 @@ def test_parallel_io_error_settles_reserved_jobs_and_stops_before_paid_reading(
 
     def outcome(settings, profile_id, job, receipts):
         if job.id == 1:
-            raise RuntimeError("HTTP failure")
+            raise psycopg.OperationalError("database gone")  # Only the database or a payment doubt stops.
         return {"files_changed": True}
 
     execute_io.side_effect = outcome
@@ -107,7 +108,7 @@ def test_parallel_io_error_settles_reserved_jobs_and_stops_before_paid_reading(
     state = __import__("json").loads((tmp_path / "state.json").read_text())
     assert state["status"] == "attention_required"
     assert state["done"] == {"process_contract": 1}
-    assert state["io_errors"] == [{"job_id": 1, "error_type": "RuntimeError"}]
+    assert state["io_errors"] == [{"job_id": 1, "error_type": "OperationalError"}]
 
 
 def test_profile_pause_is_observed_before_work():

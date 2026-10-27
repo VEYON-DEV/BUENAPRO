@@ -36,11 +36,13 @@ from buenapro_worker.jobs.poll_prod6_profile import poll_prod6_profiles
 from buenapro_worker.jobs.process_contract import process_contract
 from buenapro_worker.queue.repository import Job, JobRepository
 from buenapro_worker.seace import pacing
-from buenapro_worker.seace.egress import EgressUnavailable, check_egress, is_egress_failure, notify_ops
+from buenapro_worker.seace.egress import (
+    EgressNotConfigured, EgressUnavailable, check_egress, is_egress_failure, notify_ops,
+)
 from buenapro_worker.seace.pacing import (
     block_backoff_seconds, blocking_status, default_discovery_interval_seconds,
-    default_max_source_requests, gemini_rate_backoff_seconds, min_request_interval, reading_backoff_seconds,
-    reading_transient_backoff_seconds, source_stop,
+    default_max_source_requests, egress_retry_seconds, gemini_rate_backoff_seconds, min_request_interval,
+    reading_backoff_seconds, reading_transient_backoff_seconds, source_stop,
 )
 from buenapro_worker.settings import Settings
 from buenapro_worker.extraction.commercial_classification import POLICY_KEY, TAXONOMY_VERSION, get_commercial_policy
@@ -52,7 +54,7 @@ from buenapro_worker.prod6.evaluation import (
 )
 from buenapro_worker.prod6.evaluation_guard import GuardedMatchAnalyzer
 from buenapro_worker.prod6.reading import (
-    ProviderRejectedError, ReadingPolicyError, bind_reading_policy, reading_policy_context,
+    GuardedReadingError, ProviderRejectedError, ReadingPolicyError, bind_reading_policy, reading_policy_context,
 )
 from buenapro_worker.prod6.document_selection import listing_items, select_reading_files
 from buenapro_worker.prod6.source_cache import SourceCache
@@ -80,6 +82,10 @@ READING_TRANSIENT_CODES = frozenset({500, 502, 503, 504, 529})
 TRANSIENT_ALERT_AFTER_SECONDS = 7200
 # Requests one free IO job can make (process_contract: detail + two file listings).
 IO_REQUEST_COST = 3
+# Only these stop the whole service: a doubt about a paid request (receipts, guard, reading policy),
+# the database itself or a missing egress configuration. Any other failure of one job holds that job for manual review and the
+# cycle goes on (26/10: two job-specific ValueErrors left the service down for hours).
+SERVICE_STOP_ERRORS = (GuardedReadingError, psycopg.OperationalError, psycopg.InterfaceError, EgressNotConfigured)
 
 
 def free_http_failure(error: Exception) -> dict[str, Any] | None:
@@ -683,6 +689,7 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
     reading_backoff = reading_backoff_seconds()
     transient_backoff = reading_transient_backoff_seconds()
     rate_backoff = gemini_rate_backoff_seconds()
+    egress_retry = egress_retry_seconds()
     stopping = False
 
     def stop(*_args):
@@ -724,6 +731,7 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
             return 2
         egress_down = False
         jev_down = False
+        held_alerted: set[tuple[str, str]] = set()  # (job type, error type) already alerted
         # A 403/429 pause survives restarts: the previous process left it in state.json.
         source_block = load_source_block(receipt_dir / "state.json")
         # The rotation of the search sweep survives restarts the same way.
@@ -746,13 +754,13 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
         def egress_alert(reason: str) -> None:
             nonlocal egress_down
             if not egress_down:
-                notify_ops(f"BuenaPro PROD6: SEACE egress unavailable ({reason}); retrying every {interval_seconds}s.")
+                notify_ops(f"BuenaPro PROD6: SEACE egress unavailable ({reason}); retrying every {egress_retry}s.")
                 egress_down = True
 
         def egress_backoff(state: dict[str, Any], reason: str) -> None:
             """Egress outages are neither source failures nor manual review; alert once."""
             egress_alert(reason)
-            state.update(status="egress_backoff", egress_error=reason, retry_after_seconds=interval_seconds)
+            state.update(status="egress_backoff", egress_error=reason, retry_after_seconds=egress_retry)
             write_state(receipt_dir / "state.json", state)
             write_state(receipt_dir / f"{state['batch_id']}.json", state)
             print(json.dumps(state), flush=True)
@@ -821,6 +829,28 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
             state.setdefault("blocked_documents", []).append({"job_id": held.id,
                 "contract_id": held.payload["id_contrato"],
                 "file_id": archive_id, **block})
+            write_state(receipt_dir / "state.json", state)
+
+        def hold_failed_job(state: dict[str, Any], held: Job, error: Exception) -> None:
+            """A job-specific failure: manual review for that job only, one alert per kind."""
+            kind = type(error).__name__
+            with conn.transaction():
+                changed = conn.execute(HOLD_DOCUMENT_SQL, (
+                    json.dumps({"job_failure": {"error_type": kind, "reason": "manual_review_required"}}),
+                    f"PROD6 {held.job_type} failed: {kind}; manual review; no automatic retry",
+                    held.id, worker_id, NAMESPACE, profile_id))
+                if changed.rowcount != 1:
+                    raise RuntimeError("Held job ownership changed")
+            archive_id = held.payload.get("id_contrato_archivo")
+            if archive_id is not None:
+                SourceCache(receipt_dir / "source-cache").discard(
+                    document_sha(conn, int(held.payload["id_contrato"]), int(archive_id)))
+            if (held.job_type, kind) not in held_alerted:
+                notify_ops(f"BuenaPro PROD6: el trabajo {held.job_type} del contrato {held.payload['id_contrato']} "
+                           f"falló ({kind}) y quedó en revisión manual; el servicio sigue.")
+                held_alerted.add((held.job_type, kind))
+            state.setdefault("held_jobs", []).append({"job_id": held.id, "job_type": held.job_type,
+                "contract_id": held.payload["id_contrato"], "error_type": kind})
             write_state(receipt_dir / "state.json", state)
 
         def defer_for_source(state: dict[str, Any], deferred: Job, error: Exception, stop_kind: str) -> None:
@@ -1024,7 +1054,7 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
                         egress_backoff(state, type(error).__name__)
                         if once:
                             return 2
-                        _wait_for_poll(lambda: stopping, interval_seconds)
+                        _wait_for_poll(lambda: stopping, egress_retry)
                         continue
                     if not discovery_due:
                         discovery_skipped = schedule["reason"]
@@ -1065,7 +1095,7 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
                                 egress_backoff(state, type(error).__name__)
                                 if once:
                                     return 2
-                                _wait_for_poll(lambda: stopping, interval_seconds)
+                                _wait_for_poll(lambda: stopping, egress_retry)
                                 continue
                             stop_kind = source_stop(error)
                             if stop_kind == "blocked":
@@ -1192,6 +1222,9 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
                                             "retry_after_seconds": interval_seconds})
                                         write_state(receipt_dir / "state.json", state)
                                         continue
+                                    if not isinstance(error, SERVICE_STOP_ERRORS):
+                                        hold_failed_job(state, io_job, error)
+                                        continue
                                     with conn.transaction():
                                         conn.execute("""UPDATE worker_jobs SET status='pending',claimed_by=NULL,
                                            claimed_at=NULL,last_error=%s WHERE id=%s AND status='claimed'""",
@@ -1249,6 +1282,23 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
                         if isinstance(error, ProviderRejectedError):
                             reject_reading(state, job, error)
                             continue
+                        if not isinstance(error, SERVICE_STOP_ERRORS) and (
+                                isinstance(error, EgressUnavailable) or is_egress_failure(error)):
+                            # A reading whose copy was gone needed the source: the egress gates the retry.
+                            with conn.transaction():
+                                changed = conn.execute(DEFER_FOR_SOURCE_SQL, (
+                                    datetime.now(timezone.utc) + timedelta(seconds=egress_retry), json.dumps({}),
+                                    "PROD6 deferred: egress unavailable", job.id, worker_id, NAMESPACE, profile_id))
+                                if changed.rowcount != 1:
+                                    raise RuntimeError("Deferred job ownership changed")
+                            state.setdefault("egress_deferred", []).append({"job_id": job.id,
+                                "job_type": job.job_type, "error_type": type(error).__name__,
+                                "retry_after_seconds": egress_retry})
+                            write_state(receipt_dir / "state.json", state)
+                            continue
+                        if not isinstance(error, SERVICE_STOP_ERRORS):
+                            hold_failed_job(state, job, error)
+                            continue
                         # No automatic retry, and no raw provider/PII exception in logs.
                         with conn.transaction():
                             conn.execute("""UPDATE worker_jobs SET status='pending',claimed_by=NULL,
@@ -1271,7 +1321,8 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
                 if not block_active and not pacing.PACER.blocked and pacing.PACER.used > 0:
                     block_recovered(state)  # A cycle without search: the first IO request was the probe.
                 state["suppressed"] = repo.suppressed
-                incomplete = bool(state.get("blocked_documents") or repo.suppressed.get("source_document_blocked"))
+                incomplete = bool(state.get("blocked_documents") or state.get("held_jobs")
+                                  or repo.suppressed.get("source_document_blocked"))
                 jev_unavailable = state["jev"]["status"] == "jev_unavailable"
                 reading_stopped = reading_paused()
                 blocked_cycle = pacing.PACER.blocked or "source_blocked_until" in state

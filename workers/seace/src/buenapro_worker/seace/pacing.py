@@ -11,6 +11,7 @@ between consecutive requests no matter how many threads or clients exist:
 ``PROD6_READING_BACKOFF_SECONDS``       pause of paid readings after Gemini answers 401/402/403/429 (default 3600).
 ``PROD6_READING_TRANSIENT_BACKOFF_SECONDS``  short pause after Gemini is saturated, 500/502/503/504/529 (default 900).
 ``PROD6_GEMINI_RATE_BACKOFF_SECONDS``   pause after a 429 whose quota is per minute (default 120).
+``PROD6_EGRESS_RETRY_SECONDS``          wait before checking the Peruvian egress again after it failed (default 300).
 
 The pace is fixed and low on purpose: there is no jitter, rotation or evasion.
 
@@ -35,6 +36,7 @@ DEFAULT_BLOCK_BACKOFF_SECONDS = 10800
 DEFAULT_READING_BACKOFF_SECONDS = 3600
 DEFAULT_READING_TRANSIENT_BACKOFF_SECONDS = 900
 DEFAULT_GEMINI_RATE_BACKOFF_SECONDS = 120
+DEFAULT_EGRESS_RETRY_SECONDS = 300
 # A denial from the WAF, never retried: more requests only prolong the block.
 BLOCK_STATUSES = frozenset({403, 429})
 
@@ -101,6 +103,10 @@ def reading_transient_backoff_seconds() -> int:
 def gemini_rate_backoff_seconds() -> int:
     return _env_number("PROD6_GEMINI_RATE_BACKOFF_SECONDS", DEFAULT_GEMINI_RATE_BACKOFF_SECONDS,
                        minimum=1, kind=int)
+
+
+def egress_retry_seconds() -> int:
+    return _env_number("PROD6_EGRESS_RETRY_SECONDS", DEFAULT_EGRESS_RETRY_SECONDS, minimum=60, kind=int)
 
 
 def blocking_status(error: BaseException) -> int | None:
