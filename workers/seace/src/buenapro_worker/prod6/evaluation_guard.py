@@ -35,7 +35,7 @@ from buenapro_worker.prod6.reading import (
     GuardedReadingError, ProviderRejectedError, ReadingBlockedError, _canonical, _now, _read_json,
     _remove_receipt, _sha, _write_json, provider_rejection, quota_window,
 )
-from buenapro_worker.prod6.gemini_pacing import GEMINI_PACER
+from buenapro_worker.prod6.gemini_pacing import GEMINI_PACER, SATURATION_CODES, saturation_fallback_model
 from buenapro_worker.settings import Settings
 
 RECEIPT_KIND = "prod6_match_analysis_v1"
@@ -133,6 +133,23 @@ class GuardedMatchAnalyzer(MatchAnalyzer):
     # --- the paid call --------------------------------------------------------------------
 
     def _analyze_with_model(self, model: str, payload: str) -> MatchAnalysisResult:
+        """The main model, or the saturation fallback once when the main one is overloaded."""
+        fallback = saturation_fallback_model()
+        if fallback is None or fallback == model:
+            return self._send(model, payload)
+        fallback_key = self._identity(fallback, payload)[1]
+        if self._path(fallback_key, "response").exists():
+            return self._send(fallback, payload)  # The fallback already answered: replay it.
+        try:
+            return self._send(model, payload)
+        except ProviderRejectedError as error:
+            # A replay-only job never starts a new paid request on the fallback.
+            if error.code not in SATURATION_CODES or not (
+                    self.allow_new_requests or self._provider_error(fallback_key) is not None):
+                raise
+            return self._send(fallback, payload)
+
+    def _send(self, model: str, payload: str) -> MatchAnalysisResult:
         identity, key = self._identity(model, payload)
         with self._lock():
             response_path = self._path(key, "response")

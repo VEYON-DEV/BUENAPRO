@@ -11,9 +11,10 @@ def fresh_source_pacer(monkeypatch):
     monkeypatch.setenv("PROD6_MIN_REQUEST_INTERVAL_SECONDS", "0")
     for name in ("PROD6_MAX_SOURCE_REQUESTS", "PROD6_BLOCK_BACKOFF_SECONDS",
                  "PROD6_READING_BACKOFF_SECONDS", "PROD6_READING_TRANSIENT_BACKOFF_SECONDS",
-                 "PROD6_GEMINI_RATE_BACKOFF_SECONDS"):
+                 "PROD6_GEMINI_RATE_BACKOFF_SECONDS", "PROD6_EGRESS_RETRY_SECONDS"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(pacing, "PACER", pacing.SourcePacer())
     # Gemini token pace off unless a test turns it on; no wait state shared between tests.
     monkeypatch.setenv("PROD6_GEMINI_TOKENS_PER_MINUTE", "0")
+    monkeypatch.setenv("PROD6_GEMINI_SATURATION_FALLBACK_MODEL", "")  # Tests opt in to the fallback.
     monkeypatch.setattr(gemini_pacing.GEMINI_PACER, "_next_send_at", 0.0)

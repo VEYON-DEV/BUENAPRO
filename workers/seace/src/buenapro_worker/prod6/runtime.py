@@ -53,6 +53,7 @@ from buenapro_worker.prod6.evaluation import (
     AUTO_ORIGIN, INVALID_OUTCOME, enqueue_evaluations, evaluation_rows, skip_reason,
 )
 from buenapro_worker.prod6.evaluation_guard import GuardedMatchAnalyzer
+from buenapro_worker.prod6.gemini_pacing import SATURATION_CODES, saturation_fallback_model
 from buenapro_worker.prod6.reading import (
     GuardedReadingError, ProviderRejectedError, ReadingPolicyError, bind_reading_policy, reading_policy_context,
 )
@@ -78,7 +79,7 @@ READING_PAUSE_REASONS = {
 }
 # Gemini saturated (not the account, not the document): a short pause that never counts against
 # the document. It alerts only when it keeps renewing for longer than TRANSIENT_ALERT_AFTER_SECONDS.
-READING_TRANSIENT_CODES = frozenset({500, 502, 503, 504, 529})
+READING_TRANSIENT_CODES = SATURATION_CODES
 TRANSIENT_ALERT_AFTER_SECONDS = 7200
 # Requests one free IO job can make (process_contract: detail + two file listings).
 IO_REQUEST_COST = 3
@@ -685,6 +686,7 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
     if discovery_interval_seconds < 0:
         raise ValueError("The discovery interval must not be negative (0 searches in every cycle)")
     min_request_interval()  # An invalid pace or backoff in the environment stops the start.
+    saturation_fallback_model()
     backoff_seconds = block_backoff_seconds()
     reading_backoff = reading_backoff_seconds()
     transient_backoff = reading_transient_backoff_seconds()

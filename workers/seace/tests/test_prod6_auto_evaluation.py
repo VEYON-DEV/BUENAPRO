@@ -486,6 +486,42 @@ def test_a_rejected_evaluation_spends_nothing_and_keeps_its_quota_window(gemini,
     pacer.spent.assert_not_called()
 
 
+def models_sent(gemini):
+    return [call.kwargs["model"] for call in gemini.call_args_list]
+
+
+def test_a_saturated_evaluation_goes_once_to_the_fallback_model_and_is_replayed(gemini, tmp_path, monkeypatch):
+    monkeypatch.setenv("PROD6_GEMINI_SATURATION_FALLBACK_MODEL", "gemini-3.5-flash-lite")
+    gemini.side_effect = [genai_errors.ServerError(503, {"error": {"code": 503, "message": SECRET,
+                                                                     "status": "UNAVAILABLE"}}), reply()]
+    result = ask(analyzer_in(tmp_path))
+    assert result.model == "gemini-3.5-flash-lite" and result.analysis.score == 90
+    assert models_sent(gemini) == ["gemini-3.1-flash-lite", "gemini-3.5-flash-lite"]
+    assert len(receipts(tmp_path, "provider_error")) == 1 and len(receipts(tmp_path, "response")) == 1
+    replay = ask(analyzer_in(tmp_path, allow_new_requests=False))
+    assert replay.model == "gemini-3.5-flash-lite" and gemini.call_count == 2
+
+
+def test_quota_errors_do_not_use_the_fallback(gemini, tmp_path, monkeypatch):
+    monkeypatch.setenv("PROD6_GEMINI_SATURATION_FALLBACK_MODEL", "gemini-3.5-flash-lite")
+    gemini.side_effect = rejection(429)
+    with pytest.raises(ProviderRejectedError):
+        ask(analyzer_in(tmp_path))
+    assert models_sent(gemini) == ["gemini-3.1-flash-lite"]
+
+
+def test_a_replay_only_evaluation_never_starts_a_send_on_the_fallback(gemini, tmp_path, monkeypatch):
+    saturated = genai_errors.ServerError(503, {"error": {"code": 503, "message": SECRET, "status": "UNAVAILABLE"}})
+    gemini.side_effect = [saturated]
+    with pytest.raises(ProviderRejectedError):
+        ask(analyzer_in(tmp_path))  # Fallback off: only the main model's HTTP error receipt.
+    monkeypatch.setenv("PROD6_GEMINI_SATURATION_FALLBACK_MODEL", "gemini-3.5-flash-lite")
+    gemini.side_effect = [saturated]
+    with pytest.raises(ProviderRejectedError):
+        ask(analyzer_in(tmp_path, allow_new_requests=False))
+    assert models_sent(gemini) == ["gemini-3.1-flash-lite", "gemini-3.1-flash-lite"]
+
+
 def test_a_tampered_answer_receipt_is_refused(gemini, tmp_path):
     gemini.return_value = reply()
     ask(analyzer_in(tmp_path))

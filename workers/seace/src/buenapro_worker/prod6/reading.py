@@ -55,7 +55,7 @@ from buenapro_worker.extraction.commercial_classification import (
     POLICY_KEY, TAXONOMY_VERSION, get_commercial_policy, prompt_with_commercial,
     schema_with_commercial, validate_commercial_payload, version_with_commercial,
 )
-from buenapro_worker.prod6.gemini_pacing import GEMINI_PACER
+from buenapro_worker.prod6.gemini_pacing import GEMINI_PACER, SATURATION_CODES, saturation_fallback_model
 from buenapro_worker.prod6.reading_schema import EettExtractionV3, TdrExtractionV3
 from buenapro_worker.settings import Settings
 
@@ -351,12 +351,12 @@ class GuardedGeminiExtractor:
             return
 
     def _request_identity(self, document_sha256: str, *, mime: str, doc_class: str,
-                          generation: ReadingGeneration | None = None):
+                          generation: ReadingGeneration | None = None, model: str | None = None):
         if (doc_class not in {"tdr", "eett"} or mime != "application/pdf"
                 or not isinstance(document_sha256, str)
                 or not re.fullmatch(r"[0-9a-f]{64}", document_sha256)):
             raise ValueError("PROD6 guarded reading requires an exact TDR/EETT PDF SHA")
-        model = self.settings.gemini_model
+        model = model or self.settings.gemini_model
         if model not in MODEL_PRICES_USD_PER_MILLION:
             raise ValueError("PROD6 guarded reading requires a model with known local prices")
         generation = generation or self.generations[0]
@@ -381,7 +381,12 @@ class GuardedGeminiExtractor:
         """
         candidates = [self._request_identity(document_sha256, mime=mime, doc_class=doc_class,
                                              generation=generation) for generation in self.generations]
-        for candidate in candidates:
+        fallback = saturation_fallback_model()
+        answered = candidates + ([self._request_identity(document_sha256, mime=mime, doc_class=doc_class,
+                                                         generation=generation, model=fallback)
+                                  for generation in self.generations]
+                                 if fallback and fallback != self.settings.gemini_model else [])
+        for candidate in answered:
             key = candidate[2]
             if ((self.receipt_dir / f"{key}.result.private.json").exists()
                     or (self.receipt_dir / f"{key}.response.private.json").exists()):
@@ -391,7 +396,8 @@ class GuardedGeminiExtractor:
     def _document_keys(self, identity: dict[str, Any]) -> list[str]:
         """Request keys of every generation for the document of ``identity``."""
         return [self._request_identity(identity["document_sha256"], mime=identity["mime"],
-                                       doc_class=identity["doc_class"], generation=generation)[2]
+                                       doc_class=identity["doc_class"], generation=generation,
+                                       model=identity["model"])[2]
                 for generation in self.generations]
 
     def recover_before_download(self, document_sha256: str, *, mime: str, doc_class: str):
@@ -500,7 +506,19 @@ class GuardedGeminiExtractor:
             _bind_reading_policy_locked(self.receipt_dir, self.policy_context)
             prompt, identity, key = self._resolve_identity(_sha(pdf_bytes), mime=mime, doc_class=doc_class)
             try:
-                return self._extract_locked(pdf_bytes, prompt, identity, key)
+                try:
+                    return self._extract_locked(pdf_bytes, prompt, identity, key)
+                except ProviderRejectedError as error:
+                    # The main model is overloaded: the same reading goes once to the fallback model.
+                    fallback = saturation_fallback_model()
+                    if (error.code not in SATURATION_CODES or not fallback
+                            or fallback == identity["model"]):
+                        raise
+                    prompt, identity, key = self._request_identity(
+                        _sha(pdf_bytes), mime=mime, doc_class=doc_class, model=fallback)
+                    if not (self.allow_new_requests or self._retry_after_provider_error(identity)):
+                        raise
+                    return self._extract_locked(pdf_bytes, prompt, identity, key)
             except (GuardedReadingError, ProviderRejectedError):
                 raise
             except Exception:

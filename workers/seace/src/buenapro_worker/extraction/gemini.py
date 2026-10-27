@@ -65,6 +65,7 @@ MODEL_PRICES_USD_PER_MILLION = {
     "gemini-3.1-flash-lite": {"input": 0.25, "output": 1.50},
     "gemini-2.5-flash-lite": {"input": 0.10, "output": 0.40},
     "gemini-2.5-flash": {"input": 0.30, "output": 2.50},
+    "gemini-3.5-flash-lite": {"input": 0.30, "output": 2.50},
 }
 
 

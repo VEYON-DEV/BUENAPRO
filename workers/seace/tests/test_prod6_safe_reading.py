@@ -579,3 +579,70 @@ def test_provider_answered_is_false_for_local_replays(setup):
     replay = reading.GuardedGeminiExtractor(extractor.settings, extractor.receipt_dir)
     replay.extract(PDF)
     assert not replay.provider_answered
+
+
+# --- Saturation fallback model (26/10: gemini-3.1-flash-lite answered 503 for hours) -------------
+
+FALLBACK = "gemini-3.5-flash-lite"
+
+
+def sent_models(client):
+    return [call.kwargs["model"] for call in client.models.generate_content.call_args_list]
+
+
+def test_a_saturated_reading_goes_once_to_the_fallback_model_and_is_replayed_later(setup, monkeypatch):
+    extractor, client, factory, directory = setup
+    monkeypatch.setenv("PROD6_GEMINI_SATURATION_FALLBACK_MODEL", FALLBACK)
+    client.models.generate_content.side_effect = [api_error(503, "UNAVAILABLE"), response()]
+    result = extractor.extract(PDF)
+    assert result.raw_json == PAYLOAD and result.model == FALLBACK
+    assert sent_models(client) == ["gemini-3.1-flash-lite", FALLBACK]
+    assert len(receipts(directory, "provider_error")) == 1 and len(receipts(directory, "response")) == 1
+    assert not extractor.guard_path.exists()
+    # Later, even a replay-only job gets the fallback's answer without paying again.
+    replay = reading.GuardedGeminiExtractor(extractor.settings, directory, allow_new_requests=False)
+    assert replay.extract(PDF).model == FALLBACK
+    assert client.models.generate_content.call_count == 2
+
+
+@pytest.mark.parametrize("code,status", [(429, "RESOURCE_EXHAUSTED"), (402, "RESOURCE_EXHAUSTED"),
+                                         (400, "INVALID_ARGUMENT")])
+def test_only_saturation_uses_the_fallback(setup, monkeypatch, code, status):
+    extractor, client, factory, directory = setup
+    monkeypatch.setenv("PROD6_GEMINI_SATURATION_FALLBACK_MODEL", FALLBACK)
+    client.models.generate_content.side_effect = api_error(code, status)
+    with pytest.raises(reading.ProviderRejectedError):
+        extractor.extract(PDF)
+    assert sent_models(client) == ["gemini-3.1-flash-lite"]
+
+
+def test_both_models_saturated_is_one_transient_rejection(setup, monkeypatch):
+    extractor, client, factory, directory = setup
+    monkeypatch.setenv("PROD6_GEMINI_SATURATION_FALLBACK_MODEL", FALLBACK)
+    client.models.generate_content.side_effect = [api_error(503, "UNAVAILABLE"), api_error(529, "UNAVAILABLE")]
+    with pytest.raises(reading.ProviderRejectedError) as error:
+        extractor.extract(PDF)
+    assert error.value.code == 529 and not extractor.guard_path.exists()
+    assert len(receipts(directory, "provider_error")) == 2
+
+
+def test_a_replay_only_job_never_starts_a_new_send_on_the_fallback(setup, monkeypatch):
+    extractor, client, factory, directory = setup
+    client.models.generate_content.side_effect = [api_error(503, "UNAVAILABLE")]
+    with pytest.raises(reading.ProviderRejectedError):
+        extractor.extract(PDF)  # Fallback off: only the main model's HTTP error receipt exists.
+    monkeypatch.setenv("PROD6_GEMINI_SATURATION_FALLBACK_MODEL", FALLBACK)
+    client.models.generate_content.side_effect = [api_error(503, "UNAVAILABLE")]
+    replay = reading.GuardedGeminiExtractor(extractor.settings, directory, allow_new_requests=False)
+    with pytest.raises(reading.ProviderRejectedError):
+        replay.extract(PDF)  # The main model may retry after its HTTP error; the fallback may not.
+    assert sent_models(client) == ["gemini-3.1-flash-lite", "gemini-3.1-flash-lite"]
+
+
+def test_an_unpriced_fallback_model_is_refused(monkeypatch):
+    from buenapro_worker.prod6.gemini_pacing import saturation_fallback_model
+    monkeypatch.setenv("PROD6_GEMINI_SATURATION_FALLBACK_MODEL", "gemini-unknown")
+    with pytest.raises(ValueError):
+        saturation_fallback_model()
+    monkeypatch.delenv("PROD6_GEMINI_SATURATION_FALLBACK_MODEL")
+    assert saturation_fallback_model() == FALLBACK  # The production default.
