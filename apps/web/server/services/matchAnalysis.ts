@@ -4,7 +4,7 @@ import path from "node:path";
 import { pool } from "@/server/db/client";
 import { ensureServerEnv } from "@/server/env";
 import {
-  buildCompactMatchProfile, COMPACT_PROFILE_VERSION, guardEconomicComparisons, guardParticipationActions,
+  buildCompactMatchProfile, checklistOmittedProposalDocuments, COMPACT_PROFILE_VERSION, guardEconomicComparisons, guardParticipationActions,
   isAdministrativeRequirement, MATCH_POLICY_VERSION, SEMANTIC_GUARD_VERSION, SOURCE_CATEGORIES, splitMatchRequirements,
 } from "./matchAnalysisPolicy";
 
@@ -316,8 +316,8 @@ export async function analyzeMatchDirect(input: {
     return { skipped: "unchanged", match_id: Number(existing.id) };
   }
 
-  const { substantive, administrativeChecklist } = splitMatchRequirements(facets);
-  if (!substantive.length) throw new Error("La lectura no contiene requisitos sustantivos para evaluar capacidad.");
+  const { substantive: requested, administrativeChecklist } = splitMatchRequirements(facets);
+  if (!requested.length) throw new Error("La lectura no contiene requisitos sustantivos para evaluar capacidad.");
   const compactProfile = buildCompactMatchProfile(profile);
   const result = await callGemini({
     perfil: compactProfile,
@@ -327,9 +327,13 @@ export async function analyzeMatchDirect(input: {
       entidad: contract.entidad_nombre,
       resumen: contract.summary_json,
     },
-    requisitos: substantive,
+    requisitos: requested,
   }, systemPrompt);
   const rawRequirements = list(result.parsed.requisitos).map(record);
+  const substantive = checklistOmittedProposalDocuments(rawRequirements, requested, administrativeChecklist);
+  if (!substantive.length) {
+    throw new Error("La respuesta no evaluó ningún requisito sustantivo; no se guardó un puntaje ni se reintentó automáticamente.");
+  }
   if (rawRequirements.length !== substantive.length || rawRequirements.some((item, index) => item.source_index !== substantive[index].source_index || isAdministrativeRequirement(item))) {
     throw new Error("La respuesta no cubre exactamente los requisitos sustantivos; no se guardó un puntaje ni se reintentó automáticamente.");
   }

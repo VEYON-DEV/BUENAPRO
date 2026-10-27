@@ -111,6 +111,41 @@ test('submission checklist excludes routine RNP/RUC/impediments/forms while pres
   assert.equal(policy.isAdministrativeRequirement({ facet: 'legal_capacity', label: 'Autorización del organismo para operar material peligroso' }), false);
 });
 
+function expectedRequirement(index, tipo) {
+  return { source_index: index, tipo, requisito: `Requisito ${index}`, obligatorio: true, detalle: {} };
+}
+
+test('proposal documents the model omitted move to the checklist and every other requirement is kept', () => {
+  const expected = [expectedRequirement(2, 'key_personnel'), expectedRequirement(7, 'proposal_document'), expectedRequirement(8, 'proposal_document'), expectedRequirement(13, 'specific_experience')];
+  const checklist = [{ tipo: 'rnp', requisito: 'RNP', estado: 'preparar', score_impact: false }];
+  const kept = policy.checklistOmittedProposalDocuments([{ source_index: 2 }, { source_index: 13 }], expected, checklist);
+  assert.deepEqual(Array.from(kept, row => row.source_index), [2, 13]);
+  assert.deepEqual(clone(checklist), [
+    { tipo: 'rnp', requisito: 'RNP', estado: 'preparar', score_impact: false },
+    { tipo: 'proposal_document', requisito: 'Requisito 7', estado: 'preparar', score_impact: false },
+    { tipo: 'proposal_document', requisito: 'Requisito 8', estado: 'preparar', score_impact: false },
+  ]);
+});
+
+test('a proposal document the model judged stays a requirement', () => {
+  const expected = [expectedRequirement(2, 'key_personnel'), expectedRequirement(7, 'proposal_document'), expectedRequirement(8, 'proposal_document')];
+  const checklist = [];
+  const kept = policy.checklistOmittedProposalDocuments([{ source_index: 2 }, { source_index: 8 }], expected, checklist);
+  assert.deepEqual(Array.from(kept, row => row.source_index), [2, 8]);
+  assert.deepEqual(Array.from(checklist, row => row.requisito), ['Requisito 7']);
+});
+
+test('an omitted requirement of any other type is not hidden', () => {
+  const expected = [expectedRequirement(2, 'key_personnel'), expectedRequirement(3, 'insurance'), expectedRequirement(4, 'proposal_document')];
+  const checklist = [];
+  const kept = policy.checklistOmittedProposalDocuments([{ source_index: 2 }], expected, checklist);
+  assert.deepEqual(Array.from(kept, row => row.source_index), [2, 3]);
+  assert.equal(checklist.length, 1);
+  const untouched = policy.checklistOmittedProposalDocuments([], expected.slice(0, 2), checklist);
+  assert.deepEqual(Array.from(untouched, row => row.source_index), [2, 3]);
+  assert.equal(checklist.length, 1);
+});
+
 test('unknown/prohibited consortium or subcontract permission never becomes an executable recommendation', () => {
   const reqs = [{ estado: 'cumple_con_accion', accion: 'Formar consorcio con proveedor' }, { estado: 'cumple_con_accion', accion: 'Subcontratar soporte técnico' }];
   const actions = policy.guardParticipationActions(reqs, ['Formar consorcio', 'Seleccionar contrato compatible'], { participation: { subcontratacion: { status: 'prohibited' } } });
@@ -252,6 +287,71 @@ test('foreign profile, invalid extraction and all-admin facets fail before sendi
 test('incomplete or administrative model output cannot be persisted as a capacity score, with no retry', async () => {
   const testbed = directService({ response: { veredicto: 'gris', score: 40, resumen: 'No RNP.', requisitos: [{ source_index: 2, requisito: 'RNP', categoria: 'identidad', estado: 'requiere_revision', critico: true }], acciones_recomendadas: [] } });
   await assert.rejects(testbed.service.analyzeMatchDirect({ tenantId: 'tenant', idContrato: 1 }), /exactamente los requisitos sustantivos/);
+  assert.equal(testbed.requests.length, 1);
+  assert.equal(testbed.statements.filter(row => /INSERT|UPDATE/.test(row.sql)).length, 0);
+});
+
+const PAPERWORK_FACETS = [
+  { facet: 'rnp', label: 'RNP Vigente', required: true, details_json: {}, facet_hash: 'rnp' },
+  { facet: 'key_personnel', label: 'Especialista ITIL', required: true, details_json: {}, facet_hash: 'itil' },
+  { facet: 'proposal_document', label: 'Contratos y conformidades de las prestaciones', required: true, details_json: {}, facet_hash: 'contracts' },
+  { facet: 'proposal_document', label: 'Documentación técnica oficial de plataforma: API y SLA', required: true, details_json: {}, facet_hash: 'sla' },
+  { facet: 'insurance', label: 'Póliza de responsabilidad civil', required: true, details_json: {}, facet_hash: 'policy' },
+];
+
+function judgement(sourceIndex, facet, label) {
+  return { source_index: sourceIndex, source_facet: facet, requisito: label, categoria: 'otro', estado: 'requiere_revision', critico: true, gap: 'Validar con el perfil.', accion: 'Contrastar con las bases.', evidence_refs: [], evidence_explanation: 'Sin fuente atribuida.', economic_comparison: [] };
+}
+
+function paperworkResponse(requisitos) {
+  return { veredicto: 'gris', score: 60, resumen: 'Validar los requisitos.', requisitos, acciones_recomendadas: [] };
+}
+
+test('proposal documents omitted by the model are saved as paperwork while the judged ones are scored', async () => {
+  const testbed = directService({ facets: PAPERWORK_FACETS, response: paperworkResponse([
+    judgement(2, 'key_personnel', 'Especialista ITIL'),
+    judgement(4, 'proposal_document', 'Documentación técnica oficial de plataforma: API y SLA'),
+    judgement(5, 'insurance', 'Póliza de responsabilidad civil'),
+  ]) });
+  const result = await testbed.service.analyzeMatchDirect({ tenantId: 'tenant', idContrato: 1 });
+  assert.equal(result.score, 60);
+  assert.equal(testbed.requests.length, 1);
+  const payload = JSON.parse(testbed.requests[0].body.contents[0].parts[0].text);
+  assert.deepEqual(payload.requisitos.map(row => row.source_index), [2, 3, 4, 5]);
+  const saved = testbed.statements.find(row => row.sql.includes('INSERT INTO matches'));
+  const breakdown = JSON.parse(saved.values[4]);
+  assert.deepEqual(breakdown.requisitos.map(row => row.source_index), [2, 4, 5]);
+  assert.deepEqual(breakdown.requisitos.map(row => row.source_facet), ['key_personnel', 'proposal_document', 'insurance']);
+  assert.deepEqual(breakdown.administrative_checklist.map(row => row.requisito), ['RNP Vigente', 'Contratos y conformidades de las prestaciones']);
+  assert.ok(breakdown.administrative_checklist.every(row => row.estado === 'preparar' && row.score_impact === false));
+  const missing = JSON.parse(saved.values[5]);
+  assert.deepEqual(missing.map(row => row.label), ['Especialista ITIL', 'Documentación técnica oficial de plataforma: API y SLA', 'Póliza de responsabilidad civil']);
+});
+
+test('an omitted requirement that is not a proposal document still rejects the result without saving', async () => {
+  const testbed = directService({ facets: PAPERWORK_FACETS, response: paperworkResponse([
+    judgement(2, 'key_personnel', 'Especialista ITIL'),
+    judgement(4, 'proposal_document', 'Documentación técnica oficial de plataforma: API y SLA'),
+  ]) });
+  await assert.rejects(testbed.service.analyzeMatchDirect({ tenantId: 'tenant', idContrato: 1 }), /exactamente los requisitos sustantivos/);
+  assert.equal(testbed.requests.length, 1);
+  assert.equal(testbed.statements.filter(row => /INSERT|UPDATE/.test(row.sql)).length, 0);
+});
+
+test('reordered or repeated judgements still reject the result even when a proposal document was omitted', async () => {
+  for (const requisitos of [
+    [judgement(5, 'insurance', 'Póliza de responsabilidad civil'), judgement(2, 'key_personnel', 'Especialista ITIL'), judgement(4, 'proposal_document', 'Documentación técnica oficial de plataforma: API y SLA')],
+    [judgement(2, 'key_personnel', 'Especialista ITIL'), judgement(2, 'key_personnel', 'Especialista ITIL'), judgement(4, 'proposal_document', 'Documentación técnica oficial de plataforma: API y SLA')],
+  ]) {
+    const testbed = directService({ facets: PAPERWORK_FACETS, response: paperworkResponse(requisitos) });
+    await assert.rejects(testbed.service.analyzeMatchDirect({ tenantId: 'tenant', idContrato: 1 }), /exactamente los requisitos sustantivos/);
+    assert.equal(testbed.statements.filter(row => /INSERT|UPDATE/.test(row.sql)).length, 0);
+  }
+});
+
+test('when the model judged none of the proposal documents there is no score to save', async () => {
+  const testbed = directService({ facets: PAPERWORK_FACETS.filter(row => ['rnp', 'proposal_document'].includes(row.facet)), response: paperworkResponse([]) });
+  await assert.rejects(testbed.service.analyzeMatchDirect({ tenantId: 'tenant', idContrato: 1 }), /ningún requisito sustantivo/);
   assert.equal(testbed.requests.length, 1);
   assert.equal(testbed.statements.filter(row => /INSERT|UPDATE/.test(row.sql)).length, 0);
 });
