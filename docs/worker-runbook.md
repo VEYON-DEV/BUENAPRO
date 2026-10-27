@@ -967,6 +967,43 @@ comprobó que SEACE responde.
 
 La imagen PROD6 copia también `seace/shared_gate.py`.
 
+## Operación PROD2 (licitaciones mayores)
+
+Imagen `buenapro-worker-prod2:<tag>`, construida con `infra/docker/prod2.Dockerfile` sobre la base
+`docker-worker-io:latest`. En la VM:
+
+- **Datos privados:** `~/buenapro/runtime/prod2-pilot-20261027/` contiene `runtime.env`,
+  `service.private.json` y `state/`.
+  - Dueño `ubuntu`, porque `docker compose` lee el `env_file` como el usuario que lo ejecuta;
+    con root 600 falla con *permission denied*.
+  - Permisos 600 para los archivos y 700 para los directorios. El servicio no acepta permisos
+    abiertos ni symlinks.
+- **Rutas:** `PROD2_*` van en `<recibos>/prod2-pilot.env`, junto al compose `prod2.compose.yml`.
+- **Arranque:**
+  `docker compose --env-file <recibos>/prod2-pilot.env -f infra/docker/docker-compose.yml -f <recibos>/prod2.compose.yml --profile prod2-only up -d --no-deps prod2-ingest`.
+  Nunca usar `--remove-orphans`: borraría `prod6-ingest`, que vive en otro compose.
+- **Preflight:** solo GET y sin base ni proveedores, pero exige `--folder`. Comando:
+  `run --rm --no-deps --entrypoint python prod2-ingest /app/scripts/run_prod2_selected.py --preflight --folder /var/lib/buenapro/prod2/preflight --keyword software --years 2026 --request-interval 10`.
+- **Ventana:** `window.first_to` del primer ciclo debe ser la fecha de hoy en Lima. En los ciclos
+  siguientes se calcula sola.
+- **Topes:** `--max-candidates`, `--max-accepted`, `--max-jev-calls`, `--max-llm1-calls` y
+  `--max-embedding-calls` son frenos de seguridad, no recortes. Si la búsqueda trae más candidatas
+  que el tope, se corta (`stop_requested`). Si JEV acepta más que el tope, quedan en cola. En los
+  dos casos el ciclo termina en `attention_required` (`final_report_source_incomplete`). Deben cubrir
+  todo el alcance; el gasto real lo fija la búsqueda.
+- **`--document-previews`:** con él el selector lee el contenido de PDF, DOC/DOCX y miembros de
+  ZIP/RAR. Sin él solo ve nombres, y los expedientes en RAR quedan en `selection_needs_review`.
+- **Reintentar tras `attention_required`:** exige un state dir nuevo. El anterior se conserva como
+  evidencia.
+
+Piloto del 27/10/2026, con «software», 2026, ventana de 7 días y 1 ciclo:
+
+- Terminó en `complete` en 41 min: 8 licitaciones, todas aceptadas por JEV, y 0 respuestas 403/429.
+- Costo: US$ 0,0194, repartido en 11 llamadas JEV, 19 de embeddings y 1 de Gemini.
+- Solo 1 llegó a lectura LLM1. Las otras 7 quedaron en `EmbeddingPreparationReview`
+  (`retrieval_context_needs_expansion_or_review`): el contexto recuperado supera
+  `context_maximum_tokens` (30 000) de la config v5. El servicio exige exactamente v5.
+
 ## Pausa de emergencia
 
 ```bash
