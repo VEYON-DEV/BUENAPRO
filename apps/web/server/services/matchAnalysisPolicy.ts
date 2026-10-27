@@ -160,6 +160,74 @@ export function buildCompactMatchProfile(value: unknown): JsonRecord {
   };
 }
 
+/** LLM2 sees the experiences closest to the contract, each one complete (mirror of the worker). */
+export const MATCH_EXPERIENCE_LIMIT = 8;
+// Words every procurement text shares; they say nothing about which experience fits.
+const GENERIC_TERMS = new Set(`
+  para como entre sobre desde hasta segun donde cuando todo toda todos todas este esta estos estas
+  servicio servicios adquisicion contratacion suministro bienes compra contrato contratos entidad
+  empresa proveedor requerimiento requerimientos tecnico tecnica tecnicos tecnicas general generales
+  experiencia minima minimo acreditar acredita documento documentos copia copias similares similar
+`.split(/\s+/).filter(Boolean));
+
+function terms(...values: unknown[]): Set<string> {
+  const found = new Set<string>();
+  for (const value of values) {
+    for (const word of normalized(value).match(/[a-z0-9]+/g) ?? []) {
+      if (word.length >= 4 && !GENERIC_TERMS.has(word)) found.add(word);
+    }
+  }
+  return found;
+}
+
+function shared(wanted: Set<string>, found: Set<string>): number {
+  let count = 0;
+  for (const word of found) if (wanted.has(word)) count += 1;
+  return count;
+}
+
+/**
+ * Keep the `limit` experiences that share most words with the contract, complete and in order.
+ * A word in the object, specialty or sector counts twice; one in the documents once; a tie goes to
+ * the most recent year. Economic areas follow their experience and a note says that more exist.
+ */
+export function selectRelevantExperience(compact: JsonRecord, oportunidad: JsonRecord, requisitos: JsonRecord[],
+  limit = MATCH_EXPERIENCE_LIMIT): JsonRecord {
+  const experiences = list(compact.experience_json);
+  if (experiences.length <= limit) return compact;
+  const resumen = record(oportunidad.resumen);
+  const wanted = terms(oportunidad.descripcion, resumen.descripcion_corta, resumen.objeto,
+    ...requisitos.map(requisito => requisito.requisito));
+  const rank = experiences.map((value, index) => {
+    const experience = record(value);
+    const main = terms(experience.objeto, experience.especialidad, experience.rubro, experience.tipo_objeto);
+    const documents = new Set<string>();
+    for (const source of list(record(experience.documentary_summary).sources)) {
+      const extraction = record(record(source).extraction);
+      for (const word of terms(extraction.summary, record(extraction.classification).specialty)) {
+        if (!main.has(word)) documents.add(word);
+      }
+    }
+    const year = String(experience.anio ?? "");
+    return { index, score: 2 * shared(wanted, main) + shared(wanted, documents), year: /^\d+$/.test(year) ? Number(year) : 0 };
+  });
+  rank.sort((a, b) => b.score - a.score || b.year - a.year || a.index - b.index);
+  const kept = rank.slice(0, limit).map(item => item.index).sort((a, b) => a - b);
+  const position = new Map(kept.map((old, index) => [old, index]));
+  const econ = record(compact.econ_experience_json);
+  const areas = list(econ.areas).map(value => {
+    const area = { ...record(value) };
+    if (typeof area.source_record_index === "number") area.source_record_index = position.get(area.source_record_index) ?? null;
+    return area;
+  });
+  return {
+    ...compact,
+    experience_json: kept.map(index => experiences[index]),
+    experience_note: `Se incluyen las ${kept.length} experiencias más relacionadas con esta contratación de ${experiences.length} registradas por la empresa.`,
+    econ_experience_json: { ...econ, areas },
+  };
+}
+
 export function guardParticipationActions(requirements: JsonRecord[], actions: unknown[], summary: unknown): string[] {
   const participation = record(record(summary).participation);
   function guard(value: unknown): string | null {

@@ -230,7 +230,9 @@ test('direct match scores only substantive capacity; uncertainty keeps 72 rather
   const payload = JSON.parse(testbed.requests[0].body.contents[0].parts[0].text);
   assert.equal(payload.requisitos.length, 1);
   assert.equal(payload.requisitos[0].source_index, 2);
-  assert.equal(payload.perfil.experience_json.length, 43);
+  // Gemini sees the closest experiences only, and is told how many the company has.
+  assert.equal(payload.perfil.experience_json.length, policy.MATCH_EXPERIENCE_LIMIT);
+  assert.match(payload.perfil.experience_note, /de 43 registradas/);
   assert.equal(payload.perfil.econ_experience_json.areas.length, 0);
   const saved = testbed.statements.find(row => row.sql.includes('INSERT INTO matches'));
   const breakdown = JSON.parse(saved.values[4]), missing = JSON.parse(saved.values[5]);
@@ -473,4 +475,56 @@ test('forced current evaluation does not anchor to an older 40 score with the sa
   const result = await testbed.service.analyzeMatchDirect({ tenantId: 'tenant', idContrato: 1, force: true });
   assert.equal(result.score, 72);
   assert.equal(testbed.requests.length, 1);
+});
+
+// --- Which experiences Gemini sees (mirror of workers/seace/tests/test_relevant_experience.py) ---
+
+function experienceItem(objeto, { anio = 2020, rubro = '', summary = '' } = {}) {
+  const item = { objeto, rubro, anio };
+  if (summary) item.documentary_summary = { sources: [{ document_id: objeto, extraction: { summary } }] };
+  return item;
+}
+const compactWith = (experiences, areas = []) => ({ razon_social: 'DIN', experience_json: experiences, econ_experience_json: { areas, no_global_sum: true } });
+const OPPORTUNITY = { descripcion: 'Mantenimiento preventivo de tableros eléctricos y variadores', resumen: {} };
+const REQUIREMENTS = [{ requisito: 'Experiencia en mantenimiento de variadores de velocidad' }];
+
+test('a profile within the experience limit is sent exactly as before', () => {
+  const small = compactWith(Array.from({ length: policy.MATCH_EXPERIENCE_LIMIT }, (_, n) => experienceItem(`Obra ${n}`)));
+  assert.equal(policy.selectRelevantExperience(small, OPPORTUNITY, REQUIREMENTS), small);
+});
+
+test('the closest experiences are kept complete, in order, with the same note as the worker', () => {
+  const unrelated = Array.from({ length: 9 }, (_, n) => experienceItem(`Capacitación docente ${n}`, { rubro: 'EDUCACION' }));
+  const close = experienceItem('Mantenimiento de variadores de velocidad', { anio: 2019 });
+  const byDocument = experienceItem('Servicio industrial', { summary: 'Mantenimiento preventivo de tableros eléctricos' });
+  const full = compactWith([...unrelated.slice(0, 4), close, ...unrelated.slice(4), byDocument]);
+  const selected = policy.selectRelevantExperience(full, OPPORTUNITY, REQUIREMENTS, 3);
+  const objects = selected.experience_json.map(item => item.objeto);
+  assert.equal(objects.length, 3);
+  assert.ok(objects.includes(close.objeto) && objects.includes(byDocument.objeto));
+  assert.ok(objects.indexOf(close.objeto) < objects.indexOf(byDocument.objeto));
+  assert.equal(selected.experience_note, 'Se incluyen las 3 experiencias más relacionadas con esta contratación de 11 registradas por la empresa.');
+  assert.equal(full.experience_json[4], close);
+});
+
+test('object words weigh more, ties go to the most recent year and generic words do not count', () => {
+  const old = experienceItem('Mantenimiento de variadores', { anio: 2015 });
+  const recent = experienceItem('Mantenimiento de variadores', { anio: 2023 });
+  const documentsOnly = experienceItem('Proyecto', { summary: 'variadores mantenimiento tableros' });
+  const filler = Array.from({ length: 8 }, (_, n) => experienceItem(`Aula ${n}`));
+  assert.deepEqual(policy.selectRelevantExperience(compactWith([old, documentsOnly, recent, ...filler]), OPPORTUNITY, REQUIREMENTS, 1).experience_json, [recent]);
+  const generic = experienceItem('Servicio de contratación y adquisición de bienes en general');
+  const relevant = experienceItem('Tableros eléctricos');
+  const opportunity = { descripcion: 'Servicio de adquisición de tableros eléctricos', resumen: {} };
+  assert.deepEqual(policy.selectRelevantExperience(compactWith([generic, relevant, ...filler]), opportunity, [], 1).experience_json, [relevant]);
+});
+
+test('economic areas follow their experience', () => {
+  const experiences = [...Array.from({ length: 9 }, (_, n) => experienceItem(`Aula ${n}`)), experienceItem('Mantenimiento de variadores')];
+  const areas = [{ monto: '100', source_record_index: 9 }, { monto: '50', source_record_index: 0 }, { monto: '10' }];
+  const selected = policy.selectRelevantExperience(compactWith(experiences, areas), OPPORTUNITY, REQUIREMENTS, 2);
+  const position = selected.experience_json.indexOf(experiences[9]);
+  assert.deepEqual(selected.econ_experience_json.areas.map(area => area.source_record_index),
+    [position, selected.experience_json.includes(experiences[0]) ? 0 : null, undefined]);
+  assert.equal(selected.econ_experience_json.no_global_sum, true);
 });

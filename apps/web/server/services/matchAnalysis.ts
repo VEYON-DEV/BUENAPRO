@@ -5,7 +5,8 @@ import { pool } from "@/server/db/client";
 import { ensureServerEnv } from "@/server/env";
 import {
   buildCompactMatchProfile, checklistOmittedProposalDocuments, COMPACT_PROFILE_VERSION, guardEconomicComparisons, guardParticipationActions,
-  isAdministrativeRequirement, MATCH_POLICY_VERSION, SEMANTIC_GUARD_VERSION, SOURCE_CATEGORIES, splitMatchRequirements,
+  isAdministrativeRequirement, MATCH_POLICY_VERSION, selectRelevantExperience, SEMANTIC_GUARD_VERSION, SOURCE_CATEGORIES,
+  splitMatchRequirements,
 } from "./matchAnalysisPolicy";
 
 const PROMPT_VERSION = MATCH_POLICY_VERSION;
@@ -319,14 +320,16 @@ export async function analyzeMatchDirect(input: {
   const { substantive: requested, administrativeChecklist } = splitMatchRequirements(facets);
   if (!requested.length) throw new Error("La lectura no contiene requisitos sustantivos para evaluar capacidad.");
   const compactProfile = buildCompactMatchProfile(profile);
+  const oportunidad = {
+    codigo: contract.codigo,
+    descripcion: contract.descripcion,
+    entidad: contract.entidad_nombre,
+    resumen: contract.summary_json,
+  };
+  // Gemini sees the closest experiences; evidence references are still checked against the whole profile.
   const result = await callGemini({
-    perfil: compactProfile,
-    oportunidad: {
-      codigo: contract.codigo,
-      descripcion: contract.descripcion,
-      entidad: contract.entidad_nombre,
-      resumen: contract.summary_json,
-    },
+    perfil: selectRelevantExperience(compactProfile, oportunidad, requested),
+    oportunidad,
     requisitos: requested,
   }, systemPrompt);
   const rawRequirements = list(result.parsed.requisitos).map(record);
