@@ -262,6 +262,11 @@ Referencia: [Oportunidades](../docs/frontend/03-oportunidades.md)
 - [x] Corregir preview del TDR: miniatura PNG real en el rail, PDF inline en modal, fallback y estados accesibles. Build, PNG real `1059×1497` y PDF inline de 9 páginas validados; captura renovada del rail (2026-08-03): `docs/new-style/qa/detail-desktop.png`.
 - [ ] Añadir conexión SEACE separada en Perfil y workspace lazy `Consultas oficiales / Preparar cotización` en detalle. Login real corregido (el formulario retenía `event.currentTarget` después del await), SSR/build/API validados; captura desktop/mobile pendiente.
 - [x] Retirar del detalle la tarjeta repetitiva `Preparación` (monto, notas y checklist) y mover únicamente la asignación de responsable al rail de postulación con autosave y opción de desasignar. TypeScript y PATCH real asignar/limpiar validados el 2026-07-12; QA visual permanece cubierto por la captura pendiente del workspace.
+- [x] Resumen de la evaluación como lectura provisional (28/10/2026), en las fichas de mayores y menores. Se ve en producción con la sesión de DIN en SERVIR (1052171), MINEDU (1052220) y SEDAPAR (1052006), sin errores de consola.
+  - **`1d4acd4`:** mientras el puntaje está por validar, la ficha muestra el resumen del propio modelo en lugar del aviso genérico, con la etiqueta «Lectura de la IA · sin validar».
+  - **`f49ef55`:** la etiqueta aparece siempre que el encabezado dice «Puntaje provisional», también cuando el modelo validó el puntaje pero las bases siguen en revisión humana.
+  - **Validación:** 338 pruebas Node, TypeScript y arquitectura.
+  - **Imagen:** `buenapro-web:review-badge-f49ef55`; respaldo `buenapro-web:rollback-1d4acd4-before-review-badge-f49ef55`.
 - [x] Simplificar `Evaluar con mi perfil`: esperar una única respuesta del análisis directo, refrescar el detalle y retirar polling de hasta 2 minutos. Flujo real validado con contrato 78764; no cambia el layout del botón.
 
 Referencia: [Detalle de oportunidad](../docs/frontend/04-detalle-oportunidad.md)
