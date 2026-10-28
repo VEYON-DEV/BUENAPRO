@@ -11,6 +11,8 @@ from buenapro_worker.prod2 import evaluation
 from buenapro_worker.prod6.reading import GuardedReadingError, ProviderRejectedError, ReadingBlockedError
 
 VEYON, DIN = evaluation.VEYON, evaluation.DIN
+RAW_HASH = "f" * 32  # company_profiles.profile_hash
+SNAPSHOT = evaluation.profile_snapshot(RAW_HASH)
 FACETS = [{"facet": "equipment", "label": "Servidor", "required": True, "details_json": {}, "facet_hash": "h1"},
           {"facet": "rnp", "label": "RNP vigente", "required": True, "details_json": {}, "facet_hash": "h2"}]
 ANSWER = {"veredicto": "verde", "score": 90, "resumen": "Cumple.", "acciones_recomendadas": [],
@@ -23,7 +25,7 @@ def row(**fields):
             "summary_json": {"descripcion_corta": "Licencias"}, "quality": "auto", "requires_human_review": True,
             "facet_count": 2, "domain": "informatica", "affinity": 96.0, "open": True, "hours_left": 72.0,
             "nomenclature": "AS-SM-1-2026", "description": "Licencias", "buyer_name": "Entidad",
-            "profile_id": VEYON, "profile_hash": "a" * 64, "profile_active": True, "rule_enabled": True,
+            "profile_id": VEYON, "profile_hash": SNAPSHOT, "profile_active": True, "rule_enabled": True,
             "max_daily": 0, "min_hours": 0, "match_current": False} | fields
 
 
@@ -54,7 +56,7 @@ def test_skip_reasons(fields, reason):
 # --- a scripted PostgreSQL ---------------------------------------------------------------------------
 
 class Conn:
-    def __init__(self, rows=(), *, today=0, menores=0, profile_hash="a" * 64):
+    def __init__(self, rows=(), *, today=0, menores=0, profile_hash=RAW_HASH):
         self.rows, self.today, self.menores, self.profile_hash = list(rows), today, menores, profile_hash
         self.updates = []
 
@@ -141,7 +143,7 @@ def test_a_pair_pays_once_completes_the_reservation_and_stores_a_provisional_mat
     assert analyzer.calls[0]["oportunidad"]["codigo"] == "AS-SM-1-2026"
     (_, stored, usage), = ledger.completed
     assert usage == {"input_tokens": 1200, "output_tokens": 300, "cost_usd": 0.0007}
-    assert stored["extraction_id"] == 70 and stored["profile_hash"] == "a" * 64 and stored["verdict"] == "verde"
+    assert stored["extraction_id"] == 70 and stored["profile_hash"] == SNAPSHOT and stored["verdict"] == "verde"
     meta = stored["breakdown"]["meta"]
     assert meta["jev_domain"] == "informatica" and meta["evaluation_origin"] == "prod2_jev_domain_v1"
     persisted, = ledger.persisted
@@ -150,7 +152,7 @@ def test_a_pair_pays_once_completes_the_reservation_and_stores_a_provisional_mat
 
 
 def test_a_completed_reservation_is_replayed_without_calling_the_provider(ledger):
-    ledger.next, ledger.stored = "cached", {"extraction_id": 70, "profile_hash": "a" * 64, "score": 60,
+    ledger.next, ledger.stored = "cached", {"extraction_id": 70, "profile_hash": SNAPSHOT, "score": 60,
         "verdict": "ambar", "breakdown": {"meta": {"cost_usd": 0.0007}}, "missing": []}
     analyzer = Analyzer()
     outcome = evaluation.evaluate_pair(Conn(), settings(), analyzer, row())
@@ -169,7 +171,7 @@ def test_a_reservation_held_elsewhere_or_in_doubt_never_sends(ledger, status, ou
 
 def test_a_profile_changed_since_planning_costs_nothing(ledger):
     analyzer = Analyzer()
-    outcome = evaluation.evaluate_pair(Conn(profile_hash="b" * 64), settings(), analyzer, row())
+    outcome = evaluation.evaluate_pair(Conn(profile_hash="e" * 32), settings(), analyzer, row())
     assert outcome == {"outcome": "skipped", "reason": "profile_changed"} and ledger.claims == []
 
 
@@ -215,3 +217,35 @@ def test_mayores_receipts_and_prompt_are_their_own():
     from buenapro_worker.matching.analyzer import SUBSTANTIVE_PROMPT_FILES, read_analysis_prompt
     prompt = read_analysis_prompt(SUBSTANTIVE_PROMPT_FILES[evaluation.POLICY_VERSION])
     assert prompt.startswith("Ámbito: procedimiento de selección") and "contratación menor" not in prompt
+
+
+def facet(kind, label, required=True, **details):
+    return {"facet": kind, "label": label, "required": required, "details_json": details, "facet_hash": label}
+
+
+def test_conditions_of_one_kind_go_as_one_requirement_and_annexes_are_paperwork():
+    facets = [facet("company_certification", "ISO 27001"), facet("company_certification", "Uptime Tier III"),
+              facet("economic_experience", "Monto facturado de S/ 2 000 000", monto=2000000),
+              facet("education", "Jefe: ingeniero de sistemas"), facet("key_personnel", "Jefe de proyecto"),
+              facet("professional_registration", "PMP del jefe"),
+              facet("penalty_condition", "Penalidad por mora", required=False),
+              facet("proposal_document", "Pacto de integridad (Anexo N° 2)"),
+              facet("proposal_document", "Experiencia del Postor en la Especialidad (Anexo N° 11)"),
+              facet("specific_experience", "Computación en la nube"), facet("specific_experience", "Hosting"),
+              facet("rnp", "RNP vigente")]
+    requisitos, checklist = evaluation.split_prod2_requirements(facets)
+    assert [(item["source_index"], item["tipo"]) for item in requisitos] == [
+        (1, "company_certification"), (2, "economic_experience"), (3, "key_personnel"), (4, "specific_experience")]
+    assert requisitos[1]["requisito"] == "Monto facturado de S/ 2 000 000" and requisitos[1]["detalle"] == {"monto": 2000000}
+    personnel = requisitos[2]["detalle"]["condiciones"]
+    assert [item["tipo"] for item in personnel] == ["education", "key_personnel", "professional_registration"]
+    assert requisitos[3]["requisito"] == "Experiencia del postor en la especialidad"
+    assert [item["requisito"] for item in requisitos[3]["detalle"]["condiciones"]] == ["Computación en la nube", "Hosting"]
+    assert [item["tipo"] for item in checklist] == ["proposal_document", "proposal_document", "rnp"]
+    assert all(item["estado"] == "preparar" and item["score_impact"] is False for item in checklist)
+
+
+def test_the_provenance_profile_hash_is_the_sha256_of_the_profile_hash():
+    import hashlib
+    assert evaluation.profile_snapshot("f" * 32) == hashlib.sha256(b"f" * 32).hexdigest()
+    assert evaluation.profile_snapshot(None) is None

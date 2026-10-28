@@ -32,7 +32,7 @@ from typing import Any
 from buenapro_worker.jobs.analyze_match import PROFILE_FIELDS, finish_match
 from buenapro_worker.jobs.match import _automatic_jobs_today
 from buenapro_worker.matching.profile_evidence import evidence_only_profile
-from buenapro_worker.matching.substantive_policy import ModelOutputMismatch, split_match_requirements
+from buenapro_worker.matching.substantive_policy import ModelOutputMismatch, is_administrative_requirement
 from buenapro_worker.normalization.facets import canonical_hash
 from buenapro_worker.prod6.evaluation_guard import GuardedMatchAnalyzer
 from buenapro_worker.prod6.reading import GuardedReadingError, ProviderRejectedError, ReadingBlockedError
@@ -47,6 +47,21 @@ VEYON, DIN = MEMBER_IDS
 DOMAIN_PROFILES = {"industrial_electrica": (DIN,), "informatica": (VEYON, DIN), "ambiguo": (VEYON, DIN)}
 # Outcomes that end a run: the next one starts from a clean provider/payment state.
 STOPS = {"provider_rejected", "payment_uncertain", "receipts_blocked"}
+# Bases list many conditions of one kind (8 accepted specialties, one row per role and degree);
+# the model merges them and skips indexes, so each kind goes as ONE requirement with its
+# conditions in ``detalle``. Personnel degrees and registrations belong to the key personnel.
+FAMILY = {"education": "key_personnel", "training": "key_personnel", "professional_registration": "key_personnel"}
+FAMILY_LABELS = {
+    "economic_experience": "Experiencia del postor: monto facturado",
+    "specific_experience": "Experiencia del postor en la especialidad",
+    "general_experience": "Experiencia general del postor",
+    "key_personnel": "Personal clave: perfil, formación y experiencia",
+    "equipment": "Equipamiento e infraestructura",
+    "insurance": "Seguros",
+    "license": "Licencias y autorizaciones",
+    "company_certification": "Certificaciones de la empresa",
+    "legal_capacity": "Habilitación legal",
+}
 
 ROWS_SQL = """
 WITH jev AS (
@@ -62,7 +77,8 @@ SELECT e.id AS extraction_id, e.id_convocatoria, e.opportunity_id::text AS oppor
        (d.proposals_closes_at IS NOT NULL AND d.proposals_closes_at > now()) AS open,
        extract(epoch FROM (d.proposals_closes_at - now())) / 3600 AS hours_left,
        disc.nomenclature, disc.description, disc.buyer_name,
-       p.profile_id::text AS profile_id, cp.profile_hash, (cp.id IS NOT NULL) AS profile_active,
+       p.profile_id::text AS profile_id, (cp.id IS NOT NULL) AS profile_active,
+       encode(sha256(convert_to(cp.profile_hash, 'UTF8')), 'hex') AS profile_hash,
        COALESCE(ar.enabled, true) AS rule_enabled,
        COALESCE(ar.max_daily_evaluations, 0) AS max_daily,
        COALESCE(ar.min_hours_before_close, 0) AS min_hours,
@@ -70,7 +86,8 @@ SELECT e.id AS extraction_id, e.id_convocatoria, e.opportunity_id::text AS oppor
                JOIN prod2_match_provenance pr ON pr.match_id = m.id
                JOIN prod2_evaluations mev ON mev.id = pr.evaluation_id
                WHERE m.profile_id = p.profile_id AND m.opportunity_id = e.opportunity_id
-                 AND pr.extraction_id = e.id AND pr.profile_hash = cp.profile_hash
+                 AND pr.extraction_id = e.id
+                 AND pr.profile_hash = encode(sha256(convert_to(cp.profile_hash, 'UTF8')), 'hex')
                  AND mev.kind = 'gemini_match' AND mev.status = 'done'
                  AND mev.policy_version = %(policy)s) AS match_current
 FROM prod2_document_extractions e
@@ -103,6 +120,43 @@ ORDER BY facet, id
 
 class Prod2GuardedMatchAnalyzer(GuardedMatchAnalyzer):
     receipt_kind = "prod2_match_analysis_v1"
+
+
+def profile_snapshot(profile_hash: str | None) -> str | None:
+    """SHA256 of ``company_profiles.profile_hash`` (32 hex), the form PROD2 provenance stores."""
+    return sha256(profile_hash.encode("utf-8")).hexdigest() if profile_hash else None
+
+
+def split_prod2_requirements(facets: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Same shape as ``split_match_requirements``, one requirement per kind of condition.
+
+    Penalties are not capacity; proposal documents (the annexes) and administrative rows are
+    paperwork to prepare. A kind with a single condition keeps it as it is.
+    """
+    families: dict[str, list[dict]] = {}
+    checklist = []
+    for row in facets:
+        if row["facet"] == "penalty_condition":
+            continue
+        if row["facet"] == "proposal_document" or is_administrative_requirement(row):
+            checklist.append({"tipo": row["facet"], "requisito": row["label"], "estado": "preparar",
+                              "score_impact": False})
+            continue
+        families.setdefault(FAMILY.get(row["facet"], row["facet"]), []).append(row)
+    requisitos = []
+    for index, (kind, rows) in enumerate(families.items(), 1):
+        if len(rows) == 1 and rows[0]["facet"] == kind:
+            row = rows[0]
+            requisitos.append({"source_index": index, "tipo": kind, "requisito": row["label"],
+                               "obligatorio": row["required"], "detalle": row["details_json"]})
+            continue
+        requisitos.append({"source_index": index, "tipo": kind,
+                           "requisito": FAMILY_LABELS.get(kind, "Otras condiciones de capacidad"),
+                           "obligatorio": any(row["required"] for row in rows),
+                           "detalle": {"condiciones": [{"tipo": row["facet"], "requisito": row["label"],
+                                                         "obligatorio": row["required"], "detalle": row["details_json"]}
+                                                        for row in rows]}})
+    return requisitos, checklist
 
 
 def candidate_rows(conn, *, convocations: list[int] | None = None, open_only: bool = True) -> list[dict]:
@@ -184,10 +238,10 @@ def _set_status(conn, claim: dict, status: str, reason: str, result=None) -> Non
 def evaluate_pair(conn, settings, analyzer: GuardedMatchAnalyzer, row: dict) -> dict[str, Any]:
     convocation, profile_id, extraction_id = int(row["id_convocatoria"]), row["profile_id"], int(row["extraction_id"])
     profile = conn.execute("SELECT * FROM company_profiles WHERE id = %s AND is_active", (profile_id,)).fetchone()
-    if profile is None or profile["profile_hash"] != row["profile_hash"]:
+    if profile is None or profile_snapshot(profile["profile_hash"]) != row["profile_hash"]:
         return {"outcome": "skipped", "reason": "profile_changed"}
     facet_rows = conn.execute(FACETS_SQL, (convocation, extraction_id)).fetchall()
-    requisitos, checklist = split_match_requirements(facet_rows)
+    requisitos, checklist = split_prod2_requirements(facet_rows)
     profile_evidence = evidence_only_profile({field: profile[field] for field in PROFILE_FIELDS})
     meta = {"prompt_sha256": sha256(analyzer.prompt.encode("utf-8")).hexdigest(), "extraction_id": extraction_id,
             "profile_hash": row["profile_hash"],
