@@ -486,10 +486,14 @@ def test_preflight_preserves_current_readings_and_never_repays_a_historical_atte
     put(tmp_path / '1' / ('gemini_extraction-' + request + '.claim.private.json'), claim)
     own = {**claim, 'status': 'running'}
     reread.pg_preflight(FakePG(record, deadline, prior=[own]), preflight_plan(tmp_path), 1, record, request)
-    for status in ('running', 'done', 'uncertain'):
+    for status in ('running', 'uncertain'):
         with pytest.raises(reread.Refused, match='Historical paid attempt'):
             reread.pg_preflight(FakePG(record, deadline, prior=[{**own, 'status': status}]),
                                 preflight_plan(tmp_path), 1, record)
+    # A completed paid answer is reused from the cache and a released reservation was never paid.
+    for status in ('done', 'pending'):
+        reread.pg_preflight(FakePG(record, deadline, prior=[{**own, 'claim_token': None, 'status': status}]),
+                            preflight_plan(tmp_path), 1, record, request)
     for patch in [{'claim_token': 'foreign'}, {'id': 99}, {'request_hash': 'other'}, {'status': 'uncertain'}, {'status': 'failed'}]:
         with pytest.raises(reread.Refused, match='Historical paid attempt'):
             reread.pg_preflight(FakePG(record, deadline, prior=[{**own, **patch}]),
@@ -654,7 +658,10 @@ def test_read_case_reuses_stored_vectors_with_the_new_config_and_never_buys_an_e
     assert seen.paid.anchor == 'uuid-1' and seen.paid.anchor_sha == 'a' * 64
     assert seen.resolved[0]['profile_id'] == 'profile-1' and 'llm1_model_routing' in seen.resolved[0]
     assert seen.resolved[1:] == (3, 'gemini-3.1-flash-lite')
-    assert seen.persisted['convocation_id'] == cid and seen.persisted['extraction']['allowed_models'] == ['gemini-2.5-flash-lite']
+    # The routed model first, plus the saturation fallback that may have answered for it.
+    allowed = seen.persisted['extraction']['allowed_models']
+    assert seen.persisted['convocation_id'] == cid and allowed == reread.allowed_llm1_models('gemini-2.5-flash-lite')
+    assert allowed[0] == 'gemini-2.5-flash-lite'
     assert result['status'] == 'llm1_complete' and result['facet_count'] == 3
     assert result['context_tokens'] == 41234 and result['context_reasons'] == ['context_trimmed_by_relevance']
     assert result['llm1_cost_usd'] == 0.0123 and result['llm1_model'] == 'gemini-2.5-flash-lite'

@@ -50,7 +50,7 @@ from buenapro_worker.prod2.model_routing import resolve_llm1_model
 from buenapro_worker.prod2.pdf_preparation import _result
 from buenapro_worker.prod2.selected_control import LimitReached, RunLimits
 from buenapro_worker.prod2.selected_payments import audit_summary
-from buenapro_worker.prod2.selected_read import paid_selected_read
+from buenapro_worker.prod2.selected_read import allowed_llm1_models, paid_selected_read
 import run_prod2_selected as selected
 
 VERSION = "prod2_review_reread_v1"
@@ -357,8 +357,10 @@ def pg_preflight(conn, plan, cid, record, request_hash=None, selection_context=N
     prior = conn.execute(PRIOR_ATTEMPTS_SQL, (cid,)).fetchall()
     case = Path(plan["folder"]) / str(cid)
     for entry in prior:
-        if entry["status"] == "pending":
-            continue  # Never claimed, or released after Gemini answered an HTTP error: nothing paid.
+        if entry["status"] in {"pending", "done"}:
+            # Pending: never claimed, or released after Gemini answered an HTTP error (nothing paid).
+            # Done: a paid answer the reading reuses from the cache, never pays again.
+            continue
         claim_path = case / ("gemini_extraction-" + str(entry["request_hash"]) + ".claim.private.json")
         owned = read_private(claim_path) if request_hash and claim_path.exists() else {}
         # Ours: the primary request or its saturation fallback, both claimed from this folder.
@@ -443,7 +445,7 @@ def read_case(settings, plan, cid, limits, guard):
             fallback_config=None)
         saved = persist_completed_llm1(
             conn, convocation_id=cid, document_uuid=anchor,
-            extraction={**bundle, "evaluation_id": evaluation, "allowed_models": [model]},
+            extraction={**bundle, "evaluation_id": evaluation, "allowed_models": allowed_llm1_models(model)},
             document_sha256=anchor_sha, source_url=first["source_url"])
         result = {**record, **saved, "status": "llm1_complete",
                   "requires_human_review": bundle["requires_human_review"],

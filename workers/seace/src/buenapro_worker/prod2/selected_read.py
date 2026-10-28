@@ -15,6 +15,13 @@ from . import selected_extractor
 from .luna_policy import luna_settings, provider_model
 
 
+def allowed_llm1_models(model):
+    """The routed model and, when configured, the saturation fallback that may have answered for it."""
+    from buenapro_worker.prod6.gemini_pacing import saturation_fallback_model
+    fallback = saturation_fallback_model()
+    return [model] + ([fallback] if fallback and fallback != model else [])
+
+
 def paid_selected_read(conn, settings, folder, *, convocation_id, profile_id,
                        object_type, anchor, anchor_sha, pdf, prepared,
                        document_context, limits, before_request_factory,

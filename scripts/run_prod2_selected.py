@@ -1182,7 +1182,7 @@ def enrich(conn, settings, folder, item, manifest, pacer, limits, jev_key, *, ca
             load_compact_source(compact_binding)
             return guarded_issue(issue)()
         return compact_issue if compact_binding is not None else guarded_issue(issue)
-    from buenapro_worker.prod2.selected_read import paid_selected_read
+    from buenapro_worker.prod2.selected_read import allowed_llm1_models, paid_selected_read
     evaluation_id, bundle, hit, request_hash, execution = paid_selected_read(conn, llm1_settings, folder,
         convocation_id=conv, profile_id=manifest["profile_id"], object_type=item["query"]["object_type"],
         anchor=anchor, anchor_sha=anchor_sha, pdf=pdf, prepared=prepared, document_context=document_context,
@@ -1191,7 +1191,7 @@ def enrich(conn, settings, folder, item, manifest, pacer, limits, jev_key, *, ca
         paid_stage=paid_llm1)
     model = bundle["model"]
     saved = persist_completed_llm1(conn, convocation_id=conv, document_uuid=anchor,
-        extraction={**bundle, "evaluation_id": evaluation_id, "allowed_models": [model]},
+        extraction={**bundle, "evaluation_id": evaluation_id, "allowed_models": allowed_llm1_models(model)},
         document_sha256=anchor_sha, source_url=downloads[anchor]["source_url"])
     return {**common, **saved, "status": "llm1_complete", "llm1_cached": hit,
         **({"llm1_evaluation_id": evaluation_id, "llm1_request_hash": request_hash,

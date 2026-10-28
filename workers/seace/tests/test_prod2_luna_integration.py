@@ -276,3 +276,11 @@ def test_a_retired_model_is_a_free_rejection_without_fallback(pipeline, monkeypa
     with pytest.raises(selected_extractor.SelectedProviderRejected):
         run(f)
     assert len(f.ledger.rows) == 1 and f.google.models.generate_content.call_count == 2
+
+
+def test_the_saturation_fallback_model_is_allowed_when_the_reading_is_stored(monkeypatch):
+    """28/10: 1051736 was read by the fallback and refused on storage for not being the routed model."""
+    monkeypatch.setenv("PROD6_GEMINI_SATURATION_FALLBACK_MODEL", "gemini-3.5-flash-lite")
+    assert selected_read.allowed_llm1_models("gemini-3.1-flash-lite") == ["gemini-3.1-flash-lite", "gemini-3.5-flash-lite"]
+    monkeypatch.setenv("PROD6_GEMINI_SATURATION_FALLBACK_MODEL", "")
+    assert selected_read.allowed_llm1_models("gemini-3.1-flash-lite") == ["gemini-3.1-flash-lite"]
