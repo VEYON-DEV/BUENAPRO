@@ -1017,6 +1017,40 @@ Piloto del 27/10/2026, con «software», 2026, ventana de 7 días y 1 ciclo:
   (`retrieval_context_needs_expansion_or_review`): el contexto recuperado supera
   `context_maximum_tokens` (30 000) de la config v5. El servicio exige exactamente v5.
 
+### Releer las revisiones con otra configuración (`reread_prod2_reviews.py`)
+
+Relee, con una config nueva (p. ej. la v6), los casos de una corrida que terminaron en
+`EmbeddingPreparationReview` / `retrieval_context_needs_expansion_or_review`. Reutiliza la
+preparación retenida, los OCR y los vectores ya pagados: **no compra embeddings** (tope 0; si falta
+un vector, el caso falla sin pagar) y no usa SEACE, Redis, selector ni JEV. Hace una llamada LLM1
+por caso, sin fallback, y deja un `outcome.private.json` inmutable por caso en `--folder`.
+
+- La imagen debe incluir el script (`prod2.Dockerfile` lo copia a `/app/scripts/`).
+- `--plan` es offline: valida la evidencia original y escribe `manifest.private.json`. Un caso que
+  no sea la revisión esperada se rechaza con su motivo y no se escribe nada.
+  Imprime la edad de la observación «abierto» de cada caso.
+- `--execute` exige el mismo manifiesto y los mismos argumentos; cualquier cambio de la evidencia
+  lo detiene. Toma el candado global de PROD2: no corre mientras el servicio esté en un ciclo.
+- Regla de ciclo de vida (la del seguimiento de sectores): solo se lee un contrato abierto
+  (`confirmed_open` y `registration_open`/`submission_open`), con la observación de hasta
+  `--max-observation-hours` (6 por defecto) y con el plazo de presentación, tomado de PostgreSQL,
+  todavía en el futuro. Solo la edad de la observación se puede ampliar, con un plan nuevo en otra
+  carpeta; el plazo no.
+- Un caso que falla o vuelve a revisión registra su outcome y no se reintenta. Un caso detenido antes
+  de despacharse (tope LLM1, parada) queda sin outcome y un `--execute` posterior lo retoma.
+
+```bash
+python /app/scripts/reread_prod2_reviews.py --plan \
+  --original /var/lib/buenapro/prod2/runs/pilot2-software-2026-000001 \
+  --ids 1051075 1051079 1051128 1051566 1051702 1051736 1051853 \
+  --embedding-config /app/docs/sources/prod2-embedding-reading.runtime.v6.json \
+  --folder /var/lib/buenapro/prod2/rereads/pilot2-software-2026-000001-v6 \
+  --max-llm1-calls 7
+```
+
+El comando `--execute` es el mismo con `--execute` en lugar de `--plan`. Se ejecuta con
+`docker compose … run --rm --no-deps --entrypoint python prod2-ingest` como el preflight.
+
 ## Pausa de emergencia
 
 ```bash
