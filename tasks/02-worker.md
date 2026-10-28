@@ -1151,11 +1151,11 @@ Rediseno 2026-07-09: el motor deterministico fue reemplazado por analisis LLM ba
   - **Despliegue:** v6, `--llm1-model-routing fixed`, ventana de 3 días, a las 01:00 Lima, primer arranque a 15 s y `max_cycles` 2.
   - **Primer ciclo real (28/10, 01:08–05:36 Lima):** 13 candidatas, 11 aceptadas y 11 leídas por US$ 0,135, sin respuestas 403/429. Una consulta falló (`source_or_capture_error`); el reintento de los 30 min la completó desde la caché sin pagos nuevos.
   - **Desde el 28/10 09:00:** config final con 10 s, evaluación tras cada ciclo y sin límite de ciclos. Commit `ecc71be`: el aviso suma todos los intentos del ciclo.
-- [ ] Evaluación por empresa (LLM2) de licitaciones mayores PROD2:
+- [x] Evaluación por empresa (LLM2) de licitaciones mayores PROD2:
   - `prod2/evaluation.py`, script `evaluate_prod2_matches.py` (`--plan` / `--execute`) y prompt `prod2_match_v1`.
   - El dominio JEV elige a la empresa: industrial → DIN; informática o ambiguo → VEYON y DIN.
   - Puntaje provisional sobre lecturas en revisión, `automation_rules` compartidas con menores y pagos con recibos y reserva `gemini_match`.
   - El servicio lo lanza tras cada ciclo (bloque `evaluation`).
   - **Prueba real del 28/10:** 16 pares de las 9 licitaciones abiertas, todos visibles en la consulta de la web (US$ 0,06; antes, 6 intentos con la versión sin agrupar: US$ 0,027).
   - **28/10:** 9 de 18 pares más de las lecturas del ciclo 1; Gemini 3.1 y 3.5-flash-lite respondieron 503 y el resto queda para el evaluador del servicio. VEYON tiene 2 experiencias porque es empresa nueva (DIN 43): sus puntajes bajos son esperables.
-  - **Pendiente:** primera corrida automática del evaluador dentro del servicio.
+  - **Primera corrida automática en el servicio (28/10, 11:01–11:04 Lima, tras el ciclo 1 de la config final):** 9 de 9 pares evaluados por US$ 0,038 (salida 0) y guardados con su resumen; 25 pares vigentes y 2 de otro dominio omitidos. Hubo 8 respuestas 503 sin cobro, absorbidas por el respaldo de Gemini. Ese ciclo leyó las 120 consultas, conservó las 11 lecturas previas y no hizo llamadas pagadas nuevas. Verificado en PostgreSQL; la web no se revisó porque la sesión estaba cerrada.
