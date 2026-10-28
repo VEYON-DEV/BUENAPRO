@@ -67,6 +67,22 @@ function uniqueChecklist(items: RecordValue[]): RecordValue[] {
   return [...unique.values()];
 }
 
+function clip(value: string, limit: number): string {
+  return value.length <= limit ? value : `${value.slice(0, limit).replace(/\s+\S*$/, "")}…`;
+}
+
+/**
+ * When a rule could not back the model's judgements the worker stores a generic notice as the
+ * summary and keeps the model's own summary in meta. A score still under review shows that
+ * reading, marked as provisional; validated or older evaluations keep their summary.
+ */
+export function decisionSummary(analysis: RecordValue): { text: string; provisional: boolean } {
+  const summary = typeof analysis.resumen === "string" ? analysis.resumen.trim() : "";
+  const reading = typeof analysis.meta?.raw_model_summary === "string" ? analysis.meta.raw_model_summary.trim() : "";
+  if (analysis.meta?.score_validated === false && reading) return { text: clip(reading, 420), provisional: true };
+  return { text: summary, provisional: false };
+}
+
 export function evaluationPresentation(
   breakdown: unknown,
   missingActions: unknown,
@@ -105,6 +121,7 @@ export function evaluationPresentation(
   return {
     hasEvaluation: evaluated.length > 0,
     scoreUnderReview: analysis.meta?.score_validated === false,
+    summary: decisionSummary(analysis),
     substantive,
     substantiveFacets,
     coveredCount: substantive.filter(row => row.estado === "cumple").length,

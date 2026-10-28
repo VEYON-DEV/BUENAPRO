@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { evaluationPresentation, isAdministrativeRequirement } from "./evaluationPresentation.ts";
+import { decisionSummary, evaluationPresentation, isAdministrativeRequirement } from "./evaluationPresentation.ts";
 
 test("administrative paperwork never reduces capacity coverage or produces substantive gaps", () => {
   const facets = [
@@ -142,4 +142,32 @@ test("pending score is explicit and does not convert a missing analysis into an 
   const pending = evaluationPresentation(null, [], []);
   assert.equal(pending.hasEvaluation, false);
   assert.equal(pending.scoreUnderReview, false);
+});
+
+
+const GENERIC = "La evaluación requiere contrastar experiencia y respaldos antes de publicar el puntaje. Revisa las condiciones pendientes indicadas abajo.";
+
+test("a score under review shows the model's own reading, marked as provisional", () => {
+  const reading = "La empresa no acredita el monto facturado mínimo exigido de S/ 140,000.00.";
+  assert.deepEqual(decisionSummary({ resumen: GENERIC, meta: { score_validated: false, raw_model_summary: ` ${reading} ` } }),
+    { text: reading, provisional: true });
+  assert.deepEqual(evaluationPresentation({ resumen: GENERIC, meta: { score_validated: false, raw_model_summary: reading } }, [], []).summary,
+    { text: reading, provisional: true });
+});
+
+test("a validated score, or one without the model's reading, keeps its summary", () => {
+  assert.deepEqual(decisionSummary({ resumen: "Cumple lo esencial.", meta: { score_validated: true, raw_model_summary: "Otro texto." } }),
+    { text: "Cumple lo esencial.", provisional: false });
+  assert.deepEqual(decisionSummary({ resumen: GENERIC, meta: { score_validated: false } }), { text: GENERIC, provisional: false });
+  assert.deepEqual(decisionSummary({ resumen: GENERIC, meta: { score_validated: false, raw_model_summary: "   " } }),
+    { text: GENERIC, provisional: false });
+  assert.deepEqual(decisionSummary({}), { text: "", provisional: false });
+});
+
+test("a long model reading is cut at a word boundary", () => {
+  const long = Array.from({ length: 120 }, (_, index) => `palabra${index}`).join(" ");
+  const { text } = decisionSummary({ meta: { score_validated: false, raw_model_summary: long } });
+  const kept = text.slice(0, -1);
+  assert.ok(text.endsWith("…") && kept.length <= 420);
+  assert.ok(long.startsWith(kept) && long[kept.length] === " ");  // Never half a word.
 });

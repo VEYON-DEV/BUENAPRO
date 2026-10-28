@@ -20,6 +20,7 @@
 .briefs { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 .briefs h3 { color: var(--bp-color-brand); font-size: 12px; margin-top: 4px; }
 .briefs > div { min-width: 0; }
+.readingTag { margin: 6px 0 2px; }
 .muted, .requirementKind { color: var(--bp-color-text-2); font-size: 13px; line-height: 1.6; }
 .requirementKind { display: block; font-weight: 400; margin-top: 4px; }
 .empty { color: var(--bp-color-text-2); padding-block: 20px; }

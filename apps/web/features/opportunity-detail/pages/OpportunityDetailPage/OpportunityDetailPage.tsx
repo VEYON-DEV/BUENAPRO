@@ -415,7 +415,7 @@ export async function OpportunityDetailPage({
           ]}
         >
           <div data-detail-pane="decision" id="detail-pane-decision" role="tabpanel" aria-labelledby="detail-tab-decision">
-          {analysis?.resumen || facts.lecturaRapida ? (
+          {evaluation.summary.text || facts.lecturaRapida ? (
             <section className={`${styles.panel} ${styles.decisionBrief}`} id="decision">
               <div className={styles.sectionTitle}>
                 <div>
@@ -424,7 +424,7 @@ export async function OpportunityDetailPage({
                   </span>
                   <h2>Lo esencial para decidir</h2>
                 </div>
-                {analysis?.resumen ? (
+                {evaluation.summary.text ? (
                   <AnalyzeButton
                     idContrato={contract.id_contrato}
                     profileId={contract.profile_id}
@@ -435,10 +435,20 @@ export async function OpportunityDetailPage({
                 ) : null}
               </div>
               <div className={styles.briefGrid}>
-                {analysis?.resumen ? (
+                {evaluation.summary.text ? (
                   <div className={styles.briefPrimary}>
                     <span className={styles.briefLabel}>Según tu perfil</span>
-                    <p className={styles.executive}>{analysis.resumen}</p>
+                    {evaluation.summary.provisional ? (
+                      <div className={styles.readingTag}>
+                        <Badge tone="amber">Lectura de la IA · sin validar</Badge>
+                      </div>
+                    ) : null}
+                    <p className={styles.executive}>{evaluation.summary.text}</p>
+                    {evaluation.summary.provisional ? (
+                      <p className={styles.readingNote}>
+                        El puntaje y estas conclusiones están por validar; revisa las condiciones pendientes abajo.
+                      </p>
+                    ) : null}
                     {Array.isArray(analysis.acciones_recomendadas) &&
                     analysis.acciones_recomendadas.length ? (
                       <ol className={styles.recommendedActions}>

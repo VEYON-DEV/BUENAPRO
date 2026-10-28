@@ -358,6 +358,18 @@
   max-width: 75ch;
 }
 
+.readingTag {
+  margin: var(--bp-space-2) 0;
+}
+
+.readingNote {
+  color: var(--bp-color-text-2);
+  font-size: 13px;
+  line-height: 1.6;
+  margin-top: var(--bp-space-2);
+  max-width: 75ch;
+}
+
 .observations {
   color: var(--bp-color-text-2);
   display: grid;

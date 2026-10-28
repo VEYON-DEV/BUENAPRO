@@ -100,6 +100,23 @@ test("PROD2 detail uses the explicit provisional score while keeping documentary
   assert.match(html, /0 de 1/);
 });
 
+test("PROD2 detail shows the model's reading, marked as unvalidated, while the score is under review", () => {
+  const generic = "La evaluación requiere contrastar experiencia y respaldos antes de publicar el puntaje.";
+  const reading = "La empresa no acredita el monto facturado mínimo exigido de S/ 140,000.00.";
+  const facets = [{ id: "1", facet: "economic_experience", label: "Experiencia", required: true }];
+  const pending = render(fixture({ meta: { score_validated: false, raw_model_summary: reading }, resumen: generic, requisitos: [
+    { requisito: "Experiencia", source_index: 1, source_facet: "economic_experience", estado: "requiere_revision" },
+  ] }, facets));
+  assert.match(pending, /Lectura de la IA · sin validar/);
+  assert.ok(pending.includes(reading) && !pending.includes(generic));
+  assert.match(pending, /El puntaje y estas conclusiones están por validar/);
+  const validated = render(fixture({ meta: { score_validated: true, raw_model_summary: reading }, resumen: "Cumple lo esencial.", requisitos: [
+    { requisito: "Experiencia", source_index: 1, source_facet: "economic_experience", estado: "cumple" },
+  ] }, facets));
+  assert.ok(validated.includes("Cumple lo esencial.") && !validated.includes(reading));
+  assert.doesNotMatch(validated, /sin validar|están por validar/);
+});
+
 test("source-review provisional zero never becomes an approved legacy score in the detail", () => {
   const detail = fixture({ meta: { score_validated: true }, requisitos: [
     { requisito: "Personal", source_index: 1, source_facet: "key_personnel", estado: "requiere_revision" },

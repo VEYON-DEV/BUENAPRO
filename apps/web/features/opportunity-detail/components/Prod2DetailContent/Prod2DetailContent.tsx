@@ -93,7 +93,9 @@ export function Prod2DetailContent({ detail }: { detail: Detail }) {
         { id: "documents", label: "Documentos", count: documents.length }, { id: "schedule", label: "Cronograma" }, { id: "execution", label: "Ejecución" }]}>
         <div data-detail-pane="decision" id="detail-pane-decision" role="tabpanel" aria-labelledby="detail-tab-decision">
           <section className={styles.panel}><h2>Lo esencial para decidir</h2><div className={styles.briefs}>
-            <div><h3>{context}</h3><p>{text(breakdown.resumen) || "La evaluación documental todavía no está disponible. Revisa las bases y la modalidad para determinar cómo participar."}</p>
+            <div><h3>{context}</h3>{evaluation.summary.provisional ? <div className={styles.readingTag}><Badge tone="amber">Lectura de la IA · sin validar</Badge></div> : null}
+              <p>{evaluation.summary.text || "La evaluación documental todavía no está disponible. Revisa las bases y la modalidad para determinar cómo participar."}</p>
+              {evaluation.summary.provisional ? <p className={styles.muted}>El puntaje y estas conclusiones están por validar; revisa las condiciones pendientes abajo.</p> : null}
               {actions.length ? <details className={styles.disclosure}><summary>Acciones recomendadas</summary><ol>{actions.map((action, index) => <li key={index}>{action}</li>)}</ol></details> : null}</div>
             <div><h3>Qué solicita la entidad</h3><p>{facts.lecturaRapida || "Consulta las bases oficiales para conocer el alcance y los requisitos."}</p>
               {facts.observaciones.length ? <details className={styles.disclosure}><summary>Observaciones de las bases</summary><ul>{facts.observaciones.map((value, index) => <li key={index}>{value}</li>)}</ul></details> : null}</div>
