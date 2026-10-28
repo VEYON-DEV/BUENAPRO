@@ -924,3 +924,12 @@ def test_the_embedding_store_cannot_claim_or_send_a_missing_vector_without_budge
                                  before_request_factory=lambda request_hash: embedding_permission(stage))
         assert conn.execute(count).fetchone() == before
     assert list(tmp_path.iterdir()) == []
+
+
+def test_fixed_routing_is_frozen_in_the_plan_and_default_keeps_the_original(run):
+    plan, rejected = reread.frozen_plan(run.original, run.folder, run.ids, run.config, 3, 6)
+    assert not rejected and "llm1_model_routing" not in plan
+    fixed, _ = reread.frozen_plan(run.original, run.folder, run.ids, run.config, 3, 6, "fixed")
+    assert fixed["llm1_model_routing"] == "fixed" and fixed != plan
+    with pytest.raises(ValueError):
+        reread.frozen_plan(run.original, run.folder, run.ids, run.config, 3, 6, "pages40")

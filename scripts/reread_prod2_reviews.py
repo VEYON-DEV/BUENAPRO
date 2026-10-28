@@ -58,6 +58,7 @@ REVIEW_REASON = "retrieval_context_needs_expansion_or_review"
 OPEN_STATES = {"registration_open", "submission_open"}
 # Same window as the sector follow-up this script is modelled on: 6 hours.
 DEFAULT_MAX_OBSERVATION_HOURS = 6
+MODEL_ROUTINGS = ("original", "fixed")
 MAX_OBSERVATION_HOURS = 168
 CLOCK_SKEW_SECONDS = 60
 MODEL_WORKERS = 2
@@ -256,7 +257,7 @@ def check_config_compatible(old, new):
     retrieval_config(new["retrieval"])
 
 
-def frozen_plan(original, folder, ids, config_path, max_llm1_calls, max_observation_hours):
+def frozen_plan(original, folder, ids, config_path, max_llm1_calls, max_observation_hours, model_routing="original"):
     """Return (manifest, rejected). The manifest is a pure function of the evidence and arguments."""
     original, folder = literal(original), literal(folder)
     if not original.is_dir():
@@ -270,6 +271,8 @@ def frozen_plan(original, folder, ids, config_path, max_llm1_calls, max_observat
         raise ValueError("--max-llm1-calls must be between 1 and the number of ids (one call per case)")
     if not 0 < max_observation_hours <= MAX_OBSERVATION_HOURS:
         raise ValueError("--max-observation-hours must be above 0 and at most %d" % MAX_OBSERVATION_HOURS)
+    if model_routing not in MODEL_ROUTINGS:
+        raise ValueError("--llm1-model-routing must be one of %s" % ", ".join(MODEL_ROUTINGS))
     old = read_private(original / "manifest.private.json")
     old_config = validate_frozen_config(old)
     if old_config is None:
@@ -294,6 +297,7 @@ def frozen_plan(original, folder, ids, config_path, max_llm1_calls, max_observat
             "max_llm1_calls": max_llm1_calls,
             "max_embedding_calls": NO_EMBEDDING_CALLS,
             "max_observation_age_seconds": int(round(max_observation_hours * 3600)),
+            **({"llm1_model_routing": model_routing} if model_routing != "original" else {}),
             "model_workers": MODEL_WORKERS,
             "no_discovery": True, "no_source_http": True, "no_redis": True, "no_jev": True,
             "no_embedding_purchase": True, "no_full_pdf_or_luna": True}
@@ -308,7 +312,7 @@ def verify_plan(args):
         raise ValueError("No frozen manifest in the folder; run --plan first")
     stored = read_private(marker)
     current, rejected = frozen_plan(args.original, folder, args.ids, args.embedding_config,
-                                    args.max_llm1_calls, args.max_observation_hours)
+                                    args.max_llm1_calls, args.max_observation_hours, getattr(args, "llm1_model_routing", "original"))
     if rejected or current != stored:
         changed = sorted(key for key in set(stored) | set(current) if stored.get(key) != current.get(key))
         raise ValueError("Frozen manifest or original evidence changed (%s)" % ", ".join(changed or ["cases"]))
@@ -402,7 +406,11 @@ def read_case(settings, plan, cid, limits, guard):
         if stage["attempt_ids"] or stage["new_token_count"] or stage["known_cost_usd"]:
             raise RuntimeError("An embedding request was made; this script must never buy embeddings")
         prepared, local = prepare_input(prepared, case)
-        model, routing = resolve_llm1_model(old, prepared["page_count"], settings.gemini_model)
+        # "fixed" reads with the base model: the page routing's large model (gemini-2.5-flash-lite)
+        # answers 404 to keys created after Google retired it for new users (28/10).
+        routed = old if plan.get("llm1_model_routing", "original") == "original" else {
+            key: value for key, value in old.items() if key != "llm1_model_routing"}
+        model, routing = resolve_llm1_model(routed, prepared["page_count"], settings.gemini_model)
         active = settings.model_copy(update={"gemini_model": model})
         pdf = prepared["pdf_path"].read_bytes()
         first = prepared["document_set"][0]
@@ -590,6 +598,8 @@ def parser():
     p.add_argument("--embedding-config", type=Path, required=True, help="New embedding reading configuration")
     p.add_argument("--folder", type=Path, required=True, help="New private folder for the manifest and outcomes")
     p.add_argument("--max-llm1-calls", type=int, required=True, help="Ceiling of LLM1 calls, at most one per id")
+    p.add_argument("--llm1-model-routing", choices=MODEL_ROUTINGS, default="original",
+                   help="original: the run's own page routing; fixed: the base model for every case")
     p.add_argument("--max-observation-hours", type=float, default=DEFAULT_MAX_OBSERVATION_HOURS,
                    help="Oldest accepted 'open' observation; default %d h as in the sector follow-up. "
                         "The deadline must still be in the future whatever this value." % DEFAULT_MAX_OBSERVATION_HOURS)
@@ -602,7 +612,7 @@ def main(argv=None):
     args.folder = literal(args.folder)
     if args.plan:
         plan, rejected = frozen_plan(args.original, args.folder, args.ids, args.embedding_config,
-                                     args.max_llm1_calls, args.max_observation_hours)
+                                     args.max_llm1_calls, args.max_observation_hours, getattr(args, "llm1_model_routing", "original"))
         now = datetime.now(timezone.utc)
         for case in plan["cases"]:
             # Advisory only (it depends on the clock, so it is not part of the manifest).
