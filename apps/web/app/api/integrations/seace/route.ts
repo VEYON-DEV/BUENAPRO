@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireTenantId, requireTenantRole } from "@/server/auth/tenant";
+import { seaceUnavailableJson } from "@/server/http/seaceUnavailable";
 import { connectSeace, disconnectSeace, seaceConnectionStatus } from "@/server/services/seaceAuthenticated";
+import { SeaceUnavailable } from "@/server/services/seaceEgress";
 
 function message(error: unknown) {
   const typed = error as Error & { status?: number; code?: string };
@@ -45,6 +47,7 @@ export async function PUT(request: Request) {
   } catch (error) {
     if (error instanceof Response) return error;
     safeLog(error);
+    if (error instanceof SeaceUnavailable) return seaceUnavailableJson("SEACE no está disponible en este momento. Inténtalo en unos minutos.");
     return NextResponse.json({ error: message(error) }, { status: 502 });
   }
 }

@@ -15,12 +15,14 @@ function load(file, mocks = {}, environment = {}) {
     fetch: async () => { throw new Error('Unexpected network call in offline test'); }, process: { env: environment },
     require(name) { return name in mocks ? mocks[name] : name === '@/lib/commercialTaxonomy' ? commercial
       : name === './commercialClassification' ? commercialSql : name === './prod2OfficialDocument' ? official
+      : name === './seaceEgress' ? offlineEgress
       : name === './prod2CommercialAffinity' ? load('prod2CommercialAffinity.ts')
       : name === './prod2DocumentStorage' ? defaultStorage
       : name === './keywordTextScoring' ? load('keywordTextScoring.ts')
       : name === './savedOpportunities' ? load('savedOpportunities.ts', mocks) : require(name); } });
   return exports;
 }
+const offlineEgress = { seaceFetch: async () => { throw new Error('Unexpected SEACE request in offline test'); } };
 const schedule = load('../../lib/procurementSchedule.ts');
 const analysis = load('../../lib/prod2Analysis.ts', { '@/lib/procurementSchedule': schedule });
 const official = load('prod2OfficialDocument.ts');

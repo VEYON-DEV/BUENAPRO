@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireTenantId } from "@/server/auth/tenant";
+import { seaceUnavailableJson } from "@/server/http/seaceUnavailable";
 import { tenantCanAccessContract } from "@/server/services/crud";
 import { authenticatedSeaceJson } from "@/server/services/seaceAuthenticated";
+import { SeaceUnavailable } from "@/server/services/seaceEgress";
 
 function failure(error: unknown) {
+  if (error instanceof SeaceUnavailable) return seaceUnavailableJson("SEACE no respondió a la consulta.");
   const code = error instanceof Error ? error.message : "SEACE_ERROR";
   const status = code === "SEACE_NOT_CONNECTED" || code === "SEACE_REQUIRES_2FA" ? 409 : 502;
   return NextResponse.json({ code, error: status === 409 ? "Conecta tu cuenta SEACE para ver las consultas oficiales." : "SEACE no respondió a la consulta." }, { status });

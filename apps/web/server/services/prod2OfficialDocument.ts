@@ -1,3 +1,5 @@
+import { seaceFetch } from "./seaceEgress";
+
 const METADATA_URL = "https://alfprod.seace.gob.pe/alfresco/service/osce/downloadDoc";
 const ALFRESCO_CONTEXT = "https://alfprod.seace.gob.pe/alfresco/";
 const CALLBACK = "buenaproDocument";
@@ -29,7 +31,7 @@ function downloadLocation(payload: string) {
   return url.toString();
 }
 
-async function boundedMetadata(response: Response) {
+async function boundedMetadata(response: Awaited<ReturnType<typeof seaceFetch>>) {
   const length = response.headers.get("content-length");
   if (length && (!/^\d+$/.test(length) || Number(length) > MAX_METADATA_BYTES)) {
     await response.body?.cancel();
@@ -54,15 +56,19 @@ async function boundedMetadata(response: Response) {
   }
 }
 
-/** Read metadata only; never download/store the binary or retain/log the short-lived ticket. */
-export async function resolveProd2OfficialDocument(documentCode: string, fetcher: typeof fetch = fetch) {
+/**
+ * Read metadata only; never download/store the binary or retain/log the short-lived ticket.
+ * The request leaves through the Peruvian egress (`seaceEgress`), never straight from the VM: when it is
+ * paused, busy or down the caller gets the same safe error as for any other upstream failure.
+ */
+export async function resolveProd2OfficialDocument(documentCode: string, fetcher: typeof seaceFetch = seaceFetch) {
   const reference = prod2OfficialDocumentReference(documentCode);
   if (!reference) throw new Prod2OfficialDocumentError();
   const endpoint = new URL(reference);
   endpoint.searchParams.set("doc", CALLBACK);
   endpoint.searchParams.set("guest", "false");
   try {
-    const response = await fetcher(endpoint, { cache: "no-store", redirect: "error", signal: AbortSignal.timeout(10_000),
+    const response = await fetcher(endpoint.toString(), { redirect: "error", timeoutMs: 10_000, interactive: true,
       headers: { Accept: "application/json, application/javascript, text/javascript" } });
     if (!response.ok) {
       await response.body?.cancel();

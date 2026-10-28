@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { requireTenantId } from "@/server/auth/tenant";
 import { query } from "@/server/db/client";
+import { seaceUnavailableJson } from "@/server/http/seaceUnavailable";
 import { tenantCanAccessContract } from "@/server/services/crud";
 import { authenticatedSeaceJson } from "@/server/services/seaceAuthenticated";
+import { SeaceUnavailable } from "@/server/services/seaceEgress";
 
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
   try {
@@ -20,6 +22,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     return NextResponse.json({ quotation, contract, documents: documents.rows, syncedAt: new Date().toISOString() });
   } catch (error) {
     if (error instanceof Response) return error;
+    if (error instanceof SeaceUnavailable) return seaceUnavailableJson("SEACE no respondió con la cotización.");
     const code = error instanceof Error ? error.message : "SEACE_ERROR";
     const status = code === "SEACE_NOT_CONNECTED" || code === "SEACE_REQUIRES_2FA" ? 409 : 502;
     return NextResponse.json({ code, error: status === 409 ? "Conecta tu cuenta SEACE para preparar la cotización." : "SEACE no respondió con la cotización." }, { status });

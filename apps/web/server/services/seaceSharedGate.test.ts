@@ -180,6 +180,32 @@ test("a shared turn farther than the wait limit answers busy", async () => {
   assert.equal(calls.length, 0);
 });
 
+test("an interactive request takes the shared turn with its own longer wait limit", async () => {
+  const { calls, fake } = setup([{ status: 200 }, { status: 200 }]);
+  assert.equal((await seaceFetch(URL_A, { interactive: true })).status, 200);
+  assert.deepEqual(fake.reserveCalls, [{ intervalMs: 2000, maxWaitMs: 45_000 }]);
+  // El turno compartido sigue siendo uno: a más de 45 s también se rechaza, sin enviar nada.
+  fake.store.nextSlotMs = Date.now() + 60_000;
+  await rejectsWith(seaceFetch(URL_A, { interactive: true }), "busy");
+  assert.equal(calls.length, 1);
+});
+
+test("a shared block stops interactive requests and an interactive 403 writes it", async () => {
+  const blocked = setup([{ status: 200 }]);
+  blocked.fake.store.blocked = {
+    payload: JSON.stringify({ status: 429, source: "prod6", at: new Date().toISOString() }),
+    expiresAt: Date.now() + 3600_000,
+  };
+  await rejectsWith(seaceFetch(URL_A, { interactive: true }), "blocked");
+  assert.equal(blocked.calls.length, 0);
+
+  const first = setup([{ status: 403 }, { status: 200 }]);
+  assert.equal((await seaceFetch(URL_A, { interactive: true })).status, 403);
+  assert.equal(JSON.parse(first.fake.store.blocked!.payload).source, "web");
+  await rejectsWith(seaceFetch(URL_A, { interactive: true }), "blocked");
+  assert.equal(first.calls.length, 1);
+});
+
 test("the local wait is discounted from the shared budget and still applies", async () => {
   const { calls, fake } = setup(
     [{ status: 200 }, { status: 200 }],

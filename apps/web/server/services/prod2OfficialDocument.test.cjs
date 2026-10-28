@@ -9,7 +9,11 @@ const code = ts.transpileModule(fs.readFileSync(path.join(__dirname, 'prod2Offic
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText;
 vm.runInNewContext(code, { exports: exportsObject, URL, TextDecoder, AbortSignal,
-  fetch: async () => { throw new Error('Unexpected real network request'); } });
+  fetch: async () => { throw new Error('Unexpected real network request'); },
+  require: id => {
+    if (id === './seaceEgress') return { seaceFetch: async () => { throw new Error('Unexpected SEACE request'); } };
+    throw new Error(`Unexpected dependency: ${id}`);
+  } });
 const { resolveProd2OfficialDocument, prod2OfficialDocumentReference } = exportsObject;
 const uuid = '00000000-0000-0000-0000-000000000010';
 const safeBody = (downloadUrl) => JSON.stringify({ downloadUrl });
@@ -30,12 +34,14 @@ test('JSON and exact JSONP resolve context-relative URLs without executing scrip
   const requests = [];
   await resolveProd2OfficialDocument(uuid, async (url, options) => { requests.push({ url, options }); return new Response(safeBody('https://alfprod.seace.gob.pe/file.zip?ticket=fresh')); });
   assert.equal(requests.length, 1);
-  assert.equal(requests[0].url.searchParams.get('id'), uuid);
-  assert.equal(requests[0].url.searchParams.get('doc'), 'buenaproDocument');
-  assert.equal(requests[0].url.searchParams.get('guest'), 'false');
+  const endpoint = new URL(requests[0].url);
+  assert.equal(endpoint.origin, 'https://alfprod.seace.gob.pe');
+  assert.equal(endpoint.searchParams.get('id'), uuid);
+  assert.equal(endpoint.searchParams.get('doc'), 'buenaproDocument');
+  assert.equal(endpoint.searchParams.get('guest'), 'false');
   assert.equal(requests[0].options.redirect, 'error');
-  assert.equal(requests[0].options.cache, 'no-store');
-  assert.ok(requests[0].options.signal instanceof AbortSignal);
+  assert.equal(requests[0].options.interactive, true);
+  assert.equal(requests[0].options.timeoutMs, 10_000);
 });
 
 test('unsafe authority, protocol, port, credentials and fragment are refused with a fixed safe error', async () => {
@@ -65,5 +71,13 @@ test('HTTP denial, timeout, oversized metadata and invalid identity fail without
     async () => new Response('a'.repeat(65537)),
     async () => new Response('{}', { headers: { 'Content-Length': '65537' } })]) {
     await assert.rejects(resolveProd2OfficialDocument(uuid, fetcher), error => !error.message.includes('secret') && error.message.includes('SEACE'));
+  }
+});
+
+test('an unavailable SEACE egress surfaces as the same fixed safe error', async () => {
+  class SeaceUnavailable extends Error { constructor(reason) { super(`SEACE unavailable: ${reason} secret-proxy-detail`); this.reason = reason; } }
+  for (const reason of ['blocked', 'busy', 'egress', 'network', 'upstream']) {
+    await assert.rejects(resolveProd2OfficialDocument(uuid, async () => { throw new SeaceUnavailable(reason); }),
+      error => error.message.includes('SEACE') && !error.message.includes('secret') && !error.message.includes(reason));
   }
 });
