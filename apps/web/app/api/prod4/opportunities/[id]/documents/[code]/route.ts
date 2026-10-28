@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireTenantId } from "@/server/auth/tenant";
 import { query } from "@/server/db/client";
+import { seaceUnavailablePage } from "@/server/http/seaceUnavailable";
+import { SeaceUnavailable, seaceFetch } from "@/server/services/seaceEgress";
 
 const MAX_DOCUMENT_BYTES = 80 * 1024 * 1024;
 const OFFICIAL_DOCUMENT_ORIGIN = "https://prod1.seace.gob.pe";
@@ -30,21 +32,29 @@ export async function GET(
 
   const url = new URL("/SeaceWeb-PRO/SdescargarArchivoAlfresco", OFFICIAL_DOCUMENT_ORIGIN);
   url.searchParams.set("fileCode", code);
-  let upstream: Response;
+  let upstream;
   try {
-    upstream = await fetch(url, {
+    // Sale por la salida peruana (proxy, ritmo y pausa compartidos); sin ella la VM recibe 403 de SEACE.
+    upstream = await seaceFetch(url.toString(), {
       redirect: "manual",
-      signal: AbortSignal.timeout(120_000),
+      interactive: true,
+      timeoutMs: 120_000,
       headers: {
         Accept: "application/pdf,*/*",
         Referer: "https://prod4.seace.gob.pe/openegocio/",
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/128.0.0.0 Safari/537.36",
       },
     });
-  } catch {
+  } catch (error) {
+    // Se abre en una pestaña nueva: una página con el enlace oficial en vez de JSON crudo.
+    if (error instanceof SeaceUnavailable) return seaceUnavailablePage(url.toString());
     return NextResponse.json({ error: "Official document unavailable" }, { status: 502 });
   }
+  if (upstream.status === 403 || upstream.status === 429) {
+    await upstream.body?.cancel();
+    return seaceUnavailablePage(url.toString());
+  }
   if (!upstream.ok || !upstream.body) {
+    await upstream.body?.cancel();
     return NextResponse.json({ error: "Official document unavailable" }, { status: 502 });
   }
   const declaredLength = Number(upstream.headers.get("content-length"));

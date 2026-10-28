@@ -1,5 +1,6 @@
 import { query } from "@/server/db/client";
 import { decryptSecret, encryptSecret } from "@/server/security/secrets";
+import { SeaceUnavailable, seaceFetch } from "@/server/services/seaceEgress";
 
 const BASE = process.env.SEACE_BASE_URL ?? "https://prod6.seace.gob.pe/v1/s8uit-services";
 const TIMEOUT_MS = 12_000;
@@ -18,32 +19,27 @@ function context(tenantId: string, field: string) {
   return `${tenantId}:seace:${field}:v1`;
 }
 
-async function seaceFetch(path: string, init: RequestInit = {}) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  try {
-    return await fetch(`${BASE}${path}`, {
-      ...init,
-      cache: "no-store",
-      headers: {
-        Accept: "application/json",
-        "Accept-Language": "es-PE,es;q=0.9",
-        "Content-Type": "application/json",
-        Origin: "https://prod6.seace.gob.pe",
-        Referer: "https://prod6.seace.gob.pe/",
-        "User-Agent": "BuenaPro/1.0 SEACE bridge",
-        ...init.headers,
-      },
-      redirect: "error",
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timer);
-  }
+// Sale por la salida peruana de `seaceEgress` (proxy, ritmo, freno compartido); cada llamada espera su turno.
+async function seaceApiRequest(path: string, init: { method?: string; body?: string; headers?: Record<string, string> } = {}) {
+  return seaceFetch(`${BASE}${path}`, {
+    method: init.method,
+    body: init.body,
+    redirect: "error",
+    interactive: true,
+    timeoutMs: TIMEOUT_MS,
+    headers: {
+      Accept: "application/json",
+      "Accept-Language": "es-PE,es;q=0.9",
+      "Content-Type": "application/json",
+      Origin: "https://prod6.seace.gob.pe",
+      Referer: "https://prod6.seace.gob.pe/",
+      ...init.headers,
+    },
+  });
 }
 
-async function jsonResponse(response: Response) {
-  const body = await response.json().catch(() => null);
+async function jsonResponse(response: Awaited<ReturnType<typeof seaceApiRequest>>) {
+  const body: any = await response.json().catch(() => null);
   if (!response.ok) {
     const error = new Error("SEACE request failed") as Error & { status?: number; code?: string };
     error.status = response.status;
@@ -64,7 +60,7 @@ function tokenExpiry(token: string) {
 
 async function login(username: string, password: string): Promise<Session> {
   const payload = await jsonResponse(
-    await seaceFetch("/seguridadproveedor/seguridad/validausuariornp", {
+    await seaceApiRequest("/seguridadproveedor/seguridad/validausuariornp", {
       body: JSON.stringify({ username, password }),
       headers: { "client-s8uit": JSON.stringify({ terminal: "0.0.0.0" }) },
       method: "POST",
@@ -76,7 +72,7 @@ async function login(username: string, password: string): Promise<Session> {
 
 async function refreshSession(username: string, session: Session): Promise<Session> {
   const payload = await jsonResponse(
-    await seaceFetch("/seguridadproveedor/seguridad/tokens/refresh", {
+    await seaceApiRequest("/seguridadproveedor/seguridad/tokens/refresh", {
       body: JSON.stringify({ refreshToken: session.refreshToken, username }),
       method: "POST",
     }),
@@ -87,7 +83,7 @@ async function refreshSession(username: string, session: Session): Promise<Sessi
 
 async function checkTwoFactor(accessToken: string) {
   const payload = await jsonResponse(
-    await seaceFetch("/seguridadproveedor/seguridad/twofactor/config/check/2005/ROL_GENERAL_2FA", {
+    await seaceApiRequest("/seguridadproveedor/seguridad/twofactor/config/check/2005/ROL_GENERAL_2FA", {
       headers: { Authorization: `Bearer ${accessToken}` },
     }),
   );
@@ -96,7 +92,11 @@ async function checkTwoFactor(accessToken: string) {
 
 export async function connectSeace(tenantId: string, userId: string, username: string, password: string) {
   const session = await login(username, password);
-  const requires2fa = await checkTwoFactor(session.accessToken).catch(() => false);
+  // Sin salida disponible no se sabe si la cuenta pide 2FA: no se guarda como conectada a ciegas.
+  const requires2fa = await checkTwoFactor(session.accessToken).catch((error) => {
+    if (error instanceof SeaceUnavailable) throw error;
+    return false;
+  });
   const expiry = tokenExpiry(session.accessToken);
   const result = await query<{ id: string }>(
     `
@@ -159,7 +159,7 @@ export async function seaceConnectionStatus(tenantId: string) {
   };
 }
 
-async function activeSession(tenantId: string) {
+async function loadActiveSession(tenantId: string) {
   const result = await query<Connection>("SELECT * FROM seace_connections WHERE tenant_id=$1", [tenantId]);
   const row = result.rows[0];
   if (!row) throw new Error("SEACE_NOT_CONNECTED");
@@ -178,7 +178,11 @@ async function activeSession(tenantId: string) {
     const password = decryptSecret(row.password_secret, context(tenantId, "password"));
     try {
       session = session
-        ? await refreshSession(username, session).catch(() => login(username, password))
+        ? await refreshSession(username, session).catch((error) => {
+          // Con la salida en pausa o saturada un segundo intento solo gastaría otro turno.
+          if (error instanceof SeaceUnavailable) throw error;
+          return login(username, password);
+        })
         : await login(username, password);
       const nextExpiry = tokenExpiry(session.accessToken);
       await query(
@@ -186,10 +190,13 @@ async function activeSession(tenantId: string) {
         [tenantId, encryptSecret(JSON.stringify(session), context(tenantId, "session")), nextExpiry],
       );
     } catch (error) {
-      await query(
-        `UPDATE seace_connections SET status='invalid',session_secret=NULL,last_error_code='AUTH_FAILED',updated_at=now() WHERE tenant_id=$1`,
-        [tenantId],
-      );
+      // La salida no disponible (pausa, turno ocupado, proxy) no dice nada de las credenciales.
+      if (!(error instanceof SeaceUnavailable)) {
+        await query(
+          `UPDATE seace_connections SET status='invalid',session_secret=NULL,last_error_code='AUTH_FAILED',updated_at=now() WHERE tenant_id=$1`,
+          [tenantId],
+        );
+      }
       throw error;
     }
   }
@@ -197,14 +204,26 @@ async function activeSession(tenantId: string) {
   return session;
 }
 
+const sessionLoads = new Map<string, Promise<Session>>();
+
+// Dos consultas en paralelo comparten la renovación: cada login o refresh es una petición con turno propio.
+function activeSession(tenantId: string) {
+  const pending = sessionLoads.get(tenantId);
+  if (pending) return pending;
+  const load = loadActiveSession(tenantId).finally(() => sessionLoads.delete(tenantId));
+  sessionLoads.set(tenantId, load);
+  return load;
+}
+
 export async function authenticatedSeaceJson(tenantId: string, path: string) {
   if (!path.startsWith("/")) throw new Error("Invalid SEACE path");
   const session = await activeSession(tenantId);
-  const response = await seaceFetch(path, { headers: { Authorization: `Bearer ${session.accessToken}` } });
+  const response = await seaceApiRequest(path, { headers: { Authorization: `Bearer ${session.accessToken}` } });
   if (response.status === 401 || response.status === 403) {
+    await response.body?.cancel();
     await query(`UPDATE seace_connections SET session_secret=NULL,status='expired',updated_at=now() WHERE tenant_id=$1`, [tenantId]);
     const renewed = await activeSession(tenantId);
-    const retry = await seaceFetch(path, { headers: { Authorization: `Bearer ${renewed.accessToken}` } });
+    const retry = await seaceApiRequest(path, { headers: { Authorization: `Bearer ${renewed.accessToken}` } });
     const data = await jsonResponse(retry);
     await query("UPDATE seace_connections SET last_used_at=now() WHERE tenant_id=$1", [tenantId]);
     return data;

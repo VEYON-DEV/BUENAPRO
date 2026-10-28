@@ -16,6 +16,11 @@ import {
  * ritmo mínimo entre peticiones, tope por hora, pausa larga ante 403/429 y caché de documentos.
  * Con `SEACE_SHARED_GATE` el turno y la pausa se comparten además con los workers vía Redis
  * (`seaceSharedGate.ts`); desactivado, todo es local al proceso.
+ *
+ * Las acciones que un usuario pide a propósito (conectar su cuenta, abrir un documento, preparar una
+ * postulación) usan `interactive: true`: mismo ritmo, mismo turno compartido y misma pausa, pero con
+ * tope por hora y espera máxima propios, para que ni agoten el cupo de las vistas previas ni se
+ * rechacen por unos segundos de cola. Un login autenticado son varias peticiones seguidas.
  */
 
 export type SeaceUnavailableReason = "blocked" | "busy" | "egress" | "network" | "upstream" | "not_pdf";
@@ -49,6 +54,8 @@ function settings() {
     minIntervalMs: numberEnv("WEB_SEACE_MIN_INTERVAL_SECONDS", 8) * 1000,
     maxWaitMs: numberEnv("WEB_SEACE_MAX_WAIT_SECONDS", 20) * 1000,
     maxPerHour: numberEnv("WEB_SEACE_MAX_REQUESTS_PER_HOUR", 20),
+    interactiveMaxWaitMs: numberEnv("WEB_SEACE_INTERACTIVE_MAX_WAIT_SECONDS", 45) * 1000,
+    interactiveMaxPerHour: numberEnv("WEB_SEACE_INTERACTIVE_MAX_REQUESTS_PER_HOUR", 60),
     blockMs: numberEnv("WEB_SEACE_BLOCK_BACKOFF_SECONDS", 10800) * 1000,
     timeoutMs: numberEnv("WEB_SEACE_TIMEOUT_SECONDS", 30) * 1000,
     cacheDir: process.env.SEACE_DOCUMENT_CACHE_DIR?.trim() || join(tmpdir(), "buenapro-seace-documents"),
@@ -59,7 +66,7 @@ function settings() {
 type EgressState = {
   nextSlotAt: number;
   blockedUntil: number;
-  recent: number[];
+  recent: { background: number[]; interactive: number[] };
   agent: { proxy: string; dispatcher: ProxyAgent } | null;
   inflight: Map<string, Promise<Buffer>>;
   fetchImpl: typeof undiciFetch;
@@ -70,7 +77,8 @@ const STATE_KEY = Symbol.for("buenapro.seaceEgress");
 function state(): EgressState {
   const holder = globalThis as unknown as Record<symbol, EgressState | undefined>;
   holder[STATE_KEY] ??= {
-    nextSlotAt: 0, blockedUntil: 0, recent: [], agent: null, inflight: new Map(), fetchImpl: undiciFetch,
+    nextSlotAt: 0, blockedUntil: 0, recent: { background: [], interactive: [] }, agent: null, inflight: new Map(),
+    fetchImpl: undiciFetch,
   };
   return holder[STATE_KEY]!;
 }
@@ -99,14 +107,17 @@ function dispatcherFor(proxy: string): ProxyAgent {
   return current.agent.dispatcher;
 }
 
-/** Turno local: valida bloqueo, tope por hora y ritmo, sin consumir nada. */
-function localSlot(maxWaitMs: number): { slot: number; delay: number } {
+/** Turno local: valida bloqueo, tope por hora y ritmo, sin consumir nada. El ritmo es uno solo para ambos carriles. */
+function localSlot(maxWaitMs: number, interactive: boolean): { slot: number; delay: number } {
   const config = settings();
   const current = state();
   const now = Date.now();
   if (current.blockedUntil > now) throw new SeaceUnavailable("blocked");
-  current.recent = current.recent.filter((at) => at > now - 3600_000);
-  if (current.recent.length >= config.maxPerHour) throw new SeaceUnavailable("busy");
+  const lane = interactive ? "interactive" : "background";
+  current.recent[lane] = current.recent[lane].filter((at) => at > now - 3600_000);
+  if (current.recent[lane].length >= (interactive ? config.interactiveMaxPerHour : config.maxPerHour)) {
+    throw new SeaceUnavailable("busy");
+  }
   const slot = Math.max(now, current.nextSlotAt);
   const delay = slot - now;
   if (delay > maxWaitMs) throw new SeaceUnavailable("busy");
@@ -114,11 +125,11 @@ function localSlot(maxWaitMs: number): { slot: number; delay: number } {
 }
 
 /** Reserva un turno; `wait: false` no espera (refrescos de fondo que pueden omitirse). */
-async function acquireSlot(wait: boolean): Promise<void> {
+async function acquireSlot(wait: boolean, interactive: boolean): Promise<void> {
   const config = settings();
   const current = state();
-  const maxWaitMs = wait ? config.maxWaitMs : 0;
-  let local = localSlot(maxWaitMs);
+  const maxWaitMs = wait ? (interactive ? config.interactiveMaxWaitMs : config.maxWaitMs) : 0;
+  let local = localSlot(maxWaitMs, interactive);
   let sharedDelay = 0;
   if (sharedGateEnabled()) {
     // El turno compartido se pide antes de consumir el local: si falla, no se gasta ninguno.
@@ -130,25 +141,37 @@ async function acquireSlot(wait: boolean): Promise<void> {
     if (shared.kind === "busy") throw new SeaceUnavailable("busy");
     sharedDelay = shared.delayMs;
     // Otra petición pudo tomar el turno local, o abrir la pausa, mientras se esperaba a Redis.
-    local = localSlot(maxWaitMs);
+    local = localSlot(maxWaitMs, interactive);
   }
   current.nextSlotAt = local.slot + config.minIntervalMs;
-  current.recent.push(local.slot);
+  current.recent[interactive ? "interactive" : "background"].push(local.slot);
   const delay = Math.max(local.delay, sharedDelay);
   if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
 }
 
-export async function seaceFetch(
-  url: string,
-  options: { headers?: Record<string, string>; wait?: boolean; timeoutMs?: number } = {},
-) {
+export type SeaceFetchOptions = {
+  headers?: Record<string, string>;
+  method?: string;
+  body?: string;
+  /** Sin indicar sigue las redirecciones; quien necesite validar cada salto usa "manual" y vuelve a llamar. */
+  redirect?: "follow" | "manual" | "error";
+  wait?: boolean;
+  /** Acción pedida por un usuario: tope por hora y espera máxima propios, mismo ritmo y misma pausa. */
+  interactive?: boolean;
+  timeoutMs?: number;
+};
+
+export async function seaceFetch(url: string, options: SeaceFetchOptions = {}) {
   if (!isSeaceUrl(url)) throw new SeaceUnavailable("upstream");
   const config = settings();
   if (!config.proxy && config.required) throw new SeaceUnavailable("egress");
-  await acquireSlot(options.wait ?? true);
+  await acquireSlot(options.wait ?? true, options.interactive ?? false);
   let response;
   try {
     response = await state().fetchImpl(url, {
+      ...(options.method ? { method: options.method } : {}),
+      ...(options.body !== undefined ? { body: options.body } : {}),
+      ...(options.redirect ? { redirect: options.redirect } : {}),
       headers: { ...options.headers, "User-Agent": config.userAgent },
       signal: AbortSignal.timeout(options.timeoutMs ?? config.timeoutMs),
       ...(config.proxy ? { dispatcher: dispatcherFor(config.proxy) } : {}),

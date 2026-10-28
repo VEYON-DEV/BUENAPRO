@@ -24,6 +24,7 @@ import {
   touchCodexHotSession,
 } from "./codexSessionStore";
 import { buildCodexArgs, codexSandboxMode } from "./codexCommand";
+import { isSeaceUrl, seaceFetch } from "@/server/services/seaceEgress";
 import {
   documentDeliveryInstruction,
   referencedDocumentFilenames,
@@ -138,41 +139,36 @@ function validDocumentBytes(extension: string, content: Buffer) {
   return false;
 }
 
-function officialSeaceUrl(value: string, base?: URL) {
-  try {
-    const url = base ? new URL(value, base) : new URL(value);
-    const hostname = url.hostname.toLowerCase();
-    if (
-      url.protocol !== "https:" ||
-      (hostname !== "seace.gob.pe" && !hostname.endsWith(".seace.gob.pe"))
-    ) {
-      return null;
-    }
-    return url;
-  } catch {
-    return null;
-  }
-}
-
-async function fetchOfficialDocument(value: string) {
-  const initial = officialSeaceUrl(value);
-  if (!initial) throw new Error("invalid SEACE URL");
-  let current: URL = initial;
+/**
+ * Descarga un original de SEACE por la salida peruana (`seaceEgress`: proxy, ritmo y pausa compartidos).
+ * Las redirecciones se siguen a mano para validar el host de cada salto; cada salto es una petición más.
+ */
+export async function fetchOfficialDocument(value: string) {
+  let current = value;
+  if (!isSeaceUrl(current)) throw new Error("invalid SEACE URL");
   for (let redirects = 0; redirects <= 3; redirects += 1) {
-    const response: Response = await fetch(current, {
+    const response = await seaceFetch(current, {
       redirect: "manual",
-      signal: AbortSignal.timeout(35_000),
+      interactive: true,
+      timeoutMs: 35_000,
     });
     if (response.status >= 300 && response.status < 400) {
-      const location: string | null = response.headers.get("location");
-      const next: URL | null = location
-        ? officialSeaceUrl(location, current)
-        : null;
-      if (!next) throw new Error("invalid SEACE redirect");
+      const location = response.headers.get("location");
+      await response.body?.cancel();
+      let next: string | null = null;
+      try {
+        next = location ? new URL(location, current).toString() : null;
+      } catch {
+        next = null;
+      }
+      if (!next || !isSeaceUrl(next)) throw new Error("invalid SEACE redirect");
       current = next;
       continue;
     }
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw new Error(`HTTP ${response.status}`);
+    }
     return response;
   }
   throw new Error("too many SEACE redirects");
@@ -193,7 +189,7 @@ async function cleanupSourceDocumentCache(directory: string) {
   );
 }
 
-async function materializeSourceDocuments(
+export async function materializeSourceDocuments(
   workspacePath: string,
   context: JsonObject,
 ) {

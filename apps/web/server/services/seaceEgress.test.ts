@@ -14,7 +14,8 @@ function setup(responses: Array<{ status: number; body?: Buffer | string }>, env
   const cacheDir = mkdtempSync(join(tmpdir(), "seace-egress-test-"));
   Object.assign(process.env, {
     SEACE_EGRESS_PROXY: "", SEACE_EGRESS_REQUIRED: "", WEB_SEACE_MIN_INTERVAL_SECONDS: "0",
-    WEB_SEACE_MAX_REQUESTS_PER_HOUR: "20", SEACE_DOCUMENT_CACHE_DIR: cacheDir, SEACE_USER_AGENT: "QA-Browser",
+    WEB_SEACE_MAX_REQUESTS_PER_HOUR: "20", WEB_SEACE_MAX_WAIT_SECONDS: "20", WEB_SEACE_INTERACTIVE_MAX_WAIT_SECONDS: "45",
+    WEB_SEACE_INTERACTIVE_MAX_REQUESTS_PER_HOUR: "60", SEACE_DOCUMENT_CACHE_DIR: cacheDir, SEACE_USER_AGENT: "QA-Browser",
     ...env,
   });
   resetSeaceEgressForTests((async (url: string, init: any) => {
@@ -79,4 +80,70 @@ test("pacing and hourly cap refuse instead of bursting", async () => {
   await seaceFetch(URL_A);
   await rejectsWith(seaceFetch(URL_A), "busy");
   assert.equal(capped.calls.length, 1);
+});
+
+test("method, body and redirect reach the request only when asked, and the host is still validated", async () => {
+  const { calls } = setup([{ status: 200, body: "{}" }, { status: 200, body: "{}" }]);
+  await seaceFetch(URL_A, { headers: { Accept: "application/json" } });
+  await seaceFetch(URL_A, {
+    method: "POST", body: '{"a":1}', redirect: "manual", headers: { "Content-Type": "application/json", "User-Agent": "Other" },
+  });
+  assert.deepEqual(["method", "body", "redirect"].map((key) => key in calls[0].init), [false, false, false]);
+  assert.equal(calls[1].init.method, "POST");
+  assert.equal(calls[1].init.body, '{"a":1}');
+  assert.equal(calls[1].init.redirect, "manual");
+  assert.equal(calls[1].init.headers["Content-Type"], "application/json");
+  // La identidad de salida es siempre la configurada, también en las peticiones autenticadas.
+  assert.equal(calls[1].init.headers["User-Agent"], "QA-Browser");
+  await rejectsWith(seaceFetch("https://evil.test/x", { redirect: "manual" }), "upstream");
+  assert.equal(calls.length, 2);
+});
+
+test("a manual redirect is returned as is so the caller can validate the next host", async () => {
+  setup([]);
+  resetSeaceEgressForTests((async () => new Response(null, { status: 302, headers: { location: "https://evil.test/x" } })) as any);
+  const response = await seaceFetch(URL_A, { redirect: "manual" });
+  assert.equal(response.status, 302);
+  assert.equal(isSeaceUrl(response.headers.get("location")!), false);
+});
+
+test("interactive requests have their own hourly budget and leave the background one untouched", async () => {
+  const run = setup(Array(8).fill({ status: 200, body: "{}" }), {
+    WEB_SEACE_MAX_REQUESTS_PER_HOUR: "1", WEB_SEACE_INTERACTIVE_MAX_REQUESTS_PER_HOUR: "3",
+  });
+  await seaceFetch(URL_A, { interactive: true });
+  await seaceFetch(URL_A, { interactive: true });
+  await seaceFetch(URL_A, { interactive: true });
+  await rejectsWith(seaceFetch(URL_A, { interactive: true }), "busy");
+  // El cupo de fondo (vistas previas, refresco del detalle) sigue intacto después de tres acciones de usuario.
+  await seaceFetch(URL_A, { wait: false });
+  await rejectsWith(seaceFetch(URL_A, { wait: false }), "busy");
+  assert.equal(run.calls.length, 4);
+});
+
+test("interactive requests wait for their turn longer than background ones", async () => {
+  const run = setup(Array(4).fill({ status: 200, body: "{}" }), {
+    WEB_SEACE_MIN_INTERVAL_SECONDS: "0.3", WEB_SEACE_MAX_WAIT_SECONDS: "0.1", WEB_SEACE_INTERACTIVE_MAX_WAIT_SECONDS: "2",
+  });
+  await seaceFetch(URL_A, { interactive: true });
+  // El ritmo es uno solo: el turno siguiente cae 300 ms después aunque cambie de carril.
+  await rejectsWith(seaceFetch(URL_A), "busy");
+  const started = Date.now();
+  await seaceFetch(URL_A, { interactive: true });
+  assert.ok(Date.now() - started >= 250, "the second turn waits for the shared pacing");
+  assert.equal(run.calls.length, 2);
+});
+
+test("a 403 or 429 on an interactive request pauses every later request, interactive or not", async () => {
+  const run = setup([{ status: 429 }, { status: 200, body: "{}" }]);
+  assert.equal((await seaceFetch(URL_A, { interactive: true })).status, 429);
+  await rejectsWith(seaceFetch(URL_A, { interactive: true }), "blocked");
+  await rejectsWith(seaceFetch(URL_A), "blocked");
+  assert.equal(run.calls.length, 1);
+});
+
+test("a required egress without proxy also closes interactive requests before any request", async () => {
+  const run = setup([{ status: 200, body: "{}" }], { SEACE_EGRESS_REQUIRED: "1" });
+  await rejectsWith(seaceFetch(URL_A, { interactive: true, method: "POST", body: "{}" }), "egress");
+  assert.equal(run.calls.length, 0);
 });

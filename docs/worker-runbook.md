@@ -932,6 +932,19 @@ La imagen PROD6 (`infra/docker/prod6.Dockerfile`) copia también `seace/egress.p
   "Vista previa no disponible" con el enlace "Abrir en SEACE" (el navegador del usuario descarga directo),
   con 503 propio en vez del 502 que Cloudflare reemplazaba. El refresco del detalle nunca espera turno:
   si la salida está ocupada sirve lo guardado. El estado (ritmo, pausa) es por proceso de la web.
+  Por la misma salida pasan también las acciones que el usuario pide a propósito: el enlace oficial de
+  los documentos PROD2 (`prod2OfficialDocument.ts`), el PDF de PROD4 (`/api/prod4/opportunities/[id]/documents/[code]`),
+  la sesión SEACE del tenant (`seaceAuthenticated.ts`: conectar, consultas oficiales, contexto de cotización y
+  comenzar postulación) y la descarga de originales del agente documental (`codexAgent.ts`). Ninguna sale
+  directo: la VM recibe 403 de SEACE. Esas acciones (`interactive`) comparten el ritmo, el turno compartido
+  y la pausa ante 403/429 con todo lo demás, pero tienen cupo propio para no agotar el de las vistas previas:
+  `WEB_SEACE_INTERACTIVE_MAX_REQUESTS_PER_HOUR` (60) y espera máxima
+  `WEB_SEACE_INTERACTIVE_MAX_WAIT_SECONDS` (45). Conectar la cuenta son 2 peticiones y cada consulta
+  autenticada 1 o 2, así que con el ritmo de 8 s cada acción tarda unos 8 s más. Con la salida cerrada,
+  en pausa o saturada, esas rutas responden 503 (`code: SEACE_UNAVAILABLE`) y los PDF de PROD4 muestran la
+  página "Abrir en SEACE"; la conexión guardada no se marca como inválida por eso. Un 403 de la API de
+  SEACE (también por un token vencido) abre la misma pausa de 3 h: si apareciera con sesiones vencidas, hay
+  que distinguirlo del bloqueo de la IP.
 
 ### Freno compartido (PROD6 + PROD2 + web)
 
