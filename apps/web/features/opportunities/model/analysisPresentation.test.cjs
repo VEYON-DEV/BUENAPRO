@@ -268,6 +268,29 @@ test("PROD2 toolbar retains score filter on search/object links and offers a pro
   assert.match(html, /aria-current="page" class="analysisFilter active"/);
 });
 
+test("PROD2 toolbar offers a closing filter that keeps search, type, score and profile", () => {
+  const html = render(Prod4OpportunityToolbar, { source: "prod2", defaults: { source: "prod2", profile_id: "dinaut-profile", q: "software", object: "service", with_score: "true", deadline: "closed", page: "4" } });
+  assert.match(html, /aria-label="Cierre"/);
+  assert.match(html, /name="deadline"[^>]*value="closed"/);
+  const hrefs = fragment => [...fragment.matchAll(/href="([^"]*)"/g)].map(match => new URL(match[1].replaceAll("&amp;", "&"), "https://buenapro.invalid"));
+  const deadlines = hrefs(html.match(/aria-label="Cierre"[\s\S]*?<\/div>/)[0]);
+  assert.deepEqual(deadlines.map(link => link.searchParams.get("deadline")), ["open", "closed", "all"]);
+  // Type links and the score toggle keep the chosen closing filter.
+  for (const link of hrefs(html)) assert.ok(link.searchParams.has("deadline"));
+  for (const link of deadlines) {
+    assert.equal(link.searchParams.get("object"), "service");
+    assert.equal(link.searchParams.get("profile_id"), "dinaut-profile");
+    assert.equal(link.searchParams.get("q"), "software");
+    assert.equal(link.searchParams.get("with_score"), "true");
+    assert.equal(link.searchParams.has("page"), false);
+  }
+  assert.match(html, /aria-current="page" class="active"[^>]*deadline=closed/);
+  const fresh = render(Prod4OpportunityToolbar, { source: "prod2", defaults: { source: "prod2" } });
+  assert.match(fresh, /name="deadline"[^>]*value="open"/);
+  const prod4 = render(Prod4OpportunityToolbar, { source: "prod4", defaults: {} });
+  assert.doesNotMatch(prod4, /aria-label="Cierre"|name="deadline"/);
+});
+
 test("minor toolbar retains score filter and profile on search, type and quick views", () => {
   const html = render(OpportunityToolbar, { defaults: { source: "prod6", profile_id: "dinaut-profile", q: "software", objeto: "2", with_score: "true", page: "4" } });
   assert.match(html, /name="with_score"[^>]*value="true"/);

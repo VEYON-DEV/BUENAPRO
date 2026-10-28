@@ -57,14 +57,20 @@ function resultLabel(deadline: string, savedOnly: boolean) {
   return "contratos no cerrados en tus rubros";
 }
 
+const prod2DeadlineMeta: Record<string, string> = {
+  open: "procedimientos no cerrados", closed: "procedimientos cerrados", all: "procedimientos consultados en SEACE",
+};
+
 export async function OpportunitiesPage({ tenantId, params }: { tenantId: string; params: URLSearchParams }) {
   if (params.get("source") === "prod2") {
+    // Like the minor-contract feed, the page opens on procedures that have not closed.
+    if (!params.get("deadline")) params.set("deadline", "open");
     try {
       const result = await listProd2OpportunitiesForTenant(tenantId, parseProd2ListParams(params));
       if (result.profile) params.set("profile_id", result.profile.id);
       const totalPages = Math.max(Math.ceil(result.total / result.page_size), 1);
       return <AppShell title="Oportunidades">
-        <PageHeader title="Oportunidades" meta={`${result.total} procedimientos consultados en SEACE`}
+        <PageHeader title="Oportunidades" meta={`${result.total} ${prod2DeadlineMeta[params.get("deadline") ?? "open"] ?? prod2DeadlineMeta.all}`}
           description="Coincidencia con tus líneas de negocio y requisitos con evidencia. Confirma la modalidad y las fechas oficiales antes de participar." />
         <OpportunitySourceTabs source="prod2" profileId={result.profile?.id} withScore={params.get("with_score") === "true"} commercialFilters={Object.fromEntries(params.entries())} />
         <Prod4OpportunityToolbar source="prod2" defaults={{ ...Object.fromEntries(params.entries()), ...(result.profile ? { profile_id: result.profile.id } : {}) }} />

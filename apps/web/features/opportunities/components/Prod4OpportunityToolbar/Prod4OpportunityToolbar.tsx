@@ -13,10 +13,19 @@ function filterHref(defaults: Record<string, string>, object: string, source: "p
   return `/feed?${next.toString()}`;
 }
 
+function deadlineHref(defaults: Record<string, string>, deadline: string) {
+  const next = new URLSearchParams(defaults);
+  next.set("source", "prod2");
+  next.delete("page");
+  next.set("deadline", deadline);
+  return `/feed?${next.toString()}`;
+}
+
 export function Prod4OpportunityToolbar({ defaults: received, source = "prod4" }: { defaults: Record<string, string>; source?: "prod2" | "prod4" }) {
   // Los enlaces antiguos con commercial_* se ignoran: este buscador ya no filtra por categoría.
   const defaults = Object.fromEntries(Object.entries(received).filter(([key]) => !(COMMERCIAL_FILTER_KEYS as readonly string[]).includes(key)));
   const object = defaults.object ?? "";
+  const deadline = defaults.deadline ?? "open";
   return (
     <section className={styles.toolbar}>
       <form action="/feed" className={styles.searchForm}>
@@ -25,6 +34,7 @@ export function Prod4OpportunityToolbar({ defaults: received, source = "prod4" }
         {object ? <input name="object" type="hidden" value={object} /> : null}
         {source === "prod2" && defaults.analysis === "done" ? <input name="analysis" type="hidden" value="done" /> : null}
         {source === "prod2" && defaults.with_score === "true" ? <input name="with_score" type="hidden" value="true" /> : null}
+        {source === "prod2" ? <input name="deadline" type="hidden" value={deadline} /> : null}
         <label className={styles.search}>
           <Search aria-hidden="true" size={18} />
           <Input aria-label={source === "prod2" ? "Buscar procedimientos SEACE" : "Buscar concursos de tecnología"} autoComplete="off" defaultValue={defaults.q ?? ""} name="q" placeholder="Ej.: licencia de software…" type="search" />
@@ -39,6 +49,13 @@ export function Prod4OpportunityToolbar({ defaults: received, source = "prod4" }
             </a>
           ))}
         </div>
+        {source === "prod2" ? <div aria-label="Cierre" className={`${styles.objectChoices} ${styles.deadlineChoices}`} role="group">
+          {[["open", "No cerradas"], ["closed", "Cerradas"], ["all", "Todas"]].map(([value, label]) => (
+            <a aria-current={deadline === value ? "page" : undefined} className={deadline === value ? styles.active : ""} href={deadlineHref(defaults, value)} key={value}>
+              {label}
+            </a>
+          ))}
+        </div> : null}
         {source === "prod2" ? <a aria-current={defaults.with_score === "true" ? "page" : undefined}
           className={[styles.analysisFilter, defaults.with_score === "true" ? styles.active : ""].join(" ")}
           href={scoreFilterHref(defaults, source)}>

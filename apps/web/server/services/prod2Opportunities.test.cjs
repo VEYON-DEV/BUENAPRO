@@ -97,6 +97,45 @@ test('pagination uses convocatoria identity and preserves source provenance with
   assert.throws(() => service.parseProd2ListParams(new URLSearchParams('profile_id=not-a-uuid')));
 });
 
+test('deadline parser accepts open, closed and all, and keeps the API default unfiltered', () => {
+  const service = load('prod2Opportunities.ts', { '@/server/db/client': { query: async () => { throw new Error('Parser must not query'); } }, '@/lib/prod2Analysis': analysis });
+  assert.equal(service.parseProd2ListParams(new URLSearchParams()).deadline, null);
+  assert.equal(service.parseProd2ListParams(new URLSearchParams('deadline=')).deadline, null);
+  for (const value of ['open', 'closed', 'all']) assert.equal(service.parseProd2ListParams(new URLSearchParams({ deadline: value })).deadline, value);
+  for (const invalid of ['week', 'OPEN', 'open OR true']) {
+    assert.throws(() => service.parseProd2ListParams(new URLSearchParams({ deadline: invalid })), error => error.status === 400);
+  }
+});
+
+test('deadline filters count and page alike, and "all" lists closed procedures last', async () => {
+  const run = async deadline => {
+    const statements = [];
+    const service = load('prod2Opportunities.ts', { '@/server/db/client': { query: async (sql, values) => {
+      statements.push({ sql, values });
+      return { rows: sql.includes('FROM company_profiles') ? [{ id: profileId, razon_social: 'Empresa QA' }] : sql.includes('count(*)::int AS total') ? [{ total: 3 }] : [] };
+    } }, '@/lib/prod2Analysis': analysis });
+    await service.listProd2OpportunitiesForTenant('tenant', { object: null, q: '', page: 1, pageSize: 10, profileId: null, deadline });
+    return { count: statements.find(s => s.sql.includes('count(*)::int AS total FROM prod2_discoveries')).sql, page: statements.find(s => s.sql.includes('LIMIT $')).sql };
+  };
+  const closed = /COALESCE\(COALESCE\(d\.proposals_closes_at, d\.registration_closes_at\) < now\(\)[\s\S]*pf\.reader_status = 'closed_without_reading', false\)/;
+  const open = await run('open');
+  for (const sql of [open.count, open.page]) assert.match(sql, new RegExp(`NOT ${closed.source}`));
+  const onlyClosed = await run('closed');
+  for (const sql of [onlyClosed.count, onlyClosed.page]) {
+    assert.match(sql, closed);
+    assert.doesNotMatch(sql, new RegExp(`NOT ${closed.source}`));
+  }
+  const all = await run('all');
+  assert.doesNotMatch(all.count, closed);
+  assert.match(all.page, new RegExp(`ORDER BY ${closed.source}, CASE WHEN matched\\.id IS NOT NULL`));
+  // Day-only stages compare as YYYYMMDD text in Lima; unknown dates are never closed.
+  assert.match(open.page, /to_char\(now\(\) AT TIME ZONE 'America\/Lima', 'YYYYMMDD'\)/);
+  assert.match(open.page, /presentaci\[oó\]n\.\*\(oferta\|propuesta\)/);
+  const none = await run(null);
+  assert.doesNotMatch(none.page, closed);
+  assert.match(none.page, /ORDER BY CASE WHEN matched\.id IS NOT NULL/);
+});
+
 function scoreProjectionService({ storedScore = 95, scoreValidated, sourceReviewRequired = false, publishedScore, publishedVerdict = 'gris',
   suppliedProvisionalScore, matchId = '99' } = {}) {
   const statements = [];

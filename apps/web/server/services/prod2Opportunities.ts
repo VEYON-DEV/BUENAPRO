@@ -11,7 +11,8 @@ export class Prod2RequestError extends Error {
   constructor(message: string, public status = 400) { super(message); }
 }
 
-export type Prod2ListParams = { object: "good" | "service" | null; q: string; page: number; pageSize: number; profileId: string | null; analysis?: "done" | null; withScore?: boolean };
+export type Prod2Deadline = "open" | "closed" | "all";
+export type Prod2ListParams = { object: "good" | "service" | null; q: string; page: number; pageSize: number; profileId: string | null; analysis?: "done" | null; withScore?: boolean; deadline?: Prod2Deadline | null };
 type Prod2Row = Record<string, any> & {
   id_convocatoria: string; id_procedimiento: string; opportunity_id: string; source_key: "seace_prod2";
   nomenclatura: string; title: string; description: string; object_type: "good" | "service";
@@ -50,8 +51,12 @@ export function parseProd2ListParams(params: URLSearchParams): Prod2ListParams {
   if (analysis && analysis !== "done") throw new Prod2RequestError("analysis must be done");
   const withScore = params.get("with_score");
   if (withScore && withScore !== "true" && withScore !== "false") throw new Prod2RequestError("with_score must be true or false");
+  // Without a deadline the API keeps its full, unordered-by-closing listing; the feed page asks for one.
+  const deadline = params.get("deadline");
+  if (deadline && deadline !== "open" && deadline !== "closed" && deadline !== "all") throw new Prod2RequestError("deadline must be open, closed or all");
   // Los parámetros commercial_* de enlaces antiguos se ignoran: el buscador ya no filtra por categoría.
-  return { object: object as Prod2ListParams["object"], q, page, pageSize, profileId, analysis: analysis ? "done" : null, withScore: withScore === "true" };
+  return { object: object as Prod2ListParams["object"], q, page, pageSize, profileId, analysis: analysis ? "done" : null, withScore: withScore === "true",
+    deadline: (deadline || null) as Prod2Deadline | null };
 }
 
 async function resolveProfile(tenantId: string, profileId: string | null) {
@@ -106,6 +111,20 @@ const publicationLabels: Record<string, string> = {
   opening_not_confirmed: "Apertura por confirmar", needs_review: "Lectura por revisar",
   selection_needs_review: "Documento por seleccionar", llm1_complete: "Lectura previa conservada",
 };
+
+// Closing follows the date the list shows: proposals, else registration. A day-only official
+// proposals stage closes once its Lima day has passed (compared as YYYYMMDD text, so a malformed
+// date can never fail the query), and a row the reader already saw closed stays closed.
+// An unknown closing date is not closed.
+const DAY_ONLY_PROPOSALS_END = `(SELECT max(substring(stage->>'ends_at_text' from 7 for 4) || substring(stage->>'ends_at_text' from 4 for 2) || substring(stage->>'ends_at_text' from 1 for 2))
+  FROM jsonb_array_elements(CASE WHEN jsonb_typeof(d.schedule_json) = 'array' THEN d.schedule_json ELSE '[]'::jsonb END) stage
+  WHERE stage->>'ends_at_text' ~ '^\\d{2}/\\d{2}/\\d{4}'
+    AND stage->>'stage' ~* '(cotizaci|presentaci[oó]n.*(oferta|propuesta)|recepci[oó]n.*(oferta|propuesta))'
+    AND stage->>'stage' !~* '(absoluci|respuesta|contestaci)')`;
+const CLOSED = `COALESCE(COALESCE(d.proposals_closes_at, d.registration_closes_at) < now()
+  OR (d.proposals_closes_at IS NULL AND d.registration_closes_at IS NULL
+    AND ${DAY_ONLY_PROPOSALS_END} < to_char(now() AT TIME ZONE 'America/Lima', 'YYYYMMDD'))
+  OR pf.reader_status = 'closed_without_reading', false)`;
 
 // Canonical matches must be tied to this source, this document revision and the durable evaluation.
 const MATCH_JOIN = `LEFT JOIN LATERAL (
@@ -189,6 +208,8 @@ export async function listProd2OpportunitiesForTenant(tenantId: string, params: 
   // and the chosen tenant-owned profile establish availability, never score > 0.
   if (params.analysis === "done") where.push("matched.id IS NOT NULL");
   if (params.withScore) where.push(`${AVAILABLE_MATCH_SCORE} IS NOT NULL`);
+  if (params.deadline === "open") where.push(`NOT ${CLOSED}`);
+  if (params.deadline === "closed") where.push(CLOSED);
   const predicate = where.join(" AND ");
   const count = await query<{ total: number }>(`SELECT count(*)::int AS total FROM ${PUBLISHED_FROM}
     ${params.analysis === "done" || params.withScore ? MATCH_JOIN : ""}
@@ -201,7 +222,7 @@ export async function listProd2OpportunitiesForTenant(tenantId: string, params: 
     FROM ${PUBLISHED_FROM}
     ${MATCH_JOIN} ${commercialAffinityJoin} ${KEYWORD_FIT_JOIN}
     WHERE ${predicate}
-    ORDER BY ${AVAILABLE_MATCH_SCORE} DESC NULLS LAST, commercial_jev.affinity_index DESC NULLS LAST, fit.keyword_points DESC NULLS LAST,
+    ORDER BY ${params.deadline === "all" ? `${CLOSED}, ` : ""}${AVAILABLE_MATCH_SCORE} DESC NULLS LAST, commercial_jev.affinity_index DESC NULLS LAST, fit.keyword_points DESC NULLS LAST,
       ${PUBLISHED_MATCH_SCORE} DESC NULLS LAST,
       p.published_at DESC NULLS LAST, p.id_convocatoria DESC
     LIMIT $${pageValues.length + 1} OFFSET $${pageValues.length + 2}`, [...pageValues, params.pageSize, (params.page - 1) * params.pageSize]);

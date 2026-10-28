@@ -133,6 +133,7 @@ export const openApiSpec = {
           { name: "profile_id", in: "query", schema: { type: "string", format: "uuid" } },
           { name: "with_score", in: "query", schema: { type: "boolean", default: false } },
           { name: "analysis", in: "query", description: "Filtro legacy por análisis existente independiente del número", schema: { type: "string", enum: ["done"] } },
+          { name: "deadline", in: "query", description: "open: no cerrados (cierre desconocido incluido); closed: cerrados; all: todos con los cerrados al final. Sin valor, lista todo sin ordenar por cierre", schema: { type: "string", enum: ["open", "closed", "all"] } },
           { name: "object", in: "query", schema: { type: "string", enum: ["good", "service"] } },
           { name: "q", in: "query", schema: { type: "string", maxLength: 120 } },
           { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },

@@ -16,7 +16,8 @@
   display: flex;
   flex: 1;
   gap: 10px;
-  min-width: 0;
+  /* Below this width the filters wrap to their own row instead of squeezing the search. */
+  min-width: min(100%, 360px);
 }
 
 .search {
@@ -70,6 +71,7 @@
   gap: 4px;
 }
 .secondaryFilters { align-items: center; display: flex; flex: none; flex-wrap: wrap; gap: 10px; }
+.deadlineChoices { border-left: 1px solid var(--bp-color-border); padding-left: 10px; }
 
 .objectChoices a {
   border-radius: 999px;
@@ -109,6 +111,11 @@
 
   .searchButton {
     padding-inline: 12px;
+  }
+
+  .deadlineChoices {
+    border-left: 0;
+    padding-left: 0;
   }
 }
 
