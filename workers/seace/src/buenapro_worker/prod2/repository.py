@@ -494,8 +494,12 @@ def persist_extraction(conn: Any, convocation_id: int, document_uuid: str, sha25
 def persist_match(conn: Any, convocation_id: int, *, profile_id: str, extraction_id: int,
                   evaluation_id: int, profile_hash: str, score: int, verdict: str,
                   breakdown_json: dict, missing_actions_json: list,
-                  business_line_id: str | None = None) -> dict:
-    """Store document-backed compliance only; preliminary Jev affinity stays separate."""
+                  business_line_id: str | None = None, allow_source_review: bool = False) -> dict:
+    """Store document-backed compliance only; preliminary Jev affinity stays separate.
+
+    ``allow_source_review`` accepts a current reading still flagged for human review: the web then
+    shows the match as a provisional estimate (``evaluated_source_review_required``).
+    """
     convocation, extraction, evaluation = _id(convocation_id), _id(extraction_id), _id(evaluation_id)
     profile, profile_hash = _uuid(profile_id), _sha(profile_hash)
     line = _uuid(business_line_id) if business_line_id is not None else None
@@ -509,7 +513,8 @@ def persist_match(conn: Any, convocation_id: int, *, profile_id: str, extraction
         source = _one(cursor, """SELECT e.* FROM prod2_document_extractions e JOIN prod2_documents d
             USING(id_convocatoria,codigo_alfresco) WHERE e.id=%s AND e.id_convocatoria=%s
             AND e.is_current=true AND d.is_listed=true FOR UPDATE OF e""", (extraction, convocation))
-        if not source or source["requires_human_review"] or source["quality"] == "failed" or source["facet_count"] < 1:
+        if (not source or (source["requires_human_review"] and allow_source_review is not True)
+                or source["quality"] == "failed" or source["facet_count"] < 1):
             raise Prod2PersistenceError("Final match requires current document requirements without review blockers")
         substantive = {"economic_experience", "general_experience", "specific_experience", "key_personnel",
                        "equipment", "insurance", "license", "company_certification", "education", "training",

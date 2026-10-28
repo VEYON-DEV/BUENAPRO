@@ -224,13 +224,6 @@ def analyze_match_job(
             return {"skipped": "unchanged", "match_id": int(existing["id"])}
 
     requisitos, administrative_checklist = split_match_requirements(facet_rows)
-
-    def _clip(text: object, limit: int) -> str | None:
-        value = str(text).strip() if text else None
-        if not value:
-            return None
-        return value if len(value) <= limit else f"{value[:limit].rsplit(' ', 1)[0]}…"
-
     profile_evidence = evidence_only_profile({field: profile[field] for field in PROFILE_FIELDS})
     result = (analyzer or MatchAnalyzer(settings)).analyze(
         perfil=profile_evidence,
@@ -242,102 +235,12 @@ def analyze_match_job(
         },
         requisitos=requisitos,
     )
-    analysis = result.analysis
-    judged = [item.model_dump() for item in analysis.requisitos]
-    requisitos = checklist_omitted_proposal_documents(judged, requisitos, administrative_checklist)
-    requisitos_final = bind_substantive_requirements(
-        judged, requisitos, build_compact_match_profile(profile_evidence),
+    final_score, final_verdict, breakdown, missing = finish_match(
+        result, requisitos=requisitos, administrative_checklist=administrative_checklist,
+        profile_evidence=profile_evidence, summary_json=contract["summary_json"],
+        meta={"prompt_sha256": prompt_sha256, "extraction_id": contract["extraction_id"],
+              "profile_hash": profile_hash, "facets_hash": facets_hash},
     )
-    validation_issues = guard_economic_comparisons(requisitos_final, requisitos, build_compact_match_profile(profile_evidence))
-    validation_issues += [
-        {"source_index": final["source_index"], "code": "unsupported_model_judgement"}
-        for raw, final in zip(analysis.requisitos, requisitos_final, strict=True)
-        if raw.estado != final["estado"] and not any(issue["source_index"] == final["source_index"] for issue in validation_issues)
-    ]
-    # A global/per-area amount is not compatible capacity. Keep grounded
-    # comparisons and their limits; never substitute a max/sum or force every
-    # documentary judgement back to review merely because areas exist.
-    guarded_actions = guard_participation_actions(
-        requisitos_final, list(analysis.acciones_recomendadas), contract["summary_json"],
-    )
-
-    # El veredicto se agrega por reglas desde los estados; el score del modelo
-    # se acota a la banda del veredicto derivado.
-    final_verdict = _derive_verdict(requisitos_final)
-    final_score = clamp_score(final_verdict, analysis.score)
-
-    # Truncado defensivo: el prompt exige brevedad, pero un modelo verboso no
-    # debe romper la UI con parrafos.
-    breakdown = {
-        "resumen": ("La evaluación requiere contrastar experiencia y respaldos antes de publicar el puntaje. Revisa las condiciones pendientes indicadas abajo." if validation_issues else _clip(analysis.resumen, 320)),
-        "administrative_checklist": administrative_checklist,
-        "requisitos": [
-            {
-                **item,
-                "requisito": _clip(item.get("requisito"), 90) or "Requisito",
-                "gap": _clip(item.get("gap"), 140),
-                "accion": _clip(item.get("accion"), 110),
-            }
-            for item in requisitos_final
-        ],
-        "acciones_recomendadas": [
-            clipped for clipped in (_clip(item, 110) for item in guarded_actions[:4]) if clipped
-        ],
-        "meta": {
-            "model": result.model,
-            "evidence_policy_version": EVIDENCE_POLICY_VERSION,
-            "prompt_version": result.prompt_version,
-            "prompt_sha256": prompt_sha256,
-            "context_version": COMPACT_PROFILE_VERSION,
-            "extraction_id": contract["extraction_id"],
-            "score_validated": not bool(validation_issues),
-            "raw_model_score": analysis.score,
-            "raw_model_verdict": analysis.veredicto,
-            "raw_model_summary": analysis.resumen,
-            "semantic_guard_version": "economic_comparison_guard_v1",
-            "validation_issues": validation_issues,
-            "profile_hash": profile_hash,
-            "facets_hash": facets_hash,
-            "input_tokens": result.input_tokens,
-            "output_tokens": result.output_tokens,
-            "cost_usd": result.cost_usd,
-            "analyzed_at": datetime.now(timezone.utc).isoformat(),
-        },
-    }
-    missing = [
-        {
-            "facet": item.get("categoria"),
-            "label": _clip(item.get("requisito"), 90) or "Requisito",
-            "estado": item.get("estado"),
-            "accion": _clip(item.get("accion"), 110),
-            "gap": _clip(item.get("gap"), 140),
-            "critico": item.get("critico"),
-        }
-        for item in requisitos_final
-        if item.get("estado") != "cumple"
-    ]
-    strengths = [
-        _clip(item.get("requisito"), 100)
-        for item in requisitos_final
-        if item.get("estado") == "cumple"
-    ][:2]
-    main_risk = next(
-        (
-            _clip(item.get("gap") or item.get("requisito"), 140)
-            for item in requisitos_final
-            if item.get("estado") != "cumple" and item.get("critico")
-        ),
-        None,
-    ) or next(
-        (
-            _clip(item.get("gap") or item.get("requisito"), 140)
-            for item in requisitos_final
-            if item.get("estado") != "cumple"
-        ),
-        None,
-    )
-    breakdown["fortalezas"] = [item for item in strengths if item]
-    breakdown["riesgo_principal"] = main_risk
     breakdown["meta"].update(
         {
             "execution": "worker_auto" if source == "automatic" else source,
@@ -411,3 +314,117 @@ def analyze_match_job(
         },
     )
     return {"match_id": match_id, "verdict": final_verdict, "score": final_score}
+
+
+def _clip(text: object, limit: int) -> str | None:
+    value = str(text).strip() if text else None
+    if not value:
+        return None
+    return value if len(value) <= limit else f"{value[:limit].rsplit(' ', 1)[0]}…"
+
+
+def finish_match(result, *, requisitos: list[dict], administrative_checklist: list, profile_evidence: dict,
+                 summary_json: dict | None, meta: dict) -> tuple[int, str, dict, list]:
+    """Score, verdict, breakdown and missing actions from one model answer.
+
+    Shared by menores (``analyze_match_job``) and mayores (``prod2.evaluation``). ``meta`` carries
+    the caller's provenance (prompt, extraction, profile and facet hashes) into ``breakdown.meta``.
+    Raises ``ModelOutputMismatch`` when the answer skipped or reordered requirements.
+    """
+    analysis = result.analysis
+    judged = [item.model_dump() for item in analysis.requisitos]
+    requisitos = checklist_omitted_proposal_documents(judged, requisitos, administrative_checklist)
+    requisitos_final = bind_substantive_requirements(
+        judged, requisitos, build_compact_match_profile(profile_evidence),
+    )
+    validation_issues = guard_economic_comparisons(requisitos_final, requisitos, build_compact_match_profile(profile_evidence))
+    validation_issues += [
+        {"source_index": final["source_index"], "code": "unsupported_model_judgement"}
+        for raw, final in zip(analysis.requisitos, requisitos_final, strict=True)
+        if raw.estado != final["estado"] and not any(issue["source_index"] == final["source_index"] for issue in validation_issues)
+    ]
+    # A global/per-area amount is not compatible capacity. Keep grounded
+    # comparisons and their limits; never substitute a max/sum or force every
+    # documentary judgement back to review merely because areas exist.
+    guarded_actions = guard_participation_actions(
+        requisitos_final, list(analysis.acciones_recomendadas), summary_json,
+    )
+
+    # El veredicto se agrega por reglas desde los estados; el score del modelo
+    # se acota a la banda del veredicto derivado.
+    final_verdict = _derive_verdict(requisitos_final)
+    final_score = clamp_score(final_verdict, analysis.score)
+
+    # Truncado defensivo: el prompt exige brevedad, pero un modelo verboso no
+    # debe romper la UI con parrafos.
+    breakdown = {
+        "resumen": ("La evaluación requiere contrastar experiencia y respaldos antes de publicar el puntaje. Revisa las condiciones pendientes indicadas abajo." if validation_issues else _clip(analysis.resumen, 320)),
+        "administrative_checklist": administrative_checklist,
+        "requisitos": [
+            {
+                **item,
+                "requisito": _clip(item.get("requisito"), 90) or "Requisito",
+                "gap": _clip(item.get("gap"), 140),
+                "accion": _clip(item.get("accion"), 110),
+            }
+            for item in requisitos_final
+        ],
+        "acciones_recomendadas": [
+            clipped for clipped in (_clip(item, 110) for item in guarded_actions[:4]) if clipped
+        ],
+        "meta": {
+            "model": result.model,
+            "evidence_policy_version": EVIDENCE_POLICY_VERSION,
+            "prompt_version": result.prompt_version,
+            "prompt_sha256": meta["prompt_sha256"],
+            "context_version": COMPACT_PROFILE_VERSION,
+            "extraction_id": meta["extraction_id"],
+            "score_validated": not bool(validation_issues),
+            "raw_model_score": analysis.score,
+            "raw_model_verdict": analysis.veredicto,
+            "raw_model_summary": analysis.resumen,
+            "semantic_guard_version": "economic_comparison_guard_v1",
+            "validation_issues": validation_issues,
+            "profile_hash": meta["profile_hash"],
+            "facets_hash": meta["facets_hash"],
+            "input_tokens": result.input_tokens,
+            "output_tokens": result.output_tokens,
+            "cost_usd": result.cost_usd,
+            "analyzed_at": datetime.now(timezone.utc).isoformat(),
+        },
+    }
+    missing = [
+        {
+            "facet": item.get("categoria"),
+            "label": _clip(item.get("requisito"), 90) or "Requisito",
+            "estado": item.get("estado"),
+            "accion": _clip(item.get("accion"), 110),
+            "gap": _clip(item.get("gap"), 140),
+            "critico": item.get("critico"),
+        }
+        for item in requisitos_final
+        if item.get("estado") != "cumple"
+    ]
+    strengths = [
+        _clip(item.get("requisito"), 100)
+        for item in requisitos_final
+        if item.get("estado") == "cumple"
+    ][:2]
+    main_risk = next(
+        (
+            _clip(item.get("gap") or item.get("requisito"), 140)
+            for item in requisitos_final
+            if item.get("estado") != "cumple" and item.get("critico")
+        ),
+        None,
+    ) or next(
+        (
+            _clip(item.get("gap") or item.get("requisito"), 140)
+            for item in requisitos_final
+            if item.get("estado") != "cumple"
+        ),
+        None,
+    )
+    breakdown["fortalezas"] = [item for item in strengths if item]
+    breakdown["riesgo_principal"] = main_risk
+    return final_score, final_verdict, breakdown, missing

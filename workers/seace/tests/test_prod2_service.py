@@ -792,3 +792,88 @@ def test_the_daily_preset_with_window_years_and_v6_reading_plans_through_the_rea
     plan = service._read(children[0].folder / "completion.private.json")
     assert len(plan["requested"]["keywords"]) == 60 and plan["requested"]["keyword_preset"]["id"] == "convenio60"
     assert plan["argv"][plan["argv"].index("--years") + 1] == "2026"
+
+
+# --- Evaluation (LLM2) after each cycle: a separate process whose problems never stop discovery ---
+
+def evaluator(monkeypatch, *, code=0, summary=None, error=None):
+    runs = []
+
+    def run(argv, project_root, log):
+        runs.append(argv)
+        if error:
+            raise error
+        if summary is not None:
+            log.write((json.dumps(summary) + "\n").encode())
+        return code
+
+    monkeypatch.setattr(service, "_run_evaluator", run)
+    return runs
+
+
+def with_evaluation(max_cycles=1):
+    return {**configuration(max_cycles=max_cycles), "evaluation": {"max_calls": 20}}
+
+
+def test_each_completed_cycle_runs_the_evaluator_with_its_own_receipts_and_alerts_the_result(paths, monkeypatch):
+    config, state = paths
+    write(config, with_evaluation(max_cycles=2))
+    fake_children(monkeypatch)
+    egress = Egress(monkeypatch, [])
+    runs = evaluator(monkeypatch, summary={"policy_version": "prod2_match_v1", "planned": 4, "skipped": {},
+                                           "stopped": None, "evaluated": 3, "cost_usd": 0.0123})
+    clock = Clock()
+    assert service.run(config, state, project_root=ROOT, now=clock.now, stop=clock) == 0
+    assert len(runs) == 2
+    argv = runs[0]
+    assert argv[1:3] == ["-u", str(ROOT / "scripts/evaluate_prod2_matches.py")] and "--execute" in argv
+    assert argv[argv.index("--max-calls") + 1] == "20"
+    assert argv[argv.index("--receipts") + 1] == str(state / "evaluations")
+    assert (state / "evaluations").stat().st_mode & 0o777 == 0o700
+    evaluations = [alert for alert in egress.alerts if "evaluación" in alert]
+    assert evaluations == ["BuenaPro PROD2: evaluación del ciclo 1: 3 de 4 pares empresa-licitación; US$ 0.0123.",
+                           "BuenaPro PROD2: evaluación del ciclo 2: 3 de 4 pares empresa-licitación; US$ 0.0123."]
+    assert egress.alerts.index(evaluations[0]) == 1  # After the cycle alert.
+    saved = service._read(state / "state.private.json")
+    assert saved["status"] == "complete" and saved["last_evaluation"]["cycle"] == 2
+    assert saved["last_evaluation"]["evaluated"] == 3 and saved["last_evaluation"]["exit_code"] == 0
+
+
+@pytest.mark.parametrize("code,error,text", [
+    (2, None, "duda de cobro"), (3, None, "Gemini rechazó"), (1, None, "falló (código 1)"),
+    (0, OSError("private evaluator detail"), "falló (código local_error)")])
+def test_an_evaluator_problem_is_alerted_and_discovery_goes_on(paths, monkeypatch, code, error, text):
+    config, state = paths
+    write(config, with_evaluation(max_cycles=2))
+    children = fake_children(monkeypatch)
+    egress = Egress(monkeypatch, [])
+    evaluator(monkeypatch, code=code, error=error)
+    assert service.run(config, state, project_root=ROOT, now=Clock().now, stop=Clock()) == 0
+    assert len(children) == 2
+    assert sum(text in alert for alert in egress.alerts) == 2
+    assert not any("private evaluator detail" in alert for alert in egress.alerts)
+    assert service._read(state / "state.private.json")["status"] == "complete"
+
+
+def test_an_evaluator_with_nothing_to_do_stays_quiet_and_without_the_block_nothing_runs(paths, monkeypatch):
+    config, state = paths
+    write(config, with_evaluation())
+    fake_children(monkeypatch)
+    egress = Egress(monkeypatch, [])
+    runs = evaluator(monkeypatch, summary={"planned": 0, "skipped": {"match_current": 2}, "stopped": None,
+                                           "evaluated": 0, "cost_usd": 0})
+    assert service.run(config, state, project_root=ROOT, now=lambda: NOW) == 0
+    assert len(runs) == 1 and not any("evaluación" in alert for alert in egress.alerts)
+    other = state.parent / "plain"
+    write(config, configuration())
+    runs.clear()
+    assert service.run(config, other, project_root=ROOT, now=lambda: NOW) == 0 and runs == []
+
+
+@pytest.mark.parametrize("block", [{"max_calls": 0}, {"max_calls": 201}, {"max_calls": "20"}, {},
+                                   {"max_calls": 20, "extra": 1}, 20])
+def test_an_invalid_evaluation_block_never_starts(paths, monkeypatch, block):
+    config, state = paths
+    write(config, {**configuration(), "evaluation": block})
+    children = fake_children(monkeypatch)
+    assert service.run(config, state, project_root=ROOT, now=lambda: NOW) == 2 and children == []

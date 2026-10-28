@@ -43,6 +43,8 @@ GUARD_FILENAME = "guard.json"
 
 
 class GuardedMatchAnalyzer(MatchAnalyzer):
+    receipt_kind = RECEIPT_KIND  # Part of every request identity; PROD2 uses its own.
+
     def __init__(self, settings: Settings, receipt_dir: Path, *, allow_new_requests: bool = True,
                  **options: Any) -> None:
         super().__init__(settings, **options)
@@ -67,7 +69,7 @@ class GuardedMatchAnalyzer(MatchAnalyzer):
     def _identity(self, model: str, payload: str) -> tuple[dict[str, Any], str]:
         if model not in MODEL_PRICES_USD_PER_MILLION:
             raise ValueError("PROD6 guarded evaluation requires a model with known local prices")
-        identity = {"kind": RECEIPT_KIND, "model": model, "prompt_version": self.prompt_version,
+        identity = {"kind": self.receipt_kind, "model": model, "prompt_version": self.prompt_version,
                     "prompt_sha256": _sha(self.prompt.encode("utf-8")),
                     "payload_sha256": _sha(payload.encode("utf-8"))}
         return identity, _sha(_canonical(identity))

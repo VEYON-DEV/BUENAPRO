@@ -28,6 +28,8 @@ ANALYSIS_PROMPT_FILENAME = "match_analysis_v5.txt"
 SUBSTANTIVE_PROMPT_FILES = {
     "match_analysis_v4_substantive": "match_analysis_v2.txt",
     MATCH_POLICY_VERSION: ANALYSIS_PROMPT_FILENAME,
+    # Mayores (PROD2): same compact profile, schema and rules; only the procurement scope differs.
+    "prod2_match_v1": "prod2_match_v1.txt",
 }
 
 

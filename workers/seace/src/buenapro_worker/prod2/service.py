@@ -19,7 +19,11 @@ after ``INCOMPLETE_RETRY_SECONDS`` in ``retry_wait``. Every other stop still nee
 ``--years window`` searches the years the cycle's window spans. An optional ``start_time``
 (HH:MM, Lima) starts each later cycle at that hour, at least ``interval_seconds`` after the
 previous one ends; ``interval_seconds`` still paces egress checks.
-Operations get a best-effort alert when a pause starts, after each cycle, on
+An optional ``evaluation`` block (``{"max_calls": N}``) runs the PROD2 evaluator (LLM2, see
+``prod2.evaluation``) as a separate process after each completed cycle, with receipts kept in
+``<state>/evaluations``. Its problems are alerted and never stop discovery; its own guard blocks
+new paid sends after a payment doubt.
+Operations get a best-effort alert when a pause starts, after each cycle and its evaluation, on
 ``attention_required`` and on ``complete``.
 """
 from __future__ import annotations
@@ -111,7 +115,7 @@ def _config(path):
     if path.stat().st_mode & 0o077:
         raise ServiceError("configuration_not_private")
     allowed = {"version", "enabled", "operator_hold", "first_epoch_id", "base_argv",
-               "interval_seconds", "window", "max_cycles", "start_time"}
+               "interval_seconds", "window", "max_cycles", "start_time", "evaluation"}
     if (not isinstance(value, dict) or set(value) - allowed
             or type(value.get("version")) is not int or value["version"] != VERSION
             or ("enabled" in value and type(value["enabled"]) is not bool)
@@ -119,11 +123,15 @@ def _config(path):
         raise ServiceError("invalid_configuration")
     if value.get("operator_hold") == "source_403" or value.get("enabled") is False:
         return value
-    if value.get("enabled") is not True or not allowed - {"operator_hold", "start_time"} <= set(value):
+    if value.get("enabled") is not True or not allowed - {"operator_hold", "start_time", "evaluation"} <= set(value):
         raise ServiceError("explicit_enabled_configuration_required")
     if "start_time" in value and (not isinstance(value["start_time"], str)
                                   or not START_TIME.fullmatch(value["start_time"])):
         raise ServiceError("invalid_start_time")
+    if "evaluation" in value and (not isinstance(value["evaluation"], dict) or set(value["evaluation"]) != {"max_calls"}
+                                  or type(value["evaluation"]["max_calls"]) is not int
+                                  or not 1 <= value["evaluation"]["max_calls"] <= 200):
+        raise ServiceError("invalid_evaluation")
     if (not isinstance(value["first_epoch_id"], str)
             or not IDENTIFIER.fullmatch(value["first_epoch_id"])
             or type(value["interval_seconds"]) is not int
@@ -292,6 +300,26 @@ def _next_cycle_at(config, moment):
     return (start if start >= earliest else start + timedelta(days=1)).astimezone(timezone.utc)
 
 
+def _run_evaluator(argv, project_root, log):
+    return subprocess.run(argv, cwd=project_root, stdin=subprocess.DEVNULL, stdout=log,
+                          stderr=subprocess.STDOUT).returncode
+
+
+def _evaluation_alert(number, code, summary):
+    """Ops text for one evaluator run, or None when it had nothing to do."""
+    if code == 2:
+        return (f"BuenaPro PROD2: evaluación del ciclo {number} detenida por una duda de cobro "
+                "(guard abierto); requiere revisión. La búsqueda sigue.")
+    if code == 3:
+        return f"BuenaPro PROD2: Gemini rechazó la evaluación del ciclo {number}; se reintenta en el próximo ciclo."
+    if code != 0:
+        return f"BuenaPro PROD2: la evaluación del ciclo {number} falló (código {code}); la búsqueda sigue."
+    if not summary.get("planned"):
+        return None
+    return (f"BuenaPro PROD2: evaluación del ciclo {number}: {summary.get('evaluated', 0)} de "
+            f"{summary['planned']} pares empresa-licitación; US$ {float(summary.get('cost_usd') or 0):.4f}.")
+
+
 def _cycle_alert(plan, number, next_at):
     """Counts and known cost of a completed cycle; never record text from the report."""
     folder = _literal(plan["folder"])
@@ -352,6 +380,32 @@ def run(config_path, state_dir, *, project_root=Path("/app"), stop=None, now=Non
             checkpoint("source_paused", reason=block["source"], http_status=block["status"],
                        paused_since=state.get("paused_since") or now().isoformat(), resume_at=resume_at)
             return stop.wait(wait)
+
+        def evaluate(number):
+            """Best effort after a completed cycle: alerts, never stops discovery."""
+            if "evaluation" not in config:
+                return
+            receipts = directory / "evaluations"
+            code, summary = None, {}
+            try:
+                receipts.mkdir(mode=0o700, exist_ok=True)
+                log_path = _literal(receipts / f"cycle-{number:06d}-{time.time_ns()}.log")
+                argv = [sys.executable, "-u", str(project_root / "scripts/evaluate_prod2_matches.py"), "--execute",
+                        "--max-calls", str(config["evaluation"]["max_calls"]), "--receipts", str(receipts)]
+                with os.fdopen(os.open(log_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600), "wb") as log:
+                    code = _run_evaluator(argv, project_root, log)
+                lines = log_path.read_text(encoding="utf-8", errors="replace").strip().splitlines()
+                last = json.loads(lines[-1]) if lines else {}
+                summary = last if isinstance(last, dict) and "planned" in last else {}
+            except Exception:
+                code = code if code not in (None, 0) else "local_error"
+            state["last_evaluation"] = {"cycle": number, "exit_code": code, "planned": summary.get("planned"),
+                                        "evaluated": summary.get("evaluated"), "cost_usd": summary.get("cost_usd"),
+                                        "stopped": summary.get("stopped"), "at": now().isoformat()}
+            _write(state_path, state)
+            alert = _evaluation_alert(number, code, summary)
+            if alert:
+                notify_ops(alert)
 
         def stopping(*_):
             nonlocal termination_forwarded
@@ -473,10 +527,10 @@ def run(config_path, state_dir, *, project_root=Path("/app"), stop=None, now=Non
                     alert = _cycle_alert(plan, number, None if last else next_at)
                 except Exception:
                     alert = f"BuenaPro PROD2: ciclo {number} listo."
+                notify_ops(f"{alert} Servicio completo; ciclos terminados: {number}." if last else alert)
+                evaluate(number)
                 if last:
-                    notify_ops(f"{alert} Servicio completo; ciclos terminados: {number}.")
                     return 0
-                notify_ops(alert)
                 number += 1
             raise ServiceError("operator_stop_requires_review")
         except Exception as error:

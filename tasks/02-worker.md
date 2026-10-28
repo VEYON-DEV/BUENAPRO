@@ -1150,3 +1150,9 @@ Rediseno 2026-07-09: el motor deterministico fue reemplazado por analisis LLM ba
   - **Preset `convenio60`:** las `digitales30` más 30 industriales.
   - **Despliegue:** v6, `--llm1-model-routing fixed`, ventana de 3 días, a las 01:00 Lima, primer arranque a 15 s y `max_cycles` 2.
   - **Pendiente de cerrar:** primer ciclo real verificado.
+- [ ] Evaluación por empresa (LLM2) de licitaciones mayores PROD2:
+  - `prod2/evaluation.py`, script `evaluate_prod2_matches.py` (`--plan` / `--execute`) y prompt `prod2_match_v1`.
+  - El dominio JEV elige a la empresa: industrial → DIN; informática o ambiguo → VEYON y DIN.
+  - Puntaje provisional sobre lecturas en revisión, `automation_rules` compartidas con menores y pagos con recibos y reserva `gemini_match`.
+  - El servicio lo lanza tras cada ciclo (bloque `evaluation`).
+  - **Pendiente:** prueba real con las licitaciones abiertas y encendido en el servicio.

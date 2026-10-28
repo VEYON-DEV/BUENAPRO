@@ -1059,6 +1059,37 @@ Piloto del 27/10/2026, con «software», 2026, ventana de 7 días y 1 ciclo:
   `context_maximum_tokens` (30 000) de la config v5. Hoy el servicio acepta la v5 o la v6 congeladas;
   la v6 lee la Sección Específica y recorta por relevancia (máx. 45 000).
 
+### Evaluación por empresa de mayores (LLM2, `evaluate_prod2_matches.py`)
+
+Evalúa las lecturas PROD2 abiertas para VEYON y DIN con el evaluador de menores (`finish_match`:
+8 experiencias más relacionadas, solo requisitos sustantivos y veredicto por reglas) y el prompt
+`prod2_match_v1.txt`. Código: `prod2/evaluation.py`.
+
+- **A quién evalúa:** JEV de mayores decide una vez por licitación, para la unión de las dos
+  empresas, y nombra el dominio (`prod2_evaluations` de tipo `jev_affinity`).
+  - `industrial_electrica`: solo DIN.
+  - `informatica` o `ambiguo`: VEYON y DIN, porque DIN también vende software.
+  - Exige afinidad ≥ 60, licitación abierta, lectura vigente con requisitos y que la empresa no
+    tenga ya una evaluación de esa lectura, perfil y prompt.
+- **`automation_rules` de cada empresa:** `enabled`, `min_hours_before_close` y
+  `max_daily_evaluations`. El tope diario se comparte con las evaluaciones automáticas de menores.
+- **Lecturas en revisión humana:** se evalúan igual; todas las de mayores lo están por diseño. La
+  evaluación se guarda con `persist_match(allow_source_review=True)` y la web la muestra como
+  "Puntaje provisional".
+- **Pagos:**
+  - Recibos del guard de menores con su propio tipo (`prod2_match_analysis_v1`) y una reserva
+    `gemini_match` en `prod2_evaluations` por par licitación–empresa.
+  - Un error HTTP de Gemini devuelve la reserva a `pending` y termina la corrida (exit 3).
+  - Si la respuesta omite o reordena requisitos, la reserva queda `failed` con su costo: solo ese
+    par.
+  - Un envío sin respuesta durable deja el guard abierto y la reserva `uncertain` (exit 2): ninguna
+    corrida posterior envía hasta revisarlo.
+- **`--plan`:** solo lee PostgreSQL. `--execute` necesita `--max-calls` (1–200) y `--receipts`, una
+  carpeta privada que se conserva entre corridas.
+- **En el servicio:** el bloque `"evaluation": {"max_calls": N}` de la config lanza el evaluador como
+  proceso aparte tras cada ciclo, con recibos en `<state>/evaluations`. Avisa por Telegram el
+  resultado o el problema; nunca detiene la búsqueda.
+
 ### Releer las revisiones con otra configuración (`reread_prod2_reviews.py`)
 
 Relee, con una config nueva (p. ej. la v6), los casos de una corrida que terminaron en
