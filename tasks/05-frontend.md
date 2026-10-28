@@ -226,6 +226,14 @@ Referencia: [Inicio](../docs/frontend/02-inicio.md)
 - [x] Mostrar sección oficial determinista de cronograma en ambas fuentes: pestaña `Cronograma` del detalle PROD6 y composición compacta PROD4 con preguntas/ofertas visibles y las demás etapas desplegables sin truncarlas. Consultas, observaciones, respuestas, registro y ofertas separados; fechas/hora/fuente/consulta visibles, sin inventar hora cuando solo hay día. 12 pruebas, TypeScript, build webpack y arquitectura aprobados; QA fixtures locales aislados en desktop1440, laptop1024 y mobile390 (sin overflow), teclado Enter/Space y datos faltantes. Evidencia `docs/new-style/qa/schedule-prod{4,6}-{desktop,laptop,mobile}-20261001.jpg`. No desplegado a producción (2026-10-01).
 - [x] Añadir timeline oficial conectado y estados temporales en PROD4/PROD6 (2026-10-01): todas las etapas en orden, etapas simultáneas, fecha/hora Lima, día sin hora incierto, ventanas ampliadas recalculadas y aviso de que vencimiento no acredita ejecución. 16 tests web, arquitectura, TypeScript/build y capturas desktop/laptop/mobile revisadas con fixtures aisladas. Evidencia `docs/new-style/qa/timeline-prod{4,6}-{desktop,laptop,mobile}-20261001.jpg`. UI local, pendiente despliegue.
 - [ ] Añadir alertas de cambios/ampliaciones de consultas y ofertas; no inferir disponibilidad solo por presencia en radar.
+- [x] Filtro de cierre en la lista de mayores (PROD2), el 28/10/2026 (commit `82d9581`):
+  - **Vistas:** grupo «No cerradas · Cerradas · Todas»; la página abre en «No cerradas» y «Todas» deja las cerradas al final.
+  - **Cerrada:** pasó la fecha de propuestas, o la de registro si no hay de propuestas; o pasó el día de propuestas cuando el cronograma solo trae el día; o el lector la marcó «Cerrada al revisar». Un cierre desconocido no cuenta como cerrado.
+  - **API:** sin `deadline` no cambia; el parámetro está documentado en OpenAPI.
+  - **Barra:** separador entre los dos grupos, que se quita en móvil; el buscador tiene un ancho mínimo y en laptop los filtros pasan a una segunda fila.
+  - **Validación:** 341 pruebas Node, TypeScript y arquitectura. Capturas locales en escritorio, laptop y móvil.
+  - **Producción, con la sesión de DIN:** 115 no cerradas (las 18 con puntaje arriba, todas con fecha futura), 1179 cerradas y 1294 en total, sin errores de consola.
+  - **Imagen:** `buenapro-web:deadline-82d9581`; respaldo `buenapro-web:rollback-f49ef55-before-deadline-82d9581`.
 
 Referencia: [Oportunidades](../docs/frontend/03-oportunidades.md)
 
