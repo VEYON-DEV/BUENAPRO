@@ -36,6 +36,7 @@ import hashlib
 import importlib
 import io
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -321,15 +322,33 @@ def _evaluation_alert(number, code, summary):
 
 
 def _cycle_alert(plan, number, next_at):
-    """Counts and known cost of a completed cycle; never record text from the report."""
+    """Counts and known cost of a completed cycle; never record text from the report.
+
+    A retried cycle did most of its work in the attempts kept as ``<epoch>.<kind>-<ns>``: the
+    final attempt resumes the same sweep and only reports what was left. All are added up.
+    """
     folder = _literal(plan["folder"])
-    report = _read(next(folder.glob("report-*.private.json")))
-    summary = assess_final_report(report, plan["epoch_id"], plan["exit_code"])["summary"]
-    cost = summary.get("costs", {}).get("known_cost_usd", 0)
+    totals = dict.fromkeys(("seen", "accepted", "llm1_complete", "requires_review"), 0)
+    cost, attempts = 0.0, 0
+    for attempt in [folder, *sorted(folder.parent.glob(folder.name + ".*"))]:
+        reports = list(attempt.glob("report-*.private.json"))
+        if len(reports) != 1:
+            continue  # An egress failure ends before writing a report.
+        report = _read(reports[0])
+        if report.get("run_id") != plan["epoch_id"]:
+            continue
+        attempts += 1
+        counts = {**report, "seen": (report.get("redis") or {}).get("seen")}
+        for key in totals:
+            if type(counts.get(key)) is int and counts[key] >= 0:
+                totals[key] += counts[key]
+        known = (report.get("costs") or {}).get("known_cost_usd")
+        if type(known) in (int, float) and math.isfinite(known) and known >= 0:
+            cost += known
     text = (f"BuenaPro PROD2: ciclo {number} listo ({plan['published_from']} a {plan['published_to']}): "
-            f"{summary.get('redis', {}).get('seen', 0)} candidatas, {summary.get('accepted', 0)} aceptadas, "
-            f"{summary.get('llm1_complete', 0)} leídas, {summary.get('requires_review', 0)} en revisión; "
-            f"US$ {cost:.4f}.")
+            f"{totals['seen']} candidatas, {totals['accepted']} aceptadas, {totals['llm1_complete']} leídas, "
+            f"{totals['requires_review']} en revisión; US$ {cost:.4f}"
+            + (f" en {attempts} intentos." if attempts > 1 else "."))
     if next_at is not None:
         text += f" Próximo ciclo: {next_at.astimezone(LIMA):%d/%m %H:%M} (Lima)."
     return text
@@ -520,7 +539,8 @@ def run(config_path, state_dir, *, project_root=Path("/app"), stop=None, now=Non
                 _write(folder / "completion.private.json", plan)
                 last = number >= config["max_cycles"]
                 next_at = _next_cycle_at(config, now())
-                state.pop("retries", None)
+                for stale in ("retries", "reason"):  # A retried cycle that ended well leaves no stop reason.
+                    state.pop(stale, None)
                 checkpoint("complete" if last else "waiting", plan=plan, completed_cycles=number,
                            next_cycle_at=next_at.isoformat())
                 try:

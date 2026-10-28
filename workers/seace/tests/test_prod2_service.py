@@ -877,3 +877,28 @@ def test_an_invalid_evaluation_block_never_starts(paths, monkeypatch, block):
     write(config, {**configuration(), "evaluation": block})
     children = fake_children(monkeypatch)
     assert service.run(config, state, project_root=ROOT, now=lambda: NOW) == 2 and children == []
+
+
+def test_the_cycle_alert_adds_up_the_attempts_of_a_retried_cycle_and_clears_the_stop_reason(paths, monkeypatch):
+    config, state = paths
+    write(config, configuration())
+
+    def worked_then_cut(value):  # The first attempt did the work; one query was left incomplete.
+        incomplete(value)
+        value.update(accepted=11, llm1_complete=11, requires_review=11, processed=13,
+                     records=[{"status": "llm1_complete"}] * 11 + [{"status": "rejected_below_60"}] * 2)
+        value["redis"]["seen"] = 13
+        value["costs"]["known_cost_usd"] = 0.135445774
+
+    def resumed(value):  # The resumed sweep only completes the missing query.
+        value.update(accepted=0, llm1_complete=0, requires_review=0, processed=0, records=[])
+        value["redis"]["seen"] = 0
+
+    fake_children(monkeypatch, mutate=scripted(worked_then_cut, resumed))
+    egress = Egress(monkeypatch, [])
+    clock = Clock()
+    assert service.run(config, state, project_root=ROOT, now=clock.now, stop=clock) == 0
+    assert ("BuenaPro PROD2: ciclo 1 listo (2026-10-13 a 2026-10-19): 13 candidatas, 11 aceptadas, 11 leídas, "
+            "11 en revisión; US$ 0.1354 en 2 intentos.") in egress.alerts[-1]
+    saved = service._read(state / "state.private.json")
+    assert saved["status"] == "complete" and "reason" not in saved and "retries" not in saved
