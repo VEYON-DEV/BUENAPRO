@@ -117,6 +117,21 @@ test("PROD2 detail shows the model's reading, marked as unvalidated, while the s
   assert.doesNotMatch(validated, /sin validar|están por validar/);
 });
 
+test("PROD2 detail marks a validated summary as unvalidated while the source reading is under review", () => {
+  const facets = [{ id: "1", facet: "economic_experience", label: "Experiencia", required: true }];
+  const detail = fixture({ meta: { score_validated: true }, resumen: "No acredita experiencia en plataformas e-learning.", requisitos: [
+    { requisito: "Experiencia", source_index: 1, source_facet: "economic_experience", estado: "requiere_revision" },
+  ] }, facets, 45);
+  detail.analysis.match.provisional_score = 45;
+  detail.analysis.extraction.requires_human_review = true;
+  detail.process.match_review_required = true;
+  const html = render(detail);
+  assert.match(html, /Puntaje provisional/);
+  assert.match(html, /Lectura de la IA · sin validar/);
+  assert.ok(html.includes("No acredita experiencia en plataformas e-learning."));
+  assert.match(html, /El puntaje y estas conclusiones están por validar/);
+});
+
 test("source-review provisional zero never becomes an approved legacy score in the detail", () => {
   const detail = fixture({ meta: { score_validated: true }, requisitos: [
     { requisito: "Personal", source_index: 1, source_facet: "key_personnel", estado: "requiere_revision" },

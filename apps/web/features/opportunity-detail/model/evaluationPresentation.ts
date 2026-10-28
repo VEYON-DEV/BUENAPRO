@@ -74,19 +74,22 @@ function clip(value: string, limit: number): string {
 /**
  * When a rule could not back the model's judgements the worker stores a generic notice as the
  * summary and keeps the model's own summary in meta. A score still under review shows that
- * reading, marked as provisional; validated or older evaluations keep their summary.
+ * reading; validated or older evaluations keep their summary. The summary is provisional whenever
+ * the score is: unvalidated, or resting on a source reading that still needs human review.
  */
-export function decisionSummary(analysis: RecordValue): { text: string; provisional: boolean } {
+export function decisionSummary(analysis: RecordValue, reviewRequired = false): { text: string; provisional: boolean } {
   const summary = typeof analysis.resumen === "string" ? analysis.resumen.trim() : "";
   const reading = typeof analysis.meta?.raw_model_summary === "string" ? analysis.meta.raw_model_summary.trim() : "";
-  if (analysis.meta?.score_validated === false && reading) return { text: clip(reading, 420), provisional: true };
-  return { text: summary, provisional: false };
+  const unvalidated = analysis.meta?.score_validated === false;
+  const text = unvalidated && reading ? clip(reading, 420) : summary;
+  return { text, provisional: Boolean(text) && (unvalidated || reviewRequired) };
 }
 
 export function evaluationPresentation(
   breakdown: unknown,
   missingActions: unknown,
   sourceFacets: unknown,
+  reviewRequired = false,
 ) {
   const analysis = breakdown && typeof breakdown === "object" && !Array.isArray(breakdown)
     ? breakdown as RecordValue
@@ -120,8 +123,8 @@ export function evaluationPresentation(
 
   return {
     hasEvaluation: evaluated.length > 0,
-    scoreUnderReview: analysis.meta?.score_validated === false,
-    summary: decisionSummary(analysis),
+    scoreUnderReview: analysis.meta?.score_validated === false || reviewRequired,
+    summary: decisionSummary(analysis, reviewRequired),
     substantive,
     substantiveFacets,
     coveredCount: substantive.filter(row => row.estado === "cumple").length,

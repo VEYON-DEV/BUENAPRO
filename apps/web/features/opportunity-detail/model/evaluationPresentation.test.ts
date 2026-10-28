@@ -158,10 +158,20 @@ test("a score under review shows the model's own reading, marked as provisional"
 test("a validated score, or one without the model's reading, keeps its summary", () => {
   assert.deepEqual(decisionSummary({ resumen: "Cumple lo esencial.", meta: { score_validated: true, raw_model_summary: "Otro texto." } }),
     { text: "Cumple lo esencial.", provisional: false });
-  assert.deepEqual(decisionSummary({ resumen: GENERIC, meta: { score_validated: false } }), { text: GENERIC, provisional: false });
+  assert.deepEqual(decisionSummary({ resumen: GENERIC, meta: { score_validated: false } }), { text: GENERIC, provisional: true });
   assert.deepEqual(decisionSummary({ resumen: GENERIC, meta: { score_validated: false, raw_model_summary: "   " } }),
-    { text: GENERIC, provisional: false });
+    { text: GENERIC, provisional: true });
   assert.deepEqual(decisionSummary({}), { text: "", provisional: false });
+  assert.deepEqual(decisionSummary({}, true), { text: "", provisional: false });
+});
+
+test("a validated score resting on a source reading under review is provisional too", () => {
+  const analysis = { resumen: "Cumple lo esencial.", meta: { score_validated: true, raw_model_summary: "Otro texto." } };
+  assert.deepEqual(decisionSummary(analysis, true), { text: "Cumple lo esencial.", provisional: true });
+  const underReview = evaluationPresentation(analysis, [], [], true);
+  assert.equal(underReview.scoreUnderReview, true);
+  assert.deepEqual(underReview.summary, { text: "Cumple lo esencial.", provisional: true });
+  assert.equal(evaluationPresentation(analysis, [], [], false).summary.provisional, false);
 });
 
 test("a long model reading is cut at a word boundary", () => {

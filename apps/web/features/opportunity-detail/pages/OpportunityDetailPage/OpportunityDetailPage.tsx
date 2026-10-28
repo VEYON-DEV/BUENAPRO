@@ -257,7 +257,7 @@ export async function OpportunityDetailPage({
       ? contract.breakdown_json
       : null;
   const analyzedAt: string | null = analysis?.meta?.analyzed_at ?? null;
-  const evaluation = evaluationPresentation(analysis, contract.missing_actions_json, facets);
+  const evaluation = evaluationPresentation(analysis, contract.missing_actions_json, facets, Boolean(contract.match_review_required));
   const missingActions = groupItems(evaluation.gaps).filter(
     (item: AnyRecord) => item.label || item.accion,
   );
@@ -353,7 +353,7 @@ export async function OpportunityDetailPage({
 
       <DecisionOverview
         analyzed={evaluation.hasEvaluation}
-        scoreUnderReview={evaluation.scoreUnderReview || Boolean(contract.match_review_required)}
+        scoreUnderReview={evaluation.scoreUnderReview}
         score={contract.score}
         provisionalScore={contract.provisional_score}
         verdict={contract.verdict ? (verdictShortLabels[contract.verdict] ?? contract.verdict) : "Evaluación pendiente"}

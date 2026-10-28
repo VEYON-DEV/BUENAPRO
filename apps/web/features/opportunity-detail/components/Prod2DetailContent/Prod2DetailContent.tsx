@@ -41,7 +41,7 @@ export function Prod2DetailContent({ detail }: { detail: Detail }) {
   const extraction = analysis.extraction;
   const match = analysis.match;
   const breakdown = record(match?.breakdown_json);
-  const evaluation = evaluationPresentation(breakdown, match?.missing_actions_json, analysis.facets);
+  const evaluation = evaluationPresentation(breakdown, match?.missing_actions_json, analysis.facets, Boolean(process.match_review_required));
   const explicitChecklist = Array.isArray(breakdown.administrative_checklist) || Array.isArray(breakdown.preparacion_documental);
   const evaluated = records(breakdown.requisitos).filter(requirement => requirement.score_impact !== false
     && requirement.source_facet !== "penalty_condition"
@@ -80,7 +80,7 @@ export function Prod2DetailContent({ detail }: { detail: Detail }) {
       {process.has_official_detail === false ? <p className={styles.muted}>Solo datos del listado. La ficha oficial, las bases y el cronograma todavía no están disponibles en BuenaPro.</p> : null}
       {process.publication_status_label ? <p className={styles.muted}>{process.publication_status_label}. Estado conservado de la última revisión.</p> : null}
     </header>
-    <DecisionOverview analyzed={evaluation.hasEvaluation} score={match?.score} provisionalScore={match?.provisional_score} scoreUnderReview={evaluation.scoreUnderReview || Boolean(process.match_review_required)} verdict={match ? verdictShortLabels[match.verdict] ?? match.verdict : "Evaluación pendiente"}
+    <DecisionOverview analyzed={evaluation.hasEvaluation} score={match?.score} provisionalScore={match?.provisional_score} scoreUnderReview={evaluation.scoreUnderReview} verdict={match ? verdictShortLabels[match.verdict] ?? match.verdict : "Evaluación pendiente"}
       verdictTone={tone(match?.verdict ?? "")} fit={affinity ? `${affinity.label} · ${affinity.pointLabel} puntos` : "Sin afinidad calculada"}
       deadline="Presentación de ofertas" deadlineDate={stageDate(proposals)} requirementsTotal={evaluation.substantive.length} coveredCount={evaluation.coveredCount} missingCount={missing.length} requirementsLabel="Requisitos clave cubiertos"
       actions={<>{primary?.download_url ? <a className={styles.primaryAction} href={primary.download_url} target="_blank" rel="noopener noreferrer"><FileText aria-hidden="true" size={16} /> Abrir bases en PDF</a>
