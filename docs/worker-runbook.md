@@ -1014,8 +1014,14 @@ Imagen `buenapro-worker-prod2:<tag>`, construida con `infra/docker/prod2.Dockerf
 
 ### Servicio diario (desde el 28/10/2026)
 
-Mismo contenedor y receta de arranque, con datos en `~/buenapro/runtime/prod2-service-20261028/`
-(la carpeta del piloto queda como evidencia). Config:
+Mismo contenedor y receta de arranque. Desde el 28/10/2026 09:00 Lima corre la config final en
+`~/buenapro/runtime/prod2-service-final-20261028/` (imagen `buenapro-worker-prod2:final-ecc71be`,
+recibos en `~/buenapro-releases/prod2-final-ecc71be-receipts/`): 10 s entre peticiones,
+`max_cycles` 10000 y `"evaluation": {"max_calls": 60}`. Las carpetas del piloto y de la observación
+(`prod2-service-20261028/`, 1 ciclo a 15 s) quedan como evidencia. Cambiar la config de un estado en
+curso lo detiene (`active_configuration_changed`): un cambio de config exige otra carpeta de estado, y
+detener el contenedor deja el estado anterior en `attention_required` (`operator_stop_requires_review`)
+con su aviso. Config:
 
 - Preset `--keyword-preset convenio60`: las `digitales30` más 30 señales industriales para DIN.
   - Cada keyword cuesta unas 12 peticiones a SEACE por año: dos objetos (bien y servicio), y en
