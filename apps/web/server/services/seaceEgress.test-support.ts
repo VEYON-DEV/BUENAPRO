@@ -10,6 +10,9 @@ import { resetSeaceEgressForTests } from "./seaceEgress.ts";
 export type FakeReply = { status: number; body?: string | Uint8Array | ReadableStream | null; headers?: Record<string, string> };
 export type FakeCall = { url: string; init: any };
 
+/** Cuerpo real del bloqueo del firewall de SEACE (403 sin tipo de contenido, verificado el 28/10). */
+export const FIREWALL_403 = JSON.stringify({ code: "403", message: "Forbidden", RequestId: "5cc5bc1a82a8564a095c6903816ddb04" });
+
 /** Entorno de salida de prueba (sin proxy salvo que se indique) y un fetch de undici que consume `replies`. */
 export function fakeEgress(replies: FakeReply[], env: Record<string, string> = {}) {
   const calls: FakeCall[] = [];
@@ -22,7 +25,8 @@ export function fakeEgress(replies: FakeReply[], env: Record<string, string> = {
   resetSeaceEgressForTests((async (url: string, init: any) => {
     calls.push({ url, init });
     const reply = replies.shift() ?? { status: 500 };
-    return new Response((reply.body ?? null) as BodyInit | null, { status: reply.status, headers: reply.headers });
+    const body = reply.body ?? (reply.status === 403 ? FIREWALL_403 : null);
+    return new Response(body as BodyInit | null, { status: reply.status, headers: reply.headers });
   }) as any);
   return { calls };
 }

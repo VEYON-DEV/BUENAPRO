@@ -161,6 +161,20 @@ export type SeaceFetchOptions = {
   timeoutMs?: number;
 };
 
+/**
+ * El bloqueo del firewall de SEACE responde 403 sin tipo de contenido y con el cuerpo
+ * `{"code":"403","message":"Forbidden","RequestId":...}` (verificado el 28/10 en prod6 y alfprod).
+ * Un 403 de la API autenticada (sesión vencida) es la respuesta de la aplicación y no debe pausar a todos.
+ */
+async function isFirewallBlock(response: { clone(): { text(): Promise<string> } }): Promise<boolean> {
+  try {
+    const body = (await response.clone().text()).slice(0, 2000);
+    return /"RequestId"\s*:/.test(body) && /"message"\s*:\s*"Forbidden"/.test(body);
+  } catch {
+    return true; // Sin poder leerlo, se asume bloqueo: pausar de más es más seguro que insistir.
+  }
+}
+
 export async function seaceFetch(url: string, options: SeaceFetchOptions = {}) {
   if (!isSeaceUrl(url)) throw new SeaceUnavailable("upstream");
   const config = settings();
@@ -180,7 +194,7 @@ export async function seaceFetch(url: string, options: SeaceFetchOptions = {}) {
     // Proxy caído o red: no es un bloqueo de SEACE y no abre la pausa larga.
     throw new SeaceUnavailable(config.proxy ? "egress" : "network");
   }
-  if (response.status === 403 || response.status === 429) {
+  if (response.status === 429 || (response.status === 403 && await isFirewallBlock(response))) {
     state().blockedUntil = Date.now() + config.blockMs;
     console.warn(JSON.stringify({ seace_web_block: response.status, paused_seconds: config.blockMs / 1000 }));
     await recordSharedBlock(response.status);

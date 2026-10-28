@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as egress from "./seaceEgress.ts";
-import { fakeEgress, loadServerModule, nextServerStub } from "./seaceEgress.test-support.ts";
+import { FIREWALL_403, fakeEgress, loadServerModule, nextServerStub } from "./seaceEgress.test-support.ts";
 
 // Las cuatro piezas del servidor que antes salían directo a SEACE: PROD2 (documento oficial), PROD4 (PDF),
 // la sesión autenticada y el agente documental. Todo con fetch simulado: nunca hay red ni SEACE.
@@ -64,7 +64,7 @@ test("PROD2 turns a required-but-missing egress, a SEACE block and a full budget
     ["SEACE denies the request", {}, true],
   ];
   for (const [name, env, sent] of scenarios) {
-    const { calls } = fakeEgress([{ status: 403, body: "secret waf page" }], env);
+    const { calls } = fakeEgress([{ status: 403, body: FIREWALL_403 }], env);
     const { exports, directFetches } = prod2();
     await assert.rejects(exports.resolveProd2OfficialDocument(uuid),
       (error: Error) => error.message.includes(SAFE_PROD2_MESSAGE) && !/secret|blocked|busy|egress/i.test(error.message), name);
@@ -127,7 +127,7 @@ test("PROD4 answers 503 with the 'Abrir en SEACE' page when the egress is closed
   assert.equal(closed.calls.length, 0);
   assert.deepEqual(route.directFetches, []);
 
-  const denied = fakeEgress([{ status: 403, body: "waf" }, { status: 200, body: PDF }]);
+  const denied = fakeEgress([{ status: 403, body: FIREWALL_403 }, { status: 200, body: PDF }]);
   const second = prod4Route();
   await expectPage(await prod4Get(second));
   await expectPage(await prod4Get(second));
@@ -251,8 +251,8 @@ test("an unavailable egress is not a credential failure: the connection is not m
   }
 });
 
-test("a 403 from the API opens the pause and the retry login is refused without invalidating the connection", async () => {
-  const { calls } = fakeEgress([{ status: 403, body: json({ message: "forbidden" }) }, { status: 200, body: json({}) }]);
+test("a firewall 403 on an authenticated request opens the pause and the retry login is refused without invalidating the connection", async () => {
+  const { calls } = fakeEgress([{ status: 403, body: FIREWALL_403 }, { status: 200, body: json({}) }]);
   const service = authenticated(connectionRow(inOneHour()));
   await assert.rejects(service.exports.authenticatedSeaceJson("t1", "/maestra/x"),
     (error: unknown) => error instanceof SeaceUnavailable && error.reason === "blocked");
@@ -359,7 +359,7 @@ test("the Codex agent downloads originals through the egress and validates the h
     { status: 302, headers: { location: "/SeaceWeb-PRO/otro.pdf" } },
     { status: 200, body: PDF },
     { status: 302, headers: { location: "https://evil.example/x.pdf" } },
-    { status: 403, body: "waf" },
+    { status: 403, body: FIREWALL_403 },
   ], { SEACE_EGRESS_PROXY: PROXY });
   const { exports, directFetches } = codex();
   const document = (sourceId: string) => ({ sourceId, filename: `${sourceId}.pdf`, downloadUrl: TDR, sizeBytes: PDF.length });

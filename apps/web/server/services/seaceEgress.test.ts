@@ -4,6 +4,7 @@ import { mkdtempSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getSeacePdf, isSeaceUrl, resetSeaceEgressForTests, seaceFetch, SeaceUnavailable } from "./seaceEgress.ts";
+import { FIREWALL_403 } from "./seaceEgress.test-support.ts";
 
 // Nunca toca SEACE: el fetch es simulado y la caché vive en un directorio temporal.
 const PDF = Buffer.from("%PDF-1.7\n1 0 obj\n");
@@ -21,7 +22,8 @@ function setup(responses: Array<{ status: number; body?: Buffer | string }>, env
   resetSeaceEgressForTests((async (url: string, init: any) => {
     calls.push({ url, init });
     const next = responses.shift() ?? { status: 500 };
-    return new Response(typeof next.body === "string" ? next.body : new Uint8Array(next.body ?? []), { status: next.status });
+    const body = next.body ?? (next.status === 403 ? FIREWALL_403 : undefined);
+    return new Response(typeof body === "string" ? body : new Uint8Array(body ?? []), { status: next.status });
   }) as any);
   return { calls, cacheDir };
 }
@@ -131,6 +133,14 @@ test("interactive requests wait for their turn longer than background ones", asy
   const started = Date.now();
   await seaceFetch(URL_A, { interactive: true });
   assert.ok(Date.now() - started >= 250, "the second turn waits for the shared pacing");
+  assert.equal(run.calls.length, 2);
+});
+
+test("a 403 answered by the SEACE application (an expired session) pauses nobody", async () => {
+  const run = setup([{ status: 403, body: JSON.stringify({ status: 403, error: "Forbidden", path: "/maestra" }) },
+    { status: 200, body: "{}" }]);
+  assert.equal((await seaceFetch(URL_A, { interactive: true })).status, 403);
+  assert.equal((await seaceFetch(URL_A)).status, 200);
   assert.equal(run.calls.length, 2);
 });
 

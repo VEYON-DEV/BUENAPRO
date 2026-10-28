@@ -5,6 +5,7 @@ import {
   BLOCKED_KEY, NEXT_SLOT_KEY, recordSharedBlock, setSharedGateBackendForTests, sharedGateEnabled,
   type SharedGateBackend,
 } from "./seaceSharedGate.ts";
+import { FIREWALL_403 } from "./seaceEgress.test-support.ts";
 
 // Nunca toca SEACE ni Redis: el fetch y el backend del freno son simulados.
 const URL_A = "https://prod6.seace.gob.pe/v1/s8uit-services/archivo/descargar?id=1";
@@ -54,7 +55,8 @@ function setup(responses: Array<{ status: number }>, env: Record<string, string>
   });
   resetSeaceEgressForTests((async (url: string, init: any) => {
     calls.push({ url, init });
-    return new Response(null, { status: (responses.shift() ?? { status: 500 }).status });
+    const status = (responses.shift() ?? { status: 500 }).status;
+    return new Response(status === 403 ? FIREWALL_403 : null, { status });
   }) as any);
   const fake = fakeRedis();
   setSharedGateBackendForTests(fake);
