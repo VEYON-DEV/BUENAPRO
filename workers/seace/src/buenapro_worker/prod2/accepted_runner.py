@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import hashlib
 import os
 from pathlib import Path
+import time
 
 from .analysis import JEV_MODEL, JEV_POLICY_VERSION, jev_request_hash
 from .batch_runner import private_write, read_private
@@ -92,7 +93,17 @@ def paid_llm1(conn, folder, convocation_id, request_hash, settings, profile_id, 
         else:
             try:
                 result = callback()
-            except Exception:
+            except Exception as error:
+                from .selected_extractor import SelectedProviderRejected
+                if isinstance(error, SelectedProviderRejected):
+                    # Gemini answered an HTTP error: nothing was billed. The reservation goes back to
+                    # pending and its owner receipt is archived, so a later attempt may claim it.
+                    conn.execute("UPDATE prod2_evaluations SET status='pending',claim_token=NULL,claimed_at=NULL,"
+                        "lease_until=NULL,updated_at=now() WHERE id=%s AND claim_token=%s AND status='running'",
+                        (claim["id"], claim["claim_token"]))
+                    owner_path.rename(owner_path.with_name(
+                        owner_path.name.replace(".claim.", f".claim-released-{time.time_ns()}.")))
+                    raise
                 conn.execute("UPDATE prod2_evaluations SET status='uncertain',updated_at=now() "
                     "WHERE id=%s AND claim_token=%s AND status='running'", (claim["id"], claim["claim_token"]))
                 raise

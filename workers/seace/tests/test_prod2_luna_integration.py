@@ -46,6 +46,11 @@ class Ledger:
             result = next((r for r in self.rows.values() if r["id"] != exclude
                 and r["id_convocatoria"] == conv and r["profile_id"] == profile
                 and r["status"] in {"pending", "running", "uncertain"}), None)
+        elif "status='pending'" in sql:
+            row = self.rows[params[0]]
+            assert row["claim_token"] == params[1] and row["status"] == "running"
+            row.update(status="pending", claim_token=None)
+            result = None
         elif "status='uncertain'" in sql:
             row = self.rows[params[0]]
             assert row["claim_token"] == params[1]
@@ -69,6 +74,10 @@ class Ledger:
         if existing:
             if existing["status"] == "done":
                 return {"status": "cached", "id": existing["id"], "result_json": existing["result_json"]}
+            if existing["status"] == "pending":  # Released after a provider rejection: claim again.
+                existing.update(status="running", claim_token=str(uuid4()))
+                return {"status": "claimed", "id": existing["id"], "claim_token": existing["claim_token"],
+                        "evaluation_key": key}
             return {"status": existing["status"], "id": existing["id"]}
         identity, token = len(self.rows) + 1, str(uuid4())
         self.rows[identity] = {"id": identity, "claim_token": token, "evaluation_key": key,
@@ -225,3 +234,45 @@ def test_luna_receipt_tampering_rejected(previous, field, value):
     bundle[field] = value
     with pytest.raises(ValueError):
         validate_luna_bundle(bundle)
+
+
+
+# --- Gemini HTTP errors: free rejections, saturation goes once to the fallback model (28/10) ----
+
+def gemini_error(code, status):
+    from google.genai import errors as genai_errors
+    kind = genai_errors.ServerError if code >= 500 else genai_errors.ClientError
+    return kind(code, {"error": {"code": code, "message": "DO NOT STORE", "status": status}})
+
+
+def test_saturation_reads_once_with_the_fallback_model_under_its_own_reservation(pipeline, monkeypatch):
+    f = pipeline
+    monkeypatch.setenv("PROD6_GEMINI_SATURATION_FALLBACK_MODEL", "gemini-3.5-flash-lite")
+    f.google.models.generate_content.side_effect = [gemini_error(503, "UNAVAILABLE"), gemini_error(529, "UNAVAILABLE")]
+    with pytest.raises(selected_extractor.SelectedProviderRejected) as rejected:
+        run(f)
+    assert rejected.value.code == 529
+    models = [call.kwargs["model"] for call in f.google.models.generate_content.call_args_list]
+    assert models == ["gemini-3.1-flash-lite", "gemini-3.5-flash-lite"]
+    # Two reservations, both released: nothing was billed and both may be claimed again.
+    assert [row["status"] for row in f.ledger.rows.values()] == ["pending", "pending"]
+    assert {row["model"] for row in f.ledger.rows.values()} == {"gemini-3.1-flash-lite", "gemini-3.5-flash-lite"}
+    summary = audit_summary(f.folder)
+    assert summary["usage_unknown_attempts"] == 0 and summary["known_cost_usd"] == 0
+    assert not f.requests  # Luna is only for a known truncation.
+
+
+def test_a_retired_model_is_a_free_rejection_without_fallback(pipeline, monkeypatch):
+    f = pipeline
+    monkeypatch.setenv("PROD6_GEMINI_SATURATION_FALLBACK_MODEL", "gemini-3.5-flash-lite")
+    f.google.models.generate_content.side_effect = gemini_error(404, "NOT_FOUND")
+    with pytest.raises(selected_extractor.SelectedProviderRejected):
+        run(f)
+    assert f.google.models.generate_content.call_count == 1
+    assert [row["status"] for row in f.ledger.rows.values()] == ["pending"]
+    assert audit_summary(f.folder)["usage_unknown_attempts"] == 0
+    # The released reservation is claimed again by a later attempt with the same request.
+    f.google.models.generate_content.side_effect = gemini_error(404, "NOT_FOUND")
+    with pytest.raises(selected_extractor.SelectedProviderRejected):
+        run(f)
+    assert len(f.ledger.rows) == 1 and f.google.models.generate_content.call_count == 2

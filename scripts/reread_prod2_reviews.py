@@ -267,8 +267,9 @@ def frozen_plan(original, folder, ids, config_path, max_llm1_calls, max_observat
     if folder.exists() and (not folder.is_dir() or (
             any(folder.iterdir()) and not (folder / "manifest.private.json").is_file())):
         raise ValueError("The folder must be new or own a frozen manifest")
-    if not 1 <= max_llm1_calls <= len(ids):
-        raise ValueError("--max-llm1-calls must be between 1 and the number of ids (one call per case)")
+    if not 1 <= max_llm1_calls <= 2 * len(ids):
+        raise ValueError("--max-llm1-calls must be between 1 and twice the number of ids "
+                         "(one call per case plus its saturation fallback)")
     if not 0 < max_observation_hours <= MAX_OBSERVATION_HOURS:
         raise ValueError("--max-observation-hours must be above 0 and at most %d" % MAX_OBSERVATION_HOURS)
     if model_routing not in MODEL_ROUTINGS:
@@ -354,12 +355,14 @@ def pg_preflight(conn, plan, cid, record, request_hash=None, selection_context=N
     if conn.execute(CURRENT_READING_SQL, (cid,)).fetchall():
         raise Refused("existing_reading", "An existing reading is preserved; no new payment")
     prior = conn.execute(PRIOR_ATTEMPTS_SQL, (cid,)).fetchall()
-    claim_name = "gemini_extraction-" + str(request_hash) + ".claim.private.json"
-    claim_path = Path(plan["folder"]) / str(cid) / claim_name
-    owned = read_private(claim_path) if request_hash and claim_path.exists() else {}
+    case = Path(plan["folder"]) / str(cid)
     for entry in prior:
-        mine = (request_hash and entry["request_hash"] == request_hash and entry["id"] == owned.get("id")
-                and entry["claim_token"] == str(owned.get("claim_token"))
+        if entry["status"] == "pending":
+            continue  # Never claimed, or released after Gemini answered an HTTP error: nothing paid.
+        claim_path = case / ("gemini_extraction-" + str(entry["request_hash"]) + ".claim.private.json")
+        owned = read_private(claim_path) if request_hash and claim_path.exists() else {}
+        # Ours: the primary request or its saturation fallback, both claimed from this folder.
+        mine = (entry["id"] == owned.get("id") and entry["claim_token"] == str(owned.get("claim_token"))
                 and entry["status"] in {"running", "done"})
         if not mine:
             raise Refused("historical_attempt", "Historical paid attempt preserved; no repayment")

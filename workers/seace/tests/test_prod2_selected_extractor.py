@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+from google.genai import errors as genai_errors
 from pydantic import ValidationError
 from pypdf import PdfWriter
 from pypdf.generic import DecodedStreamObject, NameObject
@@ -297,6 +298,29 @@ def test_timeout_is_billing_unknown_not_zero_and_never_repeated(sdk, tmp_path):
         assert audit["model_call_started"] and not audit["provider_usage_known"]
     assert sdk.client.models.generate_content.call_count == 1
     assert sdk.client.files.delete.call_count == len(bundle["chunks"])
+    assert all("DO NOT STORE" not in path.read_text() for path in tmp_path.glob("gemini-selected-*.private.json"))
+
+
+@pytest.mark.parametrize("error,code,status", [
+    (lambda: genai_errors.ClientError(404, {"error": {"code": 404, "message": "DO NOT STORE", "status": "NOT_FOUND"}}),
+     404, "NOT_FOUND"),
+    (lambda: genai_errors.ServerError(503, {"error": {"code": 503, "message": "DO NOT STORE", "status": "UNAVAILABLE"}}),
+     503, "UNAVAILABLE"),
+])
+def test_an_http_error_answered_by_gemini_is_a_known_free_rejection(sdk, tmp_path, error, code, status):
+    """28/10: a retired model (404) and saturation (503) left the case 'uncertain' and blocked it."""
+    bundle = prepared(tmp_path)
+    sdk.client.models.generate_content.side_effect = error()
+    observed = []
+    with subject.SelectedGeminiExtractor(settings(), bundle, tmp_path, after_attempt=observed.append) as extractor:
+        with pytest.raises(subject.SelectedProviderRejected) as rejected:
+            extractor.extract(bundle["pdf_path"].read_bytes())
+        audit = extractor.attempts[0]
+    assert (rejected.value.code, rejected.value.status) == (code, status)
+    assert audit["status"] == "provider_rejected" and audit["cost_usd"] == 0 and audit["provider_usage_known"]
+    assert (audit["http_status"], audit["provider_error_code"]) == (code, status)
+    assert observed[0]["status"] == "provider_rejected" and observed[0]["provider_usage_known"] is True
+    assert sdk.client.models.generate_content.call_count == 1  # Never repeated here.
     assert all("DO NOT STORE" not in path.read_text() for path in tmp_path.glob("gemini-selected-*.private.json"))
 
 

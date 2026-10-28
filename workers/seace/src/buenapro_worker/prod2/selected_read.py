@@ -74,7 +74,21 @@ def paid_selected_read(conn, settings, folder, *, convocation_id, profile_id,
         return evaluation_id, bundle, hit, request_hash, execution
 
     try:
-        return execute(settings, selected_extractor.SelectedGeminiExtractor)
+        try:
+            return execute(settings, selected_extractor.SelectedGeminiExtractor)
+        except selected_extractor.SelectedProviderRejected as error:
+            # Gemini is overloaded (nothing billed): the same reading goes once to the fallback
+            # model, under its own reservation and request identity.
+            from buenapro_worker.prod6.gemini_pacing import SATURATION_CODES, saturation_fallback_model
+            fallback = saturation_fallback_model()
+            if error.code not in SATURATION_CODES or not fallback or fallback == settings.gemini_model:
+                raise
+            if hasattr(settings, "model_copy"):
+                fallback_settings = settings.model_copy(update={"gemini_model": fallback})
+            else:
+                fallback_settings = copy.copy(settings)
+                fallback_settings.gemini_model = fallback
+            return execute(fallback_settings, selected_extractor.SelectedGeminiExtractor)
     except Exception as error:
         from buenapro_worker.extraction.gemini import TruncatedResponseError
         if (fallback_config is None or not isinstance(error, TruncatedResponseError)

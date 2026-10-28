@@ -68,6 +68,37 @@ def test_jev_provider_failure_is_recorded_uncertain_without_retry(tmp_path):
     assert len(list(tmp_path.glob('*.failure.private.json')))==1
 
 
+def test_llm1_provider_rejection_releases_the_reservation_for_a_later_claim(monkeypatch,tmp_path):
+    from buenapro_worker.prod2.selected_extractor import SelectedProviderRejected
+    claims=[{"status":"claimed","id":8,"claim_token":"t-1","evaluation_key":"k"},
+            {"status":"claimed","id":8,"claim_token":"t-2","evaluation_key":"k"}]
+    monkeypatch.setattr(runner,"claim_evaluation",lambda *a,**kw:claims.pop(0))
+    calls=[]
+    conn=SimpleNamespace(execute=lambda sql,params=None:calls.append((sql,params)))
+    def rejected():
+        raise SelectedProviderRejected(503,"UNAVAILABLE")
+    with pytest.raises(SelectedProviderRejected):
+        runner.paid_llm1(conn,tmp_path,77,"a"*64,SimpleNamespace(gemini_model="gemini-test"),"principal",rejected)
+    assert "status='pending'" in calls[0][0] and calls[0][1]==(8,"t-1")
+    assert not (tmp_path/("gemini_extraction-"+"a"*64+".claim.private.json")).exists()
+    assert len(list(tmp_path.glob("gemini_extraction-*.claim-released-*.private.json")))==1
+    # A later attempt can claim and write its own owner receipt.
+    monkeypatch.setattr(runner,"complete_evaluation",lambda *a,**kw:None)
+    bundle={"cache_key":"prod2:llm1:"+"a"*64}
+    assert runner.paid_llm1(conn,tmp_path,77,"a"*64,SimpleNamespace(gemini_model="gemini-test"),"principal",lambda:bundle)[1]==bundle
+
+
+def test_llm1_unknown_failure_still_marks_the_reservation_uncertain(monkeypatch,tmp_path):
+    monkeypatch.setattr(runner,"claim_evaluation",lambda *a,**kw:{"status":"claimed","id":8,"claim_token":"t-1","evaluation_key":"k"})
+    calls=[]
+    conn=SimpleNamespace(execute=lambda sql,params=None:calls.append((sql,params)))
+    def timeout():
+        raise TimeoutError()
+    with pytest.raises(TimeoutError):
+        runner.paid_llm1(conn,tmp_path,77,"a"*64,SimpleNamespace(gemini_model="gemini-test"),"principal",timeout)
+    assert "status='uncertain'" in calls[0][0]
+
+
 def test_llm1_replay_bypasses_callback(monkeypatch,tmp_path):
     bundle={"cache_key":"prod2:llm1:"+"a"*64}
     monkeypatch.setattr(runner,"claim_evaluation",lambda *a,**kw:{"status":"cached","id":8,"result_json":bundle})

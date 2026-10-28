@@ -18,6 +18,7 @@ from typing import Any, Callable
 from uuid import uuid4
 
 from google import genai
+from google.genai import errors as genai_errors
 from google.genai import types
 from pydantic import ValidationError
 
@@ -53,6 +54,25 @@ def safe_gemini_error_facts(error):
 
 class SelectedTransportError(RuntimeError):
     """The exact selected PDF set could not be transported or audited safely."""
+
+
+class SelectedProviderRejected(RuntimeError):
+    """Gemini answered an HTTP error: no billable generation, the reading may be retried.
+
+    Only the code and the API status word are kept; provider messages are never stored.
+    """
+
+    def __init__(self, code: int, status: str | None = None):
+        super().__init__(f"Gemini answered HTTP {code}; no billable response")
+        self.code, self.status = code, status
+
+
+def provider_rejection(error) -> tuple[int, str | None] | None:
+    """(HTTP code, safe status) when Gemini itself answered an error, else None (outcome unknown)."""
+    if not isinstance(error, genai_errors.APIError):
+        return None
+    facts = safe_gemini_error_facts(error)
+    return (facts["http_status"], facts["provider_error_code"]) if facts["http_status"] and facts["http_status"] >= 400 else None
 
 
 def _now() -> str:
@@ -322,9 +342,17 @@ class SelectedGeminiExtractor(GeminiExtractor):
         try:
             response = state["actual"].models.generate_content(**kwargs)
         except Exception as error:
+            rejection = provider_rejection(error)
+            if rejection is not None:
+                # The provider answered with an HTTP error: nothing was generated or billed.
+                state["provider_rejected"] = rejection
             if state["after_attempt"] is not None:
                 state["after_attempt"]({**attempt, "provider": "gemini", "model_call_started": True,
-                    "provider_usage_known": False, "status": "error_unknown", **safe_gemini_error_facts(error)})
+                    **({"provider_usage_known": True, "status": "provider_rejected", "cost_usd": 0}
+                       if rejection is not None else {"provider_usage_known": False, "status": "error_unknown"}),
+                    **safe_gemini_error_facts(error)})
+            if rejection is not None:
+                raise SelectedProviderRejected(*rejection) from None
             raise
         usage = getattr(response, "usage_metadata", None)
         input_tokens = getattr(usage, "prompt_token_count", None)
@@ -400,6 +428,7 @@ class SelectedGeminiExtractor(GeminiExtractor):
             if state["response"] is not None:
                 parse_diagnostic = _parse_diagnostic(error, self._response_schema(doc_class))
             status = ("response_parse_failure" if state["response"] is not None else
+                      "provider_rejected" if state.get("provider_rejected") else
                       "error_unknown" if state["generation_started"] else
                       "budget_rejected" if state["budget_failed"] else "transport_failed")
             raise
@@ -410,9 +439,12 @@ class SelectedGeminiExtractor(GeminiExtractor):
                 **({"parse_diagnostic": parse_diagnostic} if parse_diagnostic is not None else {}),
                 "elapsed_seconds": round(max(0, time.perf_counter() - started_clock), 3),
                 "model_call_started": state["generation_started"],
-                "provider_usage_known": (state["response"] or {}).get("provider_usage_known", False),
+                "provider_usage_known": (state["response"] or {}).get(
+                    "provider_usage_known", bool(state.get("provider_rejected"))),
                 "cost_usd": (state["response"] or {}).get("cost_usd",
-                    None if state["generation_started"] else 0),
+                    None if state["generation_started"] and not state.get("provider_rejected") else 0),
+                **({"http_status": state["provider_rejected"][0],
+                    "provider_error_code": state["provider_rejected"][1]} if state.get("provider_rejected") else {}),
                 "remote_cleanup_pending": len(state["remote"]),
                 "remote_files_pending": sorted(state["remote"]),
                 "remote_cleanup_unknown": state["upload_unknown"]}

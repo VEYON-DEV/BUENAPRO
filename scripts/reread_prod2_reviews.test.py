@@ -281,9 +281,10 @@ def test_plan_accepts_the_unchanged_original_configuration(run):
 
 
 def test_plan_argument_and_folder_validation(run):
-    with pytest.raises(ValueError, match='between 1 and the number of ids'):
-        reread.frozen_plan(run.original, run.folder, run.ids, run.config, 4, 6)
-    with pytest.raises(ValueError, match='between 1 and the number of ids'):
+    # One call per case plus its saturation fallback, never more.
+    with pytest.raises(ValueError, match='between 1 and twice the number of ids'):
+        reread.frozen_plan(run.original, run.folder, run.ids, run.config, 2 * len(run.ids) + 1, 6)
+    with pytest.raises(ValueError, match='between 1 and twice the number of ids'):
         reread.frozen_plan(run.original, run.folder, run.ids, run.config, 0, 6)
     with pytest.raises(ValueError, match='max-observation-hours'):
         reread.frozen_plan(run.original, run.folder, run.ids, run.config, 3, 0)
