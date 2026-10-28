@@ -178,8 +178,11 @@ def _plan(config, directory, number, now, project_root):
         raise ServiceError("unsupported_paid_policy")
     requested = selected.plan(args)
     from .embedding_runtime import load_config, validate_frozen_config
-    expected = load_config(project_root / "docs/sources/prod2-embedding-reading.runtime.v5.json")
-    if validate_frozen_config(requested) != expected:
+    # v6 reads the bases' "Sección Específica" and trims to its maximum instead of sending the
+    # case to review; v5 stays valid for the epochs that started with it.
+    accepted = [load_config(project_root / f"docs/sources/prod2-embedding-reading.runtime.{version}.json")
+                for version in ("v5", "v6")]
+    if validate_frozen_config(requested) not in accepted:
         raise ServiceError("explicit_embeddings_v5_required")
     command = [sys.executable, "-u", str(project_root / "scripts/run_prod2_selected.py"), *argv]
     return {"version": VERSION, "epoch_id": epoch, "number": number, "folder": str(folder),

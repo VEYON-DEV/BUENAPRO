@@ -188,6 +188,36 @@ def test_one_explicit_epoch_finishes_and_restarting_does_not_repeat(paths, monke
         assert path.stat().st_mode & 0o777 == 0o600
 
 
+@pytest.mark.parametrize("version", ["v5", "v6"])
+def test_the_frozen_v5_and_v6_reading_configurations_are_accepted(paths, monkeypatch, version):
+    config, state = paths
+    value = configuration()
+    value["base_argv"][value["base_argv"].index("--embedding-config") + 1] = str(
+        ROOT / f"docs/sources/prod2-embedding-reading.runtime.{version}.json")
+    write(config, value)
+    children = fake_children(monkeypatch)
+    assert service.run(config, state, project_root=ROOT, now=lambda: NOW) == 0
+    plan = service._read(children[0].folder / "completion.private.json")
+    retrieval = plan["requested"]["embedding_reading"]["config"]["retrieval"]
+    assert retrieval["context_maximum_tokens"] == (45000 if version == "v6" else 30000)
+    assert ("context_selection_policy" in retrieval) is (version == "v6")
+
+
+def test_an_edited_reading_configuration_is_still_refused(paths, monkeypatch, tmp_path):
+    import json
+    edited = json.loads((ROOT / "docs/sources/prod2-embedding-reading.runtime.v6.json").read_text())
+    edited["retrieval"]["context_maximum_tokens"] = 90000
+    path = tmp_path / "edited.json"
+    path.write_text(json.dumps(edited))
+    config, state = paths
+    value = configuration()
+    value["base_argv"][value["base_argv"].index("--embedding-config") + 1] = str(path)
+    write(config, value)
+    children = fake_children(monkeypatch)
+    assert service.run(config, state, project_root=ROOT, now=lambda: NOW) == 2
+    assert children == []
+
+
 def test_next_epoch_requires_completed_evidence_and_explicit_cycle_budget(paths, monkeypatch):
     config, state = paths
     write(config, configuration(max_cycles=2))

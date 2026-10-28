@@ -17,6 +17,12 @@ from .partial_reading import is_partial_corpus, source_capture, compact_source_c
 
 RETRIEVAL_POLICY = "prod2_qualification_retrieval_v1"
 EXPANDED_CONTEXT_POLICY = "prod2_explicit_expanded_context_v1"
+# Optional, versioned: read the bases' "Sección Específica" (the procedure's own requirement,
+# qualification and conditions, until the annexes) instead of the expanded retrieval, and cut
+# the least related blocks when the context still exceeds its maximum. Absent, nothing changes.
+SPECIFIC_SECTION_POLICY = "prod2_specific_section_ranked_v1"
+_SECTION_START = "seccion especifica"
+_SECTION_END = {"anexos", "formatos y anexos", "anexos y formatos"}
 DEFAULT_CONFIG = {
     "policy_version": RETRIEVAL_POLICY,
     "semantic_seed_top_k_per_query": 6,
@@ -68,7 +74,8 @@ class RetrievalError(ValueError):
 def _config(config):
     result = deepcopy(DEFAULT_CONFIG)
     if config is not None:
-        if not isinstance(config, dict) or set(config) - (set(result) | {"context_expansion_policy"}):
+        if not isinstance(config, dict) or set(config) - (set(result) | {"context_expansion_policy",
+                                                                         "context_selection_policy"}):
             raise RetrievalError("Unknown retrieval configuration field")
         result.update(deepcopy(config))
     # The absent flag preserves every historical config/hash and the original
@@ -77,6 +84,9 @@ def _config(config):
     if ("context_expansion_policy" in result
             and result["context_expansion_policy"] != EXPANDED_CONTEXT_POLICY):
         raise RetrievalError("Unsupported explicit expanded context policy")
+    if ("context_selection_policy" in result
+            and result["context_selection_policy"] != SPECIFIC_SECTION_POLICY):
+        raise RetrievalError("Unsupported context selection policy")
     maximum_context = 350000 if result.get("context_expansion_policy") == EXPANDED_CONTEXT_POLICY else 100000
     if result["policy_version"] != RETRIEVAL_POLICY:
         raise RetrievalError("Unsupported retrieval policy")
@@ -326,6 +336,65 @@ def _marked_context(blocks, visual_coverage_warnings=None, partial_capture=None)
     return "\n\n".join(parts)
 
 
+def _heading(block, normal):
+    return " ".join(normal(block["text"]).split())
+
+
+def _specific_sections(blocks, normal):
+    """Block IDs of each document's "Sección Específica", from its heading to the annexes.
+
+    The heading is a short block of its own, without page numbers (an index line is not it).
+    A document without that heading, or with an implausibly short span, has no section.
+    """
+    by_candidate = {}
+    for block in blocks:
+        by_candidate.setdefault(block["candidate_id"], []).append(block)
+    sections = {}
+    for candidate, items in by_candidate.items():
+        start = next((index for index, block in enumerate(items)
+                      if (heading := _heading(block, normal)).startswith(_SECTION_START)
+                      and len(heading) <= 120 and not re.search(r"\d", heading)), None)
+        if start is None:
+            continue
+        end = next((index for index in range(start + 1, len(items))
+                    if _heading(items[index], normal) in _SECTION_END), len(items))
+        if end - start >= 3:
+            sections[candidate] = {block["id"] for block in items[start:end]}
+    return sections
+
+
+def _block_relevance(chunks, vectors, questions, literal_ids):
+    """Best cosine of each block against any qualification query; literal evidence ranks first."""
+    score = {}
+    for chunk, vector in zip(chunks, vectors):
+        best = max(math.fsum(left * right for left, right in zip(vector, question)) for question in questions)
+        for identifier in chunk["block_ids"]:
+            score[identifier] = max(score.get(identifier, -1.0), best)
+    for identifier in literal_ids:
+        score[identifier] = score.get(identifier, -1.0) + 1.0
+    return score
+
+
+def _trim_to_budget(selected, maximum, render, score):
+    """Drop the least related blocks until the rendered context fits; returns kept and dropped IDs."""
+    if token_count(render(selected)) <= maximum:
+        return selected, []
+    order = sorted(selected, key=lambda block: (score.get(block["id"], -1.0), -block["global_page"], block["id"]))
+    weight = {block["id"]: token_count(block["text"]) + 40 for block in selected}
+    total, dropped = token_count(render(selected)), []
+    for block in order:
+        if total <= maximum:
+            break
+        dropped.append(block["id"])
+        total -= weight[block["id"]]
+    kept = [block for block in selected if block["id"] not in set(dropped)]
+    remaining = [block for block in order if block["id"] not in set(dropped)]
+    while kept and token_count(render(kept)) > maximum:  # The estimate above is only a first cut.
+        dropped.append(remaining.pop(0)["id"])
+        kept = [block for block in selected if block["id"] not in set(dropped)]
+    return kept, dropped
+
+
 def retrieve_context(corpus, chunk_vectors, query_vectors, *, config=None, memoize_expansion=False):
     """Build a provenance-bound LLM subset without cutting requirements to save tokens.
 
@@ -372,11 +441,31 @@ def retrieve_context(corpus, chunk_vectors, query_vectors, *, config=None, memoi
     selected = [block for block in blocks if block["id"] in union]
     layout_review = corpus["config"]["ocr_textual_scan_policy"] in {
         "prod2_confident_text_layout_review_v2", "prod2_confident_text_layout_review_v3"}
-    selected_pages = {block["global_page"] for block in selected}
-    visual_coverage_warnings = [{"global_page": page["global_page"],
-        "warnings": page.get("visual_warnings", []), "method": page["method"]} for page in corpus["pages"]
-        if page["global_page"] in selected_pages and page.get("visual_warnings")] if layout_review else None
     partial_capture = source_capture(corpus) if is_partial_corpus(corpus["config"]) else None
+
+    def warnings_for(chosen):
+        pages = {block["global_page"] for block in chosen}
+        return [{"global_page": page["global_page"], "warnings": page.get("visual_warnings", []),
+                 "method": page["method"]} for page in corpus["pages"]
+                if page["global_page"] in pages and page.get("visual_warnings")] if layout_review else None
+
+    selection = None
+    if limits.get("context_selection_policy") == SPECIFIC_SECTION_POLICY:
+        sections = _specific_sections(blocks, memo.normal if memo is not None else _normal)
+        chosen = set().union(*sections.values()) if sections else set()
+        # A document without the section (a separate TDR, an annex file) keeps its retrieved blocks.
+        chosen |= {block["id"] for block in selected if block["candidate_id"] not in sections}
+        selected = [block for block in blocks if block["id"] in chosen]
+        literal_ids = set().union(*(_literal_matches(blocks, query, memo=memo) for query in queries))
+        selected, dropped = _trim_to_budget(
+            selected, limits["context_maximum_tokens"],
+            lambda chosen_blocks: _marked_context(chosen_blocks, warnings_for(chosen_blocks), partial_capture),
+            _block_relevance(chunks, vectors, questions, literal_ids))
+        union = {block["id"] for block in selected}
+        selection = {"policy_version": SPECIFIC_SECTION_POLICY, "specific_section_candidates": sorted(sections),
+                     "specific_section_block_count": sum(len(ids) for ids in sections.values()),
+                     "trimmed_block_ids": sorted(dropped)}
+    visual_coverage_warnings = warnings_for(selected)
     text = _marked_context(selected, visual_coverage_warnings, partial_capture)
     context_tokens = token_count(text)
     reasons = []
@@ -388,6 +477,8 @@ def retrieve_context(corpus, chunk_vectors, query_vectors, *, config=None, memoi
         reasons.append("referenced_evidence_unresolved")
     if context_tokens > limits["context_maximum_tokens"]:
         reasons.append("expanded_context_exceeds_budget_without_truncation")
+    if selection is not None and selection["trimmed_block_ids"]:
+        reasons.append("context_trimmed_by_relevance")
     selected_blocks = [{"block_id": block["id"], "text": block["text"],
         "text_sha256": block["text_sha256"], "global_page": block["global_page"],
         "page_start": block["global_page"], "page_end": block["global_page"],
@@ -423,6 +514,8 @@ def retrieve_context(corpus, chunk_vectors, query_vectors, *, config=None, memoi
                       visual_coverage_warnings=visual_coverage_warnings)
     if partial_capture is not None:
         result["source_capture"] = partial_capture
+    if selection is not None:
+        result["context_selection"] = selection
     result["retrieval_hash"] = canonical_hash(result)
     return result
 
