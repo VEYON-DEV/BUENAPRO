@@ -34,6 +34,19 @@ def test_preset_is_exactly_thirty_from_four_business_lines_no_silent_alias_expan
     assert not {"ia", "soporte", "sistema", "datos", "automatización"} & set(selected["keywords"])
 
 
+def test_daily_service_preset_adds_two_or_more_industrial_signals_per_batch_to_the_digital_thirty():
+    files = ["prod2-keyword-presets.v1.json", "prod2-business-batches.v1.json", "prod2-convenio-keywords.v3.json"]
+    loaded = [json.loads((ROOT / "docs/sources" / name).read_text()) for name in files]
+    selected = select_keyword_preset(*loaded, "convenio60")
+    digital = select_keyword_preset(*loaded, "digitales30")
+    assert len(selected["keywords"]) == len(set(selected["keywords"])) == 60
+    assert set(digital["keywords"]) < set(selected["keywords"])
+    counts = {row["id"]: row["search_keyword_count"] for row in selected["business_plan"]["batches"]}
+    assert len(counts) == 12 and all(count >= 2 for count in counts.values())
+    assert sum(counts[key] for key in ("software_desarrollo", "licencias_cloud", "ia_datos", "soporte_integraciones")) == 30
+    assert {"plc", "scada", "tableros eléctricos", "instrumentación industrial"} <= set(selected["keywords"])
+
+
 @pytest.mark.parametrize("mutation", ["duplicate", "unknown", "stale_source", "stale_business", "unknown_id"])
 def test_preset_rejects_invalid_or_stale_subsets(mutation):
     files = ["prod2-keyword-presets.v1.json", "prod2-business-batches.v1.json", "prod2-convenio-keywords.v3.json"]

@@ -1000,14 +1000,55 @@ Imagen `buenapro-worker-prod2:<tag>`, construida con `infra/docker/prod2.Dockerf
 - **Ventana:** `window.first_to` del primer ciclo debe ser la fecha de hoy en Lima. En los ciclos
   siguientes se calcula sola.
 - **Topes:** `--max-candidates`, `--max-accepted`, `--max-jev-calls`, `--max-llm1-calls` y
-  `--max-embedding-calls` son frenos de seguridad, no recortes. Si la búsqueda trae más candidatas
-  que el tope, se corta (`stop_requested`). Si JEV acepta más que el tope, quedan en cola. En los
-  dos casos el ciclo termina en `attention_required` (`final_report_source_incomplete`). Deben cubrir
-  todo el alcance; el gasto real lo fija la búsqueda.
+  `--max-embedding-calls` son frenos de seguridad, no recortes, y se cuentan por ciclo.
+  - Si la búsqueda llega al tope de candidatas (convocatorias únicas, antes de JEV), se corta: el
+    ciclo termina en `attention_required` (`final_report_source_incomplete`) y no se reintenta.
+  - Si JEV acepta más que el tope, quedan en cola (`final_report_queue_incomplete`). Cuentan también
+    las aceptadas que ya tienen lectura.
+  - Los topes de JEV, LLM1 y embeddings solo dejan casos en revisión.
+  - Deben cubrir todo el alcance; el gasto real lo fija la búsqueda.
 - **`--document-previews`:** con él el selector lee el contenido de PDF, DOC/DOCX y miembros de
   ZIP/RAR. Sin él solo ve nombres, y los expedientes en RAR quedan en `selection_needs_review`.
 - **Reintentar tras `attention_required`:** exige un state dir nuevo. El anterior se conserva como
   evidencia.
+
+### Servicio diario (desde el 28/10/2026)
+
+Mismo contenedor y receta de arranque, con datos en `~/buenapro/runtime/prod2-service-20261028/`
+(la carpeta del piloto queda como evidencia). Config:
+
+- Preset `--keyword-preset convenio60`: las `digitales30` más 30 señales industriales para DIN.
+  - Cada keyword cuesta unas 12 peticiones a SEACE por año: dos objetos (bien y servicio), y en
+    cada uno sesión, búsqueda y una segunda sesión que confirma la primera página.
+  - Las 60 suman unas 720 peticiones por ciclo, más fichas y descargas de lo aceptado.
+  - `--business-scope todas` serían 166 keywords, unas 2 000 peticiones.
+- `--years window`: el servicio busca los años que abarca la ventana; el cambio de año no requiere
+  tocar la config.
+- `start_time` `"01:00"` (Lima): cada ciclo siguiente arranca a esa hora, al menos
+  `interval_seconds` después del anterior. Con `start_time`, `interval_seconds` (900) solo marca
+  cada cuánto se revisa la salida caída.
+- Ventana de 3 días: cubre publicaciones que SEACE indexa tarde.
+  - Cada ciclo vuelve a buscar todas las keywords: no hay caché entre ciclos.
+  - Lo ya leído (`--preserve-prior-readings`) no se descarga ni se paga otra vez.
+  - Los casos sin lectura vuelven a pasar por ficha y descargas mientras estén en la ventana.
+- Lectura v6 con `--llm1-model-routing fixed`. La ruta `pages20` manda a `gemini-2.5-flash-lite`,
+  retirado para nuestra llave.
+
+Qué hace el servicio cuando un ciclo no termina limpio:
+
+- **Bloqueo a mitad del ciclo** (`final_report_source_access_blocked`), sea un 403/429 propio o
+  una pausa abierta por PROD6 o la web:
+  - la carpeta queda como `<época>.blocked-<ns>`;
+  - el servicio espera la pausa compartida (`source_paused`) y repite el ciclo en una carpeta nueva
+    con el mismo sweep, así que las consultas ya completas salen de la caché sin pedir a SEACE;
+  - hasta 3 veces por ciclo; la cuarta vez se detiene.
+- **Búsqueda incompleta** sin llegar al tope de candidatas (`final_report_source_incomplete`):
+  espera 30 min en `retry_wait` y reintenta una vez; si se repite, se detiene.
+- **Solo se reintenta si los pagos están limpios:** sin intentos de uso desconocido, sin corte de
+  embeddings y sin archivos `*guard*`. Cualquier otro motivo se detiene como antes.
+- El cupo de reintentos (`retries` en el estado) sobrevive a un reinicio del contenedor.
+- Cada ciclo terminado manda a Telegram: candidatas, aceptadas, leídas, en revisión, costo y hora
+  del próximo ciclo.
 
 Piloto del 27/10/2026, con «software», 2026, ventana de 7 días y 1 ciclo:
 
@@ -1015,7 +1056,8 @@ Piloto del 27/10/2026, con «software», 2026, ventana de 7 días y 1 ciclo:
 - Costo: US$ 0,0194, repartido en 11 llamadas JEV, 19 de embeddings y 1 de Gemini.
 - Solo 1 llegó a lectura LLM1. Las otras 7 quedaron en `EmbeddingPreparationReview`
   (`retrieval_context_needs_expansion_or_review`): el contexto recuperado supera
-  `context_maximum_tokens` (30 000) de la config v5. El servicio exige exactamente v5.
+  `context_maximum_tokens` (30 000) de la config v5. Hoy el servicio acepta la v5 o la v6 congeladas;
+  la v6 lee la Sección Específica y recorta por relevancia (máx. 45 000).
 
 ### Releer las revisiones con otra configuración (`reread_prod2_reviews.py`)
 

@@ -11,8 +11,16 @@ and checks again; a child's partial epoch folder is kept renamed, never adopted.
 A shared SEACE block (403/429 seen by PROD6, the web or an earlier child, see
 ``seace.shared_gate``) is not a failure either: before each cycle the service waits it out
 in ``source_paused``, with the block's source as ``reason`` and ``resume_at``.
-Operations get a best-effort alert when a pause starts, on ``attention_required`` and on
-``complete``.
+A cycle cut by such a block, or a search pass left incomplete without hitting the candidate
+cap, is retried in a fresh folder with the same sweep (completed queries replay from the
+keyword cache) only while its payment and dispatch evidence is clean: blocks up to
+``RETRY_LIMITS["blocked"]`` times per cycle after the shared pause, an incomplete pass once
+after ``INCOMPLETE_RETRY_SECONDS`` in ``retry_wait``. Every other stop still needs review.
+``--years window`` searches the years the cycle's window spans. An optional ``start_time``
+(HH:MM, Lima) starts each later cycle at that hour, at least ``interval_seconds`` after the
+previous one ends; ``interval_seconds`` still paces egress checks.
+Operations get a best-effort alert when a pause starts, after each cycle, on
+``attention_required`` and on ``complete``.
 """
 from __future__ import annotations
 
@@ -41,6 +49,12 @@ from .keyword_chain import assess_final_report
 VERSION = 1
 LIMA = ZoneInfo("America/Lima")
 IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}")
+START_TIME = re.compile(r"([01][0-9]|2[0-3]):[0-5][0-9]")
+RETRY_LIMITS = {"blocked": 3, "incomplete": 1}
+INCOMPLETE_RETRY_SECONDS = 1800
+RESUMABLE = ("waiting", "egress_unavailable", "source_paused", "retry_wait")
+_PAYMENT_GUARDS = ("usage_unknown_attempts", "embedding_unknown_dispatch_attempts",
+                   "embedding_usage_unknown_attempts", "embedding_receipt_conflicts")
 
 
 class ServiceError(ValueError):
@@ -97,7 +111,7 @@ def _config(path):
     if path.stat().st_mode & 0o077:
         raise ServiceError("configuration_not_private")
     allowed = {"version", "enabled", "operator_hold", "first_epoch_id", "base_argv",
-               "interval_seconds", "window", "max_cycles"}
+               "interval_seconds", "window", "max_cycles", "start_time"}
     if (not isinstance(value, dict) or set(value) - allowed
             or type(value.get("version")) is not int or value["version"] != VERSION
             or ("enabled" in value and type(value["enabled"]) is not bool)
@@ -105,8 +119,11 @@ def _config(path):
         raise ServiceError("invalid_configuration")
     if value.get("operator_hold") == "source_403" or value.get("enabled") is False:
         return value
-    if value.get("enabled") is not True or not allowed - {"operator_hold"} <= set(value):
+    if value.get("enabled") is not True or not allowed - {"operator_hold", "start_time"} <= set(value):
         raise ServiceError("explicit_enabled_configuration_required")
+    if "start_time" in value and (not isinstance(value["start_time"], str)
+                                  or not START_TIME.fullmatch(value["start_time"])):
+        raise ServiceError("invalid_start_time")
     if (not isinstance(value["first_epoch_id"], str)
             or not IDENTIFIER.fullmatch(value["first_epoch_id"])
             or type(value["interval_seconds"]) is not int
@@ -134,15 +151,31 @@ def _selected(project_root):
     return module
 
 
-def _plan(config, directory, number, now, project_root):
-    """Validate with the existing pure CLI planner; never call its main()."""
+def _window_years(base_argv, start, end):
+    """``--years window`` becomes the years the window spans, so a new year needs no new config."""
+    years = ",".join(str(year) for year in range(start.year, end.year + 1))
+    argv = list(base_argv)
+    for index, value in enumerate(argv):
+        if value == "--years=window":
+            argv[index] = "--years=" + years
+        elif value == "--years" and index + 1 < len(argv) and argv[index + 1] == "window":
+            argv[index + 1] = years
+    return argv
+
+
+def _plan(config, directory, number, now, project_root, *, started=False):
+    """Validate with the existing pure CLI planner; never call its main().
+
+    ``started`` (a pause or retry already recorded for this cycle) lets cycle 1 move its
+    window to today instead of stopping when the wait crossed midnight in Lima.
+    """
     selected = _selected(project_root)
     epoch = config["first_epoch_id"] + f"-{number:06d}"
     folder = _literal(directory / "runs" / epoch)
     if folder.exists():
         raise ServiceError("existing_epoch_requires_manual_review")
     today = now.astimezone(LIMA).date()
-    end = date.fromisoformat(config["window"]["first_to"]) if number == 1 else today
+    end = date.fromisoformat(config["window"]["first_to"]) if number == 1 and not started else today
     if end != today:
         raise ServiceError("historical_or_future_epoch_not_authorized")
     start = end - timedelta(days=config["window"]["days"] - 1)
@@ -150,7 +183,8 @@ def _plan(config, directory, number, now, project_root):
     forbidden = {"--folder", "--sweep-id", "--cache-folder", "--keyword-cache-folder",
                  "--from-date", "--to-date", "--months", "--embedding-resume-from",
                  "--all-results", "--dry-run", "--preflight", "--keyword-status"}
-    flags = {v.split("=", 1)[0] for v in config["base_argv"] if v.startswith("--")}
+    base_argv = _window_years(config["base_argv"], start, end)
+    flags = {v.split("=", 1)[0] for v in base_argv if v.startswith("--")}
     if (flags & forbidden or any(v.startswith("--prepare-") for v in flags)
             or flags - set(parser._option_string_actions)):
         raise ServiceError("forbidden_or_abbreviated_base_argument")
@@ -163,7 +197,7 @@ def _plan(config, directory, number, now, project_root):
                  "--keyword-preset", "--all-keywords"}
     if not required <= flags or not selectors & flags:
         raise ServiceError("explicit_scope_and_paid_policy_required")
-    argv = [*config["base_argv"], "--folder", str(folder), "--sweep-id", epoch,
+    argv = [*base_argv, "--folder", str(folder), "--sweep-id", epoch,
             "--cache-folder", str(directory / "selected-cache"),
             "--keyword-cache-folder", str(directory / "keyword-cache"),
             "--from-date", start.isoformat(), "--to-date", end.isoformat()]
@@ -211,18 +245,66 @@ def _gate(plan):
     decision = assess_final_report(report, plan["epoch_id"], plan["exit_code"])
     if not decision["advance"]:
         raise ServiceError("final_report_" + decision["reason"])
-    costs = report.get("costs", {})
-    guarded = ("usage_unknown_attempts", "embedding_unknown_dispatch_attempts",
-               "embedding_usage_unknown_attempts", "embedding_receipt_conflicts")
-    if (any(type(costs.get(k)) is not int or costs[k] != 0 for k in guarded)
-            or report.get("embedding_dispatch_stop_requested") is not False
-            or list(folder.rglob("*guard*.json"))):
+    if not _payments_clean(report, folder):
         raise ServiceError("payment_or_dispatch_guard_requires_review")
     refs = {"report_sha256": hashlib.sha256(reports[0].read_bytes()).hexdigest(),
             "manifest_sha256": hashlib.sha256((folder / "manifest.private.json").read_bytes()).hexdigest()}
     if "completion_refs" in plan and plan["completion_refs"] != refs:
         raise ServiceError("completed_epoch_evidence_changed")
     return refs
+
+
+def _payments_clean(report, folder):
+    costs = report.get("costs")
+    return (isinstance(costs, dict)
+            and all(type(costs.get(k)) is int and costs[k] == 0 for k in _PAYMENT_GUARDS)
+            and report.get("embedding_dispatch_stop_requested") is False
+            and not list(folder.rglob("*guard*.json")))
+
+
+def _retry_kind(plan, reason):
+    """``blocked``/``incomplete`` when a stopped cycle may run again, else None.
+
+    Only called after ``_gate`` refused the final report itself, so plan, argv, manifest
+    and the single report were already proven to belong to this cycle.
+    """
+    if reason not in ("final_report_source_access_blocked", "final_report_source_incomplete"):
+        return None
+    folder = _literal(plan["folder"])
+    report = _read(next(folder.glob("report-*.private.json")))
+    if not _payments_clean(report, folder):
+        return None
+    if reason == "final_report_source_access_blocked":
+        return "blocked"
+    limits = (report.get("execution_policy") or {}).get("effective_limits") or {}
+    seen = (report.get("redis") or {}).get("seen")
+    if limits.get("max_candidates") is not None and (type(seen) is not int or seen >= limits["max_candidates"]):
+        return None  # The candidate cap cut the search; the same cap would cut it again.
+    return "incomplete"
+
+
+def _next_cycle_at(config, moment):
+    if "start_time" not in config:
+        return moment + timedelta(seconds=config["interval_seconds"])
+    hour, minute = (int(part) for part in config["start_time"].split(":"))
+    earliest = (moment + timedelta(seconds=config["interval_seconds"])).astimezone(LIMA)
+    start = earliest.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    return (start if start >= earliest else start + timedelta(days=1)).astimezone(timezone.utc)
+
+
+def _cycle_alert(plan, number, next_at):
+    """Counts and known cost of a completed cycle; never record text from the report."""
+    folder = _literal(plan["folder"])
+    report = _read(next(folder.glob("report-*.private.json")))
+    summary = assess_final_report(report, plan["epoch_id"], plan["exit_code"])["summary"]
+    cost = summary.get("costs", {}).get("known_cost_usd", 0)
+    text = (f"BuenaPro PROD2: ciclo {number} listo ({plan['published_from']} a {plan['published_to']}): "
+            f"{summary.get('redis', {}).get('seen', 0)} candidatas, {summary.get('accepted', 0)} aceptadas, "
+            f"{summary.get('llm1_complete', 0)} leídas, {summary.get('requires_review', 0)} en revisión; "
+            f"US$ {cost:.4f}.")
+    if next_at is not None:
+        text += f" Próximo ciclo: {next_at.astimezone(LIMA):%d/%m %H:%M} (Lima)."
+    return text
 
 
 def run(config_path, state_dir, *, project_root=Path("/app"), stop=None, now=None):
@@ -284,8 +366,7 @@ def run(config_path, state_dir, *, project_root=Path("/app"), stop=None, now=Non
                 checkpoint("blocked_source" if config.get("operator_hold") else "prepared",
                            reason=config.get("operator_hold") or "operator_disabled")
                 return 2
-            if state.get("status") not in (None, "waiting", "complete", "blocked_source", "prepared",
-                                           "egress_unavailable", "source_paused"):
+            if state.get("status") not in (None, "complete", "blocked_source", "prepared", *RESUMABLE):
                 raise ServiceError("interrupted_epoch_requires_manual_review")
             if state.get("plan") and state.get("config_sha256") != _hash(config):
                 raise ServiceError("active_configuration_changed")
@@ -293,8 +374,7 @@ def run(config_path, state_dir, *, project_root=Path("/app"), stop=None, now=Non
                 _gate(state["plan"])
                 return 0
             # A hold may be lifted only with the full explicit enabled contract.
-            if state.get("plan") and state.get("status") not in ("waiting", "egress_unavailable",
-                                                                 "source_paused"):
+            if state.get("plan") and state.get("status") not in RESUMABLE:
                 raise ServiceError("interrupted_epoch_requires_manual_review")
             if threading.current_thread() is threading.main_thread():
                 for sig in (signal.SIGTERM, signal.SIGINT):
@@ -323,9 +403,10 @@ def run(config_path, state_dir, *, project_root=Path("/app"), stop=None, now=Non
                     if source_pause(shared_block):
                         break
                     continue
+                started = state.get("status") in ("egress_unavailable", "source_paused", "retry_wait")
                 for stale in ("paused_since", "resume_at", "http_status"):
                     state.pop(stale, None)
-                plan = _plan(config, directory, number, now(), project_root)
+                plan = _plan(config, directory, number, now(), project_root, started=started)
                 folder = Path(plan["folder"])
                 folder.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
                 folder.mkdir(mode=0o700)  # Never adopt/retry another execution's folder.
@@ -357,14 +438,45 @@ def run(config_path, state_dir, *, project_root=Path("/app"), stop=None, now=Non
                 checkpoint("validating", plan=plan)
                 if stop.is_set():
                     raise ServiceError("interrupted_epoch_requires_manual_review")
-                plan["completion_refs"] = _gate(plan)
+                try:
+                    plan["completion_refs"] = _gate(plan)
+                except ServiceError as error:
+                    try:
+                        kind = _retry_kind(plan, str(error))
+                    except Exception:
+                        kind = None
+                    retries = state.get("retries") or {}
+                    retries = retries if retries.get("cycle") == number else {"cycle": number}
+                    if kind is None or retries.get(kind, 0) >= RETRY_LIMITS[kind]:
+                        raise
+                    retries = {**retries, kind: retries.get(kind, 0) + 1}
+                    # As with an egress failure the attempt stays as evidence and the same sweep
+                    # resumes in a fresh folder; a block first waits out the shared pause.
+                    folder.rename(folder.with_name(f"{folder.name}.{kind}-{time.time_ns()}"))
+                    wait = (INCOMPLETE_RETRY_SECONDS if kind == "incomplete"
+                            else 0 if shared_gate.enabled() else shared_gate.block_ms() / 1000)
+                    checkpoint("retry_wait", reason=str(error), plan=None, retries=retries,
+                               next_cycle_at=(now() + timedelta(seconds=wait)).isoformat())
+                    if wait:
+                        notify_ops(f"BuenaPro PROD2: ciclo {number} sin terminar ({error}); "
+                                   f"se reintenta en {int(wait // 60)} min.")
+                        if stop.wait(wait):
+                            break
+                    continue
                 _write(folder / "completion.private.json", plan)
-                checkpoint("complete" if number >= config["max_cycles"] else "waiting",
-                           plan=plan, completed_cycles=number,
-                           next_cycle_at=(now() + timedelta(seconds=config["interval_seconds"])).isoformat())
-                if number >= config["max_cycles"]:
-                    notify_ops(f"BuenaPro PROD2: servicio completo; ciclos terminados: {number}.")
+                last = number >= config["max_cycles"]
+                next_at = _next_cycle_at(config, now())
+                state.pop("retries", None)
+                checkpoint("complete" if last else "waiting", plan=plan, completed_cycles=number,
+                           next_cycle_at=next_at.isoformat())
+                try:
+                    alert = _cycle_alert(plan, number, None if last else next_at)
+                except Exception:
+                    alert = f"BuenaPro PROD2: ciclo {number} listo."
+                if last:
+                    notify_ops(f"{alert} Servicio completo; ciclos terminados: {number}.")
                     return 0
+                notify_ops(alert)
                 number += 1
             raise ServiceError("operator_stop_requires_review")
         except Exception as error:

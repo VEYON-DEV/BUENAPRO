@@ -287,14 +287,17 @@ def test_checkpoint_failure_after_popen_drains_owned_child_without_retry(paths, 
     assert events == ["started", signal.SIGTERM, "waited"]
 
 
-@pytest.mark.parametrize("fault", ["source403", "queue", "unknown_payment", "dispatch", "guard", "no_report"])
+@pytest.mark.parametrize("fault", ["source403_unknown_payment", "source403_guard", "queue",
+                                   "unknown_payment", "dispatch", "guard", "no_report"])
 def test_unsafe_completion_stops_without_second_child_or_restart(paths, monkeypatch, fault):
     config, state = paths
     write(config, configuration(max_cycles=2))
 
     def mutate(value):
-        if fault == "source403":
+        if fault.startswith("source403"):
             value["coverage"][0]["errors"] = [{"code": "source_403"}]
+        if fault == "source403_unknown_payment":
+            value["costs"]["usage_unknown_attempts"] = 1
         elif fault == "queue":
             value["redis"]["pending"] = 1
         elif fault == "unknown_payment":
@@ -303,7 +306,7 @@ def test_unsafe_completion_stops_without_second_child_or_restart(paths, monkeypa
             value["embedding_dispatch_stop_requested"] = True
 
     children = fake_children(monkeypatch, mutate=mutate, no_report=fault == "no_report")
-    if fault == "guard":
+    if fault.endswith("guard"):
         original = service._gate
 
         def guarded(plan):
@@ -449,17 +452,28 @@ def test_child_exit_for_egress_is_not_a_gate_failure_or_source_block(paths, monk
     assert len(egress.alerts) == 3 and "recovered" in egress.alerts[1] and "completo" in egress.alerts[2]
 
 
-def test_source_denial_exit_is_still_attention_required_without_egress_alert(paths, monkeypatch):
+def denied(value):
+    value["coverage"][0].update(errors=[{"code": "source_403"}], coverage_complete=False)
+
+
+def test_source_denial_without_the_gate_waits_the_block_period_and_stops_after_the_retry_budget(paths, monkeypatch):
     config, state = paths
     write(config, configuration())
-    fake_children(monkeypatch, exit_code=2, mutate=lambda value: value["coverage"][0].update(
-        errors=[{"code": "source_403"}], coverage_complete=False))
+    monkeypatch.delenv("SEACE_SHARED_GATE", raising=False)
+    children = fake_children(monkeypatch, exit_code=2, mutate=denied)
     egress = Egress(monkeypatch, [])
-    assert service.run(config, state, project_root=ROOT, now=lambda: NOW) == 2
+    clock = Clock()
+    assert service.run(config, state, project_root=ROOT, now=clock.now, stop=clock) == 2
+    assert len(children) == 1 + service.RETRY_LIMITS["blocked"]
+    assert clock.current == NOW + timedelta(seconds=3 * service.shared_gate.block_ms() / 1000)
     saved = service._read(state / "state.private.json")
     assert saved["status"] == "attention_required" and saved["reason"] == "final_report_source_access_blocked"
-    assert len(egress.alerts) == 1 and "egress" not in egress.alerts[0]
-    assert "attention_required" in egress.alerts[0] and "final_report_source_access_blocked" in egress.alerts[0]
+    assert saved["retries"] == {"cycle": 1, "blocked": 3}
+    runs = sorted(path.name for path in (state / "runs").iterdir())
+    assert runs[0] == children[0].folder.name and sum(".blocked-" in name for name in runs) == 3
+    assert not any("egress" in alert for alert in egress.alerts)
+    assert sum("sin terminar" in alert and "180 min" in alert for alert in egress.alerts) == 3
+    assert "attention_required" in egress.alerts[-1] and "final_report_source_access_blocked" in egress.alerts[-1]
 
 
 # --- Shared SEACE block: pause before the cycle, resume on its own, and operations alerts ---
@@ -605,3 +619,176 @@ def test_attention_required_alerts_with_the_reason_and_a_restart_loop_does_not_r
         assert service.run(config, state, project_root=ROOT, now=lambda: NOW) == 2
     assert service._read(state / "state.private.json")["reason"] == "interrupted_epoch_requires_manual_review"
     assert len(egress.alerts) == 2  # One alert for the new reason, none for the repeats.
+
+
+# --- Continuous service: retries in a fresh folder, years by window, start hour, cycle alerts ---
+
+def scripted(*mutations):
+    """One mutation per child, in order; later children write the clean report."""
+    pending = list(mutations)
+    return lambda value: pending.pop(0)(value) if pending else None
+
+
+def incomplete(value):
+    value["coverage"][0]["coverage_complete"] = False
+    value["source_coverage_complete"] = False
+
+
+def test_a_block_inside_the_cycle_waits_the_shared_pause_and_resumes_the_same_sweep(paths, monkeypatch, fake_gate):
+    config, state = paths
+    write(config, configuration())
+
+    def blocked(value):
+        shared_block(fake_gate, source="prod2", seconds=90)  # The child's own 403 opens the shared pause.
+        denied(value)
+
+    children = fake_children(monkeypatch, exit_code=2, mutate=scripted(blocked))
+    egress = Egress(monkeypatch, [])
+    clock, seen = Clock(), []
+
+    def on_wait():
+        seen.append(service._read(state / "state.private.json"))
+        fake_gate.advance(90_000)
+
+    clock.on_wait = on_wait
+    assert service.run(config, state, project_root=ROOT, now=clock.now, stop=clock) == 0
+    assert len(children) == 2 and children[0].folder == children[1].folder  # Same epoch and sweep id.
+    assert [value["status"] for value in seen] == ["source_paused"] and seen[0]["reason"] == "prod2"
+    runs = sorted(path.name for path in (state / "runs").iterdir())
+    assert len(runs) == 2 and runs[1].startswith(runs[0] + ".blocked-")
+    saved = service._read(state / "state.private.json")
+    assert saved["status"] == "complete" and "retries" not in saved
+    assert len(egress.alerts) == 2 and "bloqueó" in egress.alerts[0] and "prod2" in egress.alerts[0]
+    assert "ciclo 1 listo" in egress.alerts[1] and "Servicio completo" in egress.alerts[1]
+
+
+def test_an_incomplete_search_is_retried_once_after_a_short_wait(paths, monkeypatch):
+    config, state = paths
+    write(config, configuration())
+    children = fake_children(monkeypatch, mutate=scripted(incomplete))
+    egress = Egress(monkeypatch, [])
+    clock, seen = Clock(), []
+    clock.on_wait = lambda: seen.append(service._read(state / "state.private.json"))
+    assert service.run(config, state, project_root=ROOT, now=clock.now, stop=clock) == 0
+    assert len(children) == 2 and clock.current == NOW + timedelta(seconds=service.INCOMPLETE_RETRY_SECONDS)
+    assert [value["status"] for value in seen] == ["retry_wait"]
+    assert seen[0]["reason"] == "final_report_source_incomplete" and seen[0]["plan"] is None
+    assert seen[0]["retries"] == {"cycle": 1, "incomplete": 1}
+    assert "sin terminar" in egress.alerts[0] and "30 min" in egress.alerts[0]
+    assert service._read(state / "state.private.json")["status"] == "complete"
+
+
+def test_a_second_incomplete_search_in_the_same_cycle_stops(paths, monkeypatch):
+    config, state = paths
+    write(config, configuration())
+    children = fake_children(monkeypatch, mutate=incomplete)
+    Egress(monkeypatch, [])
+    clock = Clock()
+    assert service.run(config, state, project_root=ROOT, now=clock.now, stop=clock) == 2
+    assert len(children) == 2
+    assert service._read(state / "state.private.json")["reason"] == "final_report_source_incomplete"
+
+
+def test_a_search_cut_by_the_candidate_cap_is_not_retried(paths, monkeypatch):
+    config, state = paths
+    write(config, configuration())
+
+    def capped(value):
+        incomplete(value)
+        value["execution_policy"] = {"effective_limits": {"max_candidates": 4}}
+        value["redis"]["seen"] = 4
+
+    children = fake_children(monkeypatch, mutate=capped)
+    Egress(monkeypatch, [])
+    clock = Clock()
+    assert service.run(config, state, project_root=ROOT, now=clock.now, stop=clock) == 2
+    assert len(children) == 1 and clock.current == NOW
+    assert service._read(state / "state.private.json")["reason"] == "final_report_source_incomplete"
+
+
+def test_the_retry_budget_survives_a_restart_while_waiting(paths, monkeypatch):
+    config, state = paths
+    write(config, configuration())
+    children = fake_children(monkeypatch, mutate=incomplete)
+    Egress(monkeypatch, [])
+    state.mkdir(mode=0o700)
+    service._write(state / "state.private.json", {"version": 1, "status": "retry_wait",
+        "reason": "final_report_source_incomplete", "retries": {"cycle": 1, "incomplete": 1}})
+    assert service.run(config, state, project_root=ROOT, now=lambda: NOW) == 2
+    assert len(children) == 1
+    assert service._read(state / "state.private.json")["reason"] == "final_report_source_incomplete"
+
+
+def test_a_first_cycle_retried_after_midnight_in_lima_searches_up_to_the_new_day(paths, monkeypatch):
+    config, state = paths
+    write(config, configuration())  # first_to 2026-10-19
+    children = fake_children(monkeypatch, mutate=scripted(incomplete))
+    Egress(monkeypatch, [])
+    clock = Clock()
+    clock.current = datetime(2026, 10, 20, 4, 50, tzinfo=timezone.utc)  # 23:50 on the 19th in Lima.
+    assert service.run(config, state, project_root=ROOT, now=clock.now, stop=clock) == 0
+    assert service._read(children[1].folder / "plan.private.json")["published_to"] == "2026-10-20"
+
+
+def test_years_window_searches_every_year_the_window_spans(paths, monkeypatch):
+    config, state = paths
+    value = configuration()
+    value["window"]["first_to"] = "2026-01-02"
+    value["base_argv"][value["base_argv"].index("--years") + 1] = "window"
+    write(config, value)
+    children = fake_children(monkeypatch)
+    Egress(monkeypatch, [])
+    assert service.run(config, state, project_root=ROOT,
+                       now=lambda: datetime(2026, 1, 2, 15, tzinfo=timezone.utc)) == 0
+    argv = service._read(children[0].folder / "completion.private.json")["argv"]
+    assert argv[argv.index("--years") + 1] == "2025,2026" and "window" not in argv
+
+
+def test_start_time_schedules_later_cycles_at_that_hour_in_lima_and_alerts_each_cycle(paths, monkeypatch):
+    config, state = paths
+    value = configuration(max_cycles=2)
+    value.update(start_time="01:00", interval_seconds=900)
+    write(config, value)
+    children = fake_children(monkeypatch)
+    egress = Egress(monkeypatch, [])
+    clock = Clock()
+    assert service.run(config, state, project_root=ROOT, now=clock.now, stop=clock) == 0
+    assert len(children) == 2 and clock.current == datetime(2026, 10, 20, 6, tzinfo=timezone.utc)
+    assert len(egress.alerts) == 2
+    assert "ciclo 1 listo (2026-10-13 a 2026-10-19): 1 candidatas, 1 aceptadas, 1 leídas, 0 en revisión" in egress.alerts[0]
+    assert "Próximo ciclo: 20/10 01:00 (Lima)" in egress.alerts[0]
+    assert "ciclo 2 listo (2026-10-14 a 2026-10-20)" in egress.alerts[1] and "Servicio completo" in egress.alerts[1]
+
+
+@pytest.mark.parametrize("finished,expected", [
+    (datetime(2026, 10, 20, 5, 40, tzinfo=timezone.utc), datetime(2026, 10, 20, 6, tzinfo=timezone.utc)),
+    (datetime(2026, 10, 20, 5, 50, tzinfo=timezone.utc), datetime(2026, 10, 21, 6, tzinfo=timezone.utc))])
+def test_the_next_start_keeps_at_least_the_interval_after_the_cycle(finished, expected):
+    assert service._next_cycle_at({"interval_seconds": 900, "start_time": "01:00"}, finished) == expected
+
+
+@pytest.mark.parametrize("start_time", ["25:00", "1:00", 100, ""])
+def test_an_invalid_start_time_never_starts(paths, monkeypatch, start_time):
+    config, state = paths
+    write(config, {**configuration(), "start_time": start_time})
+    children = fake_children(monkeypatch)
+    assert service.run(config, state, project_root=ROOT, now=lambda: NOW) == 2
+    assert children == []
+
+
+def test_the_daily_preset_with_window_years_and_v6_reading_plans_through_the_real_planner(paths, monkeypatch):
+    config, state = paths
+    value = configuration()
+    argv = value["base_argv"]
+    argv[argv.index("--keyword"):argv.index("--keyword") + 2] = ["--keyword-preset", "convenio60"]
+    argv[argv.index("--years") + 1] = "window"
+    argv[argv.index("--llm1-model-routing") + 1] = "fixed"
+    argv[argv.index("--embedding-config") + 1] = str(ROOT / "docs/sources/prod2-embedding-reading.runtime.v6.json")
+    value.update(start_time="01:00", interval_seconds=900)
+    write(config, value)
+    children = fake_children(monkeypatch)
+    Egress(monkeypatch, [])
+    assert service.run(config, state, project_root=ROOT, now=lambda: NOW) == 0
+    plan = service._read(children[0].folder / "completion.private.json")
+    assert len(plan["requested"]["keywords"]) == 60 and plan["requested"]["keyword_preset"]["id"] == "convenio60"
+    assert plan["argv"][plan["argv"].index("--years") + 1] == "2026"
