@@ -1155,4 +1155,5 @@ Rediseno 2026-07-09: el motor deterministico fue reemplazado por analisis LLM ba
   - El dominio JEV elige a la empresa: industrial → DIN; informática o ambiguo → VEYON y DIN.
   - Puntaje provisional sobre lecturas en revisión, `automation_rules` compartidas con menores y pagos con recibos y reserva `gemini_match`.
   - El servicio lo lanza tras cada ciclo (bloque `evaluation`).
-  - **Pendiente:** prueba real con las licitaciones abiertas y encendido en el servicio.
+  - **Prueba real del 28/10:** 16 pares de las 9 licitaciones abiertas, todos visibles en la consulta de la web (US$ 0,06; antes, 6 intentos con la versión sin agrupar: US$ 0,027).
+  - **Pendiente:** encendido en el servicio tras los 2 ciclos de observación, y completar las experiencias del perfil de VEYON (tiene 2 frente a 43 de DIN).
