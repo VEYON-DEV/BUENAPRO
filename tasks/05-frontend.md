@@ -234,6 +234,12 @@ Referencia: [Inicio](../docs/frontend/02-inicio.md)
   - **Validación:** 341 pruebas Node, TypeScript y arquitectura. Capturas locales en escritorio, laptop y móvil.
   - **Producción, con la sesión de DIN:** 115 no cerradas (las 18 con puntaje arriba, todas con fecha futura), 1179 cerradas y 1294 en total, sin errores de consola.
   - **Imagen:** `buenapro-web:deadline-82d9581`; respaldo `buenapro-web:rollback-f49ef55-before-deadline-82d9581`.
+- [x] «No cerradas» de mayores sin las descartadas en la revisión previa, el 29/10/2026 (commit `28cc98e`):
+  - **Motivo:** las 71 descartadas por la revisión de título (carga del 20/10) no se leen, así que nunca tendrán fecha de cierre y quedaban fijas en «No cerradas».
+  - **Regla:** solo «No cerradas» las excluye. «Cerradas» y «Todas» no cambian, y en «Todas» siguen visibles con su etiqueta. La API sin `deadline` no cambia; OpenAPI lo documenta.
+  - **Validación:** 341 pruebas Node (una nueva para el filtro), TypeScript y arquitectura. Web local con la copia de la base: 29 no cerradas sin descartadas y las descartadas en «Todas». Captura de escritorio local.
+  - **Producción, con la sesión de DIN:** 49 no cerradas (antes 120) sin descartadas, 1181 cerradas y 1301 en total con las descartadas en la página 3, sin errores de consola.
+  - **Imagen:** `buenapro-web:open-28cc98e`; respaldo `buenapro-web:rollback-82d9581-before-open-28cc98e`.
 
 Referencia: [Oportunidades](../docs/frontend/03-oportunidades.md)
 
