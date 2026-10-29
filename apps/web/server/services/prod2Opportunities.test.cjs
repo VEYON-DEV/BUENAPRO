@@ -134,6 +134,10 @@ test('deadline filters count and page alike, and "all" lists closed procedures l
   const none = await run(null);
   assert.doesNotMatch(none.page, closed);
   assert.match(none.page, /ORDER BY CASE WHEN matched\.id IS NOT NULL/);
+  // Discarded before reading never gets a closing date: out of the open view only.
+  const discarded = /pf\.reader_status IS DISTINCT FROM 'rejected_below_60'/;
+  for (const sql of [open.count, open.page]) assert.match(sql, discarded);
+  for (const sql of [onlyClosed.count, onlyClosed.page, all.count, all.page, none.count, none.page]) assert.doesNotMatch(sql, discarded);
 });
 
 function scoreProjectionService({ storedScore = 95, scoreValidated, sourceReviewRequired = false, publishedScore, publishedVerdict = 'gris',

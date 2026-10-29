@@ -125,6 +125,9 @@ const CLOSED = `COALESCE(COALESCE(d.proposals_closes_at, d.registration_closes_a
   OR (d.proposals_closes_at IS NULL AND d.registration_closes_at IS NULL
     AND ${DAY_ONLY_PROPOSALS_END} < to_char(now() AT TIME ZONE 'America/Lima', 'YYYYMMDD'))
   OR pf.reader_status = 'closed_without_reading', false)`;
+// Discarded by the title pre-review: never read, so no closing date will ever arrive. Not closed
+// either, so it leaves the open view and stays listed only under all.
+const NOT_DISCARDED = "pf.reader_status IS DISTINCT FROM 'rejected_below_60'";
 
 // Canonical matches must be tied to this source, this document revision and the durable evaluation.
 const MATCH_JOIN = `LEFT JOIN LATERAL (
@@ -208,7 +211,7 @@ export async function listProd2OpportunitiesForTenant(tenantId: string, params: 
   // and the chosen tenant-owned profile establish availability, never score > 0.
   if (params.analysis === "done") where.push("matched.id IS NOT NULL");
   if (params.withScore) where.push(`${AVAILABLE_MATCH_SCORE} IS NOT NULL`);
-  if (params.deadline === "open") where.push(`NOT ${CLOSED}`);
+  if (params.deadline === "open") where.push(`NOT ${CLOSED}`, NOT_DISCARDED);
   if (params.deadline === "closed") where.push(CLOSED);
   const predicate = where.join(" AND ");
   const count = await query<{ total: number }>(`SELECT count(*)::int AS total FROM ${PUBLISHED_FROM}
