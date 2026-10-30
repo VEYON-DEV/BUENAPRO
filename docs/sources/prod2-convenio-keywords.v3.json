@@ -16,17 +16,17 @@
   "native_object_values": "resolver desde opciones observadas del formulario PROD2; no reutilizar códigos PROD4/PROD6",
   "counts": {
     "dinaut_lines": 11,
-    "dinaut_unique_keywords": 146,
+    "dinaut_unique_keywords": 147,
     "veyon_unique_keywords": 36,
     "shared_keywords": 16,
     "veyon_additional_keywords": 20,
-    "joint_unique_keywords": 166,
+    "joint_unique_keywords": 167,
     "digital_signals": 73,
-    "industrial_signals": 93,
-    "remote_queries": 166,
+    "industrial_signals": 94,
+    "remote_queries": 167,
     "local_only_signals": 0,
-    "base_queries_per_daily_round": 332,
-    "base_queries_initial_two_years": 664
+    "base_queries_per_daily_round": 334,
+    "base_queries_initial_two_years": 668
   },
   "lanes": [
     {
@@ -227,7 +227,8 @@
         "unifilar",
         "variadores",
         "variadores de velocidad",
-        "visión artificial industrial"
+        "visión artificial industrial",
+        "radar"
       ]
     }
   ],
@@ -571,7 +572,8 @@
         "caudalímetros",
         "actuadores",
         "macromedidores",
-        "flujometro"
+        "flujometro",
+        "radar"
       ],
       "keyword_phrases": [
         "instrumentación industrial",
@@ -587,7 +589,8 @@
         "caudalímetros",
         "actuadores",
         "macromedidores",
-        "flujometro"
+        "flujometro",
+        "radar"
       ]
     },
     {
@@ -996,7 +999,8 @@
           "sistemas de información",
           "vmware",
           "mantenimiento de software",
-          "ccm"
+          "ccm",
+          "radar"
         ],
         "object_labels": [
           "Bien",

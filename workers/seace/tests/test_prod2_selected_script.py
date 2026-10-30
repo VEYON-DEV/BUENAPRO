@@ -58,8 +58,8 @@ def test_default_pilot_and_all_keywords_cover_joint_union_goods_and_services():
     assert plan["objects"] == ["good", "service"] and plan["jev_threshold"] == 60
     assert plan["max_accepted"] == 10 and plan["processing_workers"] == 2
     union = subject.plan(args("--all-keywords"))
-    assert len(union["keywords"]) == union["configured_keywords"] == 166
-    assert len({key.casefold() for key in union["keywords"]}) == 166
+    assert len(union["keywords"]) == union["configured_keywords"] == 167
+    assert len({key.casefold() for key in union["keywords"]}) == 167
     assert plan["llm1_model_routing"] == subject.default_model_routing()
     assert plan["document_storage_policy"] == subject.OFFICIAL_LINKS_POLICY
 
@@ -259,7 +259,7 @@ def test_business_batches_integrate_union_routing_and_keep_existing_pilot_manife
     assert len(digital["keywords"]) == 73
     assert digital["business_plan"]["selected_literal_shared_keyword_count"] == 16
     full = subject.plan(args("--business-scope", "todas"))
-    assert len(full["keywords"]) == 166 and len(full["business_plan"]["batches"]) == 12
+    assert len(full["keywords"]) == 167 and len(full["business_plan"]["batches"]) == 12
     individual = subject.plan(args("--business-batch", "licencias_cloud"))
     assert "software" in individual["keywords"]
     assert individual["business_plan"]["keyword_index"]["software"]["literal_shared"]

@@ -1,7 +1,7 @@
 {
   "policy": "prod2-keyword-presets-v1",
-  "source_inventory_hash": "32c7ce187a93ff8b919d09e92abc44c6d53a25519944125d257fdd99e05106fe",
-  "business_config_hash": "b14e48b3eb3c972a0a687ac7b3208c0b92909e050c6d3aef37ce1045b2149019",
+  "source_inventory_hash": "cd2d37e6f9ca9f61ed8049ba5960c509f62c530eae45be0be7c8c734e04cd013",
+  "business_config_hash": "4305166c3c8109be98254bde3a4b6be847edb1a4b08fc6807c69114b4887c0dd",
   "presets": {
     "digitales30": {
       "label": "Primeras 30 keywords digitales del convenio",

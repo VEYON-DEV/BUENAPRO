@@ -2,7 +2,7 @@
   "plan_version": "prod2-six-calendar-months-metadata-v1",
   "source": "seace_prod2",
   "keyword_inventory_file": "prod2-convenio-keywords.v3.json",
-  "keyword_count": 166,
+  "keyword_count": 167,
   "publication_window_calendar_months": 6,
   "procedure_years": "all_native_available",
   "object_types": ["good", "service"],

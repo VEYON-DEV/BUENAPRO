@@ -30,9 +30,9 @@ def prepared(tmp_path):
 def test_offline_plan_exact_inventory_and_separate_unmeasured_aliases():
     base = plan()
     extended = plan(include_industrial_variants=True)
-    assert len(base['keywords']) == 166 and len(base['queries']) == 332
-    assert len(extended['keywords']) == 183 and len(extended['queries']) == 366
-    assert extended['keywords'][:166] == base['keywords']
+    assert len(base['keywords']) == 167 and len(base['queries']) == 334
+    assert len(extended['keywords']) == 184 and len(extended['queries']) == 368
+    assert extended['keywords'][:167] == base['keywords']
     assert extended['variant_inventory_sha256'] and base['variant_inventory_sha256'] is None
     assert all(base[key] is False for key in ('models','document_downloads','redis','publish_opportunities'))
     assert base['max_workers'] == 10 and base['ramp'] == {'pilot_queries':1,'warmup_queries':8,'warmup_workers':4}
@@ -55,7 +55,7 @@ def test_years_and_date_window_are_explicit_not_a_silent_current_year_filter():
     with pytest.raises(subject.DiscoveryError):
         subject.build_plan(ROOT,run_id='safe',published_from='2026-10-04',published_to='2026-10-20',years=[])
     p=subject.build_plan(ROOT,run_id='safe',published_from='2026-10-04',published_to='2026-10-20',years=[2025,2026])
-    assert len(p['queries'])==664 and p['years']==[2026,2025]
+    assert len(p['queries'])==668 and p['years']==[2026,2025]
 
 
 def test_plan_tamper_changed_runtime_or_scope_is_not_silently_replanned(prepared,monkeypatch):

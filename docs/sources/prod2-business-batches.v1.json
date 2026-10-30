@@ -1,7 +1,7 @@
 {
   "policy": "prod2-business-batches-v1",
   "source_inventory": "prod2-convenio-keywords.v3.json",
-  "source_inventory_hash": "32c7ce187a93ff8b919d09e92abc44c6d53a25519944125d257fdd99e05106fe",
+  "source_inventory_hash": "cd2d37e6f9ca9f61ed8049ba5960c509f62c530eae45be0be7c8c734e04cd013",
   "keyword_snapshot_date": "2026-10-05",
   "members": {
     "veyon": "VEYON SAC",
@@ -300,7 +300,8 @@
         "caudalímetros",
         "actuadores",
         "macromedidores",
-        "flujometro"
+        "flujometro",
+        "radar"
       ],
       "source_lines": [
         {

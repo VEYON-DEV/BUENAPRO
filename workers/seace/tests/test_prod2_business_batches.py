@@ -20,11 +20,11 @@ def test_partition_has_exact_union_and_preserves_both_company_provenances(inputs
     config, inventory = inputs
     result = select_business_batches(config, inventory, scope="todas")
     expected = {keyword for line in inventory["member_keyword_inventory"] for keyword in line["keywords"]}
-    assert set(result["keywords"]) == expected and len(result["keywords"]) == 166
+    assert set(result["keywords"]) == expected and len(result["keywords"]) == 167
     business = result["business_plan"]
     assert len(business["batches"]) == 12
-    assert sum(batch["search_keyword_count"] for batch in business["batches"]) == 166
-    assert sum(batch["primary_keyword_count"] for batch in business["batches"]) == 166
+    assert sum(batch["search_keyword_count"] for batch in business["batches"]) == 167
+    assert sum(batch["primary_keyword_count"] for batch in business["batches"]) == 167
     assert business["selected_literal_shared_keyword_count"] == 16
     shared = {keyword for keyword, row in business["keyword_index"].items() if row["literal_shared"]}
     assert shared == {"analítica de datos", "aplicativo", "automatización", "chatbot", "ciencia de datos",
@@ -41,7 +41,7 @@ def test_digital_and_industrial_scopes_cover_union_without_implicit_keywords(inp
     config, inventory = inputs
     digital = select_business_batches(config, inventory, scope="digitales")["keywords"]
     industrial = select_business_batches(config, inventory, scope="industriales")["keywords"]
-    assert len(digital) == 73 and len(industrial) == 93
+    assert len(digital) == 73 and len(industrial) == 94
     assert not set(digital) & set(industrial)
     assert set(digital) | set(industrial) == set(select_business_batches(config, inventory, scope="todas")["keywords"])
     assert "ia" in digital and "sistema" not in digital and "sistemas" not in digital
