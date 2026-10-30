@@ -107,6 +107,21 @@ test('minor analysis filter retains unpublished and zero scores while filtering 
   }
 });
 
+test('minor browse of everything lists open contracts first and the history after, and counts the open ones', async () => {
+  const { service, statements } = serviceWithCurrentReading();
+  const list = await service.listContractsForTenant('tenant-qa', new URLSearchParams({ deadline: 'all' }));
+  const sql = statements.find(statement => statement.sql.includes('FROM seace_contracts c')).sql;
+  const open = String.raw`\(c\.estado_codigo = 2 AND \(c\.fec_fin_cotizacion IS NULL OR c\.fec_fin_cotizacion >= now\(\)\)\)`;
+  assert.match(sql, new RegExp(`count\\(\\*\\) FILTER \\(WHERE ${open}\\) OVER\\(\\)::int AS open_count`));
+  assert.match(sql, new RegExp(`ORDER BY\\s+NOT ${open}, CASE WHEN NOT ${open} THEN c\\.fec_publica END DESC NULLS LAST,\\s+CASE WHEN m\\.id IS NOT NULL`));
+  assert.equal(list.meta.open_total, 0);
+  assert.equal('open_count' in list.data[0], false);
+  // Other views keep their order: score first.
+  statements.length = 0;
+  await service.listContractsForTenant('tenant-qa', new URLSearchParams({ deadline: 'open', open_only: 'true' }));
+  assert.match(statements.find(statement => statement.sql.includes('FROM seace_contracts c')).sql, /ORDER BY\s+CASE WHEN m\.id IS NOT NULL/);
+});
+
 test('minor browse adds contracts found outside the profile segments only when JEV accepted them for that company', async () => {
   const { service, statements } = serviceWithCurrentReading();
   await service.listContractsForTenant('tenant-qa', new URLSearchParams());

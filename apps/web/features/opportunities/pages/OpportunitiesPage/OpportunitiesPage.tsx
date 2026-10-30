@@ -14,7 +14,7 @@ import { Prod4OpportunityToolbar } from "../../components/Prod4OpportunityToolba
 import styles from "./OpportunitiesPage.module.css";
 
 function normalizeDeadline(params: URLSearchParams) {
-  const deadline = params.get("deadline") ?? "open";
+  const deadline = params.get("deadline") ?? "all";
   params.set("deadline", deadline);
 
   if (deadline === "all") {
@@ -63,14 +63,16 @@ const prod2DeadlineMeta: Record<string, string> = {
 
 export async function OpportunitiesPage({ tenantId, params }: { tenantId: string; params: URLSearchParams }) {
   if (params.get("source") === "prod2") {
-    // Like the minor-contract feed, the page opens on procedures that have not closed.
-    if (!params.get("deadline")) params.set("deadline", "open");
+    // Like the minor-contract feed, the page opens on everything: open procedures first, then the history.
+    if (!params.get("deadline")) params.set("deadline", "all");
     try {
       const result = await listProd2OpportunitiesForTenant(tenantId, parseProd2ListParams(params));
       if (result.profile) params.set("profile_id", result.profile.id);
       const totalPages = Math.max(Math.ceil(result.total / result.page_size), 1);
+      const deadline = params.get("deadline") ?? "all";
+      const openCount = deadline === "all" ? ` · ${result.open_total} abiertos` : "";
       return <AppShell title="Oportunidades">
-        <PageHeader title="Oportunidades" meta={`${result.total} ${prod2DeadlineMeta[params.get("deadline") ?? "open"] ?? prod2DeadlineMeta.all}`}
+        <PageHeader title="Oportunidades" meta={`${result.total} ${prod2DeadlineMeta[deadline] ?? prod2DeadlineMeta.all}${openCount}`}
           description="Coincidencia con tus líneas de negocio y requisitos con evidencia. Confirma la modalidad y las fechas oficiales antes de participar." />
         <OpportunitySourceTabs source="prod2" profileId={result.profile?.id} withScore={params.get("with_score") === "true"} commercialFilters={Object.fromEntries(params.entries())} />
         <Prod4OpportunityToolbar source="prod2" defaults={{ ...Object.fromEntries(params.entries()), ...(result.profile ? { profile_id: result.profile.id } : {}) }} />
@@ -122,8 +124,9 @@ export async function OpportunitiesPage({ tenantId, params }: { tenantId: string
     );
   }
   if (!params.has("has_extraction")) params.set("has_extraction", "true");
-  if (!params.has("estado")) params.set("estado", "2");
   normalizeDeadline(params);
+  // Everything opens by default, in any state (open ones first); the open views keep the vigente state.
+  if (!params.has("estado")) params.set("estado", params.get("deadline") === "all" ? "" : "2");
   const contracts = await listContractsForTenant(tenantId, params);
   if (contracts.profile) params.set("profile_id", contracts.profile.id);
   const context = await getTenantOpportunityContext(tenantId, contracts.profile?.id);
@@ -131,14 +134,15 @@ export async function OpportunitiesPage({ tenantId, params }: { tenantId: string
   const rows = contracts.data;
   const meta = contracts.meta;
   const totalPages = Math.max(Math.ceil((meta.total ?? meta.count) / meta.page_size), 1);
-  const deadline = params.get("deadline") ?? "open";
+  const deadline = params.get("deadline") ?? "all";
   const savedOnly = params.get("saved") === "true";
+  const openCount = deadline === "all" && !savedOnly ? ` · ${meta.open_total} abiertos` : "";
 
   return (
     <AppShell title="Oportunidades">
       <PageHeader
         title="Oportunidades"
-        meta={`${meta.total ?? meta.count} ${resultLabel(deadline, savedOnly)}`}
+        meta={`${meta.total ?? meta.count} ${resultLabel(deadline, savedOnly)}${openCount}`}
         description={hasBusinessLines
           ? `Primero las oportunidades con puntaje para ${context.razon_social}, de mayor a menor.`
           : "Configura tus líneas de negocio para priorizar las mejores coincidencias."}

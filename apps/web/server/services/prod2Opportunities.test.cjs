@@ -107,37 +107,52 @@ test('deadline parser accepts open, closed and all, and keeps the API default un
   }
 });
 
-test('deadline filters count and page alike, and "all" lists closed procedures last', async () => {
+test('deadline filters count and page alike, and "all" lists open procedures first and the history after', async () => {
   const run = async deadline => {
     const statements = [];
     const service = load('prod2Opportunities.ts', { '@/server/db/client': { query: async (sql, values) => {
       statements.push({ sql, values });
-      return { rows: sql.includes('FROM company_profiles') ? [{ id: profileId, razon_social: 'Empresa QA' }] : sql.includes('count(*)::int AS total') ? [{ total: 3 }] : [] };
+      return { rows: sql.includes('FROM company_profiles') ? [{ id: profileId, razon_social: 'Empresa QA' }] : sql.includes('count(*)::int AS total') ? [{ total: 3, open_total: 2 }] : [] };
     } }, '@/lib/prod2Analysis': analysis });
-    await service.listProd2OpportunitiesForTenant('tenant', { object: null, q: '', page: 1, pageSize: 10, profileId: null, deadline });
-    return { count: statements.find(s => s.sql.includes('count(*)::int AS total FROM prod2_discoveries')).sql, page: statements.find(s => s.sql.includes('LIMIT $')).sql };
+    const result = await service.listProd2OpportunitiesForTenant('tenant', { object: null, q: '', page: 1, pageSize: 10, profileId: null, deadline });
+    const count = statements.find(s => s.sql.includes('count(*)::int AS total FROM prod2_discoveries')).sql;
+    const page = statements.find(s => s.sql.includes('LIMIT $')).sql;
+    // The filter is what follows the visibility predicate; the page order is its last ORDER BY.
+    const visible = '(d.id_convocatoria IS NOT NULL OR pf.id_convocatoria IS NOT NULL)';
+    const order = page.lastIndexOf('ORDER BY');
+    return { result, count, page, countFilter: count.slice(count.lastIndexOf(visible)),
+      pageFilter: page.slice(page.lastIndexOf(visible), order), order: page.slice(order) };
   };
-  const closed = /COALESCE\(COALESCE\(d\.proposals_closes_at, d\.registration_closes_at\) < now\(\)[\s\S]*pf\.reader_status = 'closed_without_reading', false\)/;
+  const closed = /COALESCE\(COALESCE\(d\.proposals_closes_at, d\.registration_closes_at\) < now\(\)[\s\S]*?pf\.reader_status = 'closed_without_reading', false\)/;
+  const discarded = /pf\.reader_status IS DISTINCT FROM 'rejected_below_60'/;
   const open = await run('open');
-  for (const sql of [open.count, open.page]) assert.match(sql, new RegExp(`NOT ${closed.source}`));
+  for (const sql of [open.countFilter, open.pageFilter]) {
+    assert.match(sql, new RegExp(`NOT ${closed.source}`));
+    assert.match(sql, discarded);  // Discarded before reading never gets a closing date: not open.
+  }
   const onlyClosed = await run('closed');
-  for (const sql of [onlyClosed.count, onlyClosed.page]) {
+  for (const sql of [onlyClosed.countFilter, onlyClosed.pageFilter]) {
     assert.match(sql, closed);
     assert.doesNotMatch(sql, new RegExp(`NOT ${closed.source}`));
+    assert.doesNotMatch(sql, discarded);
   }
   const all = await run('all');
-  assert.doesNotMatch(all.count, closed);
-  assert.match(all.page, new RegExp(`ORDER BY ${closed.source}, CASE WHEN matched\\.id IS NOT NULL`));
+  for (const sql of [all.countFilter, all.pageFilter]) assert.doesNotMatch(sql, closed);
+  // Open first (by score, as before), then closed and discarded, newest publication first.
+  const history = `\\(${closed.source} OR NOT pf\\.reader_status IS DISTINCT FROM 'rejected_below_60'\\)`;
+  assert.match(all.order, new RegExp(`^ORDER BY ${history}, CASE WHEN ${history} THEN p\\.published_at END DESC NULLS LAST, CASE WHEN matched\\.id IS NOT NULL`));
+  // Every count also says how many are open, whatever the filter.
+  for (const { count, result } of [open, onlyClosed, all]) {
+    assert.match(count, new RegExp(`count\\(\\*\\) FILTER \\(WHERE NOT ${history}\\)::int AS open_total`));
+    assert.deepEqual([result.total, result.open_total], [3, 2]);
+  }
   // Day-only stages compare as YYYYMMDD text in Lima; unknown dates are never closed.
-  assert.match(open.page, /to_char\(now\(\) AT TIME ZONE 'America\/Lima', 'YYYYMMDD'\)/);
-  assert.match(open.page, /presentaci\[oó\]n\.\*\(oferta\|propuesta\)/);
+  assert.match(open.pageFilter, /to_char\(now\(\) AT TIME ZONE 'America\/Lima', 'YYYYMMDD'\)/);
+  assert.match(open.pageFilter, /presentaci\[oó\]n\.\*\(oferta\|propuesta\)/);
   const none = await run(null);
-  assert.doesNotMatch(none.page, closed);
-  assert.match(none.page, /ORDER BY CASE WHEN matched\.id IS NOT NULL/);
-  // Discarded before reading never gets a closing date: out of the open view only.
-  const discarded = /pf\.reader_status IS DISTINCT FROM 'rejected_below_60'/;
-  for (const sql of [open.count, open.page]) assert.match(sql, discarded);
-  for (const sql of [onlyClosed.count, onlyClosed.page, all.count, all.page, none.count, none.page]) assert.doesNotMatch(sql, discarded);
+  assert.doesNotMatch(none.pageFilter, closed);
+  assert.doesNotMatch(none.pageFilter, discarded);
+  assert.match(none.order, /^ORDER BY CASE WHEN matched\.id IS NOT NULL/);
 });
 
 function scoreProjectionService({ storedScore = 95, scoreValidated, sourceReviewRequired = false, publishedScore, publishedVerdict = 'gris',

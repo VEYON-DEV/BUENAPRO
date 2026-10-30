@@ -1,6 +1,6 @@
 "use client";
 
-import { Bookmark, Clock3, FileCheck2, Search, SlidersHorizontal, Sparkles } from "lucide-react";
+import { Bookmark, Clock3, FileCheck2, LayoutList, Search, SlidersHorizontal, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -28,14 +28,15 @@ function typeHref(defaults: Record<string, string>, object: string) {
   return `/feed?${params.toString()}`;
 }
 
-function isActive(defaults: Record<string, string>, key: "forYou" | "closing" | "saved") {
+function isActive(defaults: Record<string, string>, key: "all" | "forYou" | "closing" | "saved") {
   if (key === "saved") return defaults.saved === "true";
   if (key === "closing") return defaults.deadline === "24h";
-  return defaults.saved !== "true" && !["24h", "week", "closed", "all"].includes(defaults.deadline ?? "open");
+  if (key === "all") return defaults.saved !== "true" && (defaults.deadline ?? "all") === "all";
+  return defaults.saved !== "true" && !["24h", "week", "closed", "all"].includes(defaults.deadline ?? "all");
 }
 
 export function OpportunityToolbar({ defaults }: { defaults: Record<string, string> }) {
-  const deadline = defaults.deadline ?? "open";
+  const deadline = defaults.deadline ?? "all";
   const [filtersOpen, setFiltersOpen] = useState(Boolean(defaults.objeto || defaults.verdict || defaults.cotizar || deadline === "closed" || deadline === "week" || commercialSelectionCount(defaults) > 0));
   return (
     <section className={styles.toolbar}>
@@ -56,6 +57,7 @@ export function OpportunityToolbar({ defaults }: { defaults: Record<string, stri
           <Input aria-label="Buscar oportunidades" autoComplete="off" defaultValue={defaults.q ?? ""} name="q" placeholder="Codigo, entidad u objeto" type="search" />
         </label>
         <nav className={styles.quick} aria-label="Vistas rápidas">
+          <a aria-current={isActive(defaults, "all") ? "page" : undefined} className={isActive(defaults, "all") ? styles.active : ""} href={hrefFor({ deadline: "all", estado: "" }, defaults)}><LayoutList aria-hidden="true" size={17} /> Todo</a>
           <a aria-current={isActive(defaults, "forYou") ? "page" : undefined} className={isActive(defaults, "forYou") ? styles.active : ""} href={hrefFor({ deadline: "open" }, defaults)}><Sparkles aria-hidden="true" size={17} /> Para ti</a>
           <a aria-current={isActive(defaults, "closing") ? "page" : undefined} className={isActive(defaults, "closing") ? styles.active : ""} href={hrefFor({ deadline: "24h" }, defaults)}><Clock3 aria-hidden="true" size={17} /> Cierran pronto</a>
           <a aria-current={isActive(defaults, "saved") ? "page" : undefined} className={isActive(defaults, "saved") ? styles.active : ""} href={hrefFor({ deadline: "all", saved: "true" }, defaults)}><Bookmark aria-hidden="true" size={17} /> Guardadas</a>

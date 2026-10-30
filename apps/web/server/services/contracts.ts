@@ -21,6 +21,8 @@ const PUBLISHED_MATCH_VERDICT = "CASE WHEN m.breakdown_json->'meta'->>'score_val
 const MATCH_REVIEW_REQUIRED = "COALESCE(m.breakdown_json->'meta'->>'score_validated' = 'false', false)";
 const PROVISIONAL_MATCH_SCORE = `CASE WHEN ${MATCH_REVIEW_REQUIRED} AND m.score >= 0 AND m.score <= 100 THEN m.score ELSE NULL END`;
 const AVAILABLE_MATCH_SCORE = "CASE WHEN m.id IS NOT NULL AND m.score BETWEEN 0 AND 100 THEN m.score ELSE NULL END";
+// Still vigente and its quotation has not closed. Under deadline=all the rest follows as history, newest first.
+const OPEN_MINOR = "(c.estado_codigo = 2 AND (c.fec_fin_cotizacion IS NULL OR c.fec_fin_cotizacion >= now()))";
 
 export class ContractRequestError extends Error {
   constructor(message: string, public status = 400) { super(message); }
@@ -336,6 +338,7 @@ export async function listContractsForTenant(tenantId: string, params: URLSearch
       COALESCE(fit.keyword_hits, '[]'::jsonb) AS fit_keyword_hits,
       (sc.id_contrato IS NOT NULL) AS is_saved,
       sc.created_at AS saved_at,
+      count(*) FILTER (WHERE ${OPEN_MINOR}) OVER()::int AS open_count,
       count(*) OVER()::int AS total_count
     FROM seace_contracts c
     LEFT JOIN opportunities o ON o.id = c.opportunity_id
@@ -365,6 +368,7 @@ export async function listContractsForTenant(tenantId: string, params: URLSearch
     ${PROD6_COMMERCIAL_JOIN}
     ${whereSql}
     ORDER BY
+      ${params.get("deadline") === "all" ? `NOT ${OPEN_MINOR}, CASE WHEN NOT ${OPEN_MINOR} THEN c.fec_publica END DESC NULLS LAST,` : ""}
       ${AVAILABLE_MATCH_SCORE} DESC NULLS LAST,
       ${saved === "true" ? "sc.created_at DESC," : ""}
       COALESCE(fit.keyword_points, 0) DESC,
@@ -381,10 +385,10 @@ export async function listContractsForTenant(tenantId: string, params: URLSearch
 
   const total = Number(result.rows[0]?.total_count ?? 0);
   return {
-    data: result.rows.map(({ total_count: _totalCount, ...row }) => ({ ...row, provisional_score: provisionalScore(row),
+    data: result.rows.map(({ total_count: _totalCount, open_count: _openCount, ...row }) => ({ ...row, provisional_score: provisionalScore(row),
       commercial_classification: normalizeCommercialClassification(row.commercial_classification),
       commercial_categories: deriveCommercialCategories(row.commercial_classification) })),
-    meta: { page, page_size: pageSize, count: result.rows.length, total },
+    meta: { page, page_size: pageSize, count: result.rows.length, total, open_total: Number(result.rows[0]?.open_count ?? 0) },
     profile: profile ? { id: profile.id, name: profile.razon_social } : null,
   };
 }

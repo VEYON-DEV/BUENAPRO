@@ -268,13 +268,13 @@ test("PROD2 toolbar retains score filter on search/object links and offers a pro
   assert.match(html, /aria-current="page" class="analysisFilter active"/);
 });
 
-test("PROD2 toolbar offers a closing filter that keeps search, type, score and profile", () => {
+test("PROD2 toolbar offers a closing filter that keeps search, type, score and profile and opens on all", () => {
   const html = render(Prod4OpportunityToolbar, { source: "prod2", defaults: { source: "prod2", profile_id: "dinaut-profile", q: "software", object: "service", with_score: "true", deadline: "closed", page: "4" } });
   assert.match(html, /aria-label="Cierre"/);
   assert.match(html, /name="deadline"[^>]*value="closed"/);
   const hrefs = fragment => [...fragment.matchAll(/href="([^"]*)"/g)].map(match => new URL(match[1].replaceAll("&amp;", "&"), "https://buenapro.invalid"));
   const deadlines = hrefs(html.match(/aria-label="Cierre"[\s\S]*?<\/div>/)[0]);
-  assert.deepEqual(deadlines.map(link => link.searchParams.get("deadline")), ["open", "closed", "all"]);
+  assert.deepEqual(deadlines.map(link => link.searchParams.get("deadline")), ["all", "open", "closed"]);
   // Type links and the score toggle keep the chosen closing filter.
   for (const link of hrefs(html)) assert.ok(link.searchParams.has("deadline"));
   for (const link of deadlines) {
@@ -286,7 +286,8 @@ test("PROD2 toolbar offers a closing filter that keeps search, type, score and p
   }
   assert.match(html, /aria-current="page" class="active"[^>]*deadline=closed/);
   const fresh = render(Prod4OpportunityToolbar, { source: "prod2", defaults: { source: "prod2" } });
-  assert.match(fresh, /name="deadline"[^>]*value="open"/);
+  assert.match(fresh, /name="deadline"[^>]*value="all"/);
+  assert.match(fresh, /aria-current="page" class="active"[^>]*deadline=all/);
   const prod4 = render(Prod4OpportunityToolbar, { source: "prod4", defaults: {} });
   assert.doesNotMatch(prod4, /aria-label="Cierre"|name="deadline"/);
 });
@@ -305,6 +306,20 @@ test("minor toolbar retains score filter and profile on search, type and quick v
     assert.equal(link.searchParams.get("profile_id"), "dinaut-profile");
     assert.equal(link.searchParams.get("q"), "software");
   }
+});
+
+test("minor toolbar opens on everything and keeps «Para ti» for the open contracts", () => {
+  const html = render(OpportunityToolbar, { defaults: { source: "prod6", profile_id: "dinaut-profile", deadline: "all", estado: "" } });
+  const quick = html.match(/aria-label="Vistas rápidas"[\s\S]*?<\/nav>/)[0];
+  const links = [...quick.matchAll(/href="([^"]*)"/g)].map(match => new URL(match[1].replaceAll("&amp;", "&"), "https://buenapro.invalid"));
+  // «Todo»: any state, any closing; «Para ti»: still the vigente, not closed view.
+  assert.deepEqual([links[0].searchParams.get("deadline"), links[0].searchParams.has("estado")], ["all", false]);
+  assert.deepEqual([links[1].searchParams.get("deadline"), links[1].searchParams.get("estado")], ["open", "2"]);
+  for (const link of links) assert.equal(link.searchParams.get("profile_id"), "dinaut-profile");
+  assert.match(quick, /<a aria-current="page" class="[^"]*" href="[^"]*deadline=all[^"]*">[\s\S]*?Todo<\/a>/);
+  assert.doesNotMatch(quick, /aria-current="page"[^>]*deadline=open/);
+  const forYou = render(OpportunityToolbar, { defaults: { source: "prod6", deadline: "open", estado: "2" } });
+  assert.match(forYou, /aria-current="page"[^>]*deadline=open[^>]*>[\s\S]*?Para ti/);
 });
 
 test("score toggle migrates the visible control while preserving legacy analysis API semantics", () => {

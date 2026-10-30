@@ -128,6 +128,8 @@ const CLOSED = `COALESCE(COALESCE(d.proposals_closes_at, d.registration_closes_a
 // Discarded by the title pre-review: never read, so no closing date will ever arrive. Not closed
 // either, so it leaves the open view and stays listed only under all.
 const NOT_DISCARDED = "pf.reader_status IS DISTINCT FROM 'rejected_below_60'";
+// Everything that is not open: listed after the open procedures under all, newest first.
+const HISTORY = `(${CLOSED} OR NOT ${NOT_DISCARDED})`;
 
 // Canonical matches must be tied to this source, this document revision and the durable evaluation.
 const MATCH_JOIN = `LEFT JOIN LATERAL (
@@ -214,7 +216,8 @@ export async function listProd2OpportunitiesForTenant(tenantId: string, params: 
   if (params.deadline === "open") where.push(`NOT ${CLOSED}`, NOT_DISCARDED);
   if (params.deadline === "closed") where.push(CLOSED);
   const predicate = where.join(" AND ");
-  const count = await query<{ total: number }>(`SELECT count(*)::int AS total FROM ${PUBLISHED_FROM}
+  const count = await query<{ total: number; open_total?: number }>(`SELECT count(*) FILTER (WHERE NOT ${HISTORY})::int AS open_total,
+    count(*)::int AS total FROM ${PUBLISHED_FROM}
     ${params.analysis === "done" || params.withScore ? MATCH_JOIN : ""}
     WHERE ($1::uuid IS NULL OR $1::uuid IS NOT NULL) AND ${predicate}`, values);
   const pageValues = [...values];
@@ -225,12 +228,13 @@ export async function listProd2OpportunitiesForTenant(tenantId: string, params: 
     FROM ${PUBLISHED_FROM}
     ${MATCH_JOIN} ${commercialAffinityJoin} ${KEYWORD_FIT_JOIN}
     WHERE ${predicate}
-    ORDER BY ${params.deadline === "all" ? `${CLOSED}, ` : ""}${AVAILABLE_MATCH_SCORE} DESC NULLS LAST, commercial_jev.affinity_index DESC NULLS LAST, fit.keyword_points DESC NULLS LAST,
+    ORDER BY ${params.deadline === "all" ? `${HISTORY}, CASE WHEN ${HISTORY} THEN p.published_at END DESC NULLS LAST, ` : ""}${AVAILABLE_MATCH_SCORE} DESC NULLS LAST, commercial_jev.affinity_index DESC NULLS LAST, fit.keyword_points DESC NULLS LAST,
       ${PUBLISHED_MATCH_SCORE} DESC NULLS LAST,
       p.published_at DESC NULLS LAST, p.id_convocatoria DESC
     LIMIT $${pageValues.length + 1} OFFSET $${pageValues.length + 2}`, [...pageValues, params.pageSize, (params.page - 1) * params.pageSize]);
   const saved = await savedOpportunityIds(tenantId, rows.rows.map(row => row.opportunity_id));
-  return { data: rows.rows.map(row => ({ ...processRow(row), is_saved: saved.has(row.opportunity_id) })), total: count.rows[0]?.total ?? 0, page: params.page, page_size: params.pageSize,
+  return { data: rows.rows.map(row => ({ ...processRow(row), is_saved: saved.has(row.opportunity_id) })), total: count.rows[0]?.total ?? 0,
+    open_total: count.rows[0]?.open_total ?? 0, page: params.page, page_size: params.pageSize,
     profile: profile ? { id: profile.id, name: profile.razon_social } : null };
 }
 

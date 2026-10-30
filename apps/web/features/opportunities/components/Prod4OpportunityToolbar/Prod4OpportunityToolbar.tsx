@@ -25,7 +25,7 @@ export function Prod4OpportunityToolbar({ defaults: received, source = "prod4" }
   // Los enlaces antiguos con commercial_* se ignoran: este buscador ya no filtra por categoría.
   const defaults = Object.fromEntries(Object.entries(received).filter(([key]) => !(COMMERCIAL_FILTER_KEYS as readonly string[]).includes(key)));
   const object = defaults.object ?? "";
-  const deadline = defaults.deadline ?? "open";
+  const deadline = defaults.deadline ?? "all";
   return (
     <section className={styles.toolbar}>
       <form action="/feed" className={styles.searchForm}>
@@ -50,7 +50,7 @@ export function Prod4OpportunityToolbar({ defaults: received, source = "prod4" }
           ))}
         </div>
         {source === "prod2" ? <div aria-label="Cierre" className={`${styles.objectChoices} ${styles.deadlineChoices}`} role="group">
-          {[["open", "No cerradas"], ["closed", "Cerradas"], ["all", "Todas"]].map(([value, label]) => (
+          {[["all", "Todas"], ["open", "No cerradas"], ["closed", "Cerradas"]].map(([value, label]) => (
             <a aria-current={deadline === value ? "page" : undefined} className={deadline === value ? styles.active : ""} href={deadlineHref(defaults, value)} key={value}>
               {label}
             </a>
