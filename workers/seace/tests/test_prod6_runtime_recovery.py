@@ -833,7 +833,7 @@ def test_each_cycle_resumes_the_sweep_where_the_last_one_stopped_even_after_a_re
 def test_discovery_cannot_take_the_whole_cycle_budget(offline_runtime):
     h = offline_runtime
     assert h.run(once=True) == 0
-    assert h.poll.call_args.kwargs["max_requests"] == 24 and h.poll.call_args.kwargs["max_pages_per_segment"] == 5
+    assert h.poll.call_args.kwargs["max_requests"] == 24 and h.poll.call_args.kwargs["max_pages_per_segment"] == 24
     runtime.run(MagicMock(), profile_ids=["veyon"], receipt_dir=h.folder, once=True,
                 max_source_requests=40, max_discovery_requests=10, max_pages=3)
     assert h.poll.call_args.kwargs["max_requests"] == 10
@@ -1134,7 +1134,7 @@ def test_source_request_option_reaches_the_runtime(monkeypatch, tmp_path):
             runtime.main()
         assert run.call_args.kwargs["max_source_requests"] == expected
         assert run.call_args.kwargs["max_discovery_requests"] == discovery
-        assert run.call_args.kwargs["max_pages"] == 5
+        assert run.call_args.kwargs["max_pages"] is None  # The runtime reads every page a pass allows.
 
 
 def test_manual_review_removes_the_temporary_source_copy(offline_runtime):

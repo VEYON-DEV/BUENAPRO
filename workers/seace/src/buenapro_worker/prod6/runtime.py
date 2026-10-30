@@ -654,7 +654,7 @@ def execute_io_job(settings: Settings, profile_id: str, job: Job, receipt_dir: P
 
 
 def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: bool = False,
-        interval_seconds: int = 1800, max_pages: int = 5, max_candidates: int = 200,
+        interval_seconds: int = 1800, max_pages: int | None = None, max_candidates: int = 200,
         http_workers: int = 3, io_workers: int = 2, max_jev_requests: int = 200,
         jev_threshold: float = 60, llm1_commercial_taxonomy: str | None = None,
         max_source_requests: int | None = None, max_discovery_requests: int = 24,
@@ -667,7 +667,7 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
         raise ValueError("JEV requests must not be negative and the threshold must be 0-100")
     requested_policy = reading_policy_context(
         {POLICY_KEY: llm1_commercial_taxonomy} if llm1_commercial_taxonomy is not None else None)
-    if interval_seconds < 60 or max_pages < 1 or max_candidates < 1:
+    if interval_seconds < 60 or (max_pages is not None and max_pages < 1) or max_candidates < 1:
         raise ValueError("Positive bounded limits required; minimum poll interval is 60 seconds")
     if not 1 <= http_workers <= 4 or not 1 <= io_workers <= 4:
         raise ValueError("HTTP/IO parallelism must stay between one and four")
@@ -675,12 +675,14 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
         max_source_requests = default_max_source_requests()
     if max_source_requests < 1:
         raise ValueError("The PROD6 request budget per cycle must be at least one")
-    if max_discovery_requests < 1 or max_discovery_requests < max_pages:
+    if max_discovery_requests < 1 or (max_pages is not None and max_discovery_requests < max_pages):
         raise ValueError("The discovery request limit must be positive and cover max-pages, "
                          "or a stream could never finish")
     # Discovery never takes more than this share of a cycle that searches: the rest is left to IO.
     # A cycle without search leaves the whole budget to IO.
     discovery_limit = min(max_discovery_requests, max_source_requests)
+    if max_pages is None:  # Every page one pass can read, so a segment is never cut short.
+        max_pages = discovery_limit
     if discovery_interval_seconds is None:
         discovery_interval_seconds = default_discovery_interval_seconds()
     if discovery_interval_seconds < 0:
@@ -1381,8 +1383,9 @@ def main() -> None:
     parser.add_argument("--receipt-dir", type=Path, required=True)
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--interval-seconds", type=int, default=1800)
-    parser.add_argument("--max-pages", type=int, default=5,
-                        help="Search pages per (object, segment) stream and cycle")
+    parser.add_argument("--max-pages", type=int, default=None,
+                        help="Search pages per (object, segment) stream and cycle "
+                             "(default: the discovery request limit, so a stream is read whole)")
     parser.add_argument("--max-candidates", type=int, default=200)
     parser.add_argument("--http-workers", type=int, default=3)
     parser.add_argument("--io-workers", type=int, default=2)

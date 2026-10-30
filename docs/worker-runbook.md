@@ -560,6 +560,30 @@ ciclos entrega todo el tope a IO.
     empresa o segmento recién agregado no se busca hasta la siguiente vuelta (o poner el
     intervalo en 0 / borrar `last_discovery_completed_at` para forzarla).
 
+#### Búsqueda nacional por palabras clave (PROD6, desde el 30/10/2026)
+
+Los segmentos CUBSO de las líneas siguen siendo la base: todo lo vigente de esos segmentos pasa a
+JEV como antes. El runtime agrega al final de la lista dos streams sin segmento (`KEYWORD_SEGMENT`,
+`0`), uno por objeto, que recorren todo SEACE vigente del año (el 30/10/2026: 1090 bienes y 1542
+servicios, 27 páginas de 100).
+
+- Ahí un contrato solo llega a la decisión de una empresa si su título nombra una línea de negocio
+  de esa empresa (una frase o dos términos de la misma línea, `line_matches`), sin mirar segmentos.
+  Lo que no nombra ninguna no recibe decisión (`keyword_misses`): si es de un segmento del perfil,
+  lo decide su propio stream.
+- Lo ya decidido por su segmento se reutiliza (`decisions_reused`). Lo nuevo se guarda con
+  `cubso_segmento = '0'` (la búsqueda sin segmento no lo informa) y `keyword_lines`.
+- Estos streams leen hasta `max_keyword_pages` páginas, igual al tope de descubrimiento del ciclo
+  (24), para que una pasada siempre pueda terminar uno. Con los 18 de segmento, una vuelta son
+  ~49 peticiones: se reparte en 2 o 3 ciclos seguidos (`partial_pass_pending`).
+- Los streams de segmento también leen hasta ese tope por defecto (`--max-pages` sin valor; antes
+  5 páginas de 100), así que un segmento que crezca no se corta.
+- La evaluación (LLM2) ata un contrato con segmento `0` a la línea que nombró su título; las listas
+  de menores de la web (`/api/contracts` y `/api/feed`) lo muestran a la empresa cuyo JEV lo aceptó.
+- Imagen `buenapro-worker-prod6:allkw-c30ad0c` (sobre `shared-gate-9afb7f8`); volver atrás es
+  restaurar `prod6-mvp.env.bak-<sello>` (sello en `~/buenapro-releases/allkw-c30ad0c-prod6-backup-stamp`)
+  y repetir el `up` de `deploy.sh`.
+
 #### Descarga única
 
 `download_file` guarda lo que descargó (solo PDF de TDR/EETT que van a lectura) como temporal
@@ -1039,6 +1063,21 @@ con su aviso. Config:
   - Los casos sin lectura vuelven a pasar por ficha y descargas mientras estén en la ventana.
 - Lectura v6 con `--llm1-model-routing fixed`. La ruta `pages20` manda a `gemini-2.5-flash-lite`,
   retirado para nuestra llave.
+
+Desde el 30/10/2026 busca **todas** las palabras clave de DIN y VEYON (`--business-scope todas`,
+167 tras sumar «radar», igual que los perfiles en PostgreSQL; la lista de `docs/sources` es una copia
+que hay que actualizar cuando cambian los perfiles):
+
+- Imagen `buenapro-worker-prod2:allkw-d924d0f`, recibos en
+  `~/buenapro-releases/prod2-allkw-d924d0f-receipts/`.
+- Recuperación única de 30 días en `~/buenapro/runtime/prod2-catchup-all-20261030/`
+  (`max_cycles` 1, contenedor `docker-prod2-catchup-1`), para lo publicado antes que sigue abierto.
+- Diario en `~/buenapro/runtime/prod2-service-all-daily/` (env `prod2-daily.env`): topes 2000
+  candidatas y llamadas JEV, 400 aceptadas, 120 LLM1, 1000 embeddings y `max_calls` 120 de evaluación.
+  `start-daily-after-catchup.sh` lo arranca solo si la recuperación quedó `complete` (log
+  `start-daily.log`) y fija `first_to` en la fecha de Lima de ese momento.
+- Cada consulta tarda ~1 min con 10 s entre peticiones y el freno compartido: 334 consultas son
+  ~5,5 h por ciclo, más fichas y lecturas.
 
 Qué hace el servicio cuando un ciclo no termina limpio:
 
