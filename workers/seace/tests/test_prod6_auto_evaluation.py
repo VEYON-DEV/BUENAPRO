@@ -21,7 +21,7 @@ from buenapro_worker.prod6.evaluation_guard import GuardedMatchAnalyzer
 from buenapro_worker.prod6.reading import (
     GuardedReadingError, ProviderRejectedError, ReadingBlockedError,
 )
-from buenapro_worker.prod6.screening import POLICY_VERSION, record_decision
+from buenapro_worker.prod6.screening import KEYWORD_SEGMENT, POLICY_VERSION, record_decision
 from buenapro_worker.queue.repository import Job
 from buenapro_worker.seace.schemas import SearchItem
 from buenapro_worker.settings import Settings
@@ -598,14 +598,15 @@ def rule(db, profile, **fields):
     db.execute(f"UPDATE automation_rules SET {assignments} WHERE profile_id = %s", (*fields.values(), profile))
 
 
-def contract(db, *, closes_in_hours=48, flagged=False, quality="auto", facets=2, read=True, state=2):
+def contract(db, *, closes_in_hours=48, flagged=False, quality="auto", facets=2, read=True, state=2,
+             segment="43"):
     """An open contract with a document, a current reading and its requirement facets."""
     number = random.randint(9_000_000_000, 9_900_000_000)
     db.execute(
         """INSERT INTO seace_contracts (id_contrato, codigo, anio, objeto_codigo, estado_codigo, descripcion,
              cubso_segmento, fec_fin_cotizacion, hash_search, raw_search_json)
-           VALUES (%s, %s, 2026, 2, %s, 'Servicio de servidores', '43', %s, 'h', '{}'::jsonb)""",
-        (number, f"TEST-{number}", state, None if closes_in_hours is None
+           VALUES (%s, %s, 2026, 2, %s, 'Servicio de servidores', %s, %s, 'h', '{}'::jsonb)""",
+        (number, f"TEST-{number}", state, segment, None if closes_in_hours is None
          else NOW + timedelta(hours=closes_in_hours)))
     extraction = None
     if read:
@@ -627,14 +628,14 @@ def contract(db, *, closes_in_hours=48, flagged=False, quality="auto", facets=2,
 
 
 def decide(db, number, profile, decision="accepted", *, decided_by="jev", contract_hash="c1",
-           profile_hash="p1", score=80):
+           profile_hash="p1", score=80, segment=43, keyword_lines=()):
     item = SearchItem.model_validate({
         "idContrato": number, "desContratacion": f"TEST-{number}", "idObjetoContrato": 2,
         "desObjetoContrato": "Servicio de servidores", "idEstadoContrato": 2,
         "fecPublica": "01/10/2026 10:00:00", "fecFinCotizacion": "30/12/2026 10:00:00"})
     assert record_decision(
-        db, item=item, segment=43, profile_id=profile, contract_hash=contract_hash, profile_hash=profile_hash,
-        policy_version=POLICY_VERSION, prefilter_passed=True, prefilter_reasons=[], keyword_lines=[],
+        db, item=item, segment=segment, profile_id=profile, contract_hash=contract_hash, profile_hash=profile_hash,
+        policy_version=POLICY_VERSION, prefilter_passed=True, prefilter_reasons=[], keyword_lines=list(keyword_lines),
         decision=decision, decided_by=decided_by)
     db.execute("""UPDATE prod6_profile_decisions SET score = %s WHERE id_contrato = %s AND profile_id = %s
                   AND contract_hash = %s""", (score, number, profile, contract_hash))
@@ -665,6 +666,22 @@ def test_only_accepted_jev_decisions_are_queued_and_the_job_carries_runtime_owne
     # The runtime claims it with its own whitelist.
     claimed = claim_evaluation(db, world)
     assert claimed.job_type == "analyze_match" and claimed.payload["profile_id"] == veyon
+
+
+@needs_db
+def test_a_contract_found_by_keywords_outside_the_segments_takes_the_line_its_title_named(db, world):
+    veyon = world.companies[0]
+    line = db.execute("SELECT id FROM business_lines WHERE profile_id = %s AND nombre = 'Linea 0'",
+                      (veyon,)).fetchone()["id"]
+    number, _ = contract(db, segment=str(KEYWORD_SEGMENT))
+    decide(db, number, veyon, segment=KEYWORD_SEGMENT, keyword_lines=["Linea 0"])
+    assert enqueue_evaluations(world.scoped(), profile_ids=world.companies, contract_id=number)["enqueued"] == 1
+    assert jobs(db, number)[0]["payload"]["business_line_id"] == str(line)
+    # A title naming none of the company's lines gets no line, as any contract outside its segments did.
+    other, _ = contract(db, segment=str(KEYWORD_SEGMENT))
+    decide(db, other, veyon, segment=KEYWORD_SEGMENT, keyword_lines=["Otra empresa"])
+    assert enqueue_evaluations(world.scoped(), profile_ids=world.companies, contract_id=other)["enqueued"] == 1
+    assert jobs(db, other)[0]["payload"]["business_line_id"] is None
 
 
 @needs_db

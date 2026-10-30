@@ -8,8 +8,8 @@ import pytest
 from buenapro_worker.jobs.poll_prod6_profile import poll_prod6_profile
 from buenapro_worker.jobs.poll_search import canonical_hash
 from buenapro_worker.prod6.screening import (
-    POLICY_VERSION, VOLATILE_LISTING_FIELDS, decide, existing_decision, listing_hash, prefilter,
-    profile_snapshot, record_decision,
+    KEYWORD_SEGMENT, POLICY_VERSION, VOLATILE_LISTING_FIELDS, decide, existing_decision, listing_hash,
+    prefilter, profile_snapshot, record_decision,
 )
 from buenapro_worker.queue.repository import JobRepository
 from buenapro_worker.seace.schemas import SearchItem, SearchResponse
@@ -77,6 +77,17 @@ def test_keyword_lines_two_terms_or_phrase_within_one_line():
     assert run_prefilter(search_item("CCM con variadores"), snap)[2] == ["A"]
     assert run_prefilter(search_item("Solo variadores"), snap)[2] == []
     assert run_prefilter(search_item("Sistema SCADA"), snap)[2] == ["B"]
+
+
+def test_keyword_stream_takes_the_named_lines_of_any_segment_and_needs_one():
+    snap = snapshot(line("Tableros", segments=("39",)), line("Scada", segments=("43",), phrases=("scada",), terms=()))
+    # Without a segment, every line whose keywords the title names applies, whatever its segments.
+    assert run_prefilter(search_item("Tableros eléctricos y sistema SCADA"), snap, segment=KEYWORD_SEGMENT) == (
+        True, [], ["Tableros", "Scada"])
+    assert run_prefilter(search_item("Compra de papelería"), snap, segment=KEYWORD_SEGMENT) == (
+        False, ["no_keyword_line"], [])
+    # Hard rules still apply to what the keywords let in.
+    assert run_prefilter(search_item(idEstadoContrato=3), snap, segment=KEYWORD_SEGMENT)[1] == ["not_vigente"]
 
 
 def test_prefilter_collects_every_failed_rule():

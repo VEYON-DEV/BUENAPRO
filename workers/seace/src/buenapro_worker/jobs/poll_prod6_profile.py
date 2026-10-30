@@ -8,8 +8,8 @@ from typing import Any
 
 from buenapro_worker.jobs.poll_search import LIMA_TZ, upsert_search_item
 from buenapro_worker.prod6.screening import (
-    POLICY_VERSION, decide, line_matches, listing_hash, normalize, prefilter, profile_snapshot,
-    record_decision,
+    KEYWORD_SEGMENT, POLICY_VERSION, decide, line_matches, listing_hash, normalize, prefilter,
+    profile_snapshot, record_decision,
 )
 from buenapro_worker.queue.repository import JobRepository
 from buenapro_worker.seace.client import SeaceClient
@@ -76,7 +76,8 @@ def _search_pages(client: SeaceClient, *, year: int, objeto: int, segment: int,
         if reserve is not None and not reserve():
             raise DiscoveryLimit()
         response = client.search_contracts(
-            anio=year, estado=2, objeto=objeto, segmento=segment, page=page, page_size=100,
+            anio=year, estado=2, objeto=objeto, page=page, page_size=100,
+            segmento=None if segment == KEYWORD_SEGMENT else segment,
         )
         total_pages = (
             response.pageable.total_elements + response.pageable.page_size - 1
@@ -97,7 +98,7 @@ def _mark_stop(stats: dict[str, int], error: BaseException) -> None:
 
 
 PROFILE_KEYS = ("seen", "candidates", "changed", "enqueued", "skipped",
-                "decisions_recorded", "decisions_reused", "prefilter_rejected")
+                "decisions_recorded", "decisions_reused", "prefilter_rejected", "keyword_misses")
 
 
 def poll_prod6_profiles(
@@ -113,6 +114,8 @@ def poll_prod6_profiles(
     max_requests: int | None = None,
     start_stream: int = 0,
     max_streams: int | None = None,
+    keyword_streams: bool = False,
+    max_keyword_pages: int | None = None,
 ) -> dict[str, Any]:
     """One search sweep for every profile: each (object, segment) stream is read once.
 
@@ -120,6 +123,11 @@ def poll_prod6_profiles(
     Every result page feeds the screening decision of EACH profile whose segments include
     the stream's segment (a profile without that segment gets no row for the item), with
     the same prefilter/record_decision semantics as a single-profile sweep.
+
+    ``keyword_streams`` appends one nationwide stream per object (``KEYWORD_SEGMENT``, no
+    segment filter, up to ``max_keyword_pages`` pages). There an item only reaches a profile's
+    screening when its title names one of that profile's business lines; anything else gets no
+    decision at all, so the segment streams keep deciding their own items as before.
 
     ``max_requests`` caps the search requests of this call (the rest of the cycle's
     budget is left to the free IO jobs). The sweep starts at ``start_stream`` (an index
@@ -145,6 +153,11 @@ def poll_prod6_profiles(
         raise ValueError("The start stream must be a non-negative index")
     if max_streams is not None and (type(max_streams) is not int or max_streams < 1):
         raise ValueError("The stream limit must be a positive integer")
+    if max_keyword_pages is not None and (type(max_keyword_pages) is not int or max_keyword_pages < 1):
+        raise ValueError("The keyword stream page limit must be a positive integer")
+
+    def max_pages(segment: int) -> int:
+        return (max_keyword_pages or max_pages_per_segment) if segment == KEYWORD_SEGMENT else max_pages_per_segment
     snapshots: dict[str, dict[str, Any]] = {}
     profile_segments: dict[str, set[int]] = {}
     for profile_id in profile_ids:
@@ -167,9 +180,10 @@ def poll_prod6_profiles(
         # This function is only called on the coordinator thread. Neither the
         # repository nor its PostgreSQL connection reaches HTTP worker threads.
         totals["pages"] += 1
+        keyword_stream = segment == KEYWORD_SEGMENT
         for item in response.data:
             for profile_id in profile_ids:
-                if profile_id in limited or segment not in profile_segments[profile_id]:
+                if profile_id in limited or (not keyword_stream and segment not in profile_segments[profile_id]):
                     continue
                 stats, snapshot = per_profile[profile_id], snapshots[profile_id]
                 stats["seen"] += 1
@@ -179,6 +193,10 @@ def poll_prod6_profiles(
                 if (item.objeto_codigo != objeto
                         or {"object_out_of_scope", "publication_year_mismatch"} & set(reasons)):
                     stats["skipped"] += 1
+                    continue
+                # Not a rejection: a contract of the profile's segments is decided by its own stream.
+                if "no_keyword_line" in reasons:
+                    stats["keyword_misses"] += 1
                     continue
                 decision, decided_by = decide(passed)
                 stats["prefilter_rejected"] += int(not passed)
@@ -215,6 +233,8 @@ def poll_prod6_profiles(
 
     streams = [(objeto, segment) for objeto in (1, 2)
                for segment in sorted(set().union(*profile_segments.values()))]
+    if keyword_streams:  # After the segment streams, so a lap decides those items first.
+        streams += [(objeto, KEYWORD_SEGMENT) for objeto in (1, 2)]
     start = start_stream % len(streams)
     order = (streams[start:] + streams[:start])[:max_streams]
     unfinished: int | None = None  # Position in ``order`` of the first stream that did not finish.
@@ -236,7 +256,7 @@ def poll_prod6_profiles(
                 for position, (objeto, segment) in enumerate(order):
                     for response, capped in _search_pages(
                         client, year=year, objeto=objeto, segment=segment,
-                        max_pages=max_pages_per_segment, reserve=reserve,
+                        max_pages=max_pages(segment), reserve=reserve,
                     ):
                         totals["http_requests"] += 1
                         totals["http_rows"] += len(response.data)
@@ -272,7 +292,7 @@ def poll_prod6_profiles(
                 try:
                     for response, capped in _search_pages(
                         client, year=year, objeto=objeto, segment=segment,
-                        max_pages=max_pages_per_segment, reserve=reserve,
+                        max_pages=max_pages(segment), reserve=reserve,
                     ):
                         pages.append((response, capped))
                 except Exception as error:

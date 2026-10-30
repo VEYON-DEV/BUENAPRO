@@ -20,6 +20,10 @@ from buenapro_worker.seace.schemas import SearchItem
 
 POLICY_VERSION = "prod6_screening_v2"
 
+# Stored CUBSO segment of a contract found by the nationwide keyword stream: that search has no
+# segment filter and its listing does not name one. Business lines are then attached by keywords.
+KEYWORD_SEGMENT = 0
+
 # Listing fields that change while the contract does not. ``secuencia`` is the position of the
 # contract in the result list: it moves every time other contracts are published.
 VOLATILE_LISTING_FIELDS = frozenset({"secuencia"})
@@ -89,7 +93,9 @@ def prefilter(item: SearchItem, snapshot: dict[str, Any], *, year: int, now: dat
     """Hard rules only; keywords never block and are reported in ``keyword_lines``.
 
     ``segment`` is the CUBSO segment of the search stream that returned the item
-    (the search item itself does not carry it).
+    (the search item itself does not carry it). The nationwide keyword stream
+    (``KEYWORD_SEGMENT``) has no segment: there the lines whose keywords the title
+    names stand in for it, so an item naming none of them is out of the profile.
     """
     publication = parse_lima_datetime(item.fec_publica)
     close = parse_lima_datetime(item.fec_fin_cotizacion)
@@ -102,10 +108,15 @@ def prefilter(item: SearchItem, snapshot: dict[str, Any], *, year: int, now: dat
         reasons.append("publication_year_mismatch")
     if close is not None and close <= now:
         reasons.append("closed")
-    segment_lines = [line for line in snapshot["lines"] if str(segment) in line["cubso_segmentos"]]
-    if not segment_lines:
-        reasons.append("segment_out_of_profile")
     text = f" {normalize(item.descripcion)} "
+    if segment == KEYWORD_SEGMENT:
+        segment_lines = [line for line in snapshot["lines"] if line_matches(text, line)]
+        if not segment_lines:
+            reasons.append("no_keyword_line")
+    else:
+        segment_lines = [line for line in snapshot["lines"] if str(segment) in line["cubso_segmentos"]]
+        if not segment_lines:
+            reasons.append("segment_out_of_profile")
     keyword_lines = [line["nombre"] for line in segment_lines if line_matches(text, line)]
     return not reasons, reasons, keyword_lines
 

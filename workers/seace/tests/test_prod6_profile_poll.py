@@ -118,6 +118,35 @@ def test_poll_only_current_relevant_vigente_goods_services(client_cls, upsert, d
     assert [(call.kwargs["objeto"], call.kwargs["segmento"]) for call in calls] == [(1,39),(2,39)]
 
 
+@patch("buenapro_worker.jobs.poll_prod6_profile.upsert_search_item", return_value=True)
+@patch("buenapro_worker.jobs.poll_prod6_profile.SeaceClient")
+def test_keyword_streams_search_all_of_seace_but_only_decide_what_names_a_line(client_cls, upsert, decisions):
+    repo = MagicMock()
+    repo.conn.execute.return_value.fetchone.return_value = None
+    repo.conn.execute.return_value.fetchall.return_value = LINES
+    client = client_cls.return_value.__enter__.return_value
+    client.search_contracts.side_effect = [
+        response([item(1, "tableros eléctricos")]), response([]),  # segment 39: goods, services
+        # All of SEACE (goods): the segment-39 item again, one of another segment, one without keywords.
+        response([item(1, "tableros eléctricos"), item(6, "Grupo electrógeno y tableros eléctricos"),
+                  item(7, "papelería")], total=1000),
+        response([item(8, "CCM con variadores")], total=1000),
+        response([item(9, "tableros eléctricos")], total=1000),  # third page: the keyword page cap
+        response([])]  # All of SEACE (services)
+    stats = poll_module.poll_prod6_profiles(settings(), repo, profile_ids=["profile"],
+                                            keyword_streams=True, max_keyword_pages=3)
+    calls = [(call.kwargs["objeto"], call.kwargs["segmento"]) for call in client.search_contracts.call_args_list]
+    assert calls == [(1, 39), (2, 39), (1, None), (1, None), (1, None), (2, None)]
+    assert stats["streams"] == 4 and stats["cursor"]["complete"] and stats["capped_segments"] == 1
+    rows = decisions.by_contract()
+    assert sorted(rows) == [1, 6, 8, 9]  # papelería names no line: no decision at all
+    assert rows[1]["segment"] == 39  # decided by its own segment stream, reused by the keyword one
+    assert {rows[id]["segment"] for id in (6, 8, 9)} == {screening.KEYWORD_SEGMENT}
+    assert rows[6]["keyword_lines"] == ["line0"]
+    assert (stats["keyword_misses"], stats["decisions_reused"], stats["decisions_recorded"]) == (1, 1, 4)
+    assert [call.kwargs["segment"] for call in upsert.call_args_list] == [39, 0, 0, 0]
+
+
 @patch("buenapro_worker.jobs.poll_prod6_profile.upsert_search_item", return_value=False)
 @patch("buenapro_worker.jobs.poll_prod6_profile.SeaceClient")
 def test_unchanged_or_filtered_page_does_not_stop_pagination(client_cls, upsert):

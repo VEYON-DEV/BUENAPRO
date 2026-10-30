@@ -16,7 +16,7 @@ from collections import Counter
 from typing import Any
 
 from buenapro_worker.jobs.match import _automatic_jobs_today
-from buenapro_worker.prod6.screening import POLICY_VERSION
+from buenapro_worker.prod6.screening import KEYWORD_SEGMENT, POLICY_VERSION
 
 AUTO_ORIGIN = "prod6_jev_accepted_v1"
 # A model answer that skips or reorders requirements leaves the pair (for that reading) without
@@ -73,10 +73,13 @@ WHERE (NOT %(only_accepted)s OR (l.decision = 'accepted' AND l.decided_by = 'jev
 ORDER BY c.fec_fin_cotizacion NULLS LAST, l.id_contrato, l.profile_id
 """
 
-BUSINESS_LINE_SQL = """
-SELECT bl.id FROM business_lines bl JOIN seace_contracts c ON c.id_contrato = %s
-WHERE bl.profile_id = %s AND bl.is_active AND c.cubso_segmento = ANY(bl.cubso_segmentos)
-ORDER BY (bl.nombre = ANY(%s)) DESC, bl.nombre LIMIT 1
+# A contract found by the nationwide keyword stream has no segment: the lines its title named stand in.
+BUSINESS_LINE_SQL = f"""
+SELECT bl.id FROM business_lines bl JOIN seace_contracts c ON c.id_contrato = %(contract)s
+WHERE bl.profile_id = %(profile)s AND bl.is_active
+  AND (c.cubso_segmento = ANY(bl.cubso_segmentos)
+       OR (c.cubso_segmento = '{KEYWORD_SEGMENT}' AND bl.nombre = ANY(%(lines)s)))
+ORDER BY (bl.nombre = ANY(%(lines)s)) DESC, bl.nombre LIMIT 1
 """
 
 
@@ -157,8 +160,8 @@ def enqueue_evaluations(repo, *, profile_ids: list[str], contract_id: int | None
             stats["daily_limited"] += 1
             continue
         dedup_key = f"analyze_match:{profile}:{row['id_contrato']}"
-        line = repo.conn.execute(BUSINESS_LINE_SQL, (row["id_contrato"], profile,
-                                                     list(row["keyword_lines"] or []))).fetchone()
+        line = repo.conn.execute(BUSINESS_LINE_SQL, {"contract": row["id_contrato"], "profile": profile,
+                                                     "lines": list(row["keyword_lines"] or [])}).fetchone()
         item = {"id_contrato": int(row["id_contrato"]), "profile_id": profile}
         if apply:
             job_id = repo.enqueue("analyze_match", {

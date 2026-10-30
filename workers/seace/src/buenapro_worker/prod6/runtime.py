@@ -1072,7 +1072,9 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
                                     max_pages_per_segment=max_pages, max_candidates=max_candidates,
                                     batch_id=batch_id, search_parallelism=http_workers,
                                     max_requests=discovery_limit, start_stream=stream_start(discovery_cursor),
-                                    max_streams=streams_left_in_lap(discovery_cursor))
+                                    max_streams=streams_left_in_lap(discovery_cursor),
+                                    # All of SEACE by keywords; one pass can always finish a stream.
+                                    keyword_streams=True, max_keyword_pages=discovery_limit)
                             by_profile = polled.pop("by_profile", None)
                             cursor = polled.pop("cursor", None)
                             for key, value in polled.items():

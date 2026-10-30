@@ -59,13 +59,18 @@ export async function getFeed(tenantId: string, params: URLSearchParams) {
   }
   if (!bucket && !segmento) {
     where.push(`
-      EXISTS (
+      (EXISTS (
         SELECT 1
         FROM business_lines bl
         WHERE bl.profile_id = cp.id
           AND bl.is_active = true
           AND c.cubso_segmento = ANY(bl.cubso_segmentos)
       )
+      -- Found by the nationwide keyword search (segment '0', unknown) and accepted for this company.
+      OR (c.cubso_segmento = '0' AND EXISTS (
+        SELECT 1 FROM prod6_profile_decisions d
+        WHERE d.id_contrato = c.id_contrato AND d.profile_id = cp.id AND d.decision = 'accepted'
+      )))
     `);
   }
   if (region) {

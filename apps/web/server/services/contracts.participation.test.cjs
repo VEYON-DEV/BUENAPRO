@@ -107,6 +107,18 @@ test('minor analysis filter retains unpublished and zero scores while filtering 
   }
 });
 
+test('minor browse adds contracts found outside the profile segments only when JEV accepted them for that company', async () => {
+  const { service, statements } = serviceWithCurrentReading();
+  await service.listContractsForTenant('tenant-qa', new URLSearchParams());
+  const list = statements.find(statement => statement.sql.includes('FROM seace_contracts c'));
+  assert.match(list.sql, /c\.cubso_segmento = ANY\(bl\.cubso_segmentos\)/);
+  assert.match(list.sql, /OR \(c\.cubso_segmento = '0' AND EXISTS \(\s*SELECT 1 FROM prod6_profile_decisions d\s*WHERE d\.id_contrato = c\.id_contrato AND d\.profile_id = \$2::uuid AND d\.decision = 'accepted'/);
+  // An explicit segment filter keeps its exact meaning.
+  statements.length = 0;
+  await service.listContractsForTenant('tenant-qa', new URLSearchParams({ segmento: '43' }));
+  assert.doesNotMatch(statements.find(statement => statement.sql.includes('FROM seace_contracts c')).sql, /prod6_profile_decisions/);
+});
+
 test('default minor browse preserves unanalyzed rows instead of implicitly requiring a match', async () => {
   const { service, statements } = serviceWithCurrentReading();
   const list = await service.listContractsForTenant('tenant-qa', new URLSearchParams());
