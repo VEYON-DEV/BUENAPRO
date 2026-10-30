@@ -1,0 +1,181 @@
+/* Tabla densa de operador: el primitivo Table aporta el contenedor y el scroll horizontal. */
+table.table {
+  min-width: 0;
+  width: 100%;
+}
+
+/* td posicionado: el «0» para lectores de pantalla (absoluto) queda contenido y recortado por el scroll de la tabla. */
+table.table th,
+table.table td {
+  max-width: none;
+  padding: 0;
+  position: relative;
+  vertical-align: middle;
+}
+
+table.table thead th {
+  font-size: 12px;
+  line-height: 16px;
+  padding: 7px 6px;
+  white-space: nowrap;
+}
+
+table.table thead th[data-numeric] {
+  font-weight: 650;
+}
+
+table.table tbody td,
+table.table tfoot td {
+  font-size: 13px;
+  height: 36px;
+}
+
+.caption,
+.srOnly {
+  border: 0;
+  clip: rect(0 0 0 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+/* La primera columna se queda fija al desplazar en horizontal. */
+table.table .dayHead,
+table.table .day {
+  background: var(--bp-color-panel);
+  border-right: 1px solid var(--bp-color-border);
+  left: 0;
+  min-width: 108px;
+  position: sticky;
+  text-align: left;
+  z-index: 2;
+}
+
+table.table .dayHead {
+  background: var(--bp-color-panel-2);
+  padding: 7px 12px;
+}
+
+table.table .day {
+  color: var(--bp-color-ink);
+  font-size: 13px;
+  font-weight: 650;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+table.table tfoot .day {
+  background: var(--bp-color-panel-2);
+}
+
+.todayTag {
+  background: var(--bp-color-brand-soft);
+  border-radius: var(--bp-radius-pill);
+  color: var(--bp-color-brand);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 16px;
+  margin-left: 6px;
+  padding: 0 7px;
+}
+
+table.table .group {
+  border-left: 1px solid var(--bp-color-border);
+  color: var(--bp-color-ink);
+  font-weight: 700;
+  text-align: center;
+  white-space: normal;
+}
+
+/* La etiqueta va debajo del nombre del grupo para no ensanchar las columnas de un grupo de una sola columna. */
+.shared {
+  color: var(--bp-color-text-3);
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 14px;
+}
+
+table.table .groupStart {
+  border-left: 1px solid var(--bp-color-border);
+}
+
+table.table tbody tr.today td,
+table.table tbody tr.today .day {
+  background: color-mix(in srgb, var(--bp-color-brand-soft), white 55%);
+}
+
+table.table tbody tr.today .day {
+  background: var(--bp-color-brand-soft);
+}
+
+table.table tfoot td,
+table.table tfoot th {
+  background: var(--bp-color-panel-2);
+  border-bottom: 0;
+  border-top: 1px solid var(--bp-color-border-strong);
+  color: var(--bp-color-ink);
+  font-weight: 700;
+}
+
+.zero {
+  color: var(--bp-color-border-strong);
+}
+
+.neutral {
+  --bar-color: var(--bp-color-brand);
+}
+
+.good {
+  --bar-color: var(--bp-color-success);
+}
+
+.bad {
+  --bar-color: var(--bp-color-danger);
+}
+
+/* El enlace llena la celda: área de clic amplia, barra de 3px proporcional al máximo de la columna. */
+.link {
+  color: var(--bp-color-text);
+  display: block;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  height: 36px;
+  line-height: 33px;
+  padding: 0 6px;
+  position: relative;
+  text-align: right;
+}
+
+.link::after {
+  background: var(--bar-color);
+  border-radius: 2px;
+  bottom: 4px;
+  content: "";
+  height: 3px;
+  opacity: 0.7;
+  position: absolute;
+  right: 6px;
+  width: calc((100% - 12px) * var(--ratio));
+}
+
+.link:hover {
+  background: var(--bp-color-brand-soft);
+  color: var(--bp-color-brand);
+}
+
+.bad .link {
+  color: var(--bp-color-danger);
+}
+
+.good .link {
+  color: var(--bp-color-sage);
+}
+
+.zero {
+  padding: 0 6px;
+}

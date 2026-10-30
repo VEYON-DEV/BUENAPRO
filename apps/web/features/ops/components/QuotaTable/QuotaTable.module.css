@@ -1,0 +1,109 @@
+table.table {
+  min-width: 0;
+  width: 100%;
+}
+
+table.table th,
+table.table td {
+  max-width: none;
+  padding: 0 10px;
+  vertical-align: middle;
+}
+
+table.table thead th {
+  font-size: 12px;
+  line-height: 16px;
+  padding-block: 7px;
+  white-space: nowrap;
+}
+
+table.table tbody td {
+  font-size: 13px;
+  height: 36px;
+  position: relative;
+}
+
+.caption,
+.srOnly {
+  border: 0;
+  clip: rect(0 0 0 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+table.table .dayHead,
+table.table .day {
+  background: var(--bp-color-panel);
+  border-right: 1px solid var(--bp-color-border);
+  left: 0;
+  position: sticky;
+  text-align: left;
+  z-index: 2;
+}
+
+table.table .dayHead {
+  background: var(--bp-color-panel-2);
+}
+
+table.table .day {
+  color: var(--bp-color-ink);
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+table.table tbody tr.today td,
+table.table tbody tr.today .day {
+  background: color-mix(in srgb, var(--bp-color-brand-soft), white 55%);
+}
+
+.limit {
+  color: var(--bp-color-text-3);
+  font-weight: 450;
+}
+
+.zero {
+  color: var(--bp-color-border-strong);
+}
+
+.bar {
+  background: var(--bp-color-brand);
+  border-radius: 2px;
+  bottom: 4px;
+  display: block;
+  height: 3px;
+  opacity: 0.7;
+  position: absolute;
+  right: 10px;
+  max-width: calc(100% - 20px);
+}
+
+.high {
+  color: var(--bp-color-warning);
+  font-weight: 700;
+}
+
+.high .bar {
+  background: var(--bp-color-warning);
+}
+
+.full {
+  color: var(--bp-color-danger);
+  font-weight: 750;
+}
+
+.full .bar {
+  background: var(--bp-color-danger);
+}
+
+.empty {
+  background: var(--bp-color-panel);
+  border: 1px solid var(--bp-color-border);
+  border-radius: var(--bp-radius-md);
+  color: var(--bp-color-text-2);
+  padding: var(--bp-space-3) var(--bp-space-4);
+}

@@ -1,0 +1,127 @@
+.page {
+  display: grid;
+  gap: var(--bp-space-4);
+  min-width: 0;
+}
+
+.back {
+  align-items: center;
+  color: var(--bp-color-brand);
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 650;
+  gap: 4px;
+  min-height: 32px;
+}
+
+.back:hover {
+  text-decoration: underline;
+}
+
+.ficha {
+  align-items: center;
+  background: var(--bp-color-glass-strong);
+  border: 1px solid var(--bp-color-glass-border);
+  border-radius: var(--bp-radius-md);
+  box-shadow: var(--bp-shadow-subtle);
+  color: var(--bp-color-text);
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 650;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 14px;
+}
+
+.ficha:hover {
+  background: var(--bp-color-panel-2);
+}
+
+.description {
+  color: var(--bp-color-text);
+  font-size: 14px;
+  line-height: 22px;
+  max-width: 100ch;
+}
+
+.facts {
+  background: var(--bp-color-panel);
+  border: 1px solid var(--bp-color-border);
+  border-radius: var(--bp-radius-lg);
+  box-shadow: var(--bp-shadow-work);
+  display: grid;
+  gap: var(--bp-space-3);
+  padding: var(--bp-space-4);
+}
+
+.facts dl {
+  display: grid;
+  gap: var(--bp-space-3) var(--bp-space-6);
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  margin: 0;
+}
+
+.facts dt {
+  align-items: center;
+  color: var(--bp-color-text-2);
+  display: flex;
+  font-size: 12px;
+  font-weight: 650;
+  gap: 4px;
+  line-height: 16px;
+}
+
+.facts dd {
+  color: var(--bp-color-ink);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  line-height: 22px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.cost dd {
+  color: var(--bp-color-sage);
+}
+
+.kinds {
+  border-top: 1px solid var(--bp-color-border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: var(--bp-space-3) 0 0;
+}
+
+.kinds li {
+  background: var(--bp-color-review-soft);
+  border-radius: var(--bp-radius-pill);
+  color: var(--bp-color-review);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  padding: 3px 10px;
+}
+
+.kinds strong {
+  color: var(--bp-color-ink);
+  font-variant-numeric: tabular-nums;
+  margin-left: 3px;
+}
+
+.note {
+  background: var(--bp-color-warning-soft);
+  border-radius: var(--bp-radius-md);
+  color: #7a4a00;
+  font-size: 13px;
+  line-height: 20px;
+  padding: var(--bp-space-2) var(--bp-space-4);
+}
+
+.timeNote {
+  color: var(--bp-color-text-2);
+  font-size: 12px;
+  line-height: 18px;
+}

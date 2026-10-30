@@ -1,0 +1,168 @@
+.page {
+  display: grid;
+  gap: var(--bp-space-4);
+  min-width: 0;
+}
+
+.back {
+  align-items: center;
+  color: var(--bp-color-brand);
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 650;
+  gap: 4px;
+  min-height: 32px;
+}
+
+.back:hover {
+  text-decoration: underline;
+}
+
+.scope {
+  color: var(--bp-color-text-2);
+  font-size: 13px;
+}
+
+.scope strong {
+  color: var(--bp-color-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.srOnly {
+  border: 0;
+  clip: rect(0 0 0 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+table.table {
+  min-width: 0;
+}
+
+table.table td {
+  max-width: 420px;
+  overflow-wrap: anywhere;
+}
+
+.trace {
+  color: var(--bp-color-brand);
+  font-weight: 700;
+}
+
+.trace:hover {
+  text-decoration: underline;
+}
+
+.plain {
+  font-weight: 650;
+}
+
+.ref,
+.description {
+  color: var(--bp-color-text-2);
+  display: block;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+/* Las descripciones de SEACE pueden ocupar párrafos: dos líneas bastan para escanear; el texto completo va en el title. */
+.description,
+.entity {
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  display: -webkit-box;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+.entity {
+  color: var(--bp-color-ink);
+  font-weight: 600;
+}
+
+table.table td[data-numeric],
+table.table th[data-numeric],
+table.table td[data-label="Estado"],
+table.table td[data-label="Empresa"] {
+  white-space: nowrap;
+}
+
+table.table td:first-child {
+  min-width: 150px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.chip {
+  background: var(--bp-color-intelligence-soft);
+  border-radius: var(--bp-radius-pill);
+  color: var(--bp-color-intelligence);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  line-height: 16px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+.none {
+  color: var(--bp-color-text-3);
+}
+
+/* En mobile cada fila pasa a una ficha con sus campos rotulados, sin scroll horizontal. */
+@media (max-width: 767px) {
+  table.table,
+  table.table tbody,
+  table.table tr,
+  table.table td {
+    display: block;
+    max-width: none;
+    width: 100%;
+  }
+
+  table.table thead {
+    display: none;
+  }
+
+  table.table tr {
+    border-bottom: 1px solid var(--bp-color-border);
+    padding: var(--bp-space-2) 0;
+  }
+
+  table.table tr:last-child {
+    border-bottom: 0;
+  }
+
+  /* El rótulo va en el margen izquierdo: así el contenido de la celda (varias líneas) no se reparte en una rejilla. */
+  table.table td {
+    border: 0;
+    padding: 4px var(--bp-space-4) 4px 96px;
+    position: relative;
+    text-align: left;
+    white-space: normal;
+  }
+
+  table.table td[data-numeric] {
+    text-align: left;
+  }
+
+  table.table td::before {
+    color: var(--bp-color-text-3);
+    content: attr(data-label);
+    font-size: 12px;
+    font-weight: 650;
+    left: var(--bp-space-4);
+    position: absolute;
+    top: 4px;
+    width: 72px;
+  }
+}

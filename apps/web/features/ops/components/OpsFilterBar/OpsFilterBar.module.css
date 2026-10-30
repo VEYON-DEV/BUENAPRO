@@ -1,0 +1,63 @@
+.bar {
+  align-items: center;
+  backdrop-filter: var(--bp-blur-glass);
+  background: var(--bp-color-glass);
+  border: 1px solid var(--bp-color-glass-border);
+  border-radius: var(--bp-radius-lg);
+  box-shadow: var(--bp-shadow-glass);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bp-space-3) var(--bp-space-6);
+  padding: var(--bp-space-3) var(--bp-space-5);
+}
+
+.field {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bp-space-2);
+  min-width: 0;
+}
+
+.label {
+  color: var(--bp-color-text-2);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 17px;
+}
+
+.note {
+  color: var(--bp-color-text-2);
+  font-size: 12px;
+  line-height: 18px;
+  margin-left: auto;
+  max-width: 44ch;
+}
+
+/* El control segmentado (primitivo) se parte en varias líneas si no cabe, sin cortar nombres de empresa. */
+.field > div {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.field a {
+  align-items: center;
+  display: inline-flex;
+  min-height: 32px;
+  white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+  .bar {
+    padding: var(--bp-space-3) var(--bp-space-4);
+  }
+
+  .field a {
+    min-height: 40px;
+  }
+
+  .note {
+    margin-left: 0;
+    max-width: none;
+  }
+}

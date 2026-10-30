@@ -48,7 +48,8 @@ apps/web/
 │   ├── auth/
 │   ├── onboarding/
 │   ├── shell/
-│   └── admin/
+│   ├── admin/
+│   └── ops/                          # Panel de operación oculto: solo administradores, sin navegación
 ├── lib/                              # Codigo generico sin vistas
 │   ├── api/
 │   ├── constants/
@@ -172,6 +173,7 @@ Cuando dos dominios necesitan la misma pieza:
 | `alerts` | `/alertas` y preferencias simples |
 | `design-system` | `/design-system`, inventario interno de primitives y composiciones aprobadas |
 | `admin` | Superficie interna sin navegacion de cliente |
+| `ops` | `/ops`, `/ops/items`, `/ops/traza/[source]/[id]`: panel de operación del pipeline (menores PROD6 y mayores PROD2), de solo lectura, oculto (404 para quien no esté en `OPS_ADMIN_USER_IDS`) y sin enlace en ningún menú |
 
 El dashboard resume decisiones y prioridades; la exploracion historica, sus filtros y analisis detallados pertenecen a `market-intelligence`.
 

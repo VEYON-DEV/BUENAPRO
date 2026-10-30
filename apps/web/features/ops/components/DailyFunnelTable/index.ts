@@ -1,0 +1,1 @@
+export { DailyFunnelTable } from "./DailyFunnelTable";

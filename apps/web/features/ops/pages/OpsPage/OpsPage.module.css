@@ -1,0 +1,68 @@
+.page {
+  display: grid;
+  gap: var(--bp-space-6);
+  min-width: 0;
+}
+
+/* PageHeader trae su propio margen inferior; el hueco entre bloques lo da el grid. */
+.page > header:first-child {
+  margin-bottom: calc(var(--bp-space-2) * -1);
+}
+
+.failures {
+  display: grid;
+  gap: var(--bp-space-5);
+}
+
+.dayNav {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 13px;
+  gap: var(--bp-space-3);
+}
+
+.dayNav a {
+  align-items: center;
+  border-radius: var(--bp-radius-pill);
+  color: var(--bp-color-brand);
+  display: inline-flex;
+  font-weight: 650;
+  min-height: 32px;
+  padding: 0 var(--bp-space-2);
+}
+
+.dayNav a:hover {
+  background: var(--bp-color-brand-soft);
+}
+
+.dayNav strong {
+  color: var(--bp-color-ink);
+  min-width: 82px;
+  text-align: center;
+}
+
+.costs {
+  align-items: start;
+  display: grid;
+  gap: var(--bp-space-5);
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+}
+
+.quota {
+  display: grid;
+  gap: var(--bp-space-2);
+  min-width: 0;
+}
+
+.quotaTitle {
+  color: var(--bp-color-ink);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+@media (max-width: 1199px) {
+  .costs {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

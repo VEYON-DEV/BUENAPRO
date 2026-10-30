@@ -1,0 +1,39 @@
+.section {
+  display: grid;
+  gap: var(--bp-space-3);
+  min-width: 0;
+  scroll-margin-top: var(--bp-space-6);
+}
+
+.header {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bp-space-3) var(--bp-space-6);
+  justify-content: space-between;
+}
+
+.copy {
+  min-width: 0;
+}
+
+.copy h2 {
+  color: var(--bp-color-ink);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 28px;
+}
+
+.copy p {
+  color: var(--bp-color-text-2);
+  font-size: 13px;
+  line-height: 20px;
+  max-width: 78ch;
+}
+
+.aside {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bp-space-2);
+}
