@@ -11,7 +11,7 @@ RUN apt-get update \
 COPY workers/seace/pyproject.toml /app/workers/seace/pyproject.toml
 COPY workers/seace/src /app/workers/seace/src
 COPY workers/seace/prompts /app/workers/seace/prompts
-COPY scripts/run_prod2_selected.py scripts/run_prod2_accepted.py scripts/run_prod2_parallel_discovery.py scripts/reread_prod2_reviews.py scripts/evaluate_prod2_matches.py /app/scripts/
+COPY scripts/run_prod2_selected.py scripts/run_prod2_accepted.py scripts/run_prod2_parallel_discovery.py scripts/reread_prod2_reviews.py scripts/evaluate_prod2_matches.py scripts/grade_prod2_manual.py /app/scripts/
 COPY docs/sources /app/docs/sources
 COPY db/migrations /app/db/migrations
 RUN pip install --no-cache-dir /app/workers/seace boto3 botocore

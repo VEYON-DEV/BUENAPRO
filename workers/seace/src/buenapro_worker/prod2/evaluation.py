@@ -22,6 +22,12 @@ saturation fallback) plus the PROD2 ledger: each pair claims a ``gemini_match`` 
 * An answer that skips or reorders requirements marks that reservation ``failed``: only that pair.
 * A send whose outcome is uncertain leaves the receipt guard open and the reservation
   ``uncertain``: the run stops and no later run sends until an operator reviews it.
+
+A user can also ask for one pair («Calificar», ``manual_grading``): ``evaluate_manual`` runs the same
+evaluation for the requesting company only. The rules that merely schedule automatic work (company
+rule, daily limit, hours before close, JEV domain) do not apply to it; the open convocatoria, the
+reading and the payment rules do. Its reservation and match are tagged ``MANUAL_ORIGIN`` and never
+count toward the automatic daily limit.
 """
 from __future__ import annotations
 
@@ -45,6 +51,7 @@ from .repository import claim_evaluation, complete_evaluation, hash_request, per
 
 POLICY_VERSION = "prod2_match_v1"
 AUTO_ORIGIN = "prod2_jev_domain_v1"
+MANUAL_ORIGIN = "prod2_manual_request_v1"
 JEV_POLICY = "prod2_commercial_union_v1"
 VEYON, DIN = MEMBER_IDS
 DOMAIN_PROFILES = {"industrial_electrica": (DIN,), "informatica": (VEYON, DIN), "ambiguo": (VEYON, DIN)}
@@ -108,10 +115,13 @@ WHERE e.is_current
 ORDER BY d.proposals_closes_at NULLS LAST, e.id_convocatoria, p.profile_id
 """
 
+# Manual evaluations (any state: running ones are tagged at claim time) are not the automatic budget.
 TODAY_SQL = """
 SELECT count(*) AS total FROM prod2_evaluations
 WHERE kind = 'gemini_match' AND policy_version = %s AND profile_id = %s
   AND created_at >= date_trunc('day', now())
+  AND COALESCE(result_json->>'evaluation_origin', result_json->'breakdown'->'meta'->>'evaluation_origin')
+      IS DISTINCT FROM %s
 """
 
 FACETS_SQL = """
@@ -168,19 +178,23 @@ def candidate_rows(conn, *, convocations: list[int] | None = None, open_only: bo
                                    "open_only": open_only}).fetchall()
 
 
-def skip_reason(row: dict) -> str | None:
-    """Why this pair is not evaluated, or None. Free: nothing is claimed or sent here."""
+def skip_reason(row: dict, *, manual: bool = False) -> str | None:
+    """Why this pair is not evaluated, or None. Free: nothing is claimed or sent here.
+
+    ``manual`` (a user asked for this pair) skips the checks that only schedule automatic work:
+    JEV domain, company rule and hours before close (the daily limit is in ``plan``).
+    """
     if row["domain"] is None or row["affinity"] is None:
         return "jev_missing"
     if float(row["affinity"]) < 60:
         return "jev_rejected"
-    if row["profile_id"] not in DOMAIN_PROFILES.get(row["domain"], ()):
+    if not manual and row["profile_id"] not in DOMAIN_PROFILES.get(row["domain"], ()):
         return "domain_not_for_company"
     if not row["profile_active"]:
         return "profile_inactive"
     if not row["profile_hash"]:
         return "profile_hash_missing"
-    if not row["rule_enabled"]:
+    if not manual and not row["rule_enabled"]:
         return "rule_disabled"
     if not row["open"]:
         return "closed"
@@ -190,14 +204,15 @@ def skip_reason(row: dict) -> str | None:
         return "no_requirements"
     if row["match_current"]:
         return "match_current"
-    if row["hours_left"] is not None and float(row["hours_left"]) < int(row["min_hours"]):
+    if not manual and row["hours_left"] is not None and float(row["hours_left"]) < int(row["min_hours"]):
         return "too_close_to_close"
     return None
 
 
 def _used_today(conn, profile_id: str) -> int:
     menores = _automatic_jobs_today(SimpleNamespace(conn=conn), profile_id)
-    return menores + int(conn.execute(TODAY_SQL, (POLICY_VERSION, profile_id)).fetchone()["total"] or 0)
+    today = conn.execute(TODAY_SQL, (POLICY_VERSION, profile_id, MANUAL_ORIGIN)).fetchone()
+    return menores + int(today["total"] or 0)
 
 
 def plan(conn, *, convocations: list[int] | None = None, max_calls: int) -> dict[str, Any]:
@@ -223,7 +238,7 @@ def plan(conn, *, convocations: list[int] | None = None, max_calls: int) -> dict
     return {"planned": planned, "skipped": dict(skipped)}
 
 
-def _set_status(conn, claim: dict, status: str, reason: str, result=None) -> None:
+def _set_status(conn, claim: dict, status: str, reason: str, result=None, tag: dict | None = None) -> None:
     """Close this run's own reservation as ``pending`` (released), ``failed`` or ``uncertain``."""
     usage = (result.input_tokens, result.output_tokens, result.cost_usd) if result else (None, None, None)
     if status == "pending":
@@ -235,11 +250,15 @@ def _set_status(conn, claim: dict, status: str, reason: str, result=None) -> Non
         input_tokens=COALESCE(%s, input_tokens), output_tokens=COALESCE(%s, output_tokens),
         cost_usd=COALESCE(%s, cost_usd), updated_at=now()
         WHERE id=%s AND claim_token=%s AND status='running'""",
-        (status, json.dumps({"reason": reason}), *usage, claim["id"], claim["claim_token"]))
+        (status, json.dumps({"reason": reason, **(tag or {})}), *usage, claim["id"], claim["claim_token"]))
 
 
-def evaluate_pair(conn, settings, analyzer: GuardedMatchAnalyzer, row: dict) -> dict[str, Any]:
+def evaluate_pair(conn, settings, analyzer: GuardedMatchAnalyzer, row: dict, *,
+                  manual_request_id: int | None = None) -> dict[str, Any]:
+    """Evaluate one planned pair; ``manual_request_id`` marks it as a user's request (see the module doc)."""
     convocation, profile_id, extraction_id = int(row["id_convocatoria"]), row["profile_id"], int(row["extraction_id"])
+    tag = ({"evaluation_origin": MANUAL_ORIGIN, "manual_request_id": manual_request_id}
+           if manual_request_id is not None else None)
     profile = conn.execute("SELECT * FROM company_profiles WHERE id = %s AND is_active", (profile_id,)).fetchone()
     if profile is None or profile_snapshot(profile["profile_hash"]) != row["profile_hash"]:
         return {"outcome": "skipped", "reason": "profile_changed"}
@@ -260,18 +279,21 @@ def evaluate_pair(conn, settings, analyzer: GuardedMatchAnalyzer, row: dict) -> 
     elif claim["status"] != "claimed":
         return {"outcome": "skipped", "reason": "reservation_" + claim["status"], "evaluation_id": claim["id"]}
     else:
+        if tag is not None:  # Visible to _used_today while the call is in flight and if it ends without a match.
+            conn.execute("""UPDATE prod2_evaluations SET result_json=%s::jsonb WHERE id=%s AND claim_token=%s
+                AND status='running'""", (json.dumps(tag), claim["id"], claim["claim_token"]))
         try:
             result = analyzer.analyze(perfil=profile_evidence, requisitos=requisitos, oportunidad={
                 "codigo": row["nomenclature"], "descripcion": row["description"],
                 "entidad": row["buyer_name"], "resumen": row["summary_json"]})
         except ProviderRejectedError as error:
-            _set_status(conn, claim, "pending", "provider_rejected")
+            _set_status(conn, claim, "pending", "provider_rejected", tag=tag)
             return {"outcome": "provider_rejected", "reason": f"http_{error.code}", "evaluation_id": claim["id"]}
         except ReadingBlockedError:
-            _set_status(conn, claim, "pending", "receipts_blocked")  # Nothing was sent.
+            _set_status(conn, claim, "pending", "receipts_blocked", tag=tag)  # Nothing was sent.
             return {"outcome": "receipts_blocked", "reason": "guard_open", "evaluation_id": claim["id"]}
         except GuardedReadingError:
-            _set_status(conn, claim, "uncertain", "sent_request_without_durable_response")
+            _set_status(conn, claim, "uncertain", "sent_request_without_durable_response", tag=tag)
             return {"outcome": "payment_uncertain", "reason": "guard_opened", "evaluation_id": claim["id"]}
         try:
             score, verdict, breakdown, missing = finish_match(
@@ -279,11 +301,12 @@ def evaluate_pair(conn, settings, analyzer: GuardedMatchAnalyzer, row: dict) -> 
                 profile_evidence=profile_evidence, summary_json=row["summary_json"], meta=meta)
         except ModelOutputMismatch as error:
             # Temperature 0 repeats the answer: resending would only pay again for the same gap.
-            _set_status(conn, claim, "failed", error.code, result)
+            _set_status(conn, claim, "failed", error.code, result, tag=tag)
             return {"outcome": "model_output_invalid", "reason": error.code, "evaluation_id": claim["id"],
                     "cost_usd": result.cost_usd}
-        breakdown["meta"].update({"execution": "worker_auto", "evaluation_origin": AUTO_ORIGIN,
-                                  "jev_domain": row["domain"], "jev_affinity": float(row["affinity"])})
+        origin = ({"execution": "manual", **tag} if tag is not None
+                  else {"execution": "worker_auto", "evaluation_origin": AUTO_ORIGIN})
+        breakdown["meta"].update({**origin, "jev_domain": row["domain"], "jev_affinity": float(row["affinity"])})
         stored = {"extraction_id": extraction_id, "profile_hash": row["profile_hash"], "score": score,
                   "verdict": verdict, "breakdown": breakdown, "missing": missing, "model": result.model}
         complete_evaluation(conn, claim["id"], claim["claim_token"], stored, input_tokens=result.input_tokens,
@@ -295,6 +318,34 @@ def evaluate_pair(conn, settings, analyzer: GuardedMatchAnalyzer, row: dict) -> 
     paid = claim["status"] == "claimed"  # A replay of a completed reservation costs nothing now.
     return {"outcome": "evaluated" if paid else "replayed", **saved, "evaluation_id": claim["id"],
             "cost_usd": stored["breakdown"]["meta"].get("cost_usd") if paid else 0}
+
+
+def evaluate_manual(conn, settings, id_convocatoria: int, profile_id: str, *, request_id: int,
+                    receipt_dir: Path | None = None, analyzer: GuardedMatchAnalyzer | None = None) -> dict[str, Any]:
+    """Evaluate ONE company for ONE convocatoria a user asked for; ``receipt_dir`` is the caller's own.
+
+    Same free checks as the automatic run minus the scheduling rules (``skip_reason(manual=True)``), so
+    an evaluation is never sent for a closed convocatoria, a failed or empty reading, an inactive
+    company or a JEV under 60. A current match is not paid again. The outcome is that of ``evaluate_pair``,
+    or ``{"outcome": "skipped", "reason": ...}`` with a ``skip_reason``, ``profile_not_supported`` or
+    ``no_current_reading``.
+    """
+    if profile_id not in MEMBER_IDS:
+        return {"outcome": "skipped", "reason": "profile_not_supported"}
+    rows = [row for row in candidate_rows(conn, convocations=[int(id_convocatoria)], open_only=False)
+            if row["profile_id"] == profile_id]
+    if not rows:
+        return {"outcome": "skipped", "reason": "no_current_reading"}
+    reason = skip_reason(rows[0], manual=True)
+    if reason:
+        return {"outcome": "skipped", "reason": reason}
+    built = analyzer is None
+    analyzer = analyzer or Prod2GuardedMatchAnalyzer(settings, receipt_dir, prompt_version=POLICY_VERSION)
+    try:
+        return evaluate_pair(conn, settings, analyzer, rows[0], manual_request_id=int(request_id))
+    finally:
+        if built:
+            analyzer.close()
 
 
 def run(conn, settings, receipt_dir: Path, *, max_calls: int, convocations: list[int] | None = None,
