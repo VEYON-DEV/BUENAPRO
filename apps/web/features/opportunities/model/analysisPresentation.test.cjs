@@ -40,6 +40,7 @@ function loadSource(filename) {
       opportunityFacts: row => ({ descripcionCorta: row?.descripcion, roles: [] }), plazoLabel: () => "Por definir",
     };
     if (specifier === "../SaveButton") return { SaveButton: () => null };
+    if (specifier === "../JevScoreChip") return loadSource(path.join(feature, "components/JevScoreChip/JevScoreChip.tsx"));
     if (specifier === "../../api/seaceDetail") return { seaceDetailRequest: () => { throw new Error("SSR must not fetch"); } };
     if (specifier === "../../model/analysisPresentation") return loadSource(path.join(__dirname, "analysisPresentation.ts"));
     if (specifier === "@/lib/commercialTaxonomy") return loadSource(path.resolve(feature, "../../lib/commercialTaxonomy.ts"));
@@ -52,7 +53,7 @@ function loadSource(filename) {
   return local.exports;
 }
 
-const { analysisPresentation, analysisFilterHref, scoreFilterHref, provisionalAnalysisScore } = loadSource(path.join(__dirname, "analysisPresentation.ts"));
+const { analysisPresentation, analysisFilterHref, scoreFilterHref, provisionalAnalysisScore, jevScoreChip, JEV_SCORE_TITLE } = loadSource(path.join(__dirname, "analysisPresentation.ts"));
 const { Prod4OpportunityList } = loadSource(path.join(feature, "components/Prod4OpportunityList/Prod4OpportunityList.tsx"));
 const { OpportunityList } = loadSource(path.join(feature, "components/OpportunityList/OpportunityList.tsx"));
 const { Prod4OpportunityToolbar } = loadSource(path.join(feature, "components/Prod4OpportunityToolbar/Prod4OpportunityToolbar.tsx"));
@@ -166,7 +167,7 @@ test("legacy PROD2 zero displays its ring instead of a retained-score label", ()
   assert.doesNotMatch(html, /Puntaje por validar/);
 });
 
-test("internal JEV affinity and title categories never render in PROD2, even if a stale payload carries them", () => {
+test("DIN commercial affinity and title categories never render in PROD2, even if a stale payload carries them", () => {
   const jev = { commercial_affinity: { index: 75, label: "Afinidad comercial", basis: "title" }, affinity: { index: 66, label: "Afinidad comercial" },
     commercial_categories: ["industrial"], commercial_classification_source: "title", commercial_classification_state: "classified" };
   const pending = render(Prod4OpportunityList, { rows: [procedure({ match_id: null, match_score: null, ...jev })], source: "prod2" });
@@ -357,12 +358,55 @@ test("minor inspector ignores a previous profile detail immediately and keeps th
   assert.match(html, /Puntaje provisional: 72 de 100/);
 });
 
-test("minor rows never render JEV affinity, even if a stale payload carries jev_* fields", () => {
-  const jev = { jev_score: 77.6, jev_decision: "accepted", jev_subcategory: "soporte_ti", jev_threshold: 60, jev_decided_at: "2026-10-25T00:00:00Z" };
-  const evaluated = render(OpportunityList, { rows: [minor({ match_id: "916", score: 55, verdict: "ambar", ...jev })] });
-  assert.match(evaluated, /scoreRing[^>]*>55<\/span>/, "the documentary score keeps its own indicator");
-  assert.doesNotMatch(evaluated, /JEV|data-jev-affinity|matchStack|78 \/ 100|Soporte TI/i);
-  const pending = render(OpportunityList, { rows: [minor({ match_id: null, ...jev })] });
+test("the JEV chip shows the stored 0–100 title affinity, floored, and nothing without a valid number", () => {
+  assert.deepEqual({ ...jevScoreChip(72) }, { value: 72, label: "JEV 72", title: "Afinidad JEV por título: desde 60 se guarda; no es la calificación de la empresa" });
+  assert.equal(JEV_SCORE_TITLE, jevScoreChip(0).title);
+  assert.equal(jevScoreChip(0).label, "JEV 0", "a real zero is shown, not hidden");
+  assert.equal(jevScoreChip(100).label, "JEV 100");
+  assert.equal(jevScoreChip(72.5).label, "JEV 72");
+  assert.equal(jevScoreChip("77.6").label, "JEV 77");
+  assert.equal(jevScoreChip(59.99).label, "JEV 59", "a score under the 60 threshold never reads as 60");
+  for (const invalid of [null, undefined, "", "  ", "alto", NaN, Infinity, -1, 100.5, 101, {}, true]) assert.equal(jevScoreChip(invalid), null, String(invalid));
+});
+
+test("minor rows show the JEV chip beside the match score, with the Spanish tooltip, and none without a score", () => {
+  const title = "Afinidad JEV por título: desde 60 se guarda; no es la calificación de la empresa";
+  const evaluated = render(OpportunityList, { rows: [minor({ match_id: "916", score: 55, verdict: "ambar", jev_score: 72, jev_decision: "accepted" })] });
+  assert.match(evaluated, /scoreRing[^>]*>55<\/span>/, "the documentary score stays the main indicator");
+  assert.match(evaluated, new RegExp(`<span[^>]*title="${title}"[^>]*>JEV 72</span>`));
+  assert.match(evaluated, new RegExp(`aria-label="JEV 72 de 100\\. ${title}"`));
+  assert.equal((evaluated.match(/JEV 72/g) ?? []).length, 2, "the aria-label and the visible chip; the inspector adds none");
+  assert.ok(evaluated.indexOf("scoreRing") < evaluated.indexOf("JEV 72"), "the chip follows the match score");
+  const pending = render(OpportunityList, { rows: [minor({ match_id: null, jev_score: 61, jev_decision: "accepted" })] });
   assert.match(pending, /Afinidad preliminar · análisis pendiente/);
-  assert.doesNotMatch(pending, /JEV|data-jev-affinity|matchStack|78 \/ 100|Soporte TI/i);
+  assert.match(pending, />JEV 61</);
+  // A rejected row is still listed, with its low score; a pending or undecided one has no number and no chip.
+  assert.match(render(OpportunityList, { rows: [minor({ jev_score: 0, jev_decision: "rejected" })] }), />JEV 0</);
+  for (const jev of [{ jev_score: null, jev_decision: "pending" }, { jev_score: null, jev_decision: null }, {}, { jev_score: 120 }, { jev_score: "n/d" }]) {
+    assert.doesNotMatch(render(OpportunityList, { rows: [minor({ match_id: "916", score: 55, verdict: "ambar", ...jev })] }), /JEV|data-jev-score/);
+  }
+});
+
+test("PROD2 rows show the JEV chip next to the requirement score or the keyword fit, and none without a score", () => {
+  const title = "Afinidad JEV por título: desde 60 se guarda; no es la calificación de la empresa";
+  const evaluated = render(Prod4OpportunityList, { rows: [procedure({ match_score: 42, match_verdict: "ambar", jev_score: 83.2 })], source: "prod2" });
+  assert.match(evaluated, /Evaluación de requisitos: 42 de 100/);
+  assert.match(evaluated, new RegExp(`<span[^>]*title="${title}"[^>]*>JEV 83</span>`));
+  assert.ok(evaluated.indexOf("Evaluación de requisitos") < evaluated.indexOf(">JEV 83<"), "the chip follows the match score");
+  const keywordFit = render(Prod4OpportunityList, { rows: [procedure({ match_id: null, match_score: null, jev_score: 64 })], source: "prod2" });
+  assert.match(keywordFit, /Afinidad alta/);
+  assert.match(keywordFit, />JEV 64</);
+  const review = render(Prod4OpportunityList, { rows: [procedure({ match_id: "130", match_score: null, jev_score: 90 })], source: "prod2" });
+  assert.match(review, /Puntaje por validar/);
+  assert.match(review, />JEV 90</);
+  for (const jev of [{ jev_score: null }, {}, { jev_score: -3 }, { jev_score: "alto" }]) {
+    assert.doesNotMatch(render(Prod4OpportunityList, { rows: [procedure(jev)], source: "prod2" }), /JEV|data-jev-score/);
+  }
+});
+
+test("the JEV chip never leaks other internal title-affinity or category fields", () => {
+  const stale = { jev_subcategory: "soporte_ti", jev_threshold: 60, jev_decided_at: "2026-10-25T00:00:00Z", commercial_affinity: { index: 75 } };
+  const html = render(OpportunityList, { rows: [minor({ match_id: "916", score: 55, verdict: "ambar", jev_score: 77.6, jev_decision: "accepted", ...stale })] });
+  assert.match(html, />JEV 77</);
+  assert.doesNotMatch(html, /data-jev-affinity|matchStack|78 \/ 100|Soporte TI|soporte_ti|accepted/i);
 });

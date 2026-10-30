@@ -70,7 +70,8 @@ test('obsolete commercial_* links are accepted and ignored instead of rejected',
 
 test('only known observed publication statuses become labels; none assert current legal availability', async () => {
   for (const [status, label] of [['closed_without_reading', 'Cerrada al revisar'], ['opening_not_confirmed', 'Apertura por confirmar'],
-    ['needs_review', 'Lectura por revisar'], ['selection_needs_review', 'Documento por seleccionar'], ['llm1_complete', 'Lectura previa conservada'], ['unknown', null]]) {
+    ['needs_review', 'Lectura por revisar'], ['selection_needs_review', 'Documento por seleccionar'], ['llm1_complete', 'Lectura previa conservada'],
+    ['accepted_unread', 'Por calificar'], ['unknown', null]]) {
     const { value } = service({ ...metadataRow, publication_status: status });
     const detail = await value.getProd2OpportunityForTenant('tenant', '123', profileId);
     assert.equal(detail.process.publication_status_label, label);

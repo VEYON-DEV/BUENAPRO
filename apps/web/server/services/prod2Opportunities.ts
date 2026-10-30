@@ -24,7 +24,7 @@ type Prod2Row = Record<string, any> & {
   document_publication_events: unknown; document_publication_events_count: number;
   match_id: string | null; match_review_required: boolean; provisional_score: number | null; match_score: number | null; match_verdict: string | null;
   participation_extraction: unknown;
-  has_official_detail?: boolean; publication_status?: string | null;
+  has_official_detail?: boolean; publication_status?: string | null; jev_score?: number | null;
 };
 type Prod2DocumentRow = {
   codigo_alfresco: string; name: string; document_type: string; stage_name: string; published_at: string | null;
@@ -83,6 +83,7 @@ const BASE = `p.id_convocatoria::text, p.id_procedimiento::text, p.opportunity_i
   p.published_at::text, p.reference_amount, p.currency, p.last_seen_at::text,
   COALESCE(d.source_url, 'https://prod2.seace.gob.pe/seacebus-uiwd-pub/buscadorPublico/buscadorPublico.xhtml') AS source_url,
   (d.id_convocatoria IS NOT NULL) AS has_official_detail, pf.reader_status AS publication_status,
+  jev_union.affinity_index AS jev_score,
   d.detail_fetched_at::text, d.detail_fetched_at::text AS schedule_fetched_at,
   d.registration_closes_at::text, d.proposals_start_at::text, d.proposals_closes_at::text,
   d.raw_detail->>'selection_type' AS procedure_type,
@@ -110,6 +111,7 @@ const publicationLabels: Record<string, string> = {
   closed_without_reading: "Cerrada al revisar", rejected_below_60: "Descartada en la revisión previa",
   opening_not_confirmed: "Apertura por confirmar", needs_review: "Lectura por revisar",
   selection_needs_review: "Documento por seleccionar", llm1_complete: "Lectura previa conservada",
+  accepted_unread: "Por calificar",
 };
 
 // Closing follows the date the list shows: proposals, else registration. A day-only official
@@ -125,11 +127,24 @@ const CLOSED = `COALESCE(COALESCE(d.proposals_closes_at, d.registration_closes_a
   OR (d.proposals_closes_at IS NULL AND d.registration_closes_at IS NULL
     AND ${DAY_ONLY_PROPOSALS_END} < to_char(now() AT TIME ZONE 'America/Lima', 'YYYYMMDD'))
   OR pf.reader_status = 'closed_without_reading', false)`;
-// Discarded by the title pre-review: never read, so no closing date will ever arrive. Not closed
-// either, so it leaves the open view and stays listed only under all.
+// Afinidad JEV por título de la convocatoria (0–100): una sola fila canónica por convocatoria, igual para todas las
+// empresas, por eso no se filtra por perfil. Manda la última fila terminada. Es el puntaje que decide la lectura:
+// desde JEV_ACCEPTANCE_THRESHOLD se acepta. Un valor que no sea número se trata como sin puntaje.
+const JEV_ACCEPTANCE_THRESHOLD = 60;
+const JEV_UNION_POLICY = "prod2_commercial_union_v1";
+const JEV_UNION_JOIN = `LEFT JOIN LATERAL (
+  SELECT CASE WHEN jsonb_typeof(ev.result_json->'affinity_index') = 'number'
+    THEN (ev.result_json->>'affinity_index')::double precision END AS affinity_index
+  FROM prod2_evaluations ev
+  WHERE ev.id_convocatoria = p.id_convocatoria AND ev.kind = 'jev_affinity' AND ev.status = 'done'
+    AND ev.policy_version = '${JEV_UNION_POLICY}'
+  ORDER BY ev.completed_at DESC, ev.id DESC LIMIT 1
+) jev_union ON true`;
+// Mayores lista solo lo aceptado por JEV, en toda vista y en todo conteo: no salen las descartadas en la revisión
+// previa (nunca se leen, así que jamás tendrán fecha de cierre) ni las de afinidad vigente menor a 60. Sin fila JEV
+// (filas previas: cerrada al revisar, apertura por confirmar...) siguen visibles. Nada se borra.
 const NOT_DISCARDED = "pf.reader_status IS DISTINCT FROM 'rejected_below_60'";
-// Everything that is not open: listed after the open procedures under all, newest first.
-const HISTORY = `(${CLOSED} OR NOT ${NOT_DISCARDED})`;
+const JEV_ACCEPTED = `(jev_union.affinity_index IS NULL OR jev_union.affinity_index >= ${JEV_ACCEPTANCE_THRESHOLD})`;
 
 // Canonical matches must be tied to this source, this document revision and the durable evaluation.
 const MATCH_JOIN = `LEFT JOIN LATERAL (
@@ -172,13 +187,27 @@ function provisionalScore(row: Prod2Row) {
     ? row.provisional_score : null;
 }
 
+// Afinidad JEV de la convocatoria, o null cuando no hay puntaje válido.
+function jevScore(row: Prod2Row) {
+  return typeof row.jev_score === "number" && Number.isFinite(row.jev_score) && row.jev_score >= 0 && row.jev_score <= 100 ? row.jev_score : null;
+}
+
+// Accepted by JEV but neither read nor evaluated (below the automatic reading threshold): waits for a manual grading.
+function publicationStatus(row: Prod2Row) {
+  if (row.publication_status) return row.publication_status in publicationLabels ? row.publication_status : null;
+  const score = jevScore(row);
+  return score != null && score >= JEV_ACCEPTANCE_THRESHOLD && row.participation_extraction == null && !row.match_id
+    ? "accepted_unread" : null;
+}
+
 function processRow(row: Prod2Row) {
   const { schedule_json, document_publication_events: _publicationEvents, ...process } = row;
+  const status = publicationStatus(row);
   return { ...process,
     has_official_detail: row.has_official_detail !== false,
-    publication_status: row.publication_status && row.publication_status in publicationLabels ? row.publication_status : null,
-    publication_status_label: row.publication_status ? publicationLabels[row.publication_status] ?? null : null,
-    provisional_score: provisionalScore(row), region: null, technology_segments: [], technology_match_reason: [], items_count: 0,
+    publication_status: status,
+    publication_status_label: status ? publicationLabels[status] : null,
+    provisional_score: provisionalScore(row), jev_score: jevScore(row), region: null, technology_segments: [], technology_match_reason: [], items_count: 0,
     fit_points: row.fit_points ?? null, keyword_points: row.keyword_points ?? null,
     fit_score: null, fit_level: row.fit_level ?? null, business_line_name: row.business_line_name ?? null,
     keyword_hits: row.keyword_hits ?? [], fit_basis: "profile_keywords" as const,
@@ -206,29 +235,31 @@ export async function listProd2OpportunitiesForTenant(tenantId: string, params: 
   const commercialContext = await currentCommercialContext(tenantId, profile?.id ?? null);
   const values: unknown[] = [profile?.id ?? null];
   // Include explicitly published selections without pretending a ficha exists.
-  const where = [PUBLISHED_VISIBILITY];
+  const where = [PUBLISHED_VISIBILITY, NOT_DISCARDED, JEV_ACCEPTED];
   if (params.object) { values.push(params.object); where.push(`p.object_type = $${values.length}`); }
   if (params.q) { values.push(`%${params.q}%`); where.push(`(p.nomenclature ILIKE $${values.length} OR p.description ILIKE $${values.length} OR p.buyer_name ILIKE $${values.length})`); }
   // A saved analysis exists even when its score is unpublished. Match provenance
   // and the chosen tenant-owned profile establish availability, never score > 0.
   if (params.analysis === "done") where.push("matched.id IS NOT NULL");
   if (params.withScore) where.push(`${AVAILABLE_MATCH_SCORE} IS NOT NULL`);
-  if (params.deadline === "open") where.push(`NOT ${CLOSED}`, NOT_DISCARDED);
+  if (params.deadline === "open") where.push(`NOT ${CLOSED}`);
   if (params.deadline === "closed") where.push(CLOSED);
   const predicate = where.join(" AND ");
-  const count = await query<{ total: number; open_total?: number }>(`SELECT count(*) FILTER (WHERE NOT ${HISTORY})::int AS open_total,
+  const count = await query<{ total: number; open_total?: number }>(`SELECT count(*) FILTER (WHERE NOT ${CLOSED})::int AS open_total,
     count(*)::int AS total FROM ${PUBLISHED_FROM}
+    ${JEV_UNION_JOIN}
     ${params.analysis === "done" || params.withScore ? MATCH_JOIN : ""}
     WHERE ($1::uuid IS NULL OR $1::uuid IS NOT NULL) AND ${predicate}`, values);
   const pageValues = [...values];
-  // Orden interno: la afinidad JEV de título solo desempata; la web ya no la muestra.
+  // Tras el puntaje de requisitos desempata primero la afinidad JEV de la convocatoria (la que se muestra) y luego la
+  // afinidad DIN por título de la empresa, que solo ordena.
   const commercialAffinityJoin = prod2CommercialAffinityJoin(pageValues, commercialContext, tenantId);
   const rows = await query<Prod2Row>(`SELECT ${BASE}, ${KEYWORD_FIT_SELECT},
     ${MATCH_STATUS_SELECT}, ${PUBLISHED_MATCH_SCORE} AS match_score, ${PUBLISHED_MATCH_VERDICT} AS match_verdict
     FROM ${PUBLISHED_FROM}
-    ${MATCH_JOIN} ${commercialAffinityJoin} ${KEYWORD_FIT_JOIN}
+    ${MATCH_JOIN} ${JEV_UNION_JOIN} ${commercialAffinityJoin} ${KEYWORD_FIT_JOIN}
     WHERE ${predicate}
-    ORDER BY ${params.deadline === "all" ? `${HISTORY}, CASE WHEN ${HISTORY} THEN p.published_at END DESC NULLS LAST, ` : ""}${AVAILABLE_MATCH_SCORE} DESC NULLS LAST, commercial_jev.affinity_index DESC NULLS LAST, fit.keyword_points DESC NULLS LAST,
+    ORDER BY ${params.deadline === "all" ? `${CLOSED}, CASE WHEN ${CLOSED} THEN p.published_at END DESC NULLS LAST, ` : ""}${AVAILABLE_MATCH_SCORE} DESC NULLS LAST, jev_union.affinity_index DESC NULLS LAST, commercial_jev.affinity_index DESC NULLS LAST, fit.keyword_points DESC NULLS LAST,
       ${PUBLISHED_MATCH_SCORE} DESC NULLS LAST,
       p.published_at DESC NULLS LAST, p.id_convocatoria DESC
     LIMIT $${pageValues.length + 1} OFFSET $${pageValues.length + 2}`, [...pageValues, params.pageSize, (params.page - 1) * params.pageSize]);
@@ -248,7 +279,7 @@ export async function getProd2OpportunityForTenant(tenantId: string, id: string,
     matched.breakdown_json, matched.missing_actions_json,
     matched.matched_at::text, matched.updated_at::text AS match_updated_at, matched.evaluated_profile_hash
     FROM ${PUBLISHED_FROM}
-    ${MATCH_JOIN} ${KEYWORD_FIT_JOIN}
+    ${MATCH_JOIN} ${JEV_UNION_JOIN} ${KEYWORD_FIT_JOIN}
     WHERE ${PUBLISHED_VISIBILITY} AND p.id_convocatoria = $2::bigint`, values);
   const row = result.rows[0];
   if (!row) return null;

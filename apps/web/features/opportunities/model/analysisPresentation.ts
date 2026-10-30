@@ -25,6 +25,19 @@ export function provisionalAnalysisScore(input: AnalysisInput, provisionalScore:
     && provisionalScore >= 0 && provisionalScore <= 100 ? provisionalScore : null;
 }
 
+export const JEV_SCORE_TITLE = "Afinidad JEV por título: desde 60 se guarda; no es la calificación de la empresa";
+
+/**
+ * JEV title affinity (0–100) as the label of a compact chip, or null when there is no valid score.
+ * It is floored, never rounded up, so 59.6 can never read as the 60 that decides what is kept.
+ */
+export function jevScoreChip(score: unknown): { value: number; label: string; title: string } | null {
+  const numeric = typeof score === "number" ? score : typeof score === "string" && score.trim() !== "" ? Number(score) : Number.NaN;
+  if (!Number.isFinite(numeric) || numeric < 0 || numeric > 100) return null;
+  const value = Math.floor(numeric);
+  return { value, label: `JEV ${value}`, title: JEV_SCORE_TITLE };
+}
+
 export function analysisFilterHref(defaults: Record<string, string>, source?: "prod2" | "prod4") {
   const next = new URLSearchParams(defaults);
   if (source) next.set("source", source);

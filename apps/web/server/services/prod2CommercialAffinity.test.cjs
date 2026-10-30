@@ -74,7 +74,7 @@ test('list orders by the strict 32/64-hex bound JEV affinity but neither list no
   assert.ok(selections[1].values.includes(currentHash), 'Strict page query must retain the current profile identity');
   assert.doesNotMatch(selections[1].text, /commercial_jev\.result_json|AS commercial_affinity_index/, 'the affinity only orders; it is never selected');
   assert.doesNotMatch(selections[2].text, /commercial_jev/, 'the detail does not read the internal affinity');
-  assert.match(selections[1].text, /matched\.score ELSE NULL END DESC NULLS LAST, commercial_jev\.affinity_index DESC NULLS LAST/);
+  assert.match(selections[1].text, /matched\.score ELSE NULL END DESC NULLS LAST, jev_union\.affinity_index DESC NULLS LAST, commercial_jev\.affinity_index DESC NULLS LAST/);
   assert.deepEqual(plain(selections[1].values.slice(-2)), [5, 0]);
   }
 });

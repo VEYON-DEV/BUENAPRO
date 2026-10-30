@@ -1,0 +1,14 @@
+.chip {
+  align-items: center;
+  background: var(--bp-color-intelligence-soft);
+  border-radius: var(--bp-radius-pill);
+  color: var(--bp-color-intelligence);
+  display: inline-flex;
+  flex: none;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  line-height: 16px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}

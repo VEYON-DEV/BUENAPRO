@@ -158,6 +158,7 @@
 .fitDots i { border-radius: 50%; height: 6px; width: 6px; }
 .fitDotOn { background: var(--bp-color-brand); }
 .fitDotOff { background: var(--bp-color-border); }
+.affinityCell { align-items: flex-start; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .noAffinity { color: var(--bp-color-text-3); font-size: 11px; }
 .analysisReview { color: var(--bp-color-text-2); display: grid; font-size: 11px; gap: 4px; line-height: 1.4; min-width: 0; }
 .analysisReview strong { align-items: center; color: var(--bp-color-ink); display: inline-flex; font-weight: 650; gap: 5px; }

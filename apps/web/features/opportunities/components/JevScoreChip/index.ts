@@ -1,0 +1,1 @@
+export { JevScoreChip } from "./JevScoreChip";

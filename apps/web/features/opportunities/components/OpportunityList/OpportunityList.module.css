@@ -164,7 +164,10 @@
 }
 
 .matchCell {
+  align-items: flex-start;
   display: flex;
+  flex-direction: column;
+  gap: 6px;
   justify-content: flex-start;
   min-width: 0;
 }

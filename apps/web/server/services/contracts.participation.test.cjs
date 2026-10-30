@@ -6,7 +6,7 @@ const ts = require('typescript');
 const { commercial, commercialSql, loadCommercialModule } = require('./commercialClassification.test-support.cjs');
 const profileId = '00000000-0000-0000-0000-000000000001';
 
-function serviceWithCurrentReading({ matchId = null, score = null, matchReviewRequired = false, provisionalScore = null,
+function serviceWithCurrentReading({ matchId = null, score = null, matchReviewRequired = false, provisionalScore = null, jev = {},
   profileRows = [{ id: profileId, razon_social: 'Empresa QA' }] } = {}) {
   const statements = [], exports = {};
   const reading = { id: '72', quality: 'auto', requires_human_review: true,
@@ -26,7 +26,7 @@ function serviceWithCurrentReading({ matchId = null, score = null, matchReviewRe
         // Canonical permission can be historical; the current extraction remains independently exposed.
         return { rows: sql.includes('FROM seace_contracts c')
           ? [{ id_contrato: 123, extraction_id: '72', subcontracting_status: 'permitted', participation_extraction: reading,
-            match_id: matchId, score, match_review_required: matchReviewRequired, provisional_score: provisionalScore, total_count: 1 }] : [] };
+            match_id: matchId, score, match_review_required: matchReviewRequired, provisional_score: provisionalScore, ...jev, total_count: 1 }] : [] };
       } };
       if (name === '@/server/services/crud') return { pagination: () => ({ limit: 20, offset: 0, page: 1, pageSize: 20 }) };
       if (name === '@/server/services/keywordScoring') return { keywordFitLateralSql: () => '' };
@@ -131,7 +131,44 @@ test('minor browse adds contracts found outside the profile segments only when J
   // An explicit segment filter keeps its exact meaning.
   statements.length = 0;
   await service.listContractsForTenant('tenant-qa', new URLSearchParams({ segmento: '43' }));
-  assert.doesNotMatch(statements.find(statement => statement.sql.includes('FROM seace_contracts c')).sql, /prod6_profile_decisions/);
+  assert.doesNotMatch(statements.find(statement => statement.sql.includes('FROM seace_contracts c')).sql, /cubso_segmento = '0'|d\.decision = 'accepted'/);
+});
+
+test('minor rows carry the chosen company JEV score and decision; nothing filters, counts or orders by them', async () => {
+  const { service, statements } = serviceWithCurrentReading({ jev: { jev_score: 72.5, jev_decision: 'accepted' } });
+  const list = await service.listContractsForTenant('tenant-qa', new URLSearchParams());
+  assert.equal(list.data[0].jev_score, 72.5);
+  assert.equal(list.data[0].jev_decision, 'accepted');
+  const sql = statements.find(statement => statement.sql.includes('FROM seace_contracts c')).sql;
+  // The current decision is the latest one that is not superseded, for this contract and the chosen company only.
+  assert.match(sql, /LEFT JOIN LATERAL \(\s*SELECT d\.decision AS jev_decision, d\.score::double precision AS jev_score\s+FROM prod6_profile_decisions d\s+WHERE d\.id_contrato = c\.id_contrato AND d\.profile_id = \$2::uuid AND d\.decision <> 'superseded'\s+ORDER BY d\.id DESC\s+LIMIT 1\s+\) jev ON true/);
+  assert.match(sql, /jev\.jev_score,\s+jev\.jev_decision,/);
+  // Selected only: no predicate, no count and no ordering reads the decision, so rejected and pending contracts stay listed.
+  assert.equal((sql.match(/\bjev\./g) ?? []).length, 2);
+  const afterJoin = join => join.slice(join.indexOf(') jev ON true') + ') jev ON true'.length);
+  assert.doesNotMatch(afterJoin(sql), /jev_score|jev_decision|\bjev\b/);
+  assert.match(sql, /count\(\*\) FILTER \(WHERE \(c\.estado_codigo = 2 AND \(c\.fec_fin_cotizacion IS NULL OR c\.fec_fin_cotizacion >= now\(\)\)\)\) OVER\(\)::int AS open_count/);
+  assert.deepEqual(Array.from(statements.find(statement => statement.sql.includes('FROM seace_contracts c')).values), ['tenant-qa', profileId, 20, 0]);
+  // Every filter and view keeps the same single join and still has no JEV predicate.
+  for (const query of ['deadline=all', 'deadline=open&open_only=true', `profile_id=${profileId}&with_score=true&analysis=done&q=software`, 'cotizar=true&saved=true']) {
+    statements.length = 0;
+    await service.listContractsForTenant('tenant-qa', new URLSearchParams(query));
+    const { sql: filtered } = statements.find(statement => statement.sql.includes('FROM seace_contracts c'));
+    assert.equal((filtered.match(/\bjev\./g) ?? []).length, 2, query);
+    assert.doesNotMatch(afterJoin(filtered), /jev_score|jev_decision|\bjev\b/, query);
+  }
+});
+
+test('minor JEV score is a finite 0–100 number or null and the decision a string or null', async () => {
+  for (const [jev, expected] of [
+    [{ jev_score: 0, jev_decision: 'rejected' }, [0, 'rejected']], [{ jev_score: 60, jev_decision: 'accepted' }, [60, 'accepted']],
+    [{ jev_score: 100, jev_decision: 'accepted' }, [100, 'accepted']], [{ jev_score: null, jev_decision: 'pending' }, [null, 'pending']],
+    [{}, [null, null]], [{ jev_score: '72', jev_decision: 7 }, [null, null]], [{ jev_score: NaN }, [null, null]],
+    [{ jev_score: -1 }, [null, null]], [{ jev_score: 100.01 }, [null, null]]]) {
+    const { service } = serviceWithCurrentReading({ jev });
+    const list = await service.listContractsForTenant('tenant-qa', new URLSearchParams());
+    assert.deepEqual([list.data[0].jev_score, list.data[0].jev_decision], expected, JSON.stringify(jev));
+  }
 });
 
 test('default minor browse preserves unanalyzed rows instead of implicitly requiring a match', async () => {

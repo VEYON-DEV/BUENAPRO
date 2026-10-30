@@ -13,6 +13,7 @@ import type { ProcurementScheduleStage } from "@/lib/procurementSchedule";
 import { verdictShortLabels } from "@/lib/extraction/opportunity";
 import { formatShortDateTime } from "@/lib/format/date";
 import { seaceDetailRequest } from "../../api/seaceDetail";
+import { JevScoreChip } from "../JevScoreChip";
 import { SaveButton } from "../SaveButton";
 import { analysisPresentation, provisionalAnalysisScore } from "../../model/analysisPresentation";
 import styles from "./Prod4OpportunityList.module.css";
@@ -56,6 +57,7 @@ export type Prod4OpportunitySummary = {
   match_id?: string | null;
   match_review_required?: boolean;
   provisional_score?: number | null;
+  jev_score?: number | null;
   participation_extraction?: unknown;
   is_saved?: boolean;
   has_official_detail?: boolean;
@@ -237,7 +239,10 @@ export function Prod4OpportunityList({ rows, source = "prod4", profileId }: { ro
                   <strong>{deadlineLabel(row)}</strong>
                   <span className={styles.meta}>{source === "prod2" ? row.has_official_detail === false ? "Ficha por consultar" : "Cronograma consultado" : row.source_window_status === "current" ? "En radar oficial" : "Fuera del radar"}</span>
                 </div>
-                <AffinityMark row={row} source={source} />
+                <div className={styles.affinityCell}>
+                  <AffinityMark row={row} source={source} />
+                  <JevScoreChip score={row.jev_score} />
+                </div>
               </button>
               {source === "prod2" ? <SaveButton code={row.nomenclatura} idContrato={rowId(row)} endpoint={`/api/prod2/opportunities/${rowId(row)}/saved`} initialSaved={Boolean(row.is_saved)} /> : null}
             </article>

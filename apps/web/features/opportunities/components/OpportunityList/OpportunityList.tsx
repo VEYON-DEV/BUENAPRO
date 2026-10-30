@@ -12,6 +12,7 @@ import { formatDeadline, formatDateTime, formatShortDateTime } from "@/lib/forma
 import { formatMoney } from "@/lib/format/money";
 import { scoreTone } from "@/lib/scorePresentation";
 import { FIT_EXACTO, FIT_RELACIONADO, cotizacionStatus, fitLabel, fitScore, fitShortLabel, opportunityFacts, plazoLabel, verdictShortLabels } from "@/lib/extraction/opportunity";
+import { JevScoreChip } from "../JevScoreChip";
 import { SaveButton } from "../SaveButton";
 import { analysisPresentation, provisionalAnalysisScore } from "../../model/analysisPresentation";
 import styles from "./OpportunityList.module.css";
@@ -232,6 +233,7 @@ export function OpportunityList({ rows, profileId }: { rows: any[]; profileId?: 
                     ) : (
                       <FitMark compact hits={row.fit_points} />
                     )}
+                    <JevScoreChip score={row.jev_score} />
                   </div>
                 </button>
                 <SaveButton

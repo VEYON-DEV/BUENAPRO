@@ -911,6 +911,30 @@ una lectura anterior. Solo escribe en `worker_jobs`; no llama a SEACE, JEV ni Ge
 una evaluación a la vez, cuando el runtime reclama los jobs. Para activar DIN: poner `automation_rules.enabled=true`
 y ejecutar el backfill (el runtime no repasa por sí solo).
 
+#### Calificación manual desde la web (PROD6, desde el 31/10/2026)
+
+Decisión del 30/10: en menores se guarda y se muestra todo; JEV ≥ 60 se lee y evalúa solo (lo de arriba). Lo
+demás, incluido el histórico anterior a JEV, se puede calificar con el botón «Calificar» de la ficha.
+
+- **Tabla `manual_grading_requests`** (migración 0050): una fila por pedido (`tenant_id`, `profile_id`,
+  `source_key` `seace_prod6`/`seace_prod2`, `source_id`, `mode`, `status`, `reason`, `lima_day`). Un índice
+  único impide dos pedidos activos (`pending`, `reading`, `evaluating`) del mismo par.
+- **Tope:** 100 pedidos por empresa (tenant) y día de Lima, sumando menores, mayores y re-calificaciones;
+  `MANUAL_GRADING_DAILY_LIMIT` en el entorno de la web. Un pedido que falla también cuenta; uno sin cambios
+  (`skipped: unchanged`) no. La web cuenta e inserta bajo un lock consultivo por tenant.
+- **Con lectura válida** (vigente, no `failed`, sin revisión humana) la web evalúa en el momento
+  (`analyzeMatchDirect`, modo `direct`). **Sin lectura** deja el pedido `queued`/`pending` y el runtime:
+  1. lo reclama cada ~10 s mientras procesa; en espera revisa cada 30 s y adelanta el ciclo si llegó uno;
+  2. encola `process_contract` con la misma carga que `admit_contract` (aunque el contrato esté cerrado) →
+     `reading`;
+  3. tras `derive_summary`, con lectura válida encola `analyze_match` con `origin=prod6_manual_request_v1`
+     (`source=manual_request`, prioridad 3) → `evaluating` → `done`; en revisión o fallida → `failed`.
+- La evaluación manual no exige JEV aceptado, `automation_rules`, tope diario automático ni contrato abierto;
+  sí empresa activa del runtime y lectura válida. Comparte la deduplicación `analyze_match:<empresa>:<contrato>`
+  con la automática, así que un par se paga una vez.
+- **Motivos de falla:** `contract_not_found`, `profile_inactive`, `reading_requires_review`, `reading_failed`,
+  `no_documents`, `invalid_model_output` y `reading_timeout` (24 h en `reading` o `evaluating`).
+
 **Despliegue.** La imagen completa de `worker.Dockerfile` ya lo incluye; `infra/docker/prod6.Dockerfile` copia además
 `jobs/analyze_match.py` y `matching/analyzer.py`. Sin migración. Actualizar el código no autoriza reiniciar el
 runtime ni encolar: sin `--apply` y sin reinicio no hay llamadas pagadas.
@@ -1079,6 +1103,23 @@ que hay que actualizar cuando cambian los perfiles):
 - Cada consulta tarda ~1 min con 10 s entre peticiones y el freno compartido: 334 consultas son
   ~5,5 h por ciclo, más fichas y lecturas.
 
+Desde el 31/10/2026 el diario **lee solo desde afinidad 85** (`--llm1-min-affinity 85`; decisión del 30/10
+por el volumen de mayores):
+
+- JEV sigue aceptando desde 60 (`accepted_runner`, `ACCEPTANCE_THRESHOLD`, `jev_threshold` 60 sin cambios):
+  todo lo aceptado se promueve y guarda su ficha (`prod2_details`), así que se lista.
+- De 60 a 84 termina `accepted_unread`: sin descarga, selector, embeddings ni LLM1, y sin gastar sus topes.
+  Cuenta para `--max-accepted`. La web lo muestra «Por calificar» (sin lectura ni evaluación) y su ficha se
+  vuelve a consultar en cada ciclo que la redescubre dentro de la ventana.
+- `accepted_unread` es un resultado cerrado: el ciclo queda `complete` si `llm1_complete + accepted_unread`
+  iguala lo aceptado. El aviso de Telegram suma "N sin leer".
+- El valor 60 (por defecto) no entra al manifiesto ni a la identidad de la cola: las carpetas anteriores
+  siguen iguales. Otro valor sí entra, y una carpeta congelada no acepta cambiarlo. El modo de importación
+  por IDs exige el valor por defecto.
+- Las listas de mayores en la web muestran solo lo aceptado (afinidad JEV de la unión ≥ 60 o sin fila JEV
+  previa); las «Descartadas en la revisión previa» ya no salen en ninguna vista. Las dos listas muestran
+  «JEV N».
+
 Qué hace el servicio cuando un ciclo no termina limpio:
 
 - **Bloqueo a mitad del ciclo** (`final_report_source_access_blocked`), sea un 403/429 propio o
@@ -1115,7 +1156,8 @@ Evalúa las lecturas PROD2 abiertas para VEYON y DIN con el evaluador de menores
   - `industrial_electrica`: solo DIN.
   - `informatica` o `ambiguo`: VEYON y DIN, porque DIN también vende software.
   - Exige afinidad ≥ 60, licitación abierta, lectura vigente con requisitos y que la empresa no
-    tenga ya una evaluación de esa lectura, perfil y prompt.
+    tenga ya una evaluación de esa lectura, perfil y prompt. Desde el 31/10 solo se leen solas las de
+    85 o más, así que en la práctica evalúa esas más las que se lean a mano.
 - **`automation_rules` de cada empresa:** `enabled`, `min_hours_before_close` y
   `max_daily_evaluations`. El tope diario se comparte con las evaluaciones automáticas de menores.
 - **Lecturas en revisión humana:** se evalúan igual; todas las de mayores lo están por diseño. La

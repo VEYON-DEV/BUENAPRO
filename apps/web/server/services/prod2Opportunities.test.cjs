@@ -88,7 +88,7 @@ test('pagination uses convocatoria identity and preserves source provenance with
   assert.match(selection.sql, /'seace_prod2'::text AS source_key/);
   assert.match(selection.sql, /prod2_match_provenance/);
   assert.match(selection.sql, /document_sha256/);
-  assert.match(selection.sql, /ORDER BY CASE WHEN matched\.id IS NOT NULL AND matched\.score BETWEEN 0 AND 100 THEN matched\.score ELSE NULL END DESC NULLS LAST, commercial_jev\.affinity_index DESC NULLS LAST, fit\.keyword_points DESC NULLS LAST/);
+  assert.match(selection.sql, /ORDER BY CASE WHEN matched\.id IS NOT NULL AND matched\.score BETWEEN 0 AND 100 THEN matched\.score ELSE NULL END DESC NULLS LAST, jev_union\.affinity_index DESC NULLS LAST, commercial_jev\.affinity_index DESC NULLS LAST, fit\.keyword_points DESC NULLS LAST/);
   assert.ok(selection.sql.indexOf('ORDER BY CASE WHEN matched.id IS NOT NULL AND matched.score BETWEEN') < selection.sql.lastIndexOf('LIMIT $'));
   assert.doesNotMatch(selection.sql, /prod4_processes|seace_contracts|worker_jobs/);
   const count = statements.find(statement => statement.sql.includes('count(*)::int AS total FROM prod2_discoveries'));
@@ -107,7 +107,7 @@ test('deadline parser accepts open, closed and all, and keeps the API default un
   }
 });
 
-test('deadline filters count and page alike, and "all" lists open procedures first and the history after', async () => {
+test('mayores lists keep only JEV-accepted rows in every deadline view and count; "all" lists open procedures first and the history after', async () => {
   const run = async deadline => {
     const statements = [];
     const service = load('prod2Opportunities.ts', { '@/server/db/client': { query: async (sql, values) => {
@@ -125,34 +125,69 @@ test('deadline filters count and page alike, and "all" lists open procedures fir
   };
   const closed = /COALESCE\(COALESCE\(d\.proposals_closes_at, d\.registration_closes_at\) < now\(\)[\s\S]*?pf\.reader_status = 'closed_without_reading', false\)/;
   const discarded = /pf\.reader_status IS DISTINCT FROM 'rejected_below_60'/;
-  const open = await run('open');
-  for (const sql of [open.countFilter, open.pageFilter]) {
-    assert.match(sql, new RegExp(`NOT ${closed.source}`));
-    assert.match(sql, discarded);  // Discarded before reading never gets a closing date: not open.
+  const accepted = /\(jev_union\.affinity_index IS NULL OR jev_union\.affinity_index >= 60\)/;
+  const open = await run('open'), onlyClosed = await run('closed'), all = await run('all'), none = await run(null);
+  // Descartadas en la revisión previa and current JEV < 60 never appear, whatever the view; rows without a JEV row stay.
+  for (const view of [open, onlyClosed, all, none]) {
+    for (const sql of [view.countFilter, view.pageFilter]) {
+      assert.match(sql, discarded);
+      assert.match(sql, accepted);
+    }
   }
-  const onlyClosed = await run('closed');
+  for (const sql of [open.countFilter, open.pageFilter]) assert.match(sql, new RegExp(`NOT ${closed.source}`));
   for (const sql of [onlyClosed.countFilter, onlyClosed.pageFilter]) {
     assert.match(sql, closed);
     assert.doesNotMatch(sql, new RegExp(`NOT ${closed.source}`));
-    assert.doesNotMatch(sql, discarded);
   }
-  const all = await run('all');
-  for (const sql of [all.countFilter, all.pageFilter]) assert.doesNotMatch(sql, closed);
-  // Open first (by score, as before), then closed and discarded, newest publication first.
-  const history = `\\(${closed.source} OR NOT pf\\.reader_status IS DISTINCT FROM 'rejected_below_60'\\)`;
-  assert.match(all.order, new RegExp(`^ORDER BY ${history}, CASE WHEN ${history} THEN p\\.published_at END DESC NULLS LAST, CASE WHEN matched\\.id IS NOT NULL`));
-  // Every count also says how many are open, whatever the filter.
-  for (const { count, result } of [open, onlyClosed, all]) {
-    assert.match(count, new RegExp(`count\\(\\*\\) FILTER \\(WHERE NOT ${history}\\)::int AS open_total`));
+  for (const sql of [all.countFilter, all.pageFilter, none.countFilter, none.pageFilter]) assert.doesNotMatch(sql, closed);
+  // Open first (by score, as before), then the closed ones, newest publication first. Hidden rows are gone, so history is just closed.
+  assert.match(all.order, new RegExp(`^ORDER BY ${closed.source}, CASE WHEN ${closed.source} THEN p\\.published_at END DESC NULLS LAST, CASE WHEN matched\\.id IS NOT NULL`));
+  assert.doesNotMatch(all.page, /OR NOT pf\.reader_status IS DISTINCT FROM/);
+  // Every count also says how many are open (not closed; hidden rows are already excluded), whatever the filter.
+  for (const { count, result } of [open, onlyClosed, all, none]) {
+    assert.match(count, new RegExp(`count\\(\\*\\) FILTER \\(WHERE NOT ${closed.source}\\)::int AS open_total`));
+    assert.match(count, /LEFT JOIN LATERAL \([\s\S]*?\) jev_union ON true\s+WHERE/, 'the count reads the same JEV join as the page');
     assert.deepEqual([result.total, result.open_total], [3, 2]);
   }
   // Day-only stages compare as YYYYMMDD text in Lima; unknown dates are never closed.
   assert.match(open.pageFilter, /to_char\(now\(\) AT TIME ZONE 'America\/Lima', 'YYYYMMDD'\)/);
   assert.match(open.pageFilter, /presentaci\[oó\]n\.\*\(oferta\|propuesta\)/);
-  const none = await run(null);
-  assert.doesNotMatch(none.pageFilter, closed);
-  assert.doesNotMatch(none.pageFilter, discarded);
   assert.match(none.order, /^ORDER BY CASE WHEN matched\.id IS NOT NULL/);
+});
+
+test('JEV union score is the canonical row per convocatoria, any profile, latest first, and a non-number is no score', async () => {
+  const statements = [];
+  const service = load('prod2Opportunities.ts', { '@/server/db/client': { query: async (sql, values) => {
+    statements.push({ sql, values });
+    return { rows: sql.includes('FROM company_profiles') ? [{ id: profileId, razon_social: 'Empresa QA' }] : sql.includes('count(*)::int AS total') ? [{ total: 1 }] : [] };
+  } }, '@/lib/prod2Analysis': analysis });
+  await service.listProd2OpportunitiesForTenant('tenant', { object: null, q: '', page: 1, pageSize: 10, profileId });
+  await service.getProd2OpportunityForTenant('tenant', '123', profileId);
+  const queries = statements.filter(statement => statement.sql.includes('FROM prod2_discoveries'));
+  assert.equal(queries.length, 3, 'count, page and detail');
+  for (const { sql } of queries) {
+    const join = sql.slice(sql.indexOf('LEFT JOIN LATERAL (\n  SELECT CASE WHEN jsonb_typeof'), sql.indexOf(') jev_union ON true') + ') jev_union ON true'.length);
+    assert.match(join, /^LEFT JOIN LATERAL \(\s+SELECT CASE WHEN jsonb_typeof\(ev\.result_json->'affinity_index'\) = 'number'\s+THEN \(ev\.result_json->>'affinity_index'\)::double precision END AS affinity_index\s+FROM prod2_evaluations ev/);
+    assert.match(join, /WHERE ev\.id_convocatoria = p\.id_convocatoria AND ev\.kind = 'jev_affinity' AND ev\.status = 'done'\s+AND ev\.policy_version = 'prod2_commercial_union_v1'\s+ORDER BY ev\.completed_at DESC, ev\.id DESC LIMIT 1\s+\) jev_union ON true$/);
+    // One row per convocatoria, the same for every tenant: neither a profile nor a parameter takes part in it.
+    assert.doesNotMatch(join, /profile_id|profile_hash|tenant|\$\d/);
+  }
+  assert.doesNotMatch(queries[0].sql, /jev_union\.affinity_index AS jev_score/, 'the count has no row to project');
+  for (const { sql } of queries.slice(1)) assert.match(sql, /jev_union\.affinity_index AS jev_score/);
+  // The DIN title affinity stays a separate, tie-break-only join.
+  assert.doesNotMatch(queries[1].sql.slice(queries[1].sql.indexOf('SELECT'), queries[1].sql.indexOf('FROM prod2_discoveries')), /commercial_jev/);
+  assert.match(queries[1].sql, /\) jev_union ON true\s+LEFT JOIN LATERAL \(SELECT NULL::jsonb AS result_json, NULL::double precision AS affinity_index\) commercial_jev ON true/);
+});
+
+test('mayores ordering: match score, then the JEV union score, then the DIN title affinity, then keywords', async () => {
+  const { service, statements } = scoreProjectionService({ publishedScore: 70 });
+  await service.listProd2OpportunitiesForTenant('tenant', { object: null, q: '', page: 1, pageSize: 10, profileId, deadline: 'all' });
+  const page = statements.find(statement => statement.sql.includes('LIMIT $')).sql;
+  const order = page.slice(page.lastIndexOf('ORDER BY'));
+  const positions = ['matched.score BETWEEN 0 AND 100 THEN matched.score ELSE NULL END DESC', 'jev_union.affinity_index DESC NULLS LAST',
+    'commercial_jev.affinity_index DESC NULLS LAST', 'fit.keyword_points DESC NULLS LAST', 'p.published_at DESC NULLS LAST, p.id_convocatoria DESC'].map(part => order.indexOf(part));
+  assert.ok(positions.every(position => position > 0), positions.join());
+  assert.deepEqual(positions, [...positions].sort((left, right) => left - right));
 });
 
 function scoreProjectionService({ storedScore = 95, scoreValidated, sourceReviewRequired = false, publishedScore, publishedVerdict = 'gris',
@@ -331,9 +366,9 @@ test('legacy PROD2 scores and explicitly validated zero keep their score, verdic
   }
 });
 
-test('list and detail use current profile keyword fit and never expose JEV affinity, while preserving documentary provenance', async () => {
+test('list and detail use current profile keyword fit and expose only the JEV union score, never the DIN or category title affinity', async () => {
   const statements = [];
-  const row = { id_convocatoria: '123', schedule_json: [],
+  const row = { id_convocatoria: '123', schedule_json: [], jev_score: 72,
     keyword_points: 35, fit_points: 35, fit_level: 3, business_line_name: 'Software e integración',
     keyword_hits: [{ keyword: 'software', match: 'strong_term', points: 10 }], documents_count: 0 };
   const service = load('prod2Opportunities.ts', { '@/server/db/client': { query: async (sql, values) => {
@@ -349,7 +384,8 @@ test('list and detail use current profile keyword fit and never expose JEV affin
     assert.equal(result.keyword_points, 35); assert.equal(result.fit_score, null);
     assert.equal(result.business_line_name, 'Software e integración');
     assert.equal(result.keyword_hits, row.keyword_hits); assert.equal(result.fit_basis, 'profile_keywords');
-    // JEV es interno: ni el índice histórico ni el comercial ni las categorías por título salen en la respuesta.
+    // Solo sale el puntaje JEV de la convocatoria; ni el índice DIN de la empresa ni el histórico ni las categorías por título.
+    assert.equal(result.jev_score, 72);
     for (const key of ['affinity', 'commercial_affinity', 'jev_result', 'commercial_jev_result', 'commercial_affinity_index', 'commercial_classification', 'commercial_categories']) assert.equal(key in result, false, key);
   }
   for (const query of statements.filter(s => s.sql.includes('FROM prod2_discoveries') && !s.sql.includes('count(*)::int AS total FROM prod2_discoveries'))) {
@@ -357,11 +393,47 @@ test('list and detail use current profile keyword fit and never expose JEV affin
     assert.match(query.sql, /COALESCE\(p\.description, ''\)/);
     assert.match(query.sql, /bl\.is_active/);
     assert.match(query.sql, /prod2_match_provenance/);
+    assert.match(query.sql, /jev_union\.affinity_index AS jev_score/);
     assert.equal(query.values[0], profileId);
   }
   assert.doesNotMatch(statements.map(s => s.sql).join('\n'), /worker_jobs|\b(?:INSERT|UPDATE|DELETE)\b/);
   for (const { sql } of statements.filter(s => s.sql.includes('FROM prod2_discoveries'))) {
     assert.doesNotMatch(sql, /jev_result|commercial_jev_result|AS commercial_affinity_index|commercial_classification|prod2_title_classifications|effective_commercial/);
+  }
+});
+
+test('JEV score is a finite 0–100 number or null; a missing, text or out-of-range value never becomes a score', async () => {
+  for (const [stored, published] of [[0, 0], [60, 60], [84.5, 84.5], [100, 100], [null, null], [undefined, null], ['72', null], [NaN, null], [Infinity, null], [-1, null], [100.01, null]]) {
+    const statements = [];
+    const row = { id_convocatoria: '123', schedule_json: [], documents_count: 0, ...(stored === undefined ? {} : { jev_score: stored }) };
+    const service = load('prod2Opportunities.ts', { '@/server/db/client': { query: async sql => {
+      statements.push(sql);
+      return { rows: sql.includes('count(*)::int AS total') ? [{ total: 1 }] : sql.includes('FROM prod2_discoveries') ? [row] : [] };
+    } }, '@/lib/prod2Analysis': analysis });
+    const list = await service.listProd2OpportunitiesForTenant('tenant', { object: null, q: '', page: 1, pageSize: 10, profileId: null });
+    const detail = await service.getProd2OpportunityForTenant('tenant', '123');
+    assert.equal(list.data[0].jev_score, published, String(stored));
+    assert.equal(detail.process.jev_score, published, String(stored));
+  }
+});
+
+test('an accepted JEV row with no reading and no evaluation reads "Por calificar"; a feed status always wins', async () => {
+  for (const [row, status, label] of [
+    [{ jev_score: 72 }, 'accepted_unread', 'Por calificar'],
+    [{ jev_score: 59.99 }, null, null],
+    [{ jev_score: null }, null, null],
+    [{ jev_score: 72, participation_extraction: { id: '9' } }, null, null],
+    [{ jev_score: 72, match_id: '5' }, null, null],
+    [{ jev_score: 72, publication_status: 'needs_review' }, 'needs_review', 'Lectura por revisar'],
+    [{ jev_score: 72, publication_status: 'unknown_status' }, null, null],
+  ]) {
+    const stored = { id_convocatoria: '123', schedule_json: [], documents_count: 0, ...row };
+    const service = load('prod2Opportunities.ts', { '@/server/db/client': { query: async sql => ({ rows:
+      sql.includes('count(*)::int AS total') ? [{ total: 1 }] : sql.includes('FROM prod2_discoveries') ? [stored] : [] }) },
+      '@/lib/prod2Analysis': analysis });
+    const list = await service.listProd2OpportunitiesForTenant('tenant', { object: null, q: '', page: 1, pageSize: 10, profileId: null });
+    assert.equal(list.data[0].publication_status, status, JSON.stringify(row));
+    assert.equal(list.data[0].publication_status_label, label, JSON.stringify(row));
   }
 });
 
@@ -668,7 +740,7 @@ test('PROD2 scores precede keyword affinity globally, including zero/provisional
       assert.doesNotMatch(sql, /matched\.score > 0|COALESCE\(matched\.score, 0\)/);
     }
     const page = selections[1];
-    assert.match(page.sql, /ORDER BY CASE WHEN matched\.id IS NOT NULL AND matched\.score BETWEEN 0 AND 100 THEN matched\.score ELSE NULL END DESC NULLS LAST, commercial_jev\.affinity_index DESC NULLS LAST, fit\.keyword_points DESC NULLS LAST/);
+    assert.match(page.sql, /ORDER BY CASE WHEN matched\.id IS NOT NULL AND matched\.score BETWEEN 0 AND 100 THEN matched\.score ELSE NULL END DESC NULLS LAST, jev_union\.affinity_index DESC NULLS LAST, commercial_jev\.affinity_index DESC NULLS LAST, fit\.keyword_points DESC NULLS LAST/);
     assert.ok(page.sql.indexOf('ELSE NULL END IS NOT NULL') < page.sql.lastIndexOf('LIMIT $4 OFFSET $5'));
     assert.deepEqual(Array.from(page.values), [profileId, 'service', '%software%', 5, 5]);
   }

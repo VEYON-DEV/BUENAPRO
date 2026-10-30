@@ -46,6 +46,11 @@ function provisionalScore(row: Record<string, unknown>) {
     ? row.provisional_score : null;
 }
 
+// JEV score of the chosen company for a minor contract: a 0–100 number, or null when there is none.
+function jevScore(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100 ? value : null;
+}
+
 export async function getContractForTenant(tenantId: string, idContrato: number, profileId: string | null = null) {
   const profile = await resolveListProfile(tenantId, profileId);
   const result = await query(
@@ -161,6 +166,18 @@ const ECON_LATERAL_SQL = `
       AND rf.is_current = true
       AND rf.details_json->>'monto' ~ '^[0-9]+\\.?[0-9]*$'
   ) econ ON true
+`;
+
+// Afinidad JEV de la empresa elegida ($2) para este contrato: la última decisión que no esté superseded.
+// Solo se muestra; ningún filtro ni conteo de la lista la usa. Sin decisión (o sin perfil) devuelve null.
+const JEV_DECISION_LATERAL_SQL = `
+  LEFT JOIN LATERAL (
+    SELECT d.decision AS jev_decision, d.score::double precision AS jev_score
+    FROM prod6_profile_decisions d
+    WHERE d.id_contrato = c.id_contrato AND d.profile_id = $2::uuid AND d.decision <> 'superseded'
+    ORDER BY d.id DESC
+    LIMIT 1
+  ) jev ON true
 `;
 
 export async function listContractsForTenant(tenantId: string, params: URLSearchParams) {
@@ -331,6 +348,8 @@ export async function listContractsForTenant(tenantId: string, params: URLSearch
       ${PUBLISHED_MATCH_SCORE} AS score,
       ${PUBLISHED_MATCH_VERDICT} AS verdict,
       m.user_state,
+      jev.jev_score,
+      jev.jev_decision,
       econ.exigido AS econ_exigido,
       COALESCE(fit.fit_points, 0)::int AS fit_points,
       fit.business_line_id AS fit_business_line_id,
@@ -363,6 +382,7 @@ export async function listContractsForTenant(tenantId: string, params: URLSearch
       ORDER BY ${PUBLISHED_MATCH_SCORE} DESC NULLS LAST, m.updated_at DESC
       LIMIT 1
     ) m ON true
+    ${JEV_DECISION_LATERAL_SQL}
     ${keywordFitLateralSql(1, 2)}
     ${ECON_LATERAL_SQL}
     ${PROD6_COMMERCIAL_JOIN}
@@ -386,6 +406,7 @@ export async function listContractsForTenant(tenantId: string, params: URLSearch
   const total = Number(result.rows[0]?.total_count ?? 0);
   return {
     data: result.rows.map(({ total_count: _totalCount, open_count: _openCount, ...row }) => ({ ...row, provisional_score: provisionalScore(row),
+      jev_score: jevScore(row.jev_score), jev_decision: typeof row.jev_decision === "string" ? row.jev_decision : null,
       commercial_classification: normalizeCommercialClassification(row.commercial_classification),
       commercial_categories: deriveCommercialCategories(row.commercial_classification) })),
     meta: { page, page_size: pageSize, count: result.rows.length, total, open_total: Number(result.rows[0]?.open_count ?? 0) },
