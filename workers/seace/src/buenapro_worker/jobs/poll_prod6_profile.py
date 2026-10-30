@@ -51,15 +51,20 @@ def admit_contract(repo: JobRepository, item: SearchItem, *, anio: int, segment:
         ).fetchone()
     enqueued = 0
     if not extracted:
-        payload: dict[str, Any] = {"id_contrato": item.id_contrato, "segment": segment}
-        if batch_id:
-            payload["batch_id"] = batch_id
-        job = repo.enqueue(
-            "process_contract", payload, queue_name="io", priority=2,
-            dedup_key=f"process_contract:{batch_id or 'profile'}:{item.id_contrato}:{listing_hash(item)}",
-        )
+        job = enqueue_process_contract(
+            repo, item.id_contrato, segment=segment, batch_id=batch_id,
+            dedup_key=f"process_contract:{batch_id or 'profile'}:{item.id_contrato}:{listing_hash(item)}")
         enqueued = int(job is not None)
     return {"changed": int(changed), "enqueued": enqueued}
+
+
+def enqueue_process_contract(repo: JobRepository, id_contrato: int, *, segment: int | None,
+                             batch_id: str | None, dedup_key: str) -> int | None:
+    """The reading job of a contract (also used by the manual grading requests of the PROD6 runtime)."""
+    payload: dict[str, Any] = {"id_contrato": id_contrato, "segment": segment}
+    if batch_id:
+        payload["batch_id"] = batch_id
+    return repo.enqueue("process_contract", payload, queue_name="io", priority=2, dedup_key=dedup_key)
 
 
 class DiscoveryLimit(Exception):

@@ -1,66 +1,61 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { Button } from "@/components/ui/Button";
+import Link from "next/link";
+import { LoaderCircle, RefreshCw, RotateCcw, Sparkles, TriangleAlert } from "lucide-react";
+import { Button, buttonClassName } from "@/components/ui/Button";
+import { useManualGrading } from "../../hooks/useManualGrading";
+import type { GradingTone } from "../../model/manualGrading";
+import styles from "./AnalyzeButton.module.css";
 
-type Status = "idle" | "queued" | "error" | "no_profile";
+const messageTone: Partial<Record<GradingTone, string>> = {
+  failed: styles.messageFailed,
+  limit: styles.messageLimit,
+};
 
+/** Califica una licitación menor con el perfil de la empresa; «Re-calificar» cuando ya hay veredicto. */
 export function AnalyzeButton({
   idContrato,
   profileId,
   analyzedAt,
-  children = "Evaluar con mi perfil",
 }: {
   idContrato: string | number;
   profileId?: string | null;
   analyzedAt?: string | null;
-  children?: React.ReactNode;
 }) {
-  const router = useRouter();
-  const [status, setStatus] = useState<Status>("idle");
-  async function analyze() {
-    setStatus("queued");
-    try {
-      const response = await fetch(`/api/contracts/${idContrato}/analyze`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ force: Boolean(analyzedAt), ...(profileId ? { profile_id: profileId } : {}) }),
-      });
-      if (response.status === 409) {
-        setStatus("no_profile");
-        return;
-      }
-      if (!response.ok) {
-        setStatus("error");
-        return;
-      }
-      router.refresh();
-      setStatus("idle");
-    } catch {
-      setStatus("error");
-    }
-  }
+  const { view, submit } = useManualGrading({ idContrato, profileId, regrade: Boolean(analyzedAt) });
+  const busy = view.tone === "active";
 
-  if (status === "no_profile") {
+  if (view.tone === "no_profile") {
     return (
-      <a href="/perfil">
-        <Button variant="secondary">Configura tu perfil para evaluar</Button>
-      </a>
+      <div className={styles.root}>
+        <Link href="/perfil" className={buttonClassName("secondary")}>
+          {view.label}
+        </Link>
+      </div>
     );
   }
 
+  const Icon = busy ? LoaderCircle : view.tone === "failed" ? RotateCcw : analyzedAt ? RefreshCw : Sparkles;
   return (
-    <Button
-      disabled={status === "queued"}
-      onClick={analyze}
-      variant={analyzedAt ? "secondary" : "primary"}
-    >
-      {status === "queued"
-        ? "Analizando con IA…"
-        : status === "error"
-          ? "Reintentar análisis"
-          : children}
-    </Button>
+    <div className={styles.root}>
+      <Button
+        onClick={submit}
+        disabled={view.disabled}
+        aria-busy={busy}
+        variant={analyzedAt || view.tone === "failed" ? "secondary" : "primary"}
+      >
+        <Icon size={16} aria-hidden="true" className={busy ? styles.spinner : undefined} />
+        {view.label}
+      </Button>
+      <div className={styles.status} role="status" aria-live="polite">
+        {view.message ? (
+          <p className={`${styles.message} ${messageTone[view.tone] ?? ""}`}>
+            {view.tone === "failed" || view.tone === "limit" ? <TriangleAlert size={14} aria-hidden="true" /> : null}
+            {view.message}
+          </p>
+        ) : null}
+        {view.usageText ? <p className={styles.usage}>{view.usageText}</p> : null}
+      </div>
+    </div>
   );
 }

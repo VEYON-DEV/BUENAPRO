@@ -5,7 +5,8 @@ explicit profile and five allowed job types. A session advisory lock prevents
 two instances. Provider responses are durably cached before database writes.
 
 LLM2 (``analyze_match``) runs only for a contract whose current JEV decision for the company
-is ``accepted`` (``prod6/evaluation.py``); notifications and the legacy gate stay off.
+is ``accepted`` (``prod6/evaluation.py``) or for a manual grading request of the web
+(``prod6/manual_requests.py``); notifications and the legacy gate stay off.
 """
 from __future__ import annotations
 
@@ -53,6 +54,8 @@ from buenapro_worker.prod6.evaluation import (
     AUTO_ORIGIN, INVALID_OUTCOME, enqueue_evaluations, evaluation_rows, skip_reason,
 )
 from buenapro_worker.prod6.evaluation_guard import GuardedMatchAnalyzer
+from buenapro_worker.prod6 import manual_requests
+from buenapro_worker.prod6.manual_requests import MANUAL_ORIGIN, MANUAL_SOURCE
 from buenapro_worker.prod6.gemini_pacing import SATURATION_CODES, saturation_fallback_model
 from buenapro_worker.prod6.reading import (
     GuardedReadingError, ProviderRejectedError, ReadingPolicyError, bind_reading_policy, reading_policy_context,
@@ -67,6 +70,9 @@ IO_TYPES = ("process_contract", "download_file")
 # Paid Gemini jobs run one at a time on the coordinator and stop together during a reading pause.
 PAID_TYPES = ("extract_tdr", "analyze_match")
 LOCK = (2061013, 6)
+# Manual grading requests are looked at this often while jobs run; an idle runtime looks for new ones this often.
+MANUAL_STEP_SECONDS = 10
+MANUAL_WAKE_SECONDS = 30
 # A document whose own request was denied this many times goes to manual review.
 SOURCE_BLOCK_LIMIT = 3
 # A document whose reading Gemini rejected this many times in a row goes to manual review.
@@ -283,6 +289,8 @@ class ScopedRepository(JobRepository):
     shared per contract, so the scope only names which coordinator owns the jobs.
     """
 
+    namespace = NAMESPACE
+
     def __init__(self, conn, *, profile_id: str, batch_id: str, reading_policy=None,
                  profile_ids: list[str] | None = None):
         super().__init__(conn)
@@ -305,12 +313,19 @@ class ScopedRepository(JobRepository):
     def dedup_prefix(self) -> str:
         return f"{NAMESPACE}:{self.profile_id}:"
 
+    def llm2_allowed(self, payload) -> bool:
+        payload = payload or {}
+        if payload.get("profile_id") not in self.profile_ids:
+            return False
+        if payload.get("source") == "automatic":
+            return payload.get("origin") == AUTO_ORIGIN
+        return (payload.get("source") == MANUAL_SOURCE and payload.get("origin") == MANUAL_ORIGIN
+                and type(payload.get("manual_request_id")) is int)
+
     def enqueue(self, job_type, payload=None, **kwargs):
-        # Ingestion does not authorize historical LLM2 or notifications. The one LLM2 job allowed
-        # is the automatic evaluation of a JEV-accepted pair queued by prod6/evaluation.py.
-        if job_type not in JOB_TYPES or (job_type == "analyze_match" and not (
-                (payload or {}).get("source") == "automatic" and (payload or {}).get("origin") == AUTO_ORIGIN
-                and (payload or {}).get("profile_id") in self.profile_ids)):
+        # Ingestion does not authorize historical LLM2 or notifications. The LLM2 jobs allowed are the
+        # automatic evaluation of a JEV-accepted pair (prod6/evaluation.py) and a manual grading request.
+        if job_type not in JOB_TYPES or (job_type == "analyze_match" and not self.llm2_allowed(payload)):
             self.suppressed[job_type] = self.suppressed.get(job_type, 0) + 1
             return None
         payload = dict(payload or {}) | {
@@ -480,6 +495,8 @@ def evaluate_match(settings: Settings, repo: ScopedRepository, job: Job, receipt
     waiting in the queue never pays for a pair that stopped qualifying. Notifications stay off.
     """
     payload = job.payload
+    if payload.get("origin") == MANUAL_ORIGIN:
+        return evaluate_manual_match(settings, repo, job, receipt_dir)
     if payload.get("source") != "automatic" or payload.get("origin") != AUTO_ORIGIN:
         raise ValueError("analyze_match outside the automatic PROD6 evaluation origin")
     contract_id, profile_id = int(payload["id_contrato"]), str(payload["profile_id"])
@@ -516,6 +533,48 @@ def evaluate_match(settings: Settings, repo: ScopedRepository, job: Job, receipt
             **({"provider_answered": True} if guarded.provider_answered else {})}
 
 
+def evaluate_manual_match(settings: Settings, repo: ScopedRepository, job: Job, receipt_dir: Path) -> dict[str, Any]:
+    """LLM2 for one manually requested pair (prod6/manual_requests.py).
+
+    Needs an active company and a valid reading, nothing else: no JEV decision, rules, daily limit or open
+    contract. The request is read again here (a job whose request was timed out or already settled costs
+    nothing) and ends with the match: done, or failed when the model's answer is unusable.
+    """
+    payload = job.payload
+    if payload.get("source") != MANUAL_SOURCE or type(payload.get("manual_request_id")) is not int:
+        raise ValueError("analyze_match outside the PROD6 manual grading origin")
+    contract_id, profile_id = int(payload["id_contrato"]), str(payload["profile_id"])
+    request_id = payload["manual_request_id"]
+    if not manual_requests.is_evaluating(repo.conn, request_id):
+        return {"outcome": "skipped", "reason": "request_not_active"}
+    if profile_id not in repo.profile_ids:
+        manual_requests.settle(repo.conn, request_id, "failed", "profile_inactive")
+        return {"outcome": "skipped", "reason": "profile_out_of_scope"}
+    row = manual_requests.pair_row(repo.conn, contract_id, profile_id)
+    verdict, reason = manual_requests.pair_verdict(row)
+    if verdict != "ready":  # Graded meanwhile, or the reading or the company stopped qualifying.
+        manual_requests.settle(repo.conn, request_id, "done" if verdict == "done" else "failed",
+                               None if verdict == "done" else reason or "reading_failed")
+        return {"outcome": "skipped", "reason": reason or verdict}
+    guarded = GuardedMatchAnalyzer(settings, receipt_dir / "evaluations", allow_new_requests=job.attempts <= 1)
+    try:
+        result = analyze_match_job(
+            settings, repo, id_contrato=contract_id, profile_id=profile_id,
+            business_line_id=payload.get("business_line_id"), source=MANUAL_SOURCE,
+            analyzer=guarded, notifications=False,
+            extra_meta={"evaluation_origin": MANUAL_ORIGIN, "manual_request_id": request_id})
+    except ModelOutputMismatch as error:
+        # Same as the automatic job: nothing was written and the answer stays replayable.
+        manual_requests.settle(repo.conn, request_id, "failed", INVALID_OUTCOME)
+        return {"outcome": INVALID_OUTCOME, "reason": error.code, "extraction_id": int(row["extraction_id"]),
+                **({"provider_answered": True} if guarded.provider_answered else {})}
+    finally:
+        guarded.close()
+    manual_requests.settle(repo.conn, request_id, "done")
+    return {"outcome": "unchanged" if result.get("skipped") else "evaluated", **result,
+            **({"provider_answered": True} if guarded.provider_answered else {})}
+
+
 def dispatch(settings: Settings, repo: ScopedRepository, job: Job, receipt_dir: Path):
     payload = job.payload
     contract_id = int(payload["id_contrato"])
@@ -526,7 +585,11 @@ def dispatch(settings: Settings, repo: ScopedRepository, job: Job, receipt_dir: 
     if (job.job_type in IO_TYPES
             and get_commercial_policy(payload) != get_commercial_policy(repo.reading_policy)):
         raise ReadingPolicyError("Queued PROD6 IO differs from the runtime policy")
-    if not eligible_contract(repo, contract_id):
+    # A closed contract is preserved, unless a manual grading request is reading it or this is its evaluation.
+    open_contract = eligible_contract(repo, contract_id)
+    manual_job = job.job_type == "analyze_match" and payload.get("origin") == MANUAL_ORIGIN
+    manual_reading = not (open_contract or manual_job) and manual_requests.reading_requested(repo.conn, contract_id)
+    if not (open_contract or manual_job or manual_reading):
         if job.job_type == "extract_tdr":
             release_source_copy(repo, cache, contract_id, int(payload["id_contrato_archivo"]))
         return {"outcome": "closed_preserved"}
@@ -534,7 +597,7 @@ def dispatch(settings: Settings, repo: ScopedRepository, job: Job, receipt_dir: 
         before = repo.conn.execute("SELECT pipeline_state FROM seace_contracts WHERE id_contrato=%s",
                                    (contract_id,)).fetchone()
         result = process_contract(settings, repo, contract_id, force_detail=True, **common)
-        if eligible_contract(repo, contract_id):
+        if manual_reading or eligible_contract(repo, contract_id):
             result["unread_enqueued"] = enqueue_unread_documents(repo, contract_id)
             # Metadata refresh must not leave an already-read contract looking
             # unfinished merely because upsert_files recorded a fresh inventory.
@@ -624,6 +687,10 @@ def dispatch(settings: Settings, repo: ScopedRepository, job: Job, receipt_dir: 
                                          include_stale=True)
             result["evaluations"] = {key: queued[key] for key in
                                      ("candidates", "enqueued", "already_queued", "daily_limited", "skipped")}
+        # After the automatic queue, so a pair it queued is not queued twice; a review fails the requests.
+        manual = manual_requests.advance_reading(repo, contract_id)
+        if manual:
+            result["manual_requests"] = manual
         return result
     if job.job_type == "analyze_match":
         return evaluate_match(settings, repo, job, receipt_dir)
@@ -736,6 +803,8 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
         egress_down = False
         jev_down = False
         held_alerted: set[tuple[str, str]] = set()  # (job type, error type) already alerted
+        manual_known: set[int] = set()  # Pending manual requests the last cycle already saw.
+        manual_checked = 0.0
         # A 403/429 pause survives restarts: the previous process left it in state.json.
         source_block = load_source_block(receipt_dir / "state.json")
         # The rotation of the search sweep survives restarts the same way.
@@ -994,6 +1063,17 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
                            "requiere revisión.")
                 attention_alerted = fingerprint
 
+        def manual_wake() -> bool:
+            """An idle runtime ends its wait when a manual grading request it has not seen arrives."""
+            nonlocal manual_checked
+            if time.monotonic() - manual_checked < MANUAL_WAKE_SECONDS:
+                return False
+            manual_checked = time.monotonic()
+            try:
+                return bool(manual_requests.pending_ids(conn, active_ids) - manual_known)
+            except psycopg.Error:
+                return False
+
         def io_allowed() -> bool:
             """IO needs PROD6: closed while the breaker is open or the budget cannot cover a job."""
             if pacing.PACER.blocked:
@@ -1147,11 +1227,19 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
                 state["phase"] = "processing"
                 write_state(receipt_dir / "state.json", state)
                 budget_held = False
+                manual_stepped: float | None = None
                 while not stopping:
                     if not profile_enabled(repo):
                         state["status"] = "profile_paused"
                         write_state(receipt_dir / "state.json", state)
                         return 2
+                    if manual_stepped is None or time.monotonic() - manual_stepped >= MANUAL_STEP_SECONDS:
+                        # Manual grading requests: free database work, so it also runs while the source is paused.
+                        manual_stepped, repo.batch_id = time.monotonic(), batch_id
+                        for status, count in manual_requests.step(repo).items():
+                            if status != "waiting":
+                                counts = state.setdefault("manual_requests", {})
+                                counts[status] = counts.get(status, 0) + count
                     io_batch = []
                     io_open = io_allowed()
                     if io_open:
@@ -1372,7 +1460,12 @@ def run(settings: Settings, *, profile_ids: list[str], receipt_dir: Path, once: 
             if once or stopping:
                 return 2 if (state.get("deferred_io") or state.get("egress_deferred") or incomplete
                              or jev_unavailable or blocked_cycle or reading_stopped) else 0
-            _wait_for_poll(lambda: stopping, interval_seconds)
+            try:
+                manual_known = manual_requests.pending_ids(conn, active_ids)
+            except psycopg.Error:
+                manual_known = set()
+            manual_checked = time.monotonic()
+            _wait_for_poll(lambda: stopping or manual_wake(), interval_seconds)
     return 0
 
 

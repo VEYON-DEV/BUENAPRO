@@ -390,6 +390,9 @@ export async function OpportunityDetailPage({
             <span>
               Evalúa los requisitos del TDR contra tu perfil de empresa:
               veredicto, brechas exactas y acciones.
+              {contract.extraction_id
+                ? null
+                : " Aún no se leyeron los documentos de esta licitación: se leerán primero y puede tardar unos minutos."}
             </span>
           </div>
           <AnalyzeButton
@@ -429,9 +432,7 @@ export async function OpportunityDetailPage({
                     idContrato={contract.id_contrato}
                     profileId={contract.profile_id}
                     analyzedAt={analyzedAt}
-                  >
-                    Re-evaluar
-                  </AnalyzeButton>
+                  />
                 ) : null}
               </div>
               <div className={styles.briefGrid}>

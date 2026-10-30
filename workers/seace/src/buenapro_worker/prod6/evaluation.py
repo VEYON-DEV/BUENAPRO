@@ -6,9 +6,10 @@ gate of the legacy ``route_contract_profiles``), the company's ``automation_rule
 contract is open and its current reading is valid and not under review. Everything else stays
 available as a manual evaluation from the web.
 
-``enqueue_evaluations`` is the only producer of ``analyze_match`` jobs in the PROD6 runtime: the
-hook after ``derive_summary`` and the ``backfill_evaluations`` command both call it, and
-``ScopedRepository.enqueue`` accepts no other origin.
+``enqueue_evaluations`` is the only producer of automatic ``analyze_match`` jobs in the PROD6 runtime:
+the hook after ``derive_summary`` and the ``backfill_evaluations`` command both call it. The only other
+origin ``ScopedRepository.enqueue`` accepts is the manual grading request (``prod6/manual_requests.py``),
+which shares this module's dedup key, so a (contract, company) pair is never paid twice.
 """
 from __future__ import annotations
 
@@ -52,7 +53,7 @@ SELECT l.decision_id, l.id_contrato, l.profile_id, l.decision, l.decided_by, l.s
        m.id AS match_id, m.breakdown_json->'meta'->>'extraction_id' AS match_extraction_id,
        EXISTS (SELECT 1 FROM worker_jobs j
                WHERE j.job_type = 'analyze_match' AND j.status = 'done'
-                 AND j.payload->>'origin' = %(origin)s
+                 AND j.payload->>'origin' = ANY(%(origins)s)
                  AND j.payload->>'profile_id' = l.profile_id::text
                  AND j.payload->>'id_contrato' = l.id_contrato::text
                  AND j.payload->'runtime_result'->>'outcome' = %(invalid)s
@@ -85,9 +86,11 @@ ORDER BY (bl.nombre = ANY(%(lines)s)) DESC, bl.nombre LIMIT 1
 
 def evaluation_rows(conn, *, profile_ids: list[str], contract_id: int | None = None,
                     only_accepted: bool = False) -> list[dict[str, Any]]:
+    from buenapro_worker.prod6.manual_requests import MANUAL_ORIGIN  # manual_requests imports this module
+    # An invalid answer to either kind of job keeps the pair out of the queue for that reading.
     return conn.execute(ROWS_SQL, {"policy": POLICY_VERSION, "profiles": list(profile_ids),
                                    "contract": contract_id, "only_accepted": only_accepted,
-                                   "origin": AUTO_ORIGIN, "invalid": INVALID_OUTCOME}).fetchall()
+                                   "origins": [AUTO_ORIGIN, MANUAL_ORIGIN], "invalid": INVALID_OUTCOME}).fetchall()
 
 
 def skip_reason(row: dict[str, Any], *, include_stale: bool = False) -> str | None:

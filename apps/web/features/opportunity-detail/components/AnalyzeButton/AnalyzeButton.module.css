@@ -1,0 +1,76 @@
+.root {
+  display: grid;
+  gap: var(--bp-space-2);
+  justify-items: stretch;
+  min-width: 0;
+  width: min(100%, 300px);
+}
+
+.root button,
+.root > a {
+  white-space: normal;
+}
+
+.status {
+  display: grid;
+  gap: var(--bp-space-1);
+  min-width: 0;
+}
+
+.status:empty {
+  display: none;
+}
+
+.message {
+  align-items: flex-start;
+  color: var(--bp-color-text-2);
+  display: flex;
+  font-size: 12px;
+  gap: 6px;
+  line-height: 18px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.message svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.messageFailed {
+  color: var(--bp-color-danger);
+}
+
+.messageLimit {
+  color: var(--bp-color-warning);
+}
+
+.usage {
+  color: var(--bp-color-text-3);
+  font-size: 12px;
+  line-height: 18px;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.spinner {
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 3s;
+  }
+}
+
+@media (max-width: 768px) {
+  .root {
+    width: 100%;
+  }
+}
