@@ -142,7 +142,8 @@ def report_business_batches(manifest: dict, coverage: list[dict], outcomes: list
                 and all(row["coverage_complete"] for row in queries))
                 if expected is not None else None,
             "processed_first_discovery": len(records), "accepted": sum(row["accepted"] for row in records),
-            "llm1_complete": sum(row["status"] == "llm1_complete" for row in records)})
+            "llm1_complete": sum(row["status"] == "llm1_complete" for row in records),
+            "accepted_unread": sum(row["status"] == "accepted_unread" for row in records)})
     return reports
 
 

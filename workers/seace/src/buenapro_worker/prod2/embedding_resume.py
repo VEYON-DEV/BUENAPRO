@@ -63,6 +63,8 @@ def _old_queue(manifest):
         'selector_low':manifest['selector_low']}
     if 'llm1_luna_fallback' in manifest:
         payload['llm1_luna_fallback']=manifest['llm1_luna_fallback']
+    if 'llm1_min_affinity' in manifest:
+        payload['llm1_min_affinity']=manifest['llm1_min_affinity']
     # This is the original queue formula. A new input policy intentionally has
     # a different target identity supplied by the runner, never guessed here.
     return 'kw-'+_digest(payload)
@@ -180,8 +182,8 @@ def _binding_unchanged(binding):
 def _same_scope(source,new):
     fields=('commercial_profiles','gemini_model','profile_id','pipeline','inventory_hash',
             'keywords','configured_keywords','lanes','years','resolved_years','objects','from_date','to_date',
-            'published_from','published_to','document_scope','jev_threshold','selector_high','selector_low',
-            'selector_policy_version')
+            'published_from','published_to','document_scope','jev_threshold','llm1_min_affinity','selector_high',
+            'selector_low','selector_policy_version')
     if any(source.get(key)!=new.get(key) for key in fields):
         raise EmbeddingResumeError("Embedding fork changed frozen source or commercial scope")
     if source.get('keyword_tracking',{}).get('sweep_id')!=new.get('keyword_tracking',{}).get('sweep_id'):

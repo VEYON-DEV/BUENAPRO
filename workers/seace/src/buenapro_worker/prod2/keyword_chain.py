@@ -10,7 +10,7 @@ from collections import Counter
 import math
 
 PIPELINE = "prod2_selected_llm1_v1"
-_COUNT_FIELDS = ("processed", "accepted", "llm1_complete", "requires_review",
+_COUNT_FIELDS = ("processed", "accepted", "llm1_complete", "accepted_unread", "requires_review",
                  "queries_total", "queries_complete")
 _COST_COUNT_FIELDS = (
     "attempts", "jev_calls", "llm1_calls", "openai_calls", "embedding_attempts",
@@ -48,7 +48,7 @@ def _summary(report):
     if isinstance(records, list):
         # Status values are a bounded machine vocabulary; do not return arbitrary
         # strings from a malformed report as potentially sensitive summary text.
-        known = {"llm1_complete", "rejected_below_60", "needs_review",
+        known = {"llm1_complete", "accepted_unread", "rejected_below_60", "needs_review",
                  "selection_needs_review", "selection_complete", "documents_missing"}
         result["outcome_status_counts"] = dict(Counter(row["status"] for row in records
             if isinstance(row, dict) and isinstance(row.get("status"), str) and row["status"] in known))
@@ -125,7 +125,9 @@ def assess_final_report(report, run_id, exit_code):
     if any(redis[key] != 0 for key in ("queued", "pending", "payloads")):
         return attention("queue_incomplete")
     accepted, done = report.get("accepted"), report.get("llm1_complete")
-    if not _count(accepted) or not _count(done) or done > accepted:
+    # accepted_unread (below the reading threshold) is absent from reports written before it existed.
+    unread = report.get("accepted_unread", 0)
+    if not _count(accepted) or not _count(done) or not _count(unread) or done + unread > accepted:
         return attention("invalid_reading_counts")
     for key in ("processed", "requires_review"):
         if key in report and not _count(report[key]):
@@ -146,8 +148,8 @@ def assess_final_report(report, run_id, exit_code):
         return attention("invalid_outcome_records")
     if "records" in report and "processed" in report and len(records) != report["processed"]:
         return attention("invalid_outcome_records")
-    review = (exit_code == 2 or accepted != done or report.get("requires_review", 0) > 0
+    review = (exit_code == 2 or accepted != done + unread or report.get("requires_review", 0) > 0
         or costs["usage_unknown_attempts"] > 0 or any(
-            row["status"] not in {"llm1_complete", "rejected_below_60"} for row in records))
+            row["status"] not in {"llm1_complete", "accepted_unread", "rejected_below_60"} for row in records))
     return _decision(summary, "complete_with_review" if review else "complete",
                      "terminal_with_review_preserved" if review else "source_and_queue_complete")

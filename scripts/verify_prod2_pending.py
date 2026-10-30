@@ -274,7 +274,7 @@ def recovery_overlay(args, manifest, original_outcomes):
         return value, ids
     for root in roots:
         value, ids = validate(root, terminal=True)
-        require(all(original_outcomes[i]["status"] not in {"llm1_complete", "rejected_below_60"} for i in ids),
+        require(all(original_outcomes[i]["status"] not in {"llm1_complete", "accepted_unread", "rejected_below_60"} for i in ids),
             "recovery_reprocesses_finished_original")
         reports = sorted(root.glob("report-*.private.json"))
         require(bool(reports), "recovery_report_missing")
@@ -535,11 +535,13 @@ def local_run(args):
     near(actual_costs["known_cost_usd"], report["costs"]["known_cost_usd"], "report_provider_cost")
     complete = [i for i in ids if outcomes[i]["status"] == "llm1_complete"]
     rejected = [i for i in ids if outcomes[i]["status"] == "rejected_below_60"]
-    blocked = sorted(set(ids) - set(complete) - set(rejected))
-    require(report["llm1_complete"] == len(complete) and report["rejected_below_60"] == len(rejected), "report_stage_counts")
+    unread = [i for i in ids if outcomes[i]["status"] == "accepted_unread"]
+    blocked = sorted(set(ids) - set(complete) - set(rejected) - set(unread))
+    require(report["llm1_complete"] == len(complete) and report["rejected_below_60"] == len(rejected)
+        and report.get("accepted_unread", 0) == len(unread), "report_stage_counts")
     require(not report["pending_ids"] and report["needs_review"] == len(blocked), "report_pending_counts")
     for conv, outcome in outcomes.items():
-        if outcome["status"] in {"llm1_complete", "rejected_below_60"}:
+        if outcome["status"] in {"llm1_complete", "accepted_unread", "rejected_below_60"}:
             affinity = number(outcome.get("affinity_index"), "affinity_invalid")
             require(0 <= affinity <= 100 and outcome["accepted"] == (affinity >= 60), "affinity_threshold_mismatch")
     original_outcomes, original_costs = outcomes, actual_costs
@@ -554,7 +556,8 @@ def local_run(args):
         require(actual_costs["usage_unknown_attempts"] == 0, "provider_usage_unknown")
     complete = [i for i in ids if outcomes[i]["status"] == "llm1_complete"]
     rejected = [i for i in ids if outcomes[i]["status"] == "rejected_below_60"]
-    blocked = sorted(set(ids) - set(complete) - set(rejected))
+    unread = [i for i in ids if outcomes[i]["status"] == "accepted_unread"]
+    blocked = sorted(set(ids) - set(complete) - set(rejected) - set(unread))
     bundles, prepared, original_bindings, completion_manifests = {}, {}, {}, {}
     for conv in complete:
         outcome = outcomes[conv]
@@ -607,7 +610,7 @@ def local_run(args):
                 "llm1_payment_or_remote_cleanup_unresolved")
     return {"ids": ids, "prior_ids": prior_ids, "original": original, "baseline": baseline_value,
         "manifest": manifest, "report": report, "outcomes": outcomes, "complete": complete,
-        "rejected": rejected, "blocked": blocked, "bundles": bundles, "prepared": prepared, "costs": actual_costs,
+        "rejected": rejected, "unread": unread, "blocked": blocked, "bundles": bundles, "prepared": prepared, "costs": actual_costs,
         "original_outcomes": original_outcomes, "original_costs": original_costs, "recovered_ids": recovered_ids,
         "outcome_folders": outcome_folders, "recovery_roots": recovery_roots,
         "recovery_proofs": recovery_proofs,
@@ -739,7 +742,7 @@ def verify(args):
     result = {"audit_policy": "prod2_exact_pending90_readonly_v1", "verified_at": datetime.now(timezone.utc).isoformat(),
         "verified_ids": local["ids"], "previous_current_extractions_unchanged": "31-40",
         "processed": 90, "llm1_complete": len(local["complete"]), "rejected_below_60": len(local["rejected"]),
-        "blocked_ids": local["blocked"], "status_counts": dict(Counter(o["status"] for o in local["outcomes"].values())),
+        "accepted_unread": len(local["unread"]), "blocked_ids": local["blocked"], "status_counts": dict(Counter(o["status"] for o in local["outcomes"].values())),
         "complete": not local["blocked"], "pg_verified": True,
         "completed_subset_verified": True, "allow_incomplete": local["allow_incomplete"],
         "original_status_counts": dict(Counter(o["status"] for o in local["original_outcomes"].values())),

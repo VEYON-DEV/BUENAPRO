@@ -261,9 +261,9 @@ def read_outcomes(folder, manifest):
         conv = value.get("convocation_id")
         if (type(conv) is not int or conv not in allow or path.parent.name != str(conv)
                 or type(value.get("accepted")) is not bool or conv in result
-                or value.get("status") not in {"rejected_below_60", "llm1_complete", "needs_review", "documents_missing", "selection_needs_review"}
+                or value.get("status") not in {"rejected_below_60", "llm1_complete", "accepted_unread", "needs_review", "documents_missing", "selection_needs_review"}
                 or (value["status"] == "rejected_below_60" and value["accepted"] is not False)
-                or (value["status"] == "llm1_complete" and value["accepted"] is not True)):
+                or (value["status"] in {"llm1_complete", "accepted_unread"} and value["accepted"] is not True)):
             raise ValueError("Continuation outcome does not bind an authorized durable classification")
         result[conv] = value
     return result
@@ -331,7 +331,8 @@ def report(folder, manifest, stage, pacer, *, began, errors=()):
     records = [outcomes[i] for i in manifest["pending_ids"] if i in outcomes]
     rejected = [r["convocation_id"] for r in records if r["status"] == "rejected_below_60"]
     complete = [r["convocation_id"] for r in records if r["status"] == "llm1_complete"]
-    review = [r["convocation_id"] for r in records if r["status"] not in {"rejected_below_60", "llm1_complete"}]
+    unread = [r["convocation_id"] for r in records if r["status"] == "accepted_unread"]
+    review = [r["convocation_id"] for r in records if r["status"] not in {"rejected_below_60", "llm1_complete", "accepted_unread"}]
     missing = [i for i in manifest["pending_ids"] if i not in outcomes]
     stats, costs = stage.stats(), audit_summary(folder)
     return {"policy": POLICY, "run_id": manifest["run_id"], "original_run_id": manifest["original_run_id"],
@@ -340,6 +341,7 @@ def report(folder, manifest, stage, pacer, *, began, errors=()):
         "authorized_ids": manifest["pending_ids"], "processed": len(records),
         "rejected_below_60": len(rejected), "rejected_ids": rejected,
         "accepted": sum(r["accepted"] for r in records), "llm1_complete": len(complete), "llm1_complete_ids": complete,
+        "accepted_unread": len(unread), "accepted_unread_ids": unread,
         "needs_review": len(review), "needs_review_ids": review, "pending_ids": missing,
         "complete": not missing and not review and not errors and stats["payloads"] == 0
             and costs["usage_unknown_attempts"] == 0,

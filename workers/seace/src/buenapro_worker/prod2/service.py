@@ -328,7 +328,7 @@ def _cycle_alert(plan, number, next_at):
     final attempt resumes the same sweep and only reports what was left. All are added up.
     """
     folder = _literal(plan["folder"])
-    totals = dict.fromkeys(("seen", "accepted", "llm1_complete", "requires_review"), 0)
+    totals = dict.fromkeys(("seen", "accepted", "llm1_complete", "accepted_unread", "requires_review"), 0)
     cost, attempts = 0.0, 0
     for attempt in [folder, *sorted(folder.parent.glob(folder.name + ".*"))]:
         reports = list(attempt.glob("report-*.private.json"))
@@ -347,7 +347,8 @@ def _cycle_alert(plan, number, next_at):
             cost += known
     text = (f"BuenaPro PROD2: ciclo {number} listo ({plan['published_from']} a {plan['published_to']}): "
             f"{totals['seen']} candidatas, {totals['accepted']} aceptadas, {totals['llm1_complete']} leídas, "
-            f"{totals['requires_review']} en revisión; US$ {cost:.4f}"
+            + (f"{totals['accepted_unread']} sin leer, " if totals["accepted_unread"] else "")
+            + f"{totals['requires_review']} en revisión; US$ {cost:.4f}"
             + (f" en {attempts} intentos." if attempts > 1 else "."))
     if next_at is not None:
         text += f" Próximo ciclo: {next_at.astimezone(LIMA):%d/%m %H:%M} (Lima)."

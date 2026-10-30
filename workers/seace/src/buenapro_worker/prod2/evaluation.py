@@ -6,7 +6,10 @@ companies evaluated: ``industrial_electrica`` only DIN; ``informatica`` and ``am
 DIN also sells software. A (convocatoria, company) pair is evaluated when JEV accepted it (affinity
 index >= 60), the company's ``automation_rules`` allow it (enabled, daily limit shared with menores,
 hours before close), the convocatoria is open, its current reading has requirements and the company
-has no match yet from that reading, profile and prompt.
+has no match yet from that reading, profile and prompt. The reading is the gate for the paid read: the
+selected runner (``--llm1-min-affinity``) leaves accepted convocatorias under its threshold unread
+(``accepted_unread``), so they have no reading and are skipped here until one is added by hand; the
+affinity rule above stays 60 for that later reading.
 
 Readings under human review are evaluated as well: every PROD2 reading of selected documents is
 flagged by design. The match is stored with ``persist_match(allow_source_review=True)`` and the web

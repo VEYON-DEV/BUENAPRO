@@ -4,6 +4,8 @@ Defaults to a ten-opportunity pilot. --all-keywords enables the configured union
 not a national census. --all-results removes count/call ceilings for the selected
 keywords only, preserving frozen inputs when resuming. One coordinator owns the PG lock; its threads share limits
 and atomic Redis reservations. No LLM2, matching, scheduler or notifications.
+--llm1-min-affinity reads only accepted candidates at or above it; the rest keep their ficha
+and end accepted_unread, with no document download, selector, embedding or LLM1 spend.
 """
 from __future__ import annotations
 
@@ -65,6 +67,7 @@ STOP = threading.Event()
 EGRESS_DOWN = threading.Event()
 EMBEDDING_DISPATCH_STOP = threading.Event()
 HANDOFF_GUARD = None
+JEV_THRESHOLD = 60  # accepted_runner.accepted / accepted_repository.ACCEPTANCE_THRESHOLD, which stay fixed
 
 
 def parser():
@@ -100,6 +103,9 @@ def parser():
     p.add_argument("--max-candidates", type=int, default=100)
     p.add_argument("--max-jev-calls", type=int, default=120, help="Affinity and selector calls combined, including uncertain attempts")
     p.add_argument("--max-llm1-calls", type=int, default=10)
+    p.add_argument("--llm1-min-affinity", type=float, default=JEV_THRESHOLD,
+                   help="Accepted candidates below this Jev affinity are promoted with their ficha but not read "
+                        "(accepted_unread); 60 reads every accepted one. A frozen run keeps its value")
     p.add_argument("--mapping-handoff", type=Path,
                    help="Explicit ID mode: complete metadata-only mapping handoff; never repeat its sweep")
     p.add_argument("--selection", type=Path, help="Frozen prod2_handoff_selection_v1 JSON")
@@ -186,15 +192,18 @@ def completion_exit_code(report, policy):
         return 2 if report["handoff_guards"]["dispatch_stopped"] or report["costs"]["usage_unknown_attempts"] else 0
     if report.get("embedding_dispatch_stop_requested") is True:
         return 2
+    # accepted_unread is a settled outcome: listed with its ficha, deliberately not read.
+    settled = report["llm1_complete"] + report.get("accepted_unread", 0)
     if not policy["all_results"]:
-        return 0 if (report["llm1_complete"] == policy["effective_limits"]["max_accepted"]
+        return 0 if (settled == policy["effective_limits"]["max_accepted"]
                      and report["costs"]["usage_unknown_attempts"] == 0) else 2
     # Finishing the queue is different from completing all source queries or
     # resolving an uncertain/failed paid read. Keep those gaps visible.
     complete = (report["source_coverage_complete"] and report["redis"]["queued"] == 0
-        and report["redis"]["pending"] == 0 and report["llm1_complete"] == report["accepted"]
+        and report["redis"]["pending"] == 0 and settled == report["accepted"]
         and report["costs"]["usage_unknown_attempts"] == 0
-        and all(row.get("status") in {"llm1_complete", "rejected_below_60"} for row in report["records"]))
+        and all(row.get("status") in {"llm1_complete", "accepted_unread", "rejected_below_60"}
+                for row in report["records"]))
     return 0 if complete else 2
 
 
@@ -448,6 +457,25 @@ def requested_archive_policy(args):
     return {key: chosen} if chosen is not None else {}
 
 
+def llm1_min_affinity(inputs):
+    """Reading threshold of a manifest or requested inputs; absent (older runs) means every accepted one is read."""
+    value = inputs.get("llm1_min_affinity", JEV_THRESHOLD)
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not JEV_THRESHOLD <= value <= 100:
+        raise ValueError("Invalid frozen LLM1 minimum affinity")
+    return value
+
+
+def requested_llm1_min_affinity(args):
+    """Only a non-default value is requested, so earlier manifests, hashes and queue identities stay valid.
+
+    A frozen folder compares ``requested`` as a whole: resuming it with another value, or with none, is refused.
+    """
+    value = getattr(args, "llm1_min_affinity", JEV_THRESHOLD)
+    if not JEV_THRESHOLD <= value <= 100:
+        raise ValueError("LLM1 minimum affinity must be between the Jev threshold (60) and 100")
+    return {"llm1_min_affinity": int(value) if value == int(value) else value} if value != JEV_THRESHOLD else {}
+
+
 def plan(args):
     from buenapro_worker.prod2.document_previews import parse_preview_anchor_specs, ANCHORED_PREVIEW_POLICY
     recovery_path, recovery_sha = getattr(args, "runtime_recovery", None), getattr(args, "runtime_recovery_sha256", None)
@@ -554,6 +582,7 @@ def plan(args):
         "cache_folder": str(args.cache_folder.resolve()),
         "probe_empty_scopes": len(keywords) > 1 and not args.skip_empty_scope_probe,
         "jev_threshold": 60, "selector_high": args.selector_high, "selector_low": args.selector_low,
+        **requested_llm1_min_affinity(args),
         **({"document_previews": True, "selector_policy_version":
             DOCUMENT_SELECTION_POLICY_V3 if args.selector_policy == "v3" else DOCUMENT_SELECTION_POLICY_V2}
            if args.document_previews else {}),
@@ -581,6 +610,8 @@ def plan(args):
     if imported is not None:
         if not official_links_only(result) or result.get("llm1_luna_fallback"):
             raise ValueError("ID import requires official temporary storage and --llm1-fallback none")
+        if "llm1_min_affinity" in result:
+            raise ValueError("ID import reads every accepted candidate; keep the default LLM1 minimum affinity")
         result.update(handoff_selection=imported["binding"],
             handoff_guard_policy="prod2_handoff_guards_v1", probe_empty_scopes=False)
         # Only this opt-in mode separates cumulative operational ceilings from
@@ -667,6 +698,7 @@ def staging_identity(manifest):
            if "llm1_commercial_taxonomy" in manifest else {}),
         **({"llm1_luna_fallback": manifest["llm1_luna_fallback"]} if "llm1_luna_fallback" in manifest else {}),
         **({"prior_reading_policy": manifest["prior_reading_policy"]} if "prior_reading_policy" in manifest else {}),
+        **({"llm1_min_affinity": manifest["llm1_min_affinity"]} if "llm1_min_affinity" in manifest else {}),
         **({"llm1_input_policy": manifest["llm1_input_policy"],
             "embedding_config_sha256": manifest["embedding_reading"]["config_sha256"]}
            if manifest.get("embedding_reading") else {})})
@@ -684,9 +716,9 @@ def embedding_resume_binding(requested, folder):
     previous = binding["source_manifest"]
     # Execution caps and reading policy may change. Source/commercial inputs may not.
     for key in ("pipeline", "document_scope", "keywords", "objects", "months", "from_date", "to_date",
-                "keyword_tracking", "business_plan", "keyword_preset", "jev_threshold", "selector_high", "selector_low",
-                "document_previews", "selector_policy_version", "llm1_model_routing", "llm1_ficha_context_policy",
-                "llm1_luna_fallback", "document_storage_policy", "archive_inventory_policy"):
+                "keyword_tracking", "business_plan", "keyword_preset", "jev_threshold", "llm1_min_affinity",
+                "selector_high", "selector_low", "document_previews", "selector_policy_version", "llm1_model_routing",
+                "llm1_ficha_context_policy", "llm1_luna_fallback", "document_storage_policy", "archive_inventory_policy"):
         if requested.get(key) != previous.get(key):
             raise ValueError("Embedding resume changed a frozen source/commercial input: " + key)
     return binding
@@ -930,7 +962,7 @@ def llm1_generation_options(manifest):
     return {key: value[key] for key in ("max_output_tokens", "timeout_ms")}
 
 
-def enrich(conn, settings, folder, item, manifest, pacer, limits, jev_key, *, capture=None):
+def enrich(conn, settings, folder, item, manifest, pacer, limits, jev_key, *, capture=None, defer_reading=False):
     from buenapro_worker.prod2.selected_extractor import SelectedGeminiExtractor
     generation_options = llm1_generation_options(manifest)
     handoff_guard = getattr(limits, "handoff_guard", None)
@@ -1013,6 +1045,9 @@ def enrich(conn, settings, folder, item, manifest, pacer, limits, jev_key, *, ca
         blocked = lifecycle_gate(temporal)
         if blocked is not None:
             return {**common, **blocked}
+    if defer_reading:
+        # Below llm1_min_affinity: ficha and participation window are saved; nothing is downloaded or paid for.
+        return {**common, "status": "accepted_unread", "llm1_min_affinity": llm1_min_affinity(manifest)}
     if detail["document_inventory_complete"] is not True:
         raise RuntimeError("Official inventory incomplete; selector/LLM1 not called")
     candidates, files, archives, downloads = [], {}, {}, {}
@@ -1390,9 +1425,12 @@ def consume(settings, staging, manifest, folder, pacer, limits, jev_key):
                         profile_id=manifest["profile_id"], policy=manifest.get("prior_reading_policy"))
                     if prior is not None:
                         private_write(private / "prior-reading-preserved.private.json", prior)
+                    # A prior reading keeps its outcome; otherwise a low-affinity candidate is listed unread.
+                    unread = result["affinity_index"] < llm1_min_affinity(manifest)
                     record.update(prior if prior is not None else
                                   enrich(conn, settings, private, item, manifest, pacer, limits, jev_key,
-                                      **({"capture": capture} if handoff_guard is not None else {})))
+                                      **({"capture": capture} if handoff_guard is not None else {}),
+                                      **({"defer_reading": True} if unread else {})))
                 else:
                     repo.record_run_member(conn, run_id=manifest["run_id"], convocation_id=conv,
                         request_hash=request_hash, accepted=False, result=result)
@@ -1788,6 +1826,7 @@ def main():
                         "embedding_dispatch_stop_requested": EMBEDDING_DISPATCH_STOP.is_set(),
                         "processed": len(outcomes), "accepted": sum(row["accepted"] for row in outcomes),
                         "llm1_complete": sum(row["status"] == "llm1_complete" for row in outcomes),
+                        "accepted_unread": sum(row["status"] == "accepted_unread" for row in outcomes),
                         "requires_review": sum(row.get("requires_human_review", row["status"] == "needs_review") for row in outcomes),
                         "redis": staging.stats(), "costs": audit_summary(folder), "coverage": coverage,
                         "source_coverage_complete": all(query["coverage_complete"] for query in coverage),
