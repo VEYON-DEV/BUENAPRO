@@ -10,8 +10,10 @@ import { opportunityFacts, verdictShortLabels } from "@/lib/extraction/opportuni
 import type { ProcurementScheduleStage } from "@/lib/procurementSchedule";
 import type { getProd2OpportunityForTenant } from "@/server/services/prod2Opportunities";
 import { evaluationPresentation, isAdministrativeRequirement } from "../../model/evaluationPresentation";
+import { canOfferMajorGrading } from "../../model/manualGrading";
 import { requirementFullText, requirementSourceFacet } from "../../model/requirementText";
 import { AdministrativeChecklist } from "../AdministrativeChecklist";
+import { AnalyzeButton } from "../AnalyzeButton";
 import { DecisionOverview } from "../DecisionOverview";
 import { DetailSectionNavigator } from "../DetailSectionNavigator";
 import styles from "./Prod2DetailContent.module.css";
@@ -36,7 +38,11 @@ function evidence(value: unknown): string {
   return [text(source.quote) || text(source.text), source.page ? `Página ${source.page}` : ""].filter(Boolean).join(" · ");
 }
 
-export function Prod2DetailContent({ detail }: { detail: Detail }) {
+/**
+ * `convocatoriaOpen` lo decide la página con el mismo cierre SQL que usa el listado y la calificación manual;
+ * sin él (por defecto) no se ofrece calificar.
+ */
+export function Prod2DetailContent({ detail, convocatoriaOpen = false }: { detail: Detail; convocatoriaOpen?: boolean }) {
   const { process: process, documents, official_schedule: schedule, analysis, profile } = detail;
   const extraction = analysis.extraction;
   const match = analysis.match;
@@ -61,6 +67,7 @@ export function Prod2DetailContent({ detail }: { detail: Detail }) {
   const actions = Array.isArray(breakdown.acciones_recomendadas) ? breakdown.acciones_recomendadas.filter((value: unknown) => typeof value === "string") as string[] : [];
   const feedUrl = `/feed?source=prod2${profile ? `&profile_id=${encodeURIComponent(profile.id)}` : ""}`;
   const affinity = keywordAffinitySummary(process);
+  const offerGrading = canOfferMajorGrading({ hasEvaluation: Boolean(match) || Boolean(process.match_id), open: convocatoriaOpen, jevScore: process.jev_score });
   const renderGap = (requirement: RecordValue, index: number) => {
     const fullText = requirementFullText(requirement, analysis.facets);
     const title = text(requirement.requisito) || text(requirement.label);
@@ -86,6 +93,12 @@ export function Prod2DetailContent({ detail }: { detail: Detail }) {
       actions={<>{primary?.download_url ? <a className={styles.primaryAction} href={primary.download_url} target="_blank" rel="noopener noreferrer"><FileText aria-hidden="true" size={16} /> Abrir bases en PDF</a>
         : process.source_url ? <a className={styles.primaryAction} href={process.source_url} target="_blank" rel="noopener noreferrer">Consultar bases en SEACE <ExternalLink aria-hidden="true" size={16} /></a> : <span>Documento pendiente</span>}
         <SaveButton code={process.nomenclatura} idContrato={process.id_convocatoria} endpoint={`/api/prod2/opportunities/${process.id_convocatoria}/saved`} initialSaved={Boolean(process.is_saved)} showLabel /></>} />
+    {offerGrading ? <div className={styles.analyzeBar}>
+      <div><strong>¿Puedes postular a esta oportunidad?</strong>
+        <span>Evalúa los requisitos de las bases contra tu perfil de empresa: veredicto, brechas exactas y acciones.
+          {extraction ? null : " Aún no se leyeron los documentos de esta convocatoria: se leerán primero y puede tardar varios minutos."}</span></div>
+      <AnalyzeButton source="prod2" id={process.id_convocatoria} profileId={profile?.id} canRegrade={false} />
+    </div> : null}
     <p className={styles.notice}><ShieldCheck aria-hidden="true" size={18} /><span>{affinity ? <><strong>{affinity.lineName}</strong> · {affinity.pointLabel} de 45 puntos por palabras clave. {affinity.hits.length ? `Coincidencias: ${affinity.hits.join(", ")}. ` : "Sin coincidencias de palabras clave. "}</> : null}{contextNames ? "Convenio declarado; participación conjunta pendiente de verificar. " : "La evaluación usa el perfil registrado. "}
       {extraction?.requires_human_review ? "Las bases requieren revisión humana. " : ""}La afinidad y el puntaje no acreditan elegibilidad ni son probabilidades de adjudicación.</span></p>
     <div className={styles.layout}>

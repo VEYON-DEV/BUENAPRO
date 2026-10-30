@@ -59,7 +59,7 @@ export function parseProd2ListParams(params: URLSearchParams): Prod2ListParams {
     deadline: (deadline || null) as Prod2Deadline | null };
 }
 
-async function resolveProfile(tenantId: string, profileId: string | null) {
+export async function resolveProfile(tenantId: string, profileId: string | null) {
   const result = await query<{ id: string; razon_social: string }>(
     `SELECT id::text, razon_social FROM company_profiles
      WHERE tenant_id = $1 AND is_active = true AND ($2::uuid IS NULL OR id = $2::uuid)
@@ -104,9 +104,9 @@ const BASE = `p.id_convocatoria::text, p.id_procedimiento::text, p.opportunity_i
 
 // Publishing selected listing metadata does not create a ficha. Legacy rows with
 // neither a real detail nor this explicit, current-hash publication stay hidden.
-const PUBLISHED_FROM = `prod2_discoveries p LEFT JOIN prod2_details d USING(id_convocatoria)
+export const PUBLISHED_FROM = `prod2_discoveries p LEFT JOIN prod2_details d USING(id_convocatoria)
   LEFT JOIN prod2_feed_publications pf ON pf.id_convocatoria = p.id_convocatoria AND pf.source_row_hash = p.row_hash`;
-const PUBLISHED_VISIBILITY = "(d.id_convocatoria IS NOT NULL OR pf.id_convocatoria IS NOT NULL)";
+export const PUBLISHED_VISIBILITY = "(d.id_convocatoria IS NOT NULL OR pf.id_convocatoria IS NOT NULL)";
 const publicationLabels: Record<string, string> = {
   closed_without_reading: "Cerrada al revisar", rejected_below_60: "Descartada en la revisión previa",
   opening_not_confirmed: "Apertura por confirmar", needs_review: "Lectura por revisar",
@@ -123,16 +123,16 @@ const DAY_ONLY_PROPOSALS_END = `(SELECT max(substring(stage->>'ends_at_text' fro
   WHERE stage->>'ends_at_text' ~ '^\\d{2}/\\d{2}/\\d{4}'
     AND stage->>'stage' ~* '(cotizaci|presentaci[oó]n.*(oferta|propuesta)|recepci[oó]n.*(oferta|propuesta))'
     AND stage->>'stage' !~* '(absoluci|respuesta|contestaci)')`;
-const CLOSED = `COALESCE(COALESCE(d.proposals_closes_at, d.registration_closes_at) < now()
+export const CLOSED = `COALESCE(COALESCE(d.proposals_closes_at, d.registration_closes_at) < now()
   OR (d.proposals_closes_at IS NULL AND d.registration_closes_at IS NULL
     AND ${DAY_ONLY_PROPOSALS_END} < to_char(now() AT TIME ZONE 'America/Lima', 'YYYYMMDD'))
   OR pf.reader_status = 'closed_without_reading', false)`;
 // Afinidad JEV por título de la convocatoria (0–100): una sola fila canónica por convocatoria, igual para todas las
 // empresas, por eso no se filtra por perfil. Manda la última fila terminada. Es el puntaje que decide la lectura:
 // desde JEV_ACCEPTANCE_THRESHOLD se acepta. Un valor que no sea número se trata como sin puntaje.
-const JEV_ACCEPTANCE_THRESHOLD = 60;
+export const JEV_ACCEPTANCE_THRESHOLD = 60;
 const JEV_UNION_POLICY = "prod2_commercial_union_v1";
-const JEV_UNION_JOIN = `LEFT JOIN LATERAL (
+export const JEV_UNION_JOIN = `LEFT JOIN LATERAL (
   SELECT CASE WHEN jsonb_typeof(ev.result_json->'affinity_index') = 'number'
     THEN (ev.result_json->>'affinity_index')::double precision END AS affinity_index
   FROM prod2_evaluations ev
@@ -147,7 +147,7 @@ const NOT_DISCARDED = "pf.reader_status IS DISTINCT FROM 'rejected_below_60'";
 const JEV_ACCEPTED = `(jev_union.affinity_index IS NULL OR jev_union.affinity_index >= ${JEV_ACCEPTANCE_THRESHOLD})`;
 
 // Canonical matches must be tied to this source, this document revision and the durable evaluation.
-const MATCH_JOIN = `LEFT JOIN LATERAL (
+export const MATCH_JOIN = `LEFT JOIN LATERAL (
   SELECT m.*, provenance.profile_hash AS evaluated_profile_hash,
     ex.requires_human_review AS evaluated_source_review_required
   FROM opportunity_matches m

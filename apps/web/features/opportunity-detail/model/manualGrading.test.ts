@@ -2,10 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   GRADING_POLL_INTERVAL_MS,
+  MAJOR_GRADING_MIN_AFFINITY,
+  canOfferMajorGrading,
+  gradingEndpoint,
   gradingFailureMessage,
   gradingLimitMessage,
   gradingPresentation,
   gradingUsageText,
+  isAlreadyGraded,
   isGradingActive,
   localGradingRequest,
   normalizeGradingRequest,
@@ -135,4 +139,81 @@ test("a local request mirrors what the server just answered", () => {
 
 test("progress is polled about every 20 seconds", () => {
   assert.equal(GRADING_POLL_INTERVAL_MS, 20_000);
+});
+
+test("the endpoint depends on the source: contracts for menores, prod2 opportunities for mayores", () => {
+  assert.equal(gradingEndpoint("contracts", 501), "/api/contracts/501/grade");
+  assert.equal(gradingEndpoint("prod2", "9223372036854775807"), "/api/prod2/opportunities/9223372036854775807/grade");
+  assert.equal(gradingEndpoint("prod2", "a/b"), "/api/prod2/opportunities/a%2Fb/grade");
+});
+
+test("mayores explains the wait for the worker, and menores keeps its own hint by default", () => {
+  const major = "Leyendo los documentos de la convocatoria. Puede tardar varios minutos; si la búsqueda diaria está en curso (de madrugada), se atiende al terminar.";
+  for (const status of ["pending", "reading"] as const) {
+    const view = gradingPresentation({ ...base, source: "prod2", request: request(status) });
+    assert.deepEqual([view.tone, view.label, view.disabled, view.message], ["active", "Calificación en curso…", true, major], status);
+  }
+  assert.equal(gradingPresentation({ ...base, source: "prod2", submitting: true }).message, major);
+  assert.equal(gradingPresentation({ ...base, source: "prod2", request: request("evaluating") }).message, "Evaluando con tu perfil; puede tardar un minuto.");
+  assert.equal(gradingPresentation({ ...base, source: "contracts", request: request("pending") }).message, "Leyendo los documentos; puede tardar unos minutos.");
+});
+
+test("mayores never offers «Re-calificar»: without a grade the label is always «Calificar»", () => {
+  for (const status of [null, "done", "failed"] as const) {
+    const view = gradingPresentation({ ...base, source: "prod2", regrade: false, request: status ? request(status) : null });
+    assert.notEqual(view.label, "Re-calificar", String(status));
+  }
+  assert.equal(gradingPresentation({ ...base, source: "prod2", usage: { used: 100, limit: 100 } }).label, "Calificar");
+});
+
+test("the new mayores reasons have plain Spanish messages, with accents and no technical codes", () => {
+  assert.equal(gradingFailureMessage("profile_not_supported"), "La calificación de mayores aún no está disponible para tu empresa.");
+  assert.equal(gradingFailureMessage("payment_uncertain"), "La calificación quedó en revisión por un cobro incierto; el equipo la revisará.");
+  const codes = ["profile_not_supported", "jev_below_60", "convocatoria_cerrada", "ficha_not_found", "already_graded", "payment_uncertain", "no_requirements", "reading_requires_review", "reading_timeout"];
+  const messages = codes.map(code => gradingFailureMessage(code));
+  assert.equal(new Set(messages).size, codes.length);
+  for (const message of messages) {
+    assert.match(message, /^[A-ZÁÉÍÓÚ]/);
+    assert.doesNotMatch(message, /_|JEV/);
+  }
+  assert.notEqual(gradingFailureMessage("ficha_not_found"), gradingFailureMessage(null));
+  assert.match(gradingFailureMessage("ficha_not_found"), /Puedes intentarlo de nuevo\.$/);
+});
+
+test("reasons where trying again changes nothing do not invite a retry", () => {
+  for (const code of ["profile_not_supported", "jev_below_60", "convocatoria_cerrada", "already_graded", "payment_uncertain"]) {
+    assert.doesNotMatch(gradingFailureMessage(code), /intentarlo de nuevo/, code);
+  }
+  assert.match(gradingFailureMessage("reading_failed"), /Puedes intentarlo de nuevo\.$/);
+});
+
+test("an uncertain charge blocks the button so a retry cannot pay twice", () => {
+  const view = gradingPresentation({ ...base, source: "prod2", request: request("failed", "payment_uncertain") });
+  assert.deepEqual([view.tone, view.label, view.disabled], ["blocked", "Calificar", true]);
+  assert.equal(view.message, "La calificación quedó en revisión por un cobro incierto; el equipo la revisará.");
+  assert.equal(gradingPresentation({ ...base, source: "prod2", usage: { used: 100, limit: 100 }, request: request("failed", "payment_uncertain") }).tone, "blocked");
+  assert.equal(gradingPresentation({ ...base, source: "prod2", request: request("reading") }).tone, "active", "an active request still wins");
+  assert.equal(gradingPresentation({ ...base, source: "prod2", request: request("failed", "profile_not_supported") }).disabled, false, "other failures stay retryable");
+});
+
+test("a failed mayores request shows its own message and keeps «Reintentar calificación»", () => {
+  const view = gradingPresentation({ ...base, source: "prod2", request: request("failed", "profile_not_supported") });
+  assert.deepEqual([view.tone, view.label, view.disabled, view.message],
+    ["failed", "Reintentar calificación", false, "La calificación de mayores aún no está disponible para tu empresa."]);
+});
+
+test("an already graded answer asks the page to reload", () => {
+  assert.equal(isAlreadyGraded("already_graded"), true);
+  assert.equal(isAlreadyGraded("jev_below_60"), false);
+  assert.equal(isAlreadyGraded(null), false);
+});
+
+test("«Calificar» is offered for mayores only without an evaluation, while open and from a JEV of 60", () => {
+  const offer = { hasEvaluation: false, open: true, jevScore: 72 };
+  assert.equal(MAJOR_GRADING_MIN_AFFINITY, 60);
+  assert.equal(canOfferMajorGrading(offer), true);
+  assert.equal(canOfferMajorGrading({ ...offer, jevScore: 60 }), true);
+  assert.equal(canOfferMajorGrading({ ...offer, hasEvaluation: true }), false);
+  assert.equal(canOfferMajorGrading({ ...offer, open: false }), false);
+  for (const jevScore of [59.99, 0, null, undefined, "72", Number.NaN]) assert.equal(canOfferMajorGrading({ ...offer, jevScore }), false, String(jevScore));
 });

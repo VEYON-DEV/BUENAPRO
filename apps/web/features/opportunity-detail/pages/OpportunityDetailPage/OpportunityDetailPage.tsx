@@ -396,7 +396,7 @@ export async function OpportunityDetailPage({
             </span>
           </div>
           <AnalyzeButton
-            idContrato={contract.id_contrato}
+            id={contract.id_contrato}
             profileId={contract.profile_id}
             analyzedAt={analyzedAt}
           />
@@ -429,7 +429,7 @@ export async function OpportunityDetailPage({
                 </div>
                 {evaluation.summary.text ? (
                   <AnalyzeButton
-                    idContrato={contract.id_contrato}
+                    id={contract.id_contrato}
                     profileId={contract.profile_id}
                     analyzedAt={analyzedAt}
                   />

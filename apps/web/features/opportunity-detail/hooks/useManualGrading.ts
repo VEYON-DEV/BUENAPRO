@@ -5,29 +5,36 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchGradingStatus, submitGrading } from "../api/manualGrading";
 import {
   GRADING_POLL_INTERVAL_MS,
+  gradingEndpoint,
   gradingPresentation,
+  isAlreadyGraded,
   isGradingActive,
   localGradingRequest,
   type GradingPresentation,
   type GradingProblem,
   type GradingRequest,
+  type GradingSource,
   type GradingUsage,
 } from "../model/manualGrading";
 
 /**
- * Estado de la calificación manual de una licitación menor: consulta al montar, pide calificar,
- * revisa cada 20 s mientras hay una solicitud en curso y refresca la página al terminar.
+ * Estado de la calificación manual de una licitación (menores) o convocatoria (mayores): consulta al montar,
+ * pide calificar, revisa cada 20 s mientras hay una solicitud en curso y refresca la página al terminar.
  */
 export function useManualGrading({
-  idContrato,
+  source = "contracts",
+  id,
   profileId,
   regrade,
 }: {
-  idContrato: string | number;
+  /** Menores (contracts) por defecto; mayores usa prod2. */
+  source?: GradingSource;
+  id: string | number;
   profileId?: string | null;
   regrade: boolean;
 }): { view: GradingPresentation; submit: () => Promise<void> } {
   const router = useRouter();
+  const endpoint = gradingEndpoint(source, id);
   const [request, setRequest] = useState<GradingRequest | null>(null);
   const [usage, setUsage] = useState<GradingUsage | null>(null);
   const [problem, setProblem] = useState<GradingProblem | null>(null);
@@ -36,7 +43,7 @@ export function useManualGrading({
 
   useEffect(() => {
     const abort = new AbortController();
-    fetchGradingStatus(idContrato, profileId, abort.signal)
+    fetchGradingStatus(endpoint, profileId, abort.signal)
       .then((snapshot) => {
         setRequest(snapshot.request);
         setUsage(snapshot.usage);
@@ -44,7 +51,7 @@ export function useManualGrading({
       // Sin estado el botón sigue disponible: el servidor aplica el tope y evita duplicados.
       .catch(() => undefined);
     return () => abort.abort();
-  }, [idContrato, profileId]);
+  }, [endpoint, profileId]);
 
   const active = isGradingActive(request?.status);
   useEffect(() => {
@@ -55,7 +62,7 @@ export function useManualGrading({
     const poll = async () => {
       let keepPolling = true;
       try {
-        const snapshot = await fetchGradingStatus(idContrato, profileId, abort.signal);
+        const snapshot = await fetchGradingStatus(endpoint, profileId, abort.signal);
         if (cancelled) return;
         setRequest(snapshot.request);
         if (snapshot.usage) setUsage(snapshot.usage);
@@ -72,7 +79,7 @@ export function useManualGrading({
       if (timer) clearTimeout(timer);
       abort.abort();
     };
-  }, [active, idContrato, profileId, router]);
+  }, [active, endpoint, profileId, router]);
 
   const submit = useCallback(async () => {
     if (locked.current) return;
@@ -80,7 +87,7 @@ export function useManualGrading({
     setSubmitting(true);
     setProblem(null);
     try {
-      const outcome = await submitGrading(idContrato, { profileId, force: regrade });
+      const outcome = await submitGrading(endpoint, { profileId, force: regrade });
       if (outcome.usage) setUsage(outcome.usage);
       if (outcome.kind === "done") {
         setRequest(localGradingRequest("done"));
@@ -91,12 +98,14 @@ export function useManualGrading({
         setProblem(outcome.problem);
       } else {
         setRequest(localGradingRequest("failed", outcome.reason));
+        // Ya la calificó otra solicitud: recarga para mostrar la evaluación en vez de un error.
+        if (isAlreadyGraded(outcome.reason)) router.refresh();
       }
     } finally {
       locked.current = false;
       setSubmitting(false);
     }
-  }, [idContrato, profileId, regrade, router]);
+  }, [endpoint, profileId, regrade, router]);
 
-  return { view: gradingPresentation({ request, usage, submitting, problem, regrade }), submit };
+  return { view: gradingPresentation({ request, usage, submitting, problem, regrade, source }), submit };
 }

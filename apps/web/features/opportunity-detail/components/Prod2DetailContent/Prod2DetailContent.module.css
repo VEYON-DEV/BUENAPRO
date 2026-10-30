@@ -24,6 +24,10 @@
 .muted, .requirementKind { color: var(--bp-color-text-2); font-size: 13px; line-height: 1.6; }
 .requirementKind { display: block; font-weight: 400; margin-top: 4px; }
 .empty { color: var(--bp-color-text-2); padding-block: 20px; }
+.analyzeBar { display: flex; align-items: center; justify-content: space-between; gap: var(--bp-space-4); margin-bottom: var(--bp-space-4); padding: var(--bp-space-4) var(--bp-space-5); background: var(--bp-color-brand-soft); border: 1px solid color-mix(in srgb, var(--bp-color-brand) 22%, transparent); border-radius: var(--bp-radius-lg); }
+.analyzeBar > div:first-child { min-width: 0; }
+.analyzeBar strong { display: block; font-size: 14.5px; font-weight: 700; }
+.analyzeBar span { display: block; margin-top: 2px; max-width: 60ch; color: var(--bp-color-text-2); font-size: 13px; line-height: 1.6; }
 .notice { background: var(--bp-color-brand-soft); color: var(--bp-color-text); border-radius: var(--bp-radius-md); display: flex; align-items: flex-start; gap: 10px; padding: 14px 18px; margin-bottom: 24px; font-size: 13px; line-height: 1.6; }
 .notice svg { flex: none; color: var(--bp-color-brand); margin-top: 2px; }
 .rail { display: grid; gap: 20px; min-width: 0; }
@@ -58,4 +62,5 @@
 .facts dd { font-size: 13px; line-height: 1.5; font-weight: 650; margin-top: 4px; overflow-wrap: anywhere; }
 @media (max-width: 1200px) { .layout { grid-template-columns: minmax(0, 1fr) 280px; gap: 18px; } .briefs { grid-template-columns: 1fr; gap: 20px; } .panel { padding: 20px; } }
 @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } .rail { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 768px) { .analyzeBar { align-items: stretch; flex-direction: column; } }
 @media (max-width: 760px) { .code h1 { font-size: 23px; } .title { font-size: 14px; } .rail { grid-template-columns: 1fr; } .document { flex-wrap: wrap; } .document a { width: 100%; } .panel, .railPanel { padding: 18px; } .requirement summary { align-items: flex-start; } }

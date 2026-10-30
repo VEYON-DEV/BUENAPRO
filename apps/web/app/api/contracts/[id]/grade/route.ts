@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { currentUserId, requireTenantId } from "@/server/auth/tenant";
 import {
   directFailureReason,
+  MANUAL_GRADING_ERROR_STATUS,
   ManualGradingError,
   manualGradingUsage,
   minorGradingStatus,
@@ -9,12 +10,6 @@ import {
 } from "@/server/services/manualGrading";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-const ERROR_STATUS = {
-  daily_limit_reached: 429,
-  profile_not_found: 409,
-  contract_not_found: 404,
-} as const;
 
 function parseContractId(value: string) {
   const idContrato = Number(value);
@@ -85,7 +80,7 @@ export async function POST(
       const usage = error.code === "daily_limit_reached" ? { used: error.used, limit: error.limit } : undefined;
       return NextResponse.json(
         { error: error.message, code: error.code, ...(usage ? { usage } : {}) },
-        { status: ERROR_STATUS[error.code] },
+        { status: MANUAL_GRADING_ERROR_STATUS[error.code] },
       );
     }
     if (error instanceof Response) return error;

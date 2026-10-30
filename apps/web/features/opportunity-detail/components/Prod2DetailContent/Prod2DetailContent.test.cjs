@@ -31,6 +31,8 @@ function loadSource(filename) {
     if (specifier === "@/lib/scorePresentation") return loadSource(path.join(webRoot, "lib/scorePresentation.ts"));
     if (specifier === "@/lib/format/date") return { formatDateTime: value => value };
     if (specifier === "@/lib/extraction/opportunity") return loadSource(path.join(webRoot, "lib/extraction/opportunity.ts"));
+    if (specifier === "../AnalyzeButton") return { AnalyzeButton: props => React.createElement("div", { "data-analyze": JSON.stringify(props) }, "Calificar") };
+    if (specifier === "../../model/manualGrading") return loadSource(path.join(detailRoot, "model/manualGrading.ts"));
     if (specifier === "../DecisionOverview") return loadSource(path.join(detailRoot, "components/DecisionOverview/DecisionOverview.tsx"));
     if (specifier === "../AdministrativeChecklist") return loadSource(path.join(detailRoot, "components/AdministrativeChecklist/AdministrativeChecklist.tsx"));
     if (specifier === "../DetailSectionNavigator") return { DetailSectionNavigator: ({ children }) => React.createElement("div", null, children) };
@@ -57,7 +59,7 @@ function fixture(breakdown, facets, score = null) {
     },
   };
 }
-const render = detail => renderToStaticMarkup(React.createElement(Prod2DetailContent, { detail }));
+const render = (detail, props = {}) => renderToStaticMarkup(React.createElement(Prod2DetailContent, { detail, ...props }));
 
 test('published listing metadata never claims a ficha, documents, deadline or evaluated score', () => {
   const detail = fixture(null, []);
@@ -254,4 +256,52 @@ test("complete saved source text is readable in the summary, capacity requiremen
   assert.match(html, /Ver 1 brecha más/);
   for (const facet of facets.slice(1)) assert.equal((html.split(facet.details_json.descripcion).length - 1), 2);
   assert.doesNotMatch(html, /Texto que no corresponde a experiencia/);
+});
+
+const gradable = () => {
+  const detail = fixture(null, []);
+  detail.analysis.extraction = null;
+  detail.process.jev_score = 72;
+  return detail;
+};
+const analyzeProps = html => JSON.parse(html.match(/data-analyze="([^"]*)"/)[1].replaceAll("&quot;", '"'));
+
+test("an open mayores convocatoria with a JEV of 60 or more and no evaluation offers «Calificar»", () => {
+  const html = render(gradable(), { convocatoriaOpen: true });
+  assert.match(html, /¿Puedes postular a esta oportunidad\?/);
+  assert.match(html, /Aún no se leyeron los documentos de esta convocatoria/);
+  assert.deepEqual(analyzeProps(html), { source: "prod2", id: "source-123", profileId: "profile-dinaut", canRegrade: false });
+  assert.doesNotMatch(html, /JEV|Re-calificar/);
+  const exact = gradable(); exact.process.jev_score = 60;
+  assert.match(render(exact, { convocatoriaOpen: true }), /data-analyze/);
+});
+
+test("the grading bar says nothing about reading when the documents were already read", () => {
+  const detail = gradable();
+  detail.analysis.extraction = { id: "extraction-1", codigo_alfresco: "document-source", raw_extraction_json: {}, requires_human_review: false };
+  const html = render(detail, { convocatoriaOpen: true });
+  assert.match(html, /¿Puedes postular a esta oportunidad\?/);
+  assert.doesNotMatch(html, /Aún no se leyeron/);
+});
+
+test("the grading bar is hidden for a closed or unknown-closing convocatoria", () => {
+  assert.doesNotMatch(render(gradable(), { convocatoriaOpen: false }), /data-analyze|Puedes postular/);
+  assert.doesNotMatch(render(gradable()), /data-analyze|Puedes postular/);
+});
+
+test("the grading bar is hidden below a JEV of 60 or without a score", () => {
+  for (const jev of [59.99, 0, null, undefined]) {
+    const detail = gradable(); detail.process.jev_score = jev;
+    assert.doesNotMatch(render(detail, { convocatoriaOpen: true }), /data-analyze|Puedes postular/, String(jev));
+  }
+});
+
+test("the grading bar is hidden once there is an evaluation, final or provisional, so mayores never re-grades", () => {
+  const evaluated = fixture({ meta: { score_validated: true }, resumen: "Cumple.", requisitos: [
+    { requisito: "Experiencia", source_index: 1, source_facet: "economic_experience", estado: "cumple" },
+  ] }, [{ id: "1", facet: "economic_experience", label: "Experiencia", required: true }], 90);
+  evaluated.process.jev_score = 72;
+  assert.doesNotMatch(render(evaluated, { convocatoriaOpen: true }), /data-analyze|Puedes postular/);
+  const published = gradable(); published.process.match_id = "5";
+  assert.doesNotMatch(render(published, { convocatoriaOpen: true }), /data-analyze|Puedes postular/);
 });

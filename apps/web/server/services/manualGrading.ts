@@ -1,16 +1,30 @@
 import { pool, query } from "@/server/db/client";
 import { analyzeMatchDirect, type DirectMatchAnalysisResult } from "./matchAnalysis";
+import {
+  CLOSED,
+  JEV_ACCEPTANCE_THRESHOLD,
+  JEV_UNION_JOIN,
+  MATCH_JOIN,
+  PUBLISHED_FROM,
+  PUBLISHED_VISIBILITY,
+  Prod2RequestError,
+  resolveProfile,
+} from "./prod2Opportunities";
 
 /**
- * Calificación manual de licitaciones menores (PROD6).
+ * Calificación manual de licitaciones menores (PROD6) y mayores (PROD2).
  *
  * Cada calificación manual la paga la empresa: el tope diario es por tenant y por día de Lima,
- * suma todas las fuentes (seace_prod6 ahora, seace_prod2 después) y también cuenta la re-calificación.
+ * suma todas las fuentes (seace_prod6 y seace_prod2) y también cuenta la re-calificación.
  * El conteo y el alta de la solicitud ocurren en una sola transacción bajo un lock consultivo por
  * tenant, de modo que dos clics simultáneos no pueden pasar el tope.
+ *
+ * Menores: con lectura válida la web evalúa en el momento («direct»); sin ella encola.
+ * Mayores: la web nunca evalúa; toda solicitud queda «queued»/«pending» y el worker lee y evalúa.
  */
 
 export const MANUAL_GRADING_SOURCE_PROD6 = "seace_prod6";
+export const MANUAL_GRADING_SOURCE_PROD2 = "seace_prod2";
 export const DEFAULT_MANUAL_GRADING_DAILY_LIMIT = 100;
 const ACTIVE_STATUSES = ["pending", "reading", "evaluating"];
 /** Una solicitud directa que sigue activa pasado este tiempo quedó huérfana (reinicio del proceso). */
@@ -46,7 +60,20 @@ export type MinorGradingOutcome =
 export type ManualGradingErrorCode =
   | "daily_limit_reached"
   | "profile_not_found"
-  | "contract_not_found";
+  | "contract_not_found"
+  | "jev_below_60"
+  | "convocatoria_cerrada"
+  | "already_graded";
+
+/** Estado HTTP de cada error tipado; lo comparten las rutas de menores y de mayores. */
+export const MANUAL_GRADING_ERROR_STATUS: Record<ManualGradingErrorCode, number> = {
+  daily_limit_reached: 429,
+  profile_not_found: 409,
+  contract_not_found: 404,
+  jev_below_60: 409,
+  convocatoria_cerrada: 409,
+  already_graded: 409,
+};
 
 /** Error tipado: la ruta lo traduce a 429, 409 o 404 sin inspeccionar el mensaje. */
 export class ManualGradingError extends Error {
@@ -142,11 +169,13 @@ type Reservation = { request: ManualGradingRequest; reused: boolean };
 
 /**
  * Reserva atómica: lock por tenant -> solicitud activa existente -> tope diario -> INSERT.
- * Una solicitud activa devuelta no consume cupo.
+ * Una solicitud activa devuelta no consume cupo. Es la misma para menores y mayores: lo único que cambia
+ * es la fuente (source_key) y su identificador (id_contrato o id_convocatoria).
  */
 async function reserveRequest(input: {
   tenantId: string;
-  idContrato: number;
+  sourceKey: string;
+  sourceId: string | number;
   profileId: string;
   actorId?: string | null;
   mode: ManualGradingMode;
@@ -163,14 +192,14 @@ async function reserveRequest(input: {
        WHERE tenant_id=$1::uuid AND source_key=$2 AND source_id=$3 AND profile_id=$4::uuid
          AND mode='direct' AND status = ANY($5::text[])
          AND updated_at < now() - ($6::int * interval '1 second')`,
-      [input.tenantId, MANUAL_GRADING_SOURCE_PROD6, input.idContrato, input.profileId, ACTIVE_STATUSES, DIRECT_STALE_SECONDS],
+      [input.tenantId, input.sourceKey, input.sourceId, input.profileId, ACTIVE_STATUSES, DIRECT_STALE_SECONDS],
     );
     const active = await client.query(
       `SELECT id, status, mode, reason, created_at, updated_at FROM manual_grading_requests
        WHERE tenant_id=$1::uuid AND source_key=$2 AND source_id=$3 AND profile_id=$4::uuid
          AND status = ANY($5::text[])
        ORDER BY created_at DESC, id DESC LIMIT 1`,
-      [input.tenantId, MANUAL_GRADING_SOURCE_PROD6, input.idContrato, input.profileId, ACTIVE_STATUSES],
+      [input.tenantId, input.sourceKey, input.sourceId, input.profileId, ACTIVE_STATUSES],
     );
     if (active.rows[0]) {
       await client.query("COMMIT");
@@ -187,8 +216,8 @@ async function reserveRequest(input: {
       [
         input.tenantId,
         input.profileId,
-        MANUAL_GRADING_SOURCE_PROD6,
-        input.idContrato,
+        input.sourceKey,
+        input.sourceId,
         input.actorId ?? null,
         input.mode,
         input.status,
@@ -248,7 +277,8 @@ export async function requestMinorGrading(input: {
   const direct = contract.validReading;
   const reservation = await reserveRequest({
     tenantId: input.tenantId,
-    idContrato: input.idContrato,
+    sourceKey: MANUAL_GRADING_SOURCE_PROD6,
+    sourceId: input.idContrato,
     profileId,
     actorId: input.actorId,
     mode: direct ? "direct" : "queued",
@@ -280,20 +310,18 @@ export async function requestMinorGrading(input: {
   }
 }
 
-/** Última solicitud de esta licitación y perfil, más el uso de hoy del tenant. */
-export async function minorGradingStatus(input: {
+type GradingStatusResult = { request: ManualGradingStatusView | null; usage: ManualGradingUsage };
+
+/** Última solicitud de esta fuente, convocatoria o licitación y perfil, más el uso de hoy del tenant. */
+async function gradingStatus(input: {
   tenantId: string;
-  idContrato: number;
-  profileId?: string | null;
-}): Promise<{ request: ManualGradingStatusView | null; usage: ManualGradingUsage }> {
+  sourceKey: string;
+  sourceId: string | number;
+  /** Perfil ya resuelto, o null cuando la empresa no tiene un perfil activo. */
+  profileId: string | null;
+}): Promise<GradingStatusResult> {
   const usage = await manualGradingUsage(input.tenantId);
-  let profileId: string;
-  try {
-    profileId = await resolveActiveProfileId(input.tenantId, input.profileId);
-  } catch (error) {
-    if (error instanceof ManualGradingError && error.code === "profile_not_found") return { request: null, usage };
-    throw error;
-  }
+  if (!input.profileId) return { request: null, usage };
   const result = await query(
     `SELECT status, mode, reason, created_at, updated_at,
        (mode='direct' AND status = ANY($4::text[])
@@ -301,7 +329,7 @@ export async function minorGradingStatus(input: {
      FROM manual_grading_requests
      WHERE tenant_id=$1::uuid AND source_key=$2 AND source_id=$3 AND profile_id=$6::uuid
      ORDER BY created_at DESC, id DESC LIMIT 1`,
-    [input.tenantId, MANUAL_GRADING_SOURCE_PROD6, input.idContrato, ACTIVE_STATUSES, DIRECT_STALE_SECONDS, profileId],
+    [input.tenantId, input.sourceKey, input.sourceId, ACTIVE_STATUSES, DIRECT_STALE_SECONDS, input.profileId],
   );
   const row = result.rows[0] as Record<string, unknown> | undefined;
   if (!row) return { request: null, usage };
@@ -316,4 +344,123 @@ export async function minorGradingStatus(input: {
     },
     usage,
   };
+}
+
+/** Última solicitud de esta licitación y perfil, más el uso de hoy del tenant. */
+export async function minorGradingStatus(input: {
+  tenantId: string;
+  idContrato: number;
+  profileId?: string | null;
+}): Promise<GradingStatusResult> {
+  let profileId: string | null = null;
+  try {
+    profileId = await resolveActiveProfileId(input.tenantId, input.profileId);
+  } catch (error) {
+    if (!(error instanceof ManualGradingError && error.code === "profile_not_found")) throw error;
+  }
+  return gradingStatus({ tenantId: input.tenantId, sourceKey: MANUAL_GRADING_SOURCE_PROD6, sourceId: input.idContrato, profileId });
+}
+
+// ---- Mayores (PROD2) ------------------------------------------------------------------------------------------
+
+export type MajorGradingOutcome = { status: "queued"; request: ManualGradingRequest };
+
+const MAJOR_BLOCKER_MESSAGES = {
+  jev_below_60: "La convocatoria no alcanzó la afinidad mínima para ser calificada.",
+  convocatoria_cerrada: "La convocatoria ya cerró; no se puede calificar.",
+  already_graded: "Esta convocatoria ya tiene una calificación para tu empresa.",
+} as const;
+
+/** Lo que decide si una convocatoria se puede calificar a mano, leído con el mismo SQL que la lista y el detalle. */
+export type MajorGradingFacts = {
+  /** Afinidad JEV vigente (0–100), o null si no hay un puntaje válido. */
+  jevScore: number | null;
+  closed: boolean;
+  /** Ya existe una calificación publicada de esta convocatoria para el perfil. */
+  graded: boolean;
+};
+
+/** Misma resolución de perfil que el servicio de mayores (prod2Opportunities.resolveProfile). */
+async function resolveMajorProfileId(tenantId: string, profileId: string | null): Promise<string> {
+  try {
+    const profile = await resolveProfile(tenantId, profileId);
+    if (profile) return profile.id;
+  } catch (error) {
+    if (!(error instanceof Prod2RequestError)) throw error;
+  }
+  throw new ManualGradingError("profile_not_found", "No se encontró un perfil activo para esta empresa.");
+}
+
+/**
+ * Datos de la convocatoria para decidir si se puede calificar, o null si no existe o no está publicada.
+ * Reutiliza los fragmentos SQL de prod2Opportunities (publicación, cierre, JEV vigente y procedencia del match).
+ */
+export async function majorGradingFacts(input: {
+  idConvocatoria: string;
+  profileId: string | null;
+}): Promise<MajorGradingFacts | null> {
+  const result = await query<{ jev_score: unknown; closed: boolean | null; graded: boolean | null }>(
+    `SELECT jev_union.affinity_index AS jev_score, ${CLOSED} AS closed, (matched.id IS NOT NULL) AS graded
+     FROM ${PUBLISHED_FROM}
+     ${MATCH_JOIN} ${JEV_UNION_JOIN}
+     WHERE ${PUBLISHED_VISIBILITY} AND p.id_convocatoria = $2::bigint`,
+    [input.profileId, input.idConvocatoria],
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  const jev = typeof row.jev_score === "number" && Number.isFinite(row.jev_score) && row.jev_score >= 0 && row.jev_score <= 100
+    ? row.jev_score
+    : null;
+  return { jevScore: jev, closed: Boolean(row.closed), graded: Boolean(row.graded) };
+}
+
+/** Primer motivo que impide calificar, en este orden: afinidad, cierre, ya calificada. Sin puntaje JEV no se califica. */
+export function majorGradingBlocker(facts: MajorGradingFacts): keyof typeof MAJOR_BLOCKER_MESSAGES | null {
+  if (facts.jevScore == null || facts.jevScore < JEV_ACCEPTANCE_THRESHOLD) return "jev_below_60";
+  if (facts.closed) return "convocatoria_cerrada";
+  if (facts.graded) return "already_graded";
+  return null;
+}
+
+/**
+ * Pide calificar a mano una convocatoria de mayores. La web nunca evalúa: tras comprobar las precondiciones
+ * (que no consumen cupo) deja una solicitud «queued»/«pending» y el worker lee los documentos y evalúa.
+ */
+export async function requestMajorGrading(input: {
+  tenantId: string;
+  idConvocatoria: string;
+  profileId?: string | null;
+  actorId?: string | null;
+}): Promise<MajorGradingOutcome> {
+  const profileId = await resolveMajorProfileId(input.tenantId, input.profileId ?? null);
+  const facts = await majorGradingFacts({ idConvocatoria: input.idConvocatoria, profileId });
+  if (!facts) throw new ManualGradingError("contract_not_found", "No se encontró la convocatoria.");
+  const blocker = majorGradingBlocker(facts);
+  if (blocker) throw new ManualGradingError(blocker, MAJOR_BLOCKER_MESSAGES[blocker]);
+
+  const reservation = await reserveRequest({
+    tenantId: input.tenantId,
+    sourceKey: MANUAL_GRADING_SOURCE_PROD2,
+    sourceId: input.idConvocatoria,
+    profileId,
+    actorId: input.actorId,
+    mode: "queued",
+    status: "pending",
+  });
+  return { status: "queued", request: reservation.request };
+}
+
+/** Última solicitud manual de esta convocatoria y perfil, más el uso de hoy del tenant. */
+export async function majorGradingStatus(input: {
+  tenantId: string;
+  idConvocatoria: string;
+  profileId?: string | null;
+}): Promise<GradingStatusResult> {
+  let profileId: string | null = null;
+  try {
+    profileId = await resolveMajorProfileId(input.tenantId, input.profileId ?? null);
+  } catch (error) {
+    if (!(error instanceof ManualGradingError && error.code === "profile_not_found")) throw error;
+  }
+  return gradingStatus({ tenantId: input.tenantId, sourceKey: MANUAL_GRADING_SOURCE_PROD2, sourceId: input.idConvocatoria, profileId });
 }

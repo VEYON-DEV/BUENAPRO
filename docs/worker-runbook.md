@@ -1145,6 +1145,50 @@ Piloto del 27/10/2026, con «software», 2026, ventana de 7 días y 1 ciclo:
   `context_maximum_tokens` (30 000) de la config v5. Hoy el servicio acepta la v5 o la v6 congeladas;
   la v6 lee la Sección Específica y recorta por relevancia (máx. 45 000).
 
+### Calificación manual de mayores («Calificar», contenedor `prod2-manual`)
+
+Desde el 31/10/2026 la ficha de mayores ofrece «Calificar» cuando la convocatoria tiene JEV ≥ 60, sigue abierta
+y no tiene evaluación de la empresa. La web solo deja el pedido (`manual_grading_requests`, `seace_prod2`,
+`queued`/`pending`; tope compartido con menores, 100 por empresa y día de Lima). Lo atiende el contenedor
+`prod2-manual` (`scripts/grade_prod2_manual.py --loop`, módulo `prod2/manual_grading.py`), con la misma imagen
+y entorno que el diario, su propia carpeta de estado y la del diario y su config montadas solo lectura:
+
+- **Cuándo trabaja.** Cada 60 s, solo si:
+  - el diario está `waiting` y faltan más de 60 min para `next_cycle_at`;
+  - no hay guard abierto ni pausa;
+  - la salida responde y el freno compartido está libre;
+  - logra sin esperar el lock `prod2_accepted_executor`, que mantiene toda la pasada.
+
+  Un vigilante corta una lectura en curso 10 min antes del ciclo. Atiende hasta 5 pedidos por pasada. Así
+  nunca corre junto con un ciclo: los pedidos de madrugada esperan a que el ciclo termine.
+- **Qué hace por pedido** (`pending` → `reading` → `evaluating` → `done`/`failed`):
+  1. Revisa gratis la convocatoria, la empresa (solo VEYON y DIN), JEV ≥ 60 y que siga abierta.
+  2. Si ya hay lectura vigente, salta a evaluar. Si no, rearma el caso desde `prod2_accepted_run_members`,
+     congela un manifiesto planeado por el propio servicio desde su config y vuelve a buscar la ficha en
+     SEACE.
+  3. Con la puerta de ciclo de vida, una convocatoria cerrada o sin apertura confirmada termina
+     `convocatoria_cerrada` antes de cualquier pago.
+  4. Lee como un ciclo (`enrich`, topes: 2 LLM1, 60 embeddings).
+  5. Evalúa solo para la empresa que pidió (`evaluate_manual`). Ignora la regla, el dominio JEV y las
+     horas al cierre; respeta lo demás.
+  6. La evaluación queda con `evaluation_origin=prod2_manual_request_v1` y no cuenta para el tope diario
+     automático.
+- **Pagos.** Recibos del pedido en `<estado manual>/cases/<id>/` y de la evaluación en
+  `<estado manual>/evaluations/` (no los del diario):
+  - un intento pagado previo sin lectura vigente nunca se repaga;
+  - una duda de cobro deja el pedido `payment_uncertain`, abre `guard.private.json` y avisa por Telegram;
+  - no se envía nada más hasta que un operador revise y retire el guard.
+- **Arranque.**
+
+  ```bash
+  docker compose -p docker -f docker-compose.yml -f prod2.compose.yml --profile prod2-manual up -d prod2-manual
+  ```
+
+  Usa las mismas variables que el diario más `PROD2_MANUAL_STATE_DIR` (carpeta 0700 creada a mano). Reiniciarlo
+  no afecta al diario.
+- **Efecto lateral esperado.** Una lectura manual deja la lectura vigente, así que el evaluador automático del
+  ciclo siguiente puede evaluar también a la otra empresa, con sus propias reglas y tope.
+
 ### Evaluación por empresa de mayores (LLM2, `evaluate_prod2_matches.py`)
 
 Evalúa las lecturas PROD2 abiertas para VEYON y DIN con el evaluador de menores (`finish_match`:
