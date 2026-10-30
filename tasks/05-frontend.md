@@ -240,6 +240,15 @@ Referencia: [Inicio](../docs/frontend/02-inicio.md)
   - **Validación:** 341 pruebas Node (una nueva para el filtro), TypeScript y arquitectura. Web local con la copia de la base: 29 no cerradas sin descartadas y las descartadas en «Todas». Captura de escritorio local.
   - **Producción, con la sesión de DIN:** 49 no cerradas (antes 120) sin descartadas, 1181 cerradas y 1301 en total con las descartadas en la página 3, sin errores de consola.
   - **Imagen:** `buenapro-web:open-28cc98e`; respaldo `buenapro-web:rollback-82d9581-before-open-28cc98e`.
+- [x] Listas de mayores y menores con todo: lo abierto primero y el histórico después, el 30/10/2026 (commit `3512160`):
+  - **Motivo:** el equipo creyó que se habían perdido datos al ver 3 páginas; las listas abrían solo con lo no cerrado.
+  - **Mayores:** abre en «Todas» (grupo «Todas · No cerradas · Cerradas»). Primero lo no cerrado, por puntaje como antes; después las cerradas y descartadas, de la publicación más reciente a la más antigua.
+  - **Menores:** vista rápida nueva «Todo», marcada al entrar, con cualquier estado; «Para ti» sigue siendo lo vigente y no cerrado; el filtro «Estado» queda en «Todos». Mismo orden: abiertos primero, histórico después.
+  - **Cabecera:** el total y cuántos siguen abiertos («1307 procedimientos consultados en SEACE · 52 abiertos»).
+  - **API:** sin `deadline` no cambia el orden; la lista de mayores devuelve `open_total` y la de menores `meta.open_total`.
+  - **Validación:** 344 pruebas Node (tres nuevas: orden, conteo y vista «Todo»), TypeScript y arquitectura. Capturas locales en escritorio (1440), laptop (1280) y móvil (375); el buscador de menores baja de 320 a 280 px de mínimo para que las 5 vistas entren en una fila en escritorio.
+  - **Producción:** consultas de la web ejecutadas en solo lectura con DIN: mayores 1307 con las 52 abiertas en las primeras filas; menores 1705 con los 28 abiertos primero.
+  - **Imagen:** `buenapro-web:lists-defdb87`; respaldo `buenapro-web:rollback-c30ad0c-before-lists-defdb87`.
 
 Referencia: [Oportunidades](../docs/frontend/03-oportunidades.md)
 
