@@ -44,6 +44,8 @@ services:
   # or restarting it never alerts the operators of the daily service. A payment doubt opens
   # guard.private.json in PROD2_MANUAL_STATE_DIR; it stays open (the container idles) until an operator
   # removes it. Run: docker compose ... --profile prod2-manual up -d prod2-manual
+  # --auto-reading-window also makes it serve the automatic reading queue (prod2_reading_queue) in that Lima-time
+  # window, after the manual requests and under the same gate; remove the three auto options to turn it off.
   # PROD2_MANUAL_STATE_DIR has a placeholder default on purpose: Compose interpolates every service of the
   # file, so a required variable here would break starting prod2-ingest alone. Unset, this service refuses
   # to start (the bind source does not exist).
@@ -73,6 +75,12 @@ services:
       - "60"
       - --safety-minutes
       - "60"
+      - --auto-reading-window
+      - "01:00-07:00"
+      - --max-auto-per-pass
+      - "3"
+      - --auto-evaluation-max-calls
+      - "20"
     volumes:
       - type: bind
         source: ${PROD2_MANUAL_STATE_DIR:-/nonexistent/set-PROD2_MANUAL_STATE_DIR}

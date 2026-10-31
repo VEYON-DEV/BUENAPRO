@@ -14,6 +14,16 @@ Logic, gates and payment rules: ``buenapro_worker.prod2.manual_grading``.
 A payment doubt fails its request and opens ``<state-dir>/guard.private.json``: nothing is sent until an
 operator reviews the case and removes the file. Exit codes: 0 stopped normally, 1 the last pass failed
 (--once), 2 refused to start, or a guard is open (--once).
+
+Automatic reading queue (off unless --auto-reading-window is given; without it nothing below applies):
+
+  --auto-reading-window HH:MM-HH:MM  Lima time, may cross midnight (01:00-07:00, 22:00-06:00). Inside it, once the
+                                     manual requests are drained, the pass also reads the convocatorias queued in
+                                     prod2_reading_queue (accepted, affinity >= 85, never read), earliest close first,
+                                     in <state-dir>/auto/<convocatoria>, and evaluates each one it read with the
+                                     automatic rules (receipts in <state-dir>/auto-evaluations)
+  --max-auto-per-pass N              Readings started per pass (default 3); closed or already read items do not count
+  --auto-evaluation-max-calls N      Ceiling of evaluations for the one convocatoria just read (default 20)
 """
 from __future__ import annotations
 
@@ -45,6 +55,12 @@ def parser():
     p.add_argument("--poll-seconds", type=float, default=60)
     p.add_argument("--safety-minutes", type=int, default=60,
                    help="Claim nothing within this many minutes of the service's next cycle (at least 15)")
+    p.add_argument("--auto-reading-window", metavar="HH:MM-HH:MM",
+                   help="Lima-time window in which the automatic reading queue is served; without it, it is off")
+    p.add_argument("--max-auto-per-pass", type=int, default=3,
+                   help="Automatic readings started per pass (default 3)")
+    p.add_argument("--auto-evaluation-max-calls", type=int, default=20,
+                   help="Ceiling of evaluations for each automatically read convocatoria (default 20)")
     return p
 
 
@@ -63,8 +79,15 @@ def private_dir(path: Path) -> Path | None:
 
 def main(argv=None) -> int:
     args = parser().parse_args(argv)
-    if not (1 <= args.max_requests_per_pass <= 50 and args.poll_seconds >= 5 and args.safety_minutes >= 15):
+    if not (1 <= args.max_requests_per_pass <= 50 and args.poll_seconds >= 5 and args.safety_minutes >= 15
+            and 1 <= args.max_auto_per_pass <= 50 and 1 <= args.auto_evaluation_max_calls <= 200):
         return refuse("invalid_bounds")
+    auto_window = None
+    if args.auto_reading_window is not None:
+        try:
+            auto_window = manual_grading.parse_window(args.auto_reading_window)
+        except ValueError:
+            return refuse("invalid_auto_window")
     if not args.service_state_dir.is_dir() or not args.service_config.is_file():
         return refuse("service_paths_missing")  # An unmounted state directory must never read as "no cycle running".
     os.umask(0o077)
@@ -82,7 +105,9 @@ def main(argv=None) -> int:
     runtime = manual_grading.Runtime(
         state_dir=state, service_state_dir=args.service_state_dir, service_config=args.service_config,
         project_root=ROOT, settings=settings, connect=lambda: manual_grading.database(settings.database_url),
-        max_requests=args.max_requests_per_pass, safety=timedelta(minutes=args.safety_minutes))
+        max_requests=args.max_requests_per_pass, safety=timedelta(minutes=args.safety_minutes),
+        auto_window=auto_window, max_auto=args.max_auto_per_pass,
+        auto_evaluation_max_calls=args.auto_evaluation_max_calls)
 
     def stopping(*_):
         runtime.stop.set()
