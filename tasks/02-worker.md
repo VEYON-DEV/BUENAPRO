@@ -1187,6 +1187,7 @@ Rediseno 2026-07-09: el motor deterministico fue reemplazado por analisis LLM ba
   - **Manifiesto:** `discovery_policy` solo con el modo; las corridas por palabra no cambian de hash ni de identidad.
   - **`get_detail` y «Calificar»:** buscan sin palabra los casos del listado.
 - [x] Mayores: lectura diferida a la cola (`--reading-queue`, exige `--llm1-min-affinity` > 60): lo aceptado queda `accepted_unread` con su ficha y, desde el mínimo y sin lectura previa, entra a `prod2_reading_queue` (`ON CONFLICT DO NOTHING`, `reading_queued` en el resultado y el reporte, «N en cola de lectura» en el aviso). Pide la migración 0052.
+- [x] Listado nacional: el día en curso se reintenta hasta 2 veces (60 s) y, si sigue parcial por `first_page_reconciliation_changed` / `counter_changed_during_pass`, se tolera: `current_day_partial` en el reporte y el gate lo da por completo; otros códigos y días anteriores siguen incompletos; el modo por palabra no cambia.
 - [x] Servicio de mayores: `schedule` con varias corridas al día (`start_time` + `window_days` por franja, hora de Lima, excluyente con `start_time`); la franja del ciclo siguiente se guarda en el estado (`next_slot`) y `--national-listing` es selector válido.
 - [ ] Aplicar la migración 0052 y desplegar la imagen con el listado nacional, la cola y el horario; probar antes con `--dry-run` y la config del runbook sin red.
 - [ ] Worker de lectura que atienda `prod2_reading_queue` (contenedor `prod2-manual`, de madrugada); hasta entonces las candidatas encoladas quedan «Por calificar».

@@ -12,6 +12,11 @@ from datetime import date, timedelta
 POLICY = "prod2_national_listing_v1"
 OBJECTS = ("good", "service")
 MAX_DAYS = 31
+# The current day keeps receiving publications while it is paginated, so its first page or counter can change
+# under the pass. Those two codes (and only those) are retried and, if they persist, tolerated for that day.
+CURRENT_DAY_CODES = frozenset({"first_page_reconciliation_changed", "counter_changed_during_pass"})
+CURRENT_DAY_RETRIES = 2
+CURRENT_DAY_PAUSE_SECONDS = 60
 
 
 def listing_days(published_from: str, published_to: str) -> list[date]:
@@ -38,3 +43,18 @@ def listing_queries(published_from: str, published_to: str, objects=OBJECTS, *, 
                         "published_from": day.isoformat(), "published_to": day.isoformat(),
                         "seace_version": "3"} for object_type in objects)
     return queries
+
+
+def is_current_day(query: dict, published_to: str, today: date) -> bool:
+    """The last day of the cycle's window, while it is today in Lima (or yesterday if the cycle crossed midnight)."""
+    day = date.fromisoformat(query["published_to"])
+    return (query["published_from"] == query["published_to"] == published_to
+            and timedelta(0) <= today - day <= timedelta(days=1))
+
+
+def current_day_unstable(result: dict, query: dict, published_to: str, today: date) -> bool:
+    """A swept day left partial only by the pagination changing under it, on the current day."""
+    errors = result.get("errors")
+    return (result.get("status") == "partial" and isinstance(errors, list) and bool(errors)
+            and all(isinstance(error, dict) and error.get("code") in CURRENT_DAY_CODES for error in errors)
+            and is_current_day(query, published_to, today))

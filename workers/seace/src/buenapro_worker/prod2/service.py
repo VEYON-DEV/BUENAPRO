@@ -377,7 +377,7 @@ def _cycle_alert(plan, number, next_at):
     """
     folder = _literal(plan["folder"])
     totals = dict.fromkeys(("seen", "accepted", "llm1_complete", "accepted_unread", "reading_queued", "requires_review"), 0)
-    cost, attempts = 0.0, 0
+    cost, attempts, partial_days = 0.0, 0, 0
     for attempt in [folder, *sorted(folder.parent.glob(folder.name + ".*"))]:
         reports = list(attempt.glob("report-*.private.json"))
         if len(reports) != 1:
@@ -387,6 +387,8 @@ def _cycle_alert(plan, number, next_at):
             continue
         attempts += 1
         counts = {**report, "seen": (report.get("redis") or {}).get("seen")}
+        if attempt == folder and isinstance(report.get("current_day_partial"), list):
+            partial_days += len(report["current_day_partial"])  # Earlier attempts may have finished it since.
         for key in totals:
             if type(counts.get(key)) is int and counts[key] >= 0:
                 totals[key] += counts[key]
@@ -397,6 +399,8 @@ def _cycle_alert(plan, number, next_at):
             f"{totals['seen']} candidatas, {totals['accepted']} aceptadas, {totals['llm1_complete']} leídas, "
             + (f"{totals['accepted_unread']} sin leer, " if totals["accepted_unread"] else "")
             + (f"{totals['reading_queued']} en cola de lectura, " if totals["reading_queued"] else "")
+            + (f"día en curso parcial en {partial_days} consulta{'s' if partial_days != 1 else ''}, "
+               if partial_days else "")
             + f"{totals['requires_review']} en revisión; US$ {cost:.4f}"
             + (f" en {attempts} intentos." if attempts > 1 else "."))
     if next_at is not None:

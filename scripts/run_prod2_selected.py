@@ -42,7 +42,7 @@ from buenapro_worker.prod2.accepted_runner import accepted, paid_jev, paid_llm1
 from buenapro_worker.prod2.analysis import (JevDescriptionAnalyzer, extract_document, extraction_request_hash,
     jev_request_hash, ficha_reading_description, LLM1_FICHA_CONTEXT_POLICY)
 from buenapro_worker.prod2.archive_inventory import list_archive, extract_members, inventory_policy, POLICY_7Z
-from buenapro_worker.prod2.batch_plan import MEMBER_IDS, configured_keywords, digest, publication_window
+from buenapro_worker.prod2.batch_plan import LIMA, MEMBER_IDS, configured_keywords, digest, publication_window
 from buenapro_worker.prod2.business_batches import select_business_batches, select_keyword_preset, report_business_batches
 from buenapro_worker.prod2.batch_repository import save_participation_assessment
 from buenapro_worker.prod2.batch_runner import private_write, read_private
@@ -52,7 +52,8 @@ from buenapro_worker.prod2.document_selection import (JevDocumentSelector, docum
 from buenapro_worker.prod2.documents import METADATA_URL, download_document
 from buenapro_worker.prod2.llm1_completion import persist_completed_llm1
 from buenapro_worker.prod2.model_routing import default_model_routing, resolve_llm1_model
-from buenapro_worker.prod2.national_listing import POLICY as NATIONAL_LISTING_POLICY, listing_days, listing_queries
+from buenapro_worker.prod2.national_listing import (CURRENT_DAY_PAUSE_SECONDS, CURRENT_DAY_RETRIES,
+    POLICY as NATIONAL_LISTING_POLICY, current_day_unstable, listing_days, listing_queries)
 from buenapro_worker.prod2.participation import decide
 from buenapro_worker.prod2.pdf_preparation import SELECTED_DOCUMENTS_POLICY, prepare_selected_document_set
 from buenapro_worker.prod2.previews import upload_preview
@@ -1351,9 +1352,20 @@ def enqueue_reading(conn, convocation_id, affinity_index, run_id):
     conn.execute(READING_QUEUE_SQL, (convocation_id, affinity_index, run_id))
 
 
-def new_policy_report_fields(manifest, outcomes):
+def source_coverage_settled(coverage):
+    """Every query is complete, or is the national listing's current day tolerated as partial."""
+    return all(query["coverage_complete"] or query.get("current_day_partial") is True for query in coverage)
+
+
+def tolerated_current_day(coverage):
+    """Queries of the national listing's current day left partial by pagination changes (see ``settle_current_day``)."""
+    return [row["query"] for row in coverage if row.get("current_day_partial") is True]
+
+
+def new_policy_report_fields(manifest, outcomes, coverage=()):
     """Report fields of the national listing and the reading queue; absent when the run uses neither."""
-    return {**({"discovery_policy": manifest["discovery_policy"]} if manifest.get("discovery_policy") else {}),
+    return {**({"discovery_policy": manifest["discovery_policy"],
+                "current_day_partial": tolerated_current_day(coverage)} if manifest.get("discovery_policy") else {}),
             **({"reading_queued": sum(row.get("reading_queued") is True for row in outcomes)}
                if manifest.get("reading_queue") else {})}
 
@@ -1561,6 +1573,34 @@ def planned_queries(manifest):
         for keyword in manifest["keywords"] for year in manifest["resolved_years"] for object_type in manifest["objects"]]
 
 
+def lima_today():
+    return datetime.now(timezone.utc).astimezone(LIMA).date()
+
+
+def settle_current_day(query, manifest, result, attempt, limits):
+    """National listing only: the current day changes while it is paginated.
+
+    A pass left partial only by the first page or counter changing is repeated up to
+    ``CURRENT_DAY_RETRIES`` times in the same run, after ``CURRENT_DAY_PAUSE_SECONDS`` each (a new attempt of
+    the same cached query; pacer and STOP still rule). If it still ends that way the query is flagged
+    ``current_day_partial``: the rows already emitted are processed as usual and the cycle does not count it
+    as incomplete. Any other error, and any day that is not the current one, stays incomplete.
+    """
+    def unstable(value):
+        return current_day_unstable(value, query, manifest["published_to"], lima_today())
+    retries = 0
+    while retries < CURRENT_DAY_RETRIES and unstable(result) and not STOP.is_set() and not limits.sweep_stopped():
+        if STOP.wait(CURRENT_DAY_PAUSE_SECONDS):
+            break
+        retries += 1
+        result = attempt()
+    if retries:
+        result = {**result, "current_day_retries": retries}
+    if unstable(result) and not STOP.is_set():
+        result = {**result, "current_day_partial": True}
+    return result
+
+
 def run_sweeps(manifest, folder, pacer, staging, limits, tracker=None):
     from buenapro_worker.prod2.keyword_sweep import sweep_query
     from buenapro_worker.prod2.empty_scope_probe import probe_empty_scope, scope_is_verified_zero
@@ -1614,11 +1654,15 @@ def run_sweeps(manifest, folder, pacer, staging, limits, tracker=None):
         if STOP.is_set() or limits.sweep_stopped():
             return {"query": query, "status": "stopped", "coverage_complete": False,
                 "source_atomic_snapshot": False, "errors": [{"code": "stop_requested_or_candidate_cap"}]}
-        result = sweep_query(query, source_factory=lambda: source_factory(pacer),
-            emit=emit,
-            emit_many=emit_many if limits.max_candidates is None else None,
-            folder=query_folder, stop_requested=lambda: STOP.is_set() or limits.sweep_stopped(),
-            **({"allow_empty_keyword": True} if national else {}))
+        def attempt():
+            return sweep_query(query, source_factory=lambda: source_factory(pacer),
+                emit=emit,
+                emit_many=emit_many if limits.max_candidates is None else None,
+                folder=query_folder, stop_requested=lambda: STOP.is_set() or limits.sweep_stopped(),
+                **({"allow_empty_keyword": True} if national else {}))
+        result = attempt()
+        if national:
+            result = settle_current_day(query, manifest, result, attempt, limits)
         if any(error["code"] in {"source_403", "source_429"} for error in result["errors"]):
             STOP.set()
         if any(error["code"] == "egress_unavailable" for error in result["errors"]):
@@ -1897,10 +1941,10 @@ def main():
                         "processed": len(outcomes), "accepted": sum(row["accepted"] for row in outcomes),
                         "llm1_complete": sum(row["status"] == "llm1_complete" for row in outcomes),
                         "accepted_unread": sum(row["status"] == "accepted_unread" for row in outcomes),
-                        **new_policy_report_fields(manifest, outcomes),
+                        **new_policy_report_fields(manifest, outcomes, coverage),
                         "requires_review": sum(row.get("requires_human_review", row["status"] == "needs_review") for row in outcomes),
                         "redis": staging.stats(), "costs": audit_summary(folder), "coverage": coverage,
-                        "source_coverage_complete": all(query["coverage_complete"] for query in coverage),
+                        "source_coverage_complete": source_coverage_settled(coverage),
                         "queries_total": len(coverage), "queries_complete": sum(query["coverage_complete"] for query in coverage),
                         "queries_skipped_verified_zero": sum(query.get("coverage_kind") == "verified_empty_scope_observed" for query in coverage),
                         "scope_proofs": proofs,

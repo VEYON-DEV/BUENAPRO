@@ -321,7 +321,7 @@ def test_the_report_names_the_new_policies_only_when_the_run_uses_them():
     assert subject.new_policy_report_fields({"reading_queue": True}, outcomes) == {"reading_queued": 2}
     assert subject.new_policy_report_fields({"reading_queue": True}, []) == {"reading_queued": 0}
     assert subject.new_policy_report_fields({"discovery_policy": "prod2_national_listing_v1"}, outcomes) == {
-        "discovery_policy": "prod2_national_listing_v1"}
+        "discovery_policy": "prod2_national_listing_v1", "current_day_partial": []}
 
 
 def test_the_detail_of_a_listing_candidate_is_searched_without_a_keyword(tmp_path, monkeypatch):

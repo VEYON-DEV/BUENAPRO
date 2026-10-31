@@ -1191,6 +1191,25 @@ despliega ni se activa solo; el código no autoriza aplicar migraciones ni arran
 - **Día con 499 o más resultados** (el tope de SEACE): un día no se puede partir más, así que la consulta queda
   `blocked` (`capped_single_day_requires_review`), el ciclo `final_report_source_incomplete` y el servicio lo
   reintenta una vez a los 30 min antes de detenerse. Igual que antes; hay que mirar ese día a mano.
+- **Día en curso** (el último día de la ventana del ciclo, mientras es hoy en Lima; ayer si el ciclo cruzó la
+  medianoche). Recibe publicaciones mientras se pagina (~250 al día; una pasada tarda ~2 min), así que su
+  primera página o su contador cambian a mitad de la pasada y la consulta falla con
+  `first_page_reconciliation_changed` o `counter_changed_during_pass`. Solo en el modo nacional:
+  - **Reintento en la misma corrida:** hasta 2 veces más, con 60 s de pausa (STOP y el pacer siguen mandando).
+    Cada reintento es un intento nuevo de la misma consulta con su caché; el parcial queda como evidencia.
+    El resultado lleva `current_day_retries`.
+  - **Tolerancia:** si sigue parcial por esos dos códigos, la consulta se marca `current_day_partial`. Las filas
+    ya emitidas se procesan normal y el ciclo **no** la cuenta como incompleta: el reporte trae
+    `current_day_partial: [consultas]`, `source_coverage_complete` es verdadero y `assess_final_report` / `_gate`
+    del servicio lo dan por completo (sin reintento de 30 min ni `attention_required`). El aviso de Telegram
+    agrega «día en curso parcial en N consultas». `queries_complete` sigue contando solo las completas.
+  - **Qué no cambia:** cualquier otro código, o un día que no sea el en curso, sigue incompleto como hoy. El
+    gate valida la reclamación (política nacional, última fecha de la cobertura, solo esos códigos, consulta sin
+    palabra, marcada por la corrida); si no cuadra → `invalid_coverage_evidence`. El modo por palabra no
+    reintenta ni tolera nada.
+  - **Cobertura posterior:** la corrida de las 01:00 (3 días) y las siguientes vuelven a pedir ese día; la
+    tolerancia no lo da por cerrado, solo evita detener el servicio. Lo que llegue después de la pasada parcial
+    lo recoge el ciclo siguiente.
 - **Antes de lanzar:** `run_prod2_selected.py --folder <tmp> --national-listing --from-date <d1> --to-date <d2>
   --years <año> --dry-run` (sin red, base ni proveedores) imprime `base_queries` (días × 2) y `discovery_policy`.
 
@@ -1264,8 +1283,8 @@ horario):
 - El filtro de año de SEACE es el de la convocatoria: la consulta de un día usa el año de ese día, así que una
   publicación de enero con año de convocatoria anterior no aparecería (las consultas por palabra buscaban cada
   año de la ventana con toda la ventana). Vigilar las primeras semanas de cada año.
-- El día en curso cambia mientras se pagina: si una publicación nueva llega entre la primera pasada y la
-  verificación, esa consulta queda `partial` (`first_page_reconciliation_changed`) y se reintenta a los 30 min.
+- Un día **anterior** que quede parcial por esos mismos códigos (SEACE reordena tarde, p. ej.) sigue siendo una
+  fuente incompleta: el ciclo se reintenta una vez a los 30 min y, si se repite, se detiene para revisión.
 - Mientras `prod2-manual` solo trabaja con el diario en `waiting` y más de 60 min libres, con varias corridas al
   día esa ventana se acorta: revisar que siga habiendo pasadas.
 
