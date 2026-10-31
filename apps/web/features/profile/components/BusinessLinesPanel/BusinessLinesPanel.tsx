@@ -1,9 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Star } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { IconButton } from "@/components/ui/IconButton";
 import { Input } from "@/components/ui/Input";
 import { apiFetch } from "@/lib/api/client";
+import { changeLineFavorite } from "../../model/lineFavorite";
 import styles from "./BusinessLinesPanel.module.css";
 
 type Segment = { codigo: string; nombre: string; enabled: boolean };
@@ -13,6 +16,8 @@ type BusinessLine = {
   cubso_segmentos: string[];
   keywords: string[];
   is_active: boolean;
+  /** Línea prioritaria: sus licitaciones mayores aparecen primero. Filas antiguas sin la columna cuentan como false. */
+  is_favorite?: boolean;
 };
 
 function unique(values: string[]) {
@@ -157,12 +162,32 @@ export function BusinessLinesPanel({ lines, catalogs }: { lines: BusinessLine[];
   const [items, setItems] = useState(lines);
   const [editing, setEditing] = useState<string | "new" | null>(null);
   const [notice, setNotice] = useState("");
+  const [failure, setFailure] = useState("");
+  // Líneas cuyo cambio de prioridad sigue en vuelo: un segundo clic (aunque sea en el mismo instante) se ignora hasta que termine.
+  const inFlight = useRef<Set<string>>(new Set());
   const keywordTotal = useMemo(() => new Set(items.flatMap((line) => line.keywords)).size, [items]);
 
   function saved(line: BusinessLine) {
     setItems((current) => current.some((item) => item.id === line.id) ? current.map((item) => item.id === line.id ? line : item) : [...current, line]);
     setEditing(null);
+    setFailure("");
     setNotice("Línea guardada. BuenaPro actualizará la afinidad de tus oportunidades.");
+  }
+
+  // La estrella responde al instante y se deshace si el servidor no confirma. Solo cambia la prioridad: no recalcula nada.
+  async function toggleFavorite(line: BusinessLine) {
+    if (inFlight.current.has(line.id)) return;
+    inFlight.current.add(line.id);
+    setNotice("");
+    setFailure("");
+    const result = await changeLineFavorite(
+      line,
+      async (favorite) => (await apiFetch<{ data: BusinessLine }>(`/api/lines/${line.id}`, { method: "PATCH", json: { is_favorite: favorite } })).data.is_favorite,
+      (favorite) => setItems((current) => current.map((item) => item.id === line.id ? { ...item, is_favorite: favorite } : item)),
+    );
+    inFlight.current.delete(line.id);
+    if (result.ok) setNotice(result.message);
+    else setFailure(result.message);
   }
 
   return (
@@ -172,7 +197,9 @@ export function BusinessLinesPanel({ lines, catalogs }: { lines: BusinessLine[];
         <div className={styles.headerActions}><span>{items.length} líneas · {keywordTotal} keywords</span><Button onClick={() => setEditing("new")} type="button">Agregar línea</Button></div>
       </header>
 
+      {items.length ? <p className={styles.priorityHint}><Star aria-hidden="true" size={14} />Las licitaciones mayores de tus líneas prioritarias aparecen primero.</p> : null}
       {notice ? <p className={styles.notice} aria-live="polite">{notice}</p> : null}
+      {failure ? <p className={styles.failure} role="alert">{failure}</p> : null}
       {editing === "new" ? <LineEditor catalogs={catalogs} initial={null} onCancel={() => setEditing(null)} onSaved={saved} /> : null}
 
       <div className={styles.lines}>
@@ -184,8 +211,19 @@ export function BusinessLinesPanel({ lines, catalogs }: { lines: BusinessLine[];
             ) : (
               <>
                 <div className={styles.lineHeader}>
-                  <div><h3>{line.nombre}</h3><p>{line.keywords.length} keywords activas</p></div>
-                  <Button onClick={() => { setNotice(""); setEditing(line.id); }} type="button" variant="secondary">Editar</Button>
+                  <IconButton
+                    aria-describedby={`line-title-${line.id}`}
+                    aria-label="Línea prioritaria"
+                    aria-pressed={line.is_favorite === true}
+                    className={[styles.priority, line.is_favorite ? styles.priorityOn : ""].join(" ")}
+                    onClick={() => toggleFavorite(line)}
+                    title={line.is_favorite ? "Quitar de las líneas prioritarias" : "Marcar como línea prioritaria"}
+                    type="button"
+                  >
+                    <Star aria-hidden="true" fill={line.is_favorite ? "currentColor" : "none"} size={18} strokeWidth={1.75} />
+                  </IconButton>
+                  <div><h3 id={`line-title-${line.id}`}>{line.nombre}</h3><p>{line.keywords.length} keywords activas{line.is_favorite ? " · Prioritaria" : ""}</p></div>
+                  <Button onClick={() => { setNotice(""); setFailure(""); setEditing(line.id); }} type="button" variant="secondary">Editar</Button>
                 </div>
                 <div className={styles.lineBody}>
                   <div className={styles.summarySegments}>
