@@ -6,6 +6,9 @@ keywords only, preserving frozen inputs when resuming. One coordinator owns the 
 and atomic Redis reservations. No LLM2, matching, scheduler or notifications.
 --llm1-min-affinity reads only accepted candidates at or above it; the rest keep their ficha
 and end accepted_unread, with no document download, selector, embedding or LLM1 spend.
+--national-listing replaces the keywords with one query per publication day and object (no keyword);
+--reading-queue leaves every accepted candidate unread and queues those at or above the minimum
+affinity in prod2_reading_queue for a separate reading worker.
 """
 from __future__ import annotations
 
@@ -49,6 +52,7 @@ from buenapro_worker.prod2.document_selection import (JevDocumentSelector, docum
 from buenapro_worker.prod2.documents import METADATA_URL, download_document
 from buenapro_worker.prod2.llm1_completion import persist_completed_llm1
 from buenapro_worker.prod2.model_routing import default_model_routing, resolve_llm1_model
+from buenapro_worker.prod2.national_listing import POLICY as NATIONAL_LISTING_POLICY, listing_days, listing_queries
 from buenapro_worker.prod2.participation import decide
 from buenapro_worker.prod2.pdf_preparation import SELECTED_DOCUMENTS_POLICY, prepare_selected_document_set
 from buenapro_worker.prod2.previews import upload_preview
@@ -86,6 +90,9 @@ def parser():
                    help="Private native-query captures retained across batch/run folders")
     p.add_argument("--keyword-status", action="store_true", help="Read PostgreSQL keyword progress; no source/model calls")
     p.add_argument("--all-keywords", action="store_true")
+    p.add_argument("--national-listing", action="store_true",
+                   help="Discovery without keywords: one query per publication day and object over explicit "
+                        "--from-date/--to-date (at most 31 days); excludes every keyword selector")
     p.add_argument("--all-results", action="store_true",
                    help="Process every unique result of the selected keywords; override candidate/accepted/provider count caps without changing frozen paid inputs")
     p.add_argument("--preserve-prior-readings", action="store_true",
@@ -106,6 +113,10 @@ def parser():
     p.add_argument("--llm1-min-affinity", type=float, default=JEV_THRESHOLD,
                    help="Accepted candidates below this Jev affinity are promoted with their ficha but not read "
                         "(accepted_unread); 60 reads every accepted one. A frozen run keeps its value")
+    p.add_argument("--reading-queue", action="store_true",
+                   help="Every accepted candidate is promoted with its ficha but not read; those at or above "
+                        "--llm1-min-affinity (which must exceed 60) and without a prior reading are queued in "
+                        "prod2_reading_queue for the reading worker")
     p.add_argument("--mapping-handoff", type=Path,
                    help="Explicit ID mode: complete metadata-only mapping handoff; never repeat its sweep")
     p.add_argument("--selection", type=Path, help="Frozen prod2_handoff_selection_v1 JSON")
@@ -503,6 +514,12 @@ def plan(args):
     if sum((bool(args.keyword), bool(args.lane), args.all_keywords,
             bool(args.business_batch), bool(args.business_scope), bool(args.keyword_preset))) > 1:
         raise ValueError("Choose keywords, lanes, business batches, business scope or all keywords")
+    national, reading_queue = bool(getattr(args, "national_listing", False)), bool(getattr(args, "reading_queue", False))
+    if national and (args.keyword or args.lane or args.all_keywords or args.business_batch
+                     or args.business_scope or args.keyword_preset):
+        raise ValueError("The national listing excludes every keyword selector")
+    if reading_queue and not getattr(args, "llm1_min_affinity", JEV_THRESHOLD) > JEV_THRESHOLD:
+        raise ValueError("The reading queue requires --llm1-min-affinity above the Jev threshold (60)")
     if (args.keyword_preset or args.keyword_status) and not args.sweep_id:
         raise ValueError("Keyword presets/status require an explicit --sweep-id")
     if sum((args.keyword_status, args.preflight, args.prepare_selector_cache, args.prepare_keyword_tracking,
@@ -520,7 +537,7 @@ def plan(args):
                 or args.all_keywords or args.business_batch or args.business_scope or args.keyword_preset
                 or args.preflight or args.keyword_status or args.prepare_selector_cache
                 or args.prepare_keyword_tracking or args.prepare_document_events
-                or args.prepare_7z_downloads or args.prepare_embeddings):
+                or args.prepare_7z_downloads or args.prepare_embeddings or national or reading_queue):
             raise ValueError("ID import cannot sweep, preflight source, adopt an old queue or remove finite caps")
         if not args.preserve_prior_readings or not 1 <= (args.max_new_documents or 0) <= 100000:
             raise ValueError("ID import requires historical preservation and a finite document ceiling")
@@ -539,6 +556,8 @@ def plan(args):
     business = {}
     if imported is not None:
         keywords = imported["keywords"]
+    elif national:
+        keywords = [""]  # The single pseudo-keyword of the listing without keywords; tracking and progress reuse it.
     elif args.keyword_preset:
         business = select_keyword_preset(read_private(ROOT / "docs/sources/prod2-keyword-presets.v1.json"),
             read_private(ROOT / "docs/sources/prod2-business-batches.v1.json"), inventory, args.keyword_preset)
@@ -571,18 +590,26 @@ def plan(args):
                 or (years != "auto" and years != imported["years"])):
             raise ValueError("ID import cannot change mapped years or publication window")
         years = imported["years"]
-    publication_window(datetime.now(timezone.utc), months=args.months,
+    if national and not (args.from_date and args.to_date):
+        raise ValueError("The national listing requires explicit --from-date and --to-date")
+    window_start, window_end = publication_window(datetime.now(timezone.utc), months=args.months,
         published_from=imported["published_from"] if imported else args.from_date,
         published_to=imported["published_to"] if imported else args.to_date)
+    if national:
+        day_years = {day.year for day in listing_days(window_start, window_end)}
+        if years != "auto" and not day_years <= set(years):
+            raise ValueError("The national listing needs the exercise years of its publication days")
     result = {"pipeline": "prod2_selected_llm1_v1", "document_scope": SELECTED_DOCUMENTS_POLICY,
         "terminal_stage": "llm1", "inventory_hash": digest(inventory), "configured_keywords": len(configured),
         "keywords": keywords, "lanes": args.lane or [], "years": years, "objects": ["good", "service"],
         "months": args.months, "from_date": imported["published_from"] if imported else args.from_date,
         "to_date": imported["published_to"] if imported else args.to_date,
         "cache_folder": str(args.cache_folder.resolve()),
-        "probe_empty_scopes": len(keywords) > 1 and not args.skip_empty_scope_probe,
+        "probe_empty_scopes": len(keywords) > 1 and not national and not args.skip_empty_scope_probe,
         "jev_threshold": 60, "selector_high": args.selector_high, "selector_low": args.selector_low,
         **requested_llm1_min_affinity(args),
+        **({"discovery_policy": NATIONAL_LISTING_POLICY} if national else {}),
+        **({"reading_queue": True} if reading_queue else {}),
         **({"document_previews": True, "selector_policy_version":
             DOCUMENT_SELECTION_POLICY_V3 if args.selector_policy == "v3" else DOCUMENT_SELECTION_POLICY_V2}
            if args.document_previews else {}),
@@ -699,6 +726,8 @@ def staging_identity(manifest):
         **({"llm1_luna_fallback": manifest["llm1_luna_fallback"]} if "llm1_luna_fallback" in manifest else {}),
         **({"prior_reading_policy": manifest["prior_reading_policy"]} if "prior_reading_policy" in manifest else {}),
         **({"llm1_min_affinity": manifest["llm1_min_affinity"]} if "llm1_min_affinity" in manifest else {}),
+        **({"discovery_policy": manifest["discovery_policy"]} if "discovery_policy" in manifest else {}),
+        **({"reading_queue": manifest["reading_queue"]} if "reading_queue" in manifest else {}),
         **({"llm1_input_policy": manifest["llm1_input_policy"],
             "embedding_config_sha256": manifest["embedding_reading"]["config_sha256"]}
            if manifest.get("embedding_reading") else {})})
@@ -716,7 +745,7 @@ def embedding_resume_binding(requested, folder):
     previous = binding["source_manifest"]
     # Execution caps and reading policy may change. Source/commercial inputs may not.
     for key in ("pipeline", "document_scope", "keywords", "objects", "months", "from_date", "to_date",
-                "keyword_tracking", "business_plan", "keyword_preset", "jev_threshold", "llm1_min_affinity",
+                "keyword_tracking", "business_plan", "keyword_preset", "discovery_policy", "jev_threshold", "llm1_min_affinity",
                 "selector_high", "selector_low", "document_previews", "selector_policy_version", "llm1_model_routing",
                 "llm1_ficha_context_policy", "llm1_luna_fallback", "document_storage_policy", "archive_inventory_policy"):
         if requested.get(key) != previous.get(key):
@@ -1313,7 +1342,24 @@ def handoff_detail(item, private, pacer):
     return capture
 
 
+READING_QUEUE_SQL = """INSERT INTO prod2_reading_queue (id_convocatoria, affinity_index, enqueued_by)
+    VALUES (%s, %s, %s) ON CONFLICT (id_convocatoria) DO NOTHING"""
+
+
+def enqueue_reading(conn, convocation_id, affinity_index, run_id):
+    """Leave an accepted, unread candidate for the reading worker; an existing row keeps its status."""
+    conn.execute(READING_QUEUE_SQL, (convocation_id, affinity_index, run_id))
+
+
+def new_policy_report_fields(manifest, outcomes):
+    """Report fields of the national listing and the reading queue; absent when the run uses neither."""
+    return {**({"discovery_policy": manifest["discovery_policy"]} if manifest.get("discovery_policy") else {}),
+            **({"reading_queued": sum(row.get("reading_queued") is True for row in outcomes)}
+               if manifest.get("reading_queue") else {})}
+
+
 def consume(settings, staging, manifest, folder, pacer, limits, jev_key):
+    national = manifest.get("discovery_policy") == NATIONAL_LISTING_POLICY
     with psycopg.connect(settings.database_url, autocommit=True, row_factory=dict_row,
             application_name="buenapro-prod2-consumer:" + manifest.get("run_id", folder.name), connect_timeout=15,
             keepalives_idle=30, keepalives_interval=10, keepalives_count=3) as conn:
@@ -1418,7 +1464,8 @@ def consume(settings, staging, manifest, folder, pacer, limits, jev_key):
                 if is_accepted:
                     promotion = limits.admit(conv, lambda: repo.promote_accepted(conn, run_id=manifest["run_id"],
                         row=item["row"], query_manifest=item["query"],
-                        observed_at=datetime.fromisoformat(item["observed_at"]), jev_result=result))
+                        observed_at=datetime.fromisoformat(item["observed_at"]), jev_result=result,
+                        **({"allow_empty_keyword": True} if national else {})))
                     if promotion is None:
                         return  # paid decision reusable; deferred candidate never disappears
                     record["opportunity_created"] = promotion["created"]
@@ -1428,11 +1475,17 @@ def consume(settings, staging, manifest, folder, pacer, limits, jev_key):
                     if prior is not None:
                         private_write(private / "prior-reading-preserved.private.json", prior)
                     # A prior reading keeps its outcome; otherwise a low-affinity candidate is listed unread.
+                    # With the reading queue every accepted one is: the ones worth reading are queued below.
                     unread = result["affinity_index"] < llm1_min_affinity(manifest)
+                    queued = bool(manifest.get("reading_queue"))
                     record.update(prior if prior is not None else
                                   enrich(conn, settings, private, item, manifest, pacer, limits, jev_key,
                                       **({"capture": capture} if handoff_guard is not None else {}),
-                                      **({"defer_reading": True} if unread else {})))
+                                      **({"defer_reading": True} if unread or queued else {})))
+                    if queued and prior is None and not unread:
+                        # After the ficha is saved; idempotent, so a replayed case cannot queue twice.
+                        enqueue_reading(conn, conv, result["affinity_index"], manifest["run_id"])
+                        record["reading_queued"] = True
                 else:
                     repo.record_run_member(conn, run_id=manifest["run_id"], convocation_id=conv,
                         request_hash=request_hash, accepted=False, result=result)
@@ -1500,6 +1553,9 @@ def consume(settings, staging, manifest, folder, pacer, limits, jev_key):
 
 
 def planned_queries(manifest):
+    if manifest.get("discovery_policy") == NATIONAL_LISTING_POLICY:
+        return listing_queries(manifest["published_from"], manifest["published_to"], manifest["objects"],
+                               resolved_years=manifest["resolved_years"])
     return [{"keyword": keyword, "object_type": object_type, "year": year,
         "published_from": manifest["published_from"], "published_to": manifest["published_to"], "seace_version": "3"}
         for keyword in manifest["keywords"] for year in manifest["resolved_years"] for object_type in manifest["objects"]]
@@ -1516,7 +1572,8 @@ def run_sweeps(manifest, folder, pacer, staging, limits, tracker=None):
                 "source_atomic_snapshot": False, "errors": [{"code": "campaign_completed_cache_invalid"}]}
                 for query in planned_queries(manifest)], []
     proofs = []
-    if manifest["probe_empty_scopes"]:
+    national = manifest.get("discovery_policy") == NATIONAL_LISTING_POLICY
+    if manifest["probe_empty_scopes"] and not national:
         for year in manifest["resolved_years"]:
             for object_type in manifest["objects"]:
                 if STOP.is_set():
@@ -1560,7 +1617,8 @@ def run_sweeps(manifest, folder, pacer, staging, limits, tracker=None):
         result = sweep_query(query, source_factory=lambda: source_factory(pacer),
             emit=emit,
             emit_many=emit_many if limits.max_candidates is None else None,
-            folder=query_folder, stop_requested=lambda: STOP.is_set() or limits.sweep_stopped())
+            folder=query_folder, stop_requested=lambda: STOP.is_set() or limits.sweep_stopped(),
+            **({"allow_empty_keyword": True} if national else {}))
         if any(error["code"] in {"source_403", "source_429"} for error in result["errors"]):
             STOP.set()
         if any(error["code"] == "egress_unavailable" for error in result["errors"]):
@@ -1597,11 +1655,15 @@ def main():
         if handoff_import["binding"] != requested["handoff_selection"]:
             raise ValueError("ID handoff inputs changed while planning")
     resume_binding = embedding_resume_binding(requested, args.folder)
+    national = requested.get("discovery_policy") == NATIONAL_LISTING_POLICY
     if args.dry_run:
         print(json.dumps({**requested, "published_from": start, "published_to": end, "dry_run": True,
             "execution_policy": policy,
-            "coverage": "sha_verified_selected_IDs; lifecycle_from_fresh_ficha" if handoff_import else "configured_keywords_date_window; lifecycle_from_ficha",
-            "base_queries": 0 if handoff_import else len(requested["keywords"]) * 2 * len(requested["years"]) if requested["years"] != "auto" else "keywords*2*native_year_count",
+            "coverage": "sha_verified_selected_IDs; lifecycle_from_fresh_ficha" if handoff_import
+                else "national_listing_by_publication_day; lifecycle_from_ficha" if national
+                else "configured_keywords_date_window; lifecycle_from_ficha",
+            "base_queries": 0 if handoff_import else len(listing_queries(start, end)) if national
+                else len(requested["keywords"]) * 2 * len(requested["years"]) if requested["years"] != "auto" else "keywords*2*native_year_count",
             "cost_example_usd": {"jev_100000_at_1750_input_tokens": 7.35,
                 "selector_100000_at_3000_input_tokens": 12.60,
                 "llm1_3_1_flash_lite_each_10000_input_2000_output_tokens": .0055,
@@ -1661,7 +1723,8 @@ def main():
                     "tracking_schema_ready": ready,
                     "keywords": read_progress(conn, args.sweep_id, requested["keywords"]) if ready else progress_summary([], requested["keywords"]),
                     "historical_keywords": read_history(conn, requested["keywords"]),
-                    "cache_errors": completed_cache_errors(conn, args.sweep_id, args.keyword_cache_folder) if ready else []}
+                    "cache_errors": completed_cache_errors(conn, args.sweep_id, args.keyword_cache_folder,
+                        **({"allow_empty_keyword": True} if national else {})) if ready else []}
                 conn.rollback()
         print(json.dumps({**result, "source_calls": 0, "provider_calls": 0, "database_writes": 0}, ensure_ascii=False))
         return 0
@@ -1704,6 +1767,9 @@ def main():
                     raise RuntimeError("Apply migration0039 through the normal migration workflow first")
                 if not conn.execute("SELECT to_regclass('prod2_document_events') AS relation").fetchone()["relation"]:
                     raise RuntimeError("Apply migration0041 before source/provider calls")
+                if requested.get("reading_queue") and not conn.execute(
+                        "SELECT to_regclass('prod2_reading_queue') AS relation").fetchone()["relation"]:
+                    raise RuntimeError("Apply migration0052 before source/provider calls: the reading queue is missing")
                 if inventory_policy(requested) == POLICY_7Z:
                     from buenapro_worker.prod2.sevenzip_schema import require_schema
                     require_schema(conn)
@@ -1720,7 +1786,8 @@ def main():
                     previous = conn.execute("SELECT frozen_scope FROM prod2_keyword_sweeps WHERE sweep_id=%s", (tracking["sweep_id"],)).fetchone()
                     if previous and previous["frozen_scope"] != epoch_scope:
                         raise ValueError("Keyword sweep dates/policy changed; use a new sweep ID")
-                    cache_errors = completed_cache_errors(conn, tracking["sweep_id"], Path(tracking["cache_folder"]))
+                    cache_errors = completed_cache_errors(conn, tracking["sweep_id"], Path(tracking["cache_folder"]),
+                        **({"allow_empty_keyword": True} if national else {}))
                     if cache_errors:
                         print(json.dumps({"status": "blocked", "reason": "completed_query_cache_missing_or_invalid",
                             "source_calls": 0, "provider_calls": 0, "queries": cache_errors}, ensure_ascii=False))
@@ -1792,7 +1859,8 @@ def main():
                         tracker = KeywordTracker(lambda: psycopg.connect(settings.database_url, autocommit=True, row_factory=dict_row,
                             application_name="buenapro-prod2-search:" + manifest["run_id"], connect_timeout=15,
                             keepalives_idle=30, keepalives_interval=10, keepalives_count=3),
-                            tracking["sweep_id"], manifest["run_id"], Path(tracking["cache_folder"]))
+                            tracking["sweep_id"], manifest["run_id"], Path(tracking["cache_folder"]),
+                            **({"allow_empty_keyword": True} if national else {}))
                     try:
                         if handoff_import is not None:
                             # Freeze every selected payload once. Candidate caps
@@ -1829,6 +1897,7 @@ def main():
                         "processed": len(outcomes), "accepted": sum(row["accepted"] for row in outcomes),
                         "llm1_complete": sum(row["status"] == "llm1_complete" for row in outcomes),
                         "accepted_unread": sum(row["status"] == "accepted_unread" for row in outcomes),
+                        **new_policy_report_fields(manifest, outcomes),
                         "requires_review": sum(row.get("requires_human_review", row["status"] == "needs_review") for row in outcomes),
                         "redis": staging.stats(), "costs": audit_summary(folder), "coverage": coverage,
                         "source_coverage_complete": all(query["coverage_complete"] for query in coverage),

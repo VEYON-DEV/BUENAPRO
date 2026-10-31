@@ -182,7 +182,7 @@ def _binding_unchanged(binding):
 def _same_scope(source,new):
     fields=('commercial_profiles','gemini_model','profile_id','pipeline','inventory_hash',
             'keywords','configured_keywords','lanes','years','resolved_years','objects','from_date','to_date',
-            'published_from','published_to','document_scope','jev_threshold','llm1_min_affinity','selector_high',
+            'published_from','published_to','document_scope','discovery_policy','jev_threshold','llm1_min_affinity','selector_high',
             'selector_low','selector_policy_version')
     if any(source.get(key)!=new.get(key) for key in fields):
         raise EmbeddingResumeError("Embedding fork changed frozen source or commercial scope")
