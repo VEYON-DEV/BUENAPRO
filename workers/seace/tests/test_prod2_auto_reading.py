@@ -45,6 +45,9 @@ class Queue:
     def recover(self):
         return self.recovered
 
+    def skip_closed(self):
+        return 0
+
     def has_work(self):
         return any(row["status"] == "pending" for row in self.rows.values())
 
@@ -934,3 +937,21 @@ def test_a_whole_automatic_pass_on_the_real_database_reads_evaluates_and_marks_t
     finally:
         seed.execute("DELETE FROM prod2_reading_queue WHERE id_convocatoria = 4600")
         purge(seed, tenant, 4600)
+
+
+@needs_db
+def test_pending_items_whose_saved_close_passed_are_skipped_without_a_ficha(db):
+    seed_profiles(db)
+    db.execute("DELETE FROM prod2_reading_queue")
+    now = datetime.now(timezone.utc)
+    queued(db, 5501, proposals=now - timedelta(hours=1))  # Closed: skipped for free.
+    queued(db, 5502, proposals=now + timedelta(days=2), registration=now - timedelta(days=3))  # Proposals still open.
+    queued(db, 5503, registration=now - timedelta(minutes=5))  # Only a registration close, already passed.
+    queued(db, 5504)  # No saved dates: the fresh ficha decides.
+    queued(db, 5505, proposals=now - timedelta(days=1), status="reading", attempts=1, claimed_ago=timedelta(minutes=5))
+    queue = mg.ReadingQueue(db)
+    assert queue.skip_closed() == 2
+    rows = {n: status_of(db, n) for n in range(5501, 5506)}
+    assert [rows[n]["status"] for n in range(5501, 5506)] == ["skipped", "pending", "skipped", "pending", "reading"]
+    assert rows[5501]["reason"] == "convocatoria_cerrada" and rows[5501]["finished_at"] and rows[5501]["attempts"] == 0
+    assert queue.skip_closed() == 0

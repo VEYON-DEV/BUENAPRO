@@ -163,6 +163,12 @@ QUEUE_WORK_SQL = "SELECT 1 FROM prod2_reading_queue WHERE status = 'pending' LIM
 QUEUE_RECOVER_SQL = """UPDATE prod2_reading_queue SET status = 'pending', reason = 'claim_expired', updated_at = now()
   WHERE status = 'reading' AND COALESCE(claimed_at, updated_at) < now() - make_interval(hours => %s)
   RETURNING id_convocatoria"""
+# A pending item whose known close already passed is settled for free, before any SEACE request is spent on it.
+QUEUE_CLOSED_SQL = """UPDATE prod2_reading_queue q SET status = 'skipped', reason = 'convocatoria_cerrada',
+  finished_at = now(), updated_at = now()
+  FROM prod2_details d WHERE d.id_convocatoria = q.id_convocatoria AND q.status = 'pending'
+    AND COALESCE(d.proposals_closes_at, d.registration_closes_at) < now()
+  RETURNING q.id_convocatoria"""
 # The holder of a claim is the one that read ``attempts``: a stale copy never rewrites a re-claimed item.
 QUEUE_SETTLE_SQL = """UPDATE prod2_reading_queue SET status = %s, reason = %s, finished_at = now(), updated_at = now()
   WHERE id_convocatoria = %s AND status = 'reading' AND attempts = %s"""
@@ -301,6 +307,10 @@ class ReadingQueue:
         """Items left ``reading`` by a pass that crashed more than ``QUEUE_STALE_HOURS`` ago go back to ``pending``."""
         return self._tolerant(
             lambda: len(self.conn.execute(QUEUE_RECOVER_SQL, (QUEUE_STALE_HOURS,)).fetchall()), 0)
+
+    def skip_closed(self) -> int:
+        """Pending items whose saved close date already passed end ``skipped`` without a fresh ficha."""
+        return self._tolerant(lambda: len(self.conn.execute(QUEUE_CLOSED_SQL).fetchall()), 0)
 
     def has_work(self) -> bool:
         return self._tolerant(lambda: self.conn.execute(QUEUE_WORK_SQL).fetchone() is not None, False)
@@ -1015,7 +1025,7 @@ def run_pass(rt: Runtime) -> dict:
         summary["expired"] = store.expire()
         queue = rt.queue(conn) if rt.auto_open(now) else None  # Outside the window the queue is not even looked at.
         if queue is not None:
-            summary["auto"] = {"recovered": queue.recover()}
+            summary["auto"] = {"recovered": queue.recover(), "closed": queue.skip_closed()}
         if not store.has_work() and not (queue is not None and queue.has_work()):
             summary["skipped"] = "idle"
             if queue is not None:
