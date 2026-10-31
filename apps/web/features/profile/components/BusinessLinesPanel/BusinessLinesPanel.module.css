@@ -7,7 +7,15 @@
 .notice { background: var(--bp-color-success-soft); border: 1px solid color-mix(in srgb, var(--bp-color-success), transparent 68%); border-radius: 12px; color: var(--bp-color-success); padding: 10px 12px; }
 .lines { border-top: 1px solid var(--bp-color-border-strong); }
 .line { border-bottom: 1px solid var(--bp-color-border-strong); }
-.lineHeader { align-items: center; display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr) auto; padding: 16px 0 10px; }
+.lineHeader { align-items: center; display: grid; gap: 14px; grid-template-columns: auto minmax(0, 1fr) auto; padding: 16px 0 10px; }
+.priorityHint { align-items: center; color: var(--bp-color-text-2); display: flex; font-size: 12px; gap: 7px; line-height: 18px; margin-top: -6px; }
+.priorityHint svg { color: var(--bp-color-brand); flex: none; }
+/* Estrella de línea prioritaria: neutra apagada; violeta suave y rellena cuando está marcada (violeta = selección). */
+.lineHeader .priority { box-shadow: none; color: var(--bp-color-text-3); }
+.lineHeader .priority:hover { background: var(--bp-color-brand-soft); color: var(--bp-color-brand); }
+.lineHeader .priority:focus-visible { outline: 2px solid var(--bp-color-brand); outline-offset: 2px; }
+.lineHeader .priorityOn { background: var(--bp-color-brand-soft); border-color: rgb(76 60 255 / .28); color: var(--bp-color-brand); }
+.failure { background: var(--bp-color-danger-soft); border: 1px solid color-mix(in srgb, var(--bp-color-danger), transparent 68%); border-radius: 12px; color: var(--bp-color-danger); padding: 10px 12px; }
 .lineHeader h3 { font-size: 16px; line-height: 22px; overflow-wrap: anywhere; }
 .lineHeader p { color: var(--bp-color-text-3); font-size: 11px; margin-top: 2px; }
 .lineBody { display: grid; gap: 10px; padding: 0 0 18px; }

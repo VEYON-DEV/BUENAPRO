@@ -58,7 +58,7 @@ function resultLabel(deadline: string, savedOnly: boolean) {
 }
 
 const prod2DeadlineMeta: Record<string, string> = {
-  open: "procedimientos no cerrados", closed: "procedimientos cerrados", all: "procedimientos consultados en SEACE",
+  open: "procedimientos no cerrados", active: "procedimientos activos", closed: "procedimientos cerrados", all: "procedimientos consultados en SEACE",
 };
 
 export async function OpportunitiesPage({ tenantId, params }: { tenantId: string; params: URLSearchParams }) {
@@ -70,13 +70,15 @@ export async function OpportunitiesPage({ tenantId, params }: { tenantId: string
       if (result.profile) params.set("profile_id", result.profile.id);
       const totalPages = Math.max(Math.ceil(result.total / result.page_size), 1);
       const deadline = params.get("deadline") ?? "all";
-      const openCount = deadline === "all" ? ` · ${result.open_total} abiertos` : "";
+      // «Activas» = con ficha, no cerradas y con cierre conocido; es lo que se puede trabajar hoy.
+      const activeCount = deadline === "all" ? ` · ${result.active_total} activas` : "";
+      const filters = Object.fromEntries(params.entries());
       return <AppShell title="Oportunidades">
-        <PageHeader title="Oportunidades" meta={`${result.total} ${prod2DeadlineMeta[deadline] ?? prod2DeadlineMeta.all}${openCount}`}
+        <PageHeader title="Oportunidades" meta={`${result.total} ${prod2DeadlineMeta[deadline] ?? prod2DeadlineMeta.all}${activeCount}`}
           description="Coincidencia con tus líneas de negocio y requisitos con evidencia. Confirma la modalidad y las fechas oficiales antes de participar." />
         <OpportunitySourceTabs source="prod2" profileId={result.profile?.id} withScore={params.get("with_score") === "true"} commercialFilters={Object.fromEntries(params.entries())} />
-        <Prod4OpportunityToolbar source="prod2" defaults={{ ...Object.fromEntries(params.entries()), ...(result.profile ? { profile_id: result.profile.id } : {}) }} />
-        <Prod4OpportunityList source="prod2" profileId={result.profile?.id} rows={result.data as unknown as Prod4OpportunitySummary[]} />
+        <Prod4OpportunityToolbar source="prod2" defaults={{ ...filters, ...(result.profile ? { profile_id: result.profile.id } : {}) }} lines={result.lines} />
+        <Prod4OpportunityList source="prod2" profileId={result.profile?.id} filters={filters} rows={result.data as unknown as Prod4OpportunitySummary[]} />
         <div className={styles.pagination}><Pagination page={result.page} totalPages={totalPages}
           prevHref={result.page > 1 ? pageHref(params, result.page - 1) : undefined}
           nextHref={result.page < totalPages ? pageHref(params, result.page + 1) : undefined} /></div>

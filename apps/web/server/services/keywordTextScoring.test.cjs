@@ -17,8 +17,19 @@ test('keyword SQL binds the resolved profile and leaves no guessed source or doc
   assert.match(sql, /cp\.id = \$2::uuid AND cp\.is_active = true/);
   assert.match(sql, /COALESCE\(p\.description, ''\)/);
   assert.match(sql, /bl\.profile_id = cp\.id AND bl\.is_active = true/);
-  assert.match(sql, /ORDER BY keyword_points DESC, id\s+LIMIT 1\s+\) fit ON true/);
+  // Ante empate de puntos manda la línea prioritaria (sin favoritas el orden es el de siempre: por id).
+  assert.match(sql, /ORDER BY keyword_points DESC, is_favorite DESC, id\s+LIMIT 1\s+\) fit ON true/);
   assert.doesNotMatch(sql, /cubso|econ_capacity|fit_score|seace_contracts|prod2_evaluations|worker_jobs|\b(?:INSERT|UPDATE|DELETE)\b/i);
+});
+
+test('the priority flag of the line is read with the line and returned next to it, without touching the score', () => {
+  const sql = keywordTextFitLateralSql(1, 'p.description');
+  assert.match(sql, /SELECT bl\.id, bl\.nombre, bl\.is_favorite, bl\.keyword_phrases, bl\.keyword_terms, cp\.company_keywords/);
+  assert.match(sql, /SELECT el\.id, el\.nombre, el\.is_favorite,\s+LEAST\(45,/);
+  assert.match(sql, /is_favorite AS business_line_favorite,\s+keyword_points, keyword_points AS fit_points/);
+  // It is data about the line, not a signal: no points depend on it.
+  assert.doesNotMatch(sql, /is_favorite\s*(?:\+|\*|THEN)|(?:\+|\*)\s*(?:el\.)?is_favorite|CASE WHEN (?:el\.)?is_favorite/);
+  assert.doesNotMatch(sql, /LEAST\(45,[^]*is_favorite[^]*?\)::int AS keyword_points/);
 });
 
 test('invalid bind positions cannot become SQL fragments', () => {
@@ -45,7 +56,8 @@ test('PostgreSQL keyword affinity handles roots, deduplication, caps, profile sc
     await client.query(`CREATE TEMP TABLE business_lines (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(), profile_id uuid NOT NULL,
       nombre text NOT NULL, keyword_phrases text[] NOT NULL DEFAULT '{}',
-      keyword_terms text[] NOT NULL DEFAULT '{}', is_active boolean NOT NULL DEFAULT true
+      keyword_terms text[] NOT NULL DEFAULT '{}', is_active boolean NOT NULL DEFAULT true,
+      is_favorite boolean NOT NULL DEFAULT false
     ) ON COMMIT DROP`);
     const tenantId = '00000000-0000-0000-0000-000000000001';
     const otherTenantId = '00000000-0000-0000-0000-000000000002';
@@ -115,6 +127,38 @@ test('PostgreSQL keyword affinity handles roots, deduplication, caps, profile sc
       assert.equal(fit.business_line_id, [first, second].sort()[0]);
       assert.equal(fit.keyword_hits.length, 1);
       await client.query('UPDATE business_lines SET is_active = false WHERE id = ANY($1::uuid[])', [[first, second]]);
+    });
+
+    await t.test('the priority flag travels with the chosen line, never adds points and only breaks ties between equal points', async () => {
+      const redes = await makeLine(profileId, 'Redes', [], ['redes']);
+      const nube = await makeLine(profileId, 'Nube', [], ['nube']);
+      const [lowId, highId] = [redes, nube].sort();
+      const read = async text => (await score(text));
+      // Without a priority line the winner is the lowest id and the flag is false (same as before this column existed).
+      let fit = await read('Redes y nube');
+      assert.deepEqual([fit.business_line_id, fit.keyword_points, fit.business_line_favorite], [lowId, 10, false]);
+      // Marking the other line moves the tie to it, with the same points.
+      await client.query('UPDATE business_lines SET is_favorite = true WHERE id = $1', [highId]);
+      fit = await read('Redes y nube');
+      assert.deepEqual([fit.business_line_id, fit.keyword_points, fit.business_line_favorite], [highId, 10, true]);
+      assert.equal(fit.business_line_name, highId === redes ? 'Redes' : 'Nube');
+      // More points still win over a priority line: it never outbids a better match.
+      await client.query('UPDATE business_lines SET keyword_terms = ARRAY[\'redes\', \'cableado\'] WHERE id = $1', [redes]);
+      await client.query('UPDATE business_lines SET is_favorite = (id = $2) WHERE id = ANY($1::uuid[])', [[redes, nube], nube]);
+      fit = await read('Redes, cableado y nube');
+      assert.deepEqual([fit.business_line_id, fit.keyword_points, fit.business_line_favorite], [redes, 20, false]);
+      // A priority line with no hits is still returned by the lateral (zero points), so callers must ask for points > 0.
+      fit = await read('Compra de útiles de oficina');
+      assert.deepEqual([fit.keyword_points, fit.business_line_favorite, fit.business_line_id], [0, true, nube]);
+      // An inactive priority line and a priority line of another profile do not take part.
+      await client.query('UPDATE business_lines SET is_active = false WHERE id = $1', [nube]);
+      fit = await read('Redes y nube');
+      assert.deepEqual([fit.business_line_id, fit.business_line_favorite], [redes, false]);
+      await client.query('UPDATE business_lines SET is_active = true, is_favorite = false WHERE id = $1', [nube]);
+      await client.query('UPDATE business_lines SET is_favorite = true WHERE profile_id = $1', [otherId]);
+      fit = await read('Redes y nube');
+      assert.equal(fit.business_line_favorite, false);
+      await client.query('UPDATE business_lines SET is_active = false, is_favorite = false WHERE id = ANY($1::uuid[])', [[redes, nube]]);
     });
 
     await t.test('term and overall caps hold; edits affect the next read without a cache', async () => {

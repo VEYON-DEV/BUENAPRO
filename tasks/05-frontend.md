@@ -250,6 +250,17 @@ Referencia: [Inicio](../docs/frontend/02-inicio.md)
   - **Producción:** consultas de la web ejecutadas en solo lectura con DIN: mayores 1307 con las 52 abiertas en las primeras filas; menores 1705 con los 28 abiertos primero.
   - **Imagen:** `buenapro-web:lists-defdb87`; respaldo `buenapro-web:rollback-c30ad0c-before-lists-defdb87`.
 
+- [x] Mayores con línea de negocio, palabras clave, «Nueva», «Activa» y líneas prioritarias, el 31/10/2026 (solo local, sin desplegar):
+  - **Fila:** etiquetas «Nueva» y «Activa», la línea que calza (solo si suma puntos, con estrella si es prioritaria) y hasta 3 palabras con «+N». La línea sin puntos no se muestra.
+  - **Vista rápida:** la línea y cada palabra son enlaces que filtran por `line` y `kw`, conservando perfil, cierre, tipo, búsqueda y puntaje.
+  - **Barra:** cierre «Todas · Activas · Cerradas» (`deadline=active`), selector de línea con «★ Prioritarias» y píldora removible de la palabra. El encabezado dice «· N activas».
+  - **Orden:** las licitaciones de una línea prioritaria que sí coincide suben, después del orden abierto/cerrado.
+  - **Perfil:** estrella por línea (`aria-pressed`) con cambio inmediato que se deshace si falla; `PATCH /api/lines/:id` acepta `is_favorite` (solo booleano) y no encola `match_profile` si es lo único que cambia.
+  - **API:** `line`, `kw`, `deadline=active`; filas con `is_new`, `is_active`, `business_line_id`, `business_line_favorite`; respuesta con `active_total` y `lines`. OpenAPI al día.
+  - **Validación:** pruebas Node (parseo, predicados, orden, filtros por tenant, etiquetas, barra, vista rápida, estrella y ruta de líneas), TypeScript y arquitectura. SQL contra la copia local: líneas, palabras, activas, «Nueva» por día de Lima y favoritas. Recorrido en el navegador con la copia local (escritorio 1440 y móvil 390, sin overflow): estrella del perfil sin encolar `match_profile`, favoritas arriba, selector, píldora y enlaces de la vista rápida.
+  - **Falta:** capturas formales desktop 1440, laptop 1280 y móvil 375 para el cierre visual, aplicar `0051` en producción y desplegar.
+- [ ] Revisar con capturas la lista de mayores con etiquetas, selector de línea y estrella del perfil (desktop, laptop y móvil) y cerrar el despliegue.
+
 Referencia: [Oportunidades](../docs/frontend/03-oportunidades.md)
 
 ## Detalle de oportunidad

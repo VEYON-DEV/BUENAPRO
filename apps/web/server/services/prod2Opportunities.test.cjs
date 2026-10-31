@@ -88,8 +88,8 @@ test('pagination uses convocatoria identity and preserves source provenance with
   assert.match(selection.sql, /'seace_prod2'::text AS source_key/);
   assert.match(selection.sql, /prod2_match_provenance/);
   assert.match(selection.sql, /document_sha256/);
-  assert.match(selection.sql, /ORDER BY CASE WHEN matched\.id IS NOT NULL AND matched\.score BETWEEN 0 AND 100 THEN matched\.score ELSE NULL END DESC NULLS LAST, jev_union\.affinity_index DESC NULLS LAST, commercial_jev\.affinity_index DESC NULLS LAST, fit\.keyword_points DESC NULLS LAST/);
-  assert.ok(selection.sql.indexOf('ORDER BY CASE WHEN matched.id IS NOT NULL AND matched.score BETWEEN') < selection.sql.lastIndexOf('LIMIT $'));
+  assert.match(selection.sql, /ORDER BY \(fit\.business_line_favorite AND fit\.keyword_points > 0\) DESC NULLS LAST, CASE WHEN matched\.id IS NOT NULL AND matched\.score BETWEEN 0 AND 100 THEN matched\.score ELSE NULL END DESC NULLS LAST, jev_union\.affinity_index DESC NULLS LAST, commercial_jev\.affinity_index DESC NULLS LAST, fit\.keyword_points DESC NULLS LAST/);
+  assert.ok(selection.sql.indexOf('ORDER BY (fit.business_line_favorite AND fit.keyword_points > 0) DESC NULLS LAST, CASE WHEN matched.id IS NOT NULL AND matched.score BETWEEN') < selection.sql.lastIndexOf('LIMIT $'));
   assert.doesNotMatch(selection.sql, /prod4_processes|seace_contracts|worker_jobs/);
   const count = statements.find(statement => statement.sql.includes('count(*)::int AS total FROM prod2_discoveries'));
   assert.doesNotMatch(count.sql, /matched\.id IS NOT NULL|prod2_match_provenance/, 'default totals retain every enriched opportunity');
@@ -97,12 +97,12 @@ test('pagination uses convocatoria identity and preserves source provenance with
   assert.throws(() => service.parseProd2ListParams(new URLSearchParams('profile_id=not-a-uuid')));
 });
 
-test('deadline parser accepts open, closed and all, and keeps the API default unfiltered', () => {
+test('deadline parser accepts open, active, closed and all, and keeps the API default unfiltered', () => {
   const service = load('prod2Opportunities.ts', { '@/server/db/client': { query: async () => { throw new Error('Parser must not query'); } }, '@/lib/prod2Analysis': analysis });
   assert.equal(service.parseProd2ListParams(new URLSearchParams()).deadline, null);
   assert.equal(service.parseProd2ListParams(new URLSearchParams('deadline=')).deadline, null);
-  for (const value of ['open', 'closed', 'all']) assert.equal(service.parseProd2ListParams(new URLSearchParams({ deadline: value })).deadline, value);
-  for (const invalid of ['week', 'OPEN', 'open OR true']) {
+  for (const value of ['open', 'active', 'closed', 'all']) assert.equal(service.parseProd2ListParams(new URLSearchParams({ deadline: value })).deadline, value);
+  for (const invalid of ['week', 'OPEN', 'ACTIVE', 'open OR true', 'active OR true']) {
     assert.throws(() => service.parseProd2ListParams(new URLSearchParams({ deadline: invalid })), error => error.status === 400);
   }
 });
@@ -141,7 +141,8 @@ test('mayores lists keep only JEV-accepted rows in every deadline view and count
   }
   for (const sql of [all.countFilter, all.pageFilter, none.countFilter, none.pageFilter]) assert.doesNotMatch(sql, closed);
   // Open first (by score, as before), then the closed ones, newest publication first. Hidden rows are gone, so history is just closed.
-  assert.match(all.order, new RegExp(`^ORDER BY ${closed.source}, CASE WHEN ${closed.source} THEN p\\.published_at END DESC NULLS LAST, CASE WHEN matched\\.id IS NOT NULL`));
+  // Las líneas prioritarias suben dentro de cada grupo, después de abiertas/cerradas y antes del puntaje de siempre.
+  assert.match(all.order, new RegExp(`^ORDER BY ${closed.source}, CASE WHEN ${closed.source} THEN p\\.published_at END DESC NULLS LAST, \\(fit\\.business_line_favorite AND fit\\.keyword_points > 0\\) DESC NULLS LAST, CASE WHEN matched\\.id IS NOT NULL`));
   assert.doesNotMatch(all.page, /OR NOT pf\.reader_status IS DISTINCT FROM/);
   // Every count also says how many are open (not closed; hidden rows are already excluded), whatever the filter.
   for (const { count, result } of [open, onlyClosed, all, none]) {
@@ -152,7 +153,7 @@ test('mayores lists keep only JEV-accepted rows in every deadline view and count
   // Day-only stages compare as YYYYMMDD text in Lima; unknown dates are never closed.
   assert.match(open.pageFilter, /to_char\(now\(\) AT TIME ZONE 'America\/Lima', 'YYYYMMDD'\)/);
   assert.match(open.pageFilter, /presentaci\[oó\]n\.\*\(oferta\|propuesta\)/);
-  assert.match(none.order, /^ORDER BY CASE WHEN matched\.id IS NOT NULL/);
+  assert.match(none.order, /^ORDER BY \(fit\.business_line_favorite AND fit\.keyword_points > 0\) DESC NULLS LAST, CASE WHEN matched\.id IS NOT NULL/);
 });
 
 test('JEV union score is the canonical row per convocatoria, any profile, latest first, and a non-number is no score', async () => {
@@ -740,7 +741,7 @@ test('PROD2 scores precede keyword affinity globally, including zero/provisional
       assert.doesNotMatch(sql, /matched\.score > 0|COALESCE\(matched\.score, 0\)/);
     }
     const page = selections[1];
-    assert.match(page.sql, /ORDER BY CASE WHEN matched\.id IS NOT NULL AND matched\.score BETWEEN 0 AND 100 THEN matched\.score ELSE NULL END DESC NULLS LAST, jev_union\.affinity_index DESC NULLS LAST, commercial_jev\.affinity_index DESC NULLS LAST, fit\.keyword_points DESC NULLS LAST/);
+    assert.match(page.sql, /ORDER BY \(fit\.business_line_favorite AND fit\.keyword_points > 0\) DESC NULLS LAST, CASE WHEN matched\.id IS NOT NULL AND matched\.score BETWEEN 0 AND 100 THEN matched\.score ELSE NULL END DESC NULLS LAST, jev_union\.affinity_index DESC NULLS LAST, commercial_jev\.affinity_index DESC NULLS LAST, fit\.keyword_points DESC NULLS LAST/);
     assert.ok(page.sql.indexOf('ELSE NULL END IS NOT NULL') < page.sql.lastIndexOf('LIMIT $4 OFFSET $5'));
     assert.deepEqual(Array.from(page.values), [profileId, 'service', '%software%', 5, 5]);
   }
@@ -763,5 +764,294 @@ test('PROD2 numeric-score filter never falls back to a foreign or missing profil
       assert.equal(page.values[0], null);
       assert.match(page.sql, /m\.profile_id = \$1::uuid/);
     }
+  }
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Línea de negocio, palabra clave, «Activas», «Nueva» y líneas prioritarias en la lista de mayores.
+// ---------------------------------------------------------------------------------------------------------------------
+const lineId = '00000000-0000-0000-0000-0000000000a1';
+const visibility = '(d.id_convocatoria IS NOT NULL OR pf.id_convocatoria IS NOT NULL)';
+
+// Servicio con las consultas capturadas. Cada una se reconoce por cómo empieza: la del cálculo de palabras clave también
+// contiene «FROM company_profiles», así que no sirve mirar solo eso.
+function lineService({ lines = [], counts = { total: 3, open_total: 2, active_total: 1 }, rows = [], resolvedProfile = { id: profileId, razon_social: 'Empresa QA' } } = {}) {
+  const statements = [];
+  const service = load('prod2Opportunities.ts', { '@/server/db/client': { query: async (sql, values) => {
+    statements.push({ sql, values });
+    if (sql.startsWith('SELECT id::text, razon_social FROM company_profiles')) return { rows: resolvedProfile ? [resolvedProfile] : [] };
+    if (sql.includes('FROM business_lines bl JOIN company_profiles cp')) return { rows: lines };
+    if (sql.startsWith('SELECT count(*) FILTER')) return { rows: [counts] };
+    if (sql.includes('LIMIT $')) return { rows };
+    return { rows: [] };
+  } }, '@/lib/prod2Analysis': analysis });
+  const run = async (params = {}) => {
+    const result = await service.listProd2OpportunitiesForTenant('tenant', { object: null, q: '', page: 1, pageSize: 10, profileId, ...params });
+    return { result, count: statements.find(s => s.sql.startsWith('SELECT count(*) FILTER')), page: statements.find(s => s.sql.includes('LIMIT $')),
+      linesQuery: statements.find(s => s.sql.includes('FROM business_lines bl JOIN company_profiles cp')) };
+  };
+  return { service, statements, run };
+}
+const parseList = query => load('prod2Opportunities.ts', { '@/server/db/client': { query: async () => { throw new Error('Parser must not query'); } },
+  '@/lib/prod2Analysis': analysis }).parseProd2ListParams(new URLSearchParams(query));
+const filterOf = sql => sql.slice(sql.lastIndexOf(visibility));
+
+test('line accepts a profile line or «favorites», kw is trimmed text of up to 60 characters, and both default to no filter', () => {
+  assert.deepEqual([parseList('').line, parseList('').kw], [null, '']);
+  assert.deepEqual([parseList('line=').line, parseList('kw=').kw], [null, '']);
+  assert.equal(parseList(`line=${lineId}`).line, lineId);
+  assert.equal(parseList('line=favorites').line, 'favorites');
+  assert.equal(parseList(new URLSearchParams({ line: `  ${lineId}  ` }).toString()).line, lineId);
+  assert.equal(parseList(new URLSearchParams({ kw: '  Licencias de software  ' }).toString()).kw, 'Licencias de software');
+  assert.equal(parseList(new URLSearchParams({ kw: 'a'.repeat(60) }).toString()).kw.length, 60);
+  assert.equal(parseList(new URLSearchParams({ kw: `  ${'a'.repeat(60)}  ` }).toString()).kw.length, 60, 'the limit applies to the trimmed text');
+  // They never disturb the parameters the page already had.
+  const all = parseList(`line=favorites&kw=nube&deadline=active&q=x&object=service&with_score=true&profile_id=${profileId}`);
+  assert.deepEqual([all.line, all.kw, all.deadline, all.q, all.object, all.withScore, all.profileId], ['favorites', 'nube', 'active', 'x', 'service', true, profileId]);
+});
+
+test('line and kw outside their contract are a 400 and never reach PostgreSQL', async () => {
+  const badRequest = error => error?.status === 400;
+  for (const invalid of ['not-a-uuid', 'FAVORITES', 'favorite', 'favorites OR true', `${lineId} OR true`, '1', "'; DROP TABLE business_lines;--", `${lineId}0`]) {
+    assert.throws(() => parseList(new URLSearchParams({ line: invalid }).toString()), badRequest, invalid);
+  }
+  assert.throws(() => parseList(new URLSearchParams({ kw: 'a'.repeat(61) }).toString()), badRequest);
+  // A caller that skips the parser gets the same 400 before any query runs.
+  for (const params of [{ line: 'not-a-uuid' }, { kw: 'a'.repeat(61) }]) {
+    const { run, statements } = lineService();
+    await assert.rejects(run(params), badRequest);
+    assert.equal(statements.length, 0);
+  }
+});
+
+test('ACTIVE is a real detail, not closed and with a known closing date, either with time or day-only', () => {
+  const { service } = lineService();
+  const flat = value => value.replace(/\s+/g, ' ');
+  const active = flat(service.ACTIVE);
+  assert.ok(active.startsWith(`(d.id_convocatoria IS NOT NULL AND NOT ${flat(service.CLOSED)} AND (COALESCE(d.proposals_closes_at, d.registration_closes_at) IS NOT NULL OR (SELECT max(substring(`), active.slice(0, 200));
+  assert.ok(active.endsWith(') IS NOT NULL))'));
+  assert.match(active, /ends_at_text' ~ '\^\\d\{2\}\/\\d\{2\}\/\\d\{4\}'/, 'the day-only branch reuses the closing rule of «Cerradas»');
+  assert.notEqual(service.ACTIVE, `NOT ${service.CLOSED}`, 'active is stricter than open');
+});
+
+test('deadline=active filters count and page by ACTIVE, every count reports active_total, and «open» keeps its meaning', async () => {
+  const flat = value => value.replace(/\s+/g, ' ');
+  for (const deadline of ['active', 'open', 'closed', 'all', null]) {
+    const { run, service } = lineService({ counts: { total: 9, open_total: 5, active_total: 4 } });
+    const { result, count, page } = await run({ deadline });
+    assert.ok(flat(count.sql).includes(`count(*) FILTER (WHERE ${flat(service.ACTIVE)})::int AS active_total, count(*)::int AS total FROM prod2_discoveries`), deadline);
+    assert.match(count.sql, /count\(\*\) FILTER \(WHERE NOT COALESCE\(/);
+    assert.deepEqual([result.total, result.open_total, result.active_total], [9, 5, 4]);
+    // Only the «active» view puts ACTIVE in the predicate; «open» is still just NOT closed.
+    const countFilter = filterOf(count.sql);
+    const pageFilter = page.sql.slice(page.sql.lastIndexOf(visibility), page.sql.lastIndexOf('ORDER BY'));
+    for (const [where, filter] of [['count', countFilter], ['page', pageFilter]]) {
+      assert.equal(filter.includes(service.ACTIVE), deadline === 'active', `${deadline} ${where}`);
+      assert.equal(filter.includes(`AND NOT ${service.CLOSED}`) && !filter.includes(service.ACTIVE), deadline === 'open', `${deadline} ${where}: «open» is still just NOT closed`);
+    }
+  }
+  const empty = await lineService({ counts: {} }).run({});
+  assert.equal(empty.result.active_total, 0, 'a missing count is zero, never undefined');
+});
+
+test('line=<uuid> keeps rows whose best line is that line with points, in the count and the page, bound as a parameter', async () => {
+  const { run } = lineService();
+  const { count, page } = await run({ line: lineId });
+  assert.deepEqual(Array.from(count.values), [profileId, lineId]);
+  assert.deepEqual(Array.from(page.values), [profileId, lineId, 10, 0]);
+  for (const sql of [count.sql, page.sql]) assert.match(sql, /\(fit\.business_line_id = \$2::uuid AND fit\.keyword_points > 0\)/);
+  // The count needs the same line calculation as the page, bound to the same resolved profile.
+  assert.match(count.sql, /LEFT JOIN LATERAL \(\s+WITH profile AS[\s\S]*?cp\.id = \$1::uuid AND cp\.is_active = true[\s\S]*?\) fit ON true\s+WHERE/);
+  assert.match(page.sql, /LIMIT \$3 OFFSET \$4/);
+  assert.doesNotMatch(count.sql + page.sql, new RegExp(lineId), 'the UUID travels only as a bound value');
+});
+
+test('line=favorites keeps rows whose best line is a priority line with points, without extra parameters', async () => {
+  const { run } = lineService();
+  const { count, page } = await run({ line: 'favorites' });
+  assert.deepEqual(Array.from(count.values), [profileId]);
+  assert.deepEqual(Array.from(page.values), [profileId, 10, 0]);
+  for (const sql of [count.sql, page.sql]) assert.ok(filterOf(sql).includes(`AND (fit.business_line_favorite AND fit.keyword_points > 0)`));
+  assert.match(count.sql, /\) fit ON true\s+WHERE/);
+  assert.doesNotMatch(count.sql + page.sql, /favorites/, 'the literal never reaches SQL');
+});
+
+test('kw keeps rows with that word among the hits of their best line, ignoring case, and requires points', async () => {
+  const { run } = lineService();
+  const { count, page } = await run({ kw: 'Licencias de Software' });
+  assert.deepEqual(Array.from(count.values), [profileId, 'Licencias de Software']);
+  assert.deepEqual(Array.from(page.values), [profileId, 'Licencias de Software', 10, 0]);
+  for (const sql of [count.sql, page.sql]) {
+    assert.ok(filterOf(sql).includes(`(fit.keyword_points > 0 AND EXISTS (SELECT 1 FROM jsonb_array_elements(fit.keyword_hits) h WHERE lower(h->>'keyword') = lower($2::text)))`));
+  }
+  assert.doesNotMatch(count.sql + page.sql, /Licencias de Software/, 'the text travels only as a bound value');
+  // A quote in the word is just text.
+  const quoted = await lineService().run({ kw: "o'brien\"; --" });
+  assert.deepEqual(Array.from(quoted.page.values), [profileId, "o'brien\"; --", 10, 0]);
+});
+
+test('line and kw combine with each other and with the other filters, numbering their parameters in order', async () => {
+  const { run } = lineService();
+  const both = await run({ line: lineId, kw: 'nube', q: 'software', object: 'service', deadline: 'active', withScore: true });
+  assert.deepEqual(Array.from(both.count.values), [profileId, 'service', '%software%', lineId, 'nube']);
+  assert.deepEqual(Array.from(both.page.values), [profileId, 'service', '%software%', lineId, 'nube', 10, 0]);
+  for (const sql of [both.count.sql, both.page.sql]) {
+    assert.match(sql, /fit\.business_line_id = \$4::uuid AND fit\.keyword_points > 0/);
+    assert.match(sql, /lower\(h->>'keyword'\) = lower\(\$5::text\)/);
+  }
+  assert.match(both.page.sql, /LIMIT \$6 OFFSET \$7/);
+  const favoritesAndWord = await lineService().run({ line: 'favorites', kw: 'nube' });
+  assert.deepEqual(Array.from(favoritesAndWord.page.values), [profileId, 'nube', 10, 0]);
+  assert.match(favoritesAndWord.page.sql, /lower\(h->>'keyword'\) = lower\(\$2::text\)/);
+});
+
+test('without line or kw the count does not pay for the keyword calculation and nothing about the filters leaks into the query', async () => {
+  const { run } = lineService();
+  const { count, page } = await run({});
+  assert.doesNotMatch(count.sql, /WITH profile AS|phrase_signals|fit\./);
+  assert.match(page.sql, /WITH profile AS/);
+  assert.doesNotMatch(page.sql, /fit\.business_line_id = \$|jsonb_array_elements\(fit\.keyword_hits\) h WHERE/);
+  assert.deepEqual(Array.from(page.values), [profileId, 10, 0]);
+});
+
+test('line filters are tenant-safe: a foreign profile is a 404 before anything else, and the selector reads the resolved profile of the tenant', async () => {
+  for (const params of [{ line: lineId }, { line: 'favorites' }, { kw: 'nube' }]) {
+    const { run, statements } = lineService({ resolvedProfile: null });
+    await assert.rejects(run(params), error => error.status === 404);
+    assert.equal(statements.length, 1, 'the profile check is the only query');
+    assert.deepEqual(Array.from(statements[0].values), ['tenant', profileId]);
+  }
+  const { run } = lineService({ lines: [{ id: lineId, name: 'Software', is_favorite: true }] });
+  const { linesQuery } = await run({ line: lineId });
+  assert.deepEqual(Array.from(linesQuery.values), [profileId, 'tenant']);
+  assert.match(linesQuery.sql, /WHERE cp\.id = \$1::uuid AND cp\.tenant_id = \$2::uuid AND cp\.is_active = true AND bl\.is_active = true/);
+  assert.doesNotMatch(linesQuery.sql, /worker_jobs|\b(?:INSERT|UPDATE|DELETE)\b/);
+});
+
+test('the selector lists the active lines of the resolved profile, priority first and then by name', async () => {
+  const stored = [{ id: lineId, name: 'Software', is_favorite: true }, { id: 'b', name: 'Redes', is_favorite: false }, { id: 'c', name: 'Cloud', is_favorite: 'nope' }];
+  const { run } = lineService({ lines: stored });
+  const { result, linesQuery } = await run({});
+  assert.match(linesQuery.sql, /ORDER BY bl\.is_favorite DESC, lower\(bl\.nombre\), bl\.id/);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.lines)), [{ id: lineId, name: 'Software', is_favorite: true }, { id: 'b', name: 'Redes', is_favorite: false }, { id: 'c', name: 'Cloud', is_favorite: false }],
+    'only a real true counts as a priority line');
+  // Without a profile there is nothing to select and nothing to ask.
+  const none = lineService({ resolvedProfile: null, lines: stored });
+  const empty = await none.run({ profileId: null });
+  assert.equal(JSON.stringify(empty.result.lines), '[]');
+  assert.equal(empty.linesQuery, undefined);
+  assert.equal(empty.result.profile, null);
+});
+
+test('priority lines rise right after the open/closed order and before the score, in every view', async () => {
+  for (const deadline of ['all', 'active', 'open', 'closed', null]) {
+    const { run, service } = lineService();
+    const { page } = await run({ deadline });
+    const order = page.sql.slice(page.sql.lastIndexOf('ORDER BY'));
+    const favorite = '(fit.business_line_favorite AND fit.keyword_points > 0) DESC NULLS LAST';
+    assert.equal(service.FAVORITE_FIT, '(fit.business_line_favorite AND fit.keyword_points > 0)');
+    const keys = [favorite, 'matched.score BETWEEN 0 AND 100 THEN matched.score ELSE NULL END DESC', 'jev_union.affinity_index DESC NULLS LAST',
+      'commercial_jev.affinity_index DESC NULLS LAST', 'fit.keyword_points DESC NULLS LAST', 'p.published_at DESC NULLS LAST, p.id_convocatoria DESC'].map(key => order.indexOf(key));
+    assert.ok(keys.every(position => position > 0), `${deadline}: ${keys.join()}`);
+    assert.deepEqual(keys, [...keys].sort((left, right) => left - right), deadline);
+    assert.equal(order.split(favorite).length, 2, 'one favorite key');
+    // In «Todas» the open/closed order and the history order come first; elsewhere the favorite key opens the ORDER BY.
+    if (deadline === 'all') assert.ok(order.indexOf(service.CLOSED) < order.indexOf(favorite) && order.startsWith(`ORDER BY ${service.CLOSED}, CASE WHEN`), deadline);
+    else assert.ok(order.startsWith(`ORDER BY ${favorite}`), deadline);
+  }
+});
+
+test('a priority line counts only when it actually matches: ordering and filtering always ask for points', async () => {
+  const { run } = lineService();
+  const { page } = await run({ deadline: 'all', line: 'favorites', kw: 'nube' });
+  // «business_line_favorite» alone would also be true for the priority line that gets 0 points (the lateral always returns one line).
+  const afterSelect = page.sql.slice(page.sql.indexOf('FROM prod2_discoveries p'));
+  const uses = afterSelect.split('fit.business_line_favorite').slice(1);
+  assert.equal(uses.length, 2, 'once in the filter, once in the order');
+  for (const part of uses) assert.ok(part.startsWith(' AND fit.keyword_points > 0)'), part.slice(0, 40));
+});
+
+test('list rows expose is_new, is_active, the matching line and its priority flag, and a missing value is never true', async () => {
+  const matching = { id_convocatoria: '123', schedule_json: [], documents_count: 0, is_new: true, is_active: true, business_line_favorite: true,
+    fit_business_line_id: lineId, business_line_name: 'Software', keyword_points: 20, fit_points: 20, fit_level: 2,
+    keyword_hits: [{ keyword: 'software', match: 'strong_term', points: 10 }, { keyword: 'nube', match: 'company_keyword', points: 10 }] };
+  const sparse = { id_convocatoria: '124', schedule_json: [], documents_count: 0 };
+  const loose = { id_convocatoria: '125', schedule_json: [], documents_count: 0, is_new: 't', is_active: 1, business_line_favorite: 'true', fit_business_line_id: null };
+  const { run } = lineService({ rows: [matching, sparse, loose] });
+  const { result, page } = await run({});
+  const [first, second, third] = result.data;
+  assert.deepEqual([first.is_new, first.is_active, first.business_line_favorite, first.business_line_id], [true, true, true, lineId]);
+  assert.deepEqual([second.is_new, second.is_active, second.business_line_favorite, second.business_line_id], [false, false, false, null]);
+  assert.deepEqual([third.is_new, third.is_active, third.business_line_favorite, third.business_line_id], [false, false, false, null], 'only a real boolean true');
+  assert.equal(first.keyword_hits, matching.keyword_hits);
+  assert.match(page.sql, /AS is_new, [\s\S]*? AS is_active,/);
+  assert.match(page.sql, /fit\.business_line_favorite,/);
+  assert.match(page.sql, /\(p\.published_at AT TIME ZONE 'America\/Lima'\)::date >= \(now\(\) AT TIME ZONE 'America\/Lima'\)::date - 1\) AS is_new/);
+});
+
+test('the detail of a procedure carries the same flags as the list row', async () => {
+  const statements = [];
+  const row = { id_convocatoria: '123', schedule_json: [], documents_count: 0, is_new: true, is_active: false, business_line_favorite: true,
+    fit_business_line_id: lineId, business_line_name: 'Software', keyword_points: 20, fit_points: 20, fit_level: 2, keyword_hits: [] };
+  const service = load('prod2Opportunities.ts', { '@/server/db/client': { query: async (sql, values) => {
+    statements.push({ sql, values });
+    return { rows: sql.startsWith('SELECT id::text, razon_social FROM company_profiles') ? [{ id: profileId, razon_social: 'Empresa QA' }]
+      : sql.includes('FROM prod2_discoveries') ? [row] : [] };
+  } }, '@/lib/prod2Analysis': analysis });
+  const detail = await service.getProd2OpportunityForTenant('tenant', '123', profileId);
+  assert.deepEqual([detail.process.is_new, detail.process.is_active, detail.process.business_line_favorite, detail.process.business_line_id], [true, false, true, lineId]);
+  const sql = statements.find(s => s.sql.includes('FROM prod2_discoveries')).sql;
+  assert.match(sql, /\) AS is_new, /);
+  assert.match(sql, /\) AS is_active,/);
+});
+
+// Contra PostgreSQL real, solo con DATABASE_URL (la copia local) y solo SELECT sobre valores propios: no escribe ni lee tablas.
+test('PostgreSQL: ACTIVE and NEW follow the Lima calendar and the known-date rule', { skip: !process.env.DATABASE_URL }, async () => {
+  const pg = require('pg');
+  const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+  try {
+    const { service } = lineService();
+    // Each case: [name, has detail, proposals, registration, day-only schedule end (Lima day offset or null), reader status, expected active].
+    const timestamp = value => value ? `(${value})::timestamptz` : 'NULL::timestamptz';
+    const day = offset => offset === null ? 'NULL::jsonb'
+      : `jsonb_build_array(jsonb_build_object('stage', 'Presentación de ofertas', 'ends_at_text', to_char((now() AT TIME ZONE 'America/Lima')::date + ${offset}, 'DD/MM/YYYY')))`;
+    const cases = [
+      ['no detail', false, null, null, null, null, false],
+      ['proposals in two days', true, "now() + interval '2 days'", null, null, null, true],
+      ['proposals an hour ago', true, "now() - interval '1 hour'", null, null, null, false],
+      ['registration only, open', true, null, "now() + interval '3 days'", null, null, true],
+      ['registration only, closed', true, null, "now() - interval '3 days'", null, null, false],
+      ['detail without any date', true, null, null, null, null, false],
+      ['day-only tomorrow', true, null, null, 1, null, true],
+      ['day-only today', true, null, null, 0, null, true],
+      ['day-only yesterday', true, null, null, -1, null, false],
+      ['future proposals but closed when reviewed', true, "now() + interval '2 days'", null, null, 'closed_without_reading', false],
+      ['future proposals, other reader status', true, "now() + interval '2 days'", null, null, 'needs_review', true],
+    ];
+    const rows = cases.map(([name, detail, proposals, registration, dayOnly, status], index) => ({ name, id: index + 1, detail, proposals, registration, dayOnly, status }));
+    const sql = `SELECT p.name, ${service.ACTIVE} AS active, ${service.CLOSED} AS closed
+      FROM (VALUES ${rows.map(row => `('${row.name}', ${row.id})`).join(', ')}) AS p(name, id_convocatoria)
+      LEFT JOIN (VALUES ${rows.filter(row => row.detail).map(row => `(${row.id}, ${timestamp(row.proposals)}, ${timestamp(row.registration)}, ${day(row.dayOnly)})`).join(', ')})
+        AS d(id_convocatoria, proposals_closes_at, registration_closes_at, schedule_json) ON d.id_convocatoria = p.id_convocatoria
+      LEFT JOIN (VALUES ${rows.filter(row => row.status).map(row => `(${row.id}, '${row.status}')`).join(', ')}) AS pf(id_convocatoria, reader_status) ON pf.id_convocatoria = p.id_convocatoria
+      ORDER BY p.id_convocatoria`;
+    const result = await pool.query(sql);
+    assert.deepEqual(result.rows.map(row => [row.name, row.active]), cases.map(([name, , , , , , active]) => [name, active]));
+    for (const row of result.rows) assert.equal(row.active && row.closed, false, `${row.name}: never active and closed`);
+
+    // «Nueva» = published today or yesterday, by Lima calendar day (not by 24 hours).
+    const lima = "(now() AT TIME ZONE 'America/Lima')::date";
+    const published = [
+      ['now', 'now()', true],
+      ['today 00:00 Lima', `(${lima})::timestamp AT TIME ZONE 'America/Lima'`, true],
+      ['yesterday 23:59:59 Lima', `((${lima})::timestamp AT TIME ZONE 'America/Lima') - interval '1 second'`, true],
+      ['yesterday 00:00 Lima', `((${lima} - 1)::timestamp AT TIME ZONE 'America/Lima')`, true],
+      ['day before yesterday 23:59:59 Lima', `((${lima} - 1)::timestamp AT TIME ZONE 'America/Lima') - interval '1 second'`, false],
+      ['a week ago', "now() - interval '7 days'", false],
+    ];
+    const isNew = await pool.query(`SELECT p.name, ${service.IS_NEW} AS is_new FROM (VALUES ${published.map(([name, value]) => `('${name}', ${value})`).join(', ')}) AS p(name, published_at)`);
+    assert.deepEqual(isNew.rows.map(row => [row.name, row.is_new]), published.map(([name, , expected]) => [name, expected]));
+  } finally {
+    await pool.end();
   }
 });

@@ -1,0 +1,95 @@
+/* Etiquetas de una licitación mayor. Estados en pastel (Badge), línea y palabras en neutro; el violeta marca lo prioritario. */
+.tags {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.flush { margin-top: 0; }
+
+.line,
+.keyword,
+.more {
+  align-items: center;
+  border-radius: var(--bp-radius-pill);
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 650;
+  gap: 5px;
+  line-height: 16px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 3px 9px;
+}
+
+/* El texto largo se corta con puntos suspensivos y el título completo queda en el tooltip. */
+.text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.line {
+  background: var(--bp-color-panel);
+  border: 1px solid var(--bp-color-border-strong);
+  color: var(--bp-color-text);
+}
+
+/* Línea prioritaria: la única etiqueta en violeta, igual que la selección en el resto del producto. */
+.favorite {
+  background: var(--bp-color-brand-soft);
+  border-color: rgb(76 60 255 / .28);
+  color: var(--bp-color-brand);
+}
+
+.star { flex: none; }
+
+.keyword,
+.more {
+  background: var(--bp-color-subtle);
+  color: var(--bp-color-text-2);
+  font-weight: 600;
+}
+
+.more {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.srOnly {
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+/* Con enlaces (vista rápida) las etiquetas son controles: más aire, foco visible y respuesta al puntero. */
+.linked { gap: 8px; }
+
+.linked .line,
+.linked .keyword {
+  min-height: 28px;
+  padding: 5px 11px;
+  text-decoration: none;
+  transition: background var(--bp-duration-normal) var(--bp-ease-standard), color var(--bp-duration-normal) var(--bp-ease-standard), border-color var(--bp-duration-normal) var(--bp-ease-standard);
+}
+
+.linked a.line:hover,
+.linked a.keyword:hover {
+  background: var(--bp-color-brand-soft);
+  border-color: rgb(76 60 255 / .28);
+  color: var(--bp-color-brand);
+}
+
+.linked a.line:focus-visible,
+.linked a.keyword:focus-visible {
+  outline: 2px solid var(--bp-color-brand);
+  outline-offset: 2px;
+}

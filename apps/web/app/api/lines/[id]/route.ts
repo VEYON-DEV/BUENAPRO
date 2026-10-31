@@ -14,6 +14,10 @@ async function enqueueProfileMatch(profileId: string) {
   );
 }
 
+// Campos que cambian lo que se vigila o cómo puntúa una línea; si llega alguno hay que recalcular el perfil.
+// is_favorite no está aquí: solo ordena la lista de mayores y se lee al vuelo, sin recalcular nada.
+const MATCHING_FIELDS = ["nombre", "cubso_segmentos", "keywords", "keyword_phrases", "keyword_terms", "ubigeos", "monto_min", "monto_max", "score_umbral", "is_active"] as const;
+
 export async function GET(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const tenantId = await requireTenantId();
   const { id } = await context.params;
@@ -34,6 +38,9 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   const tenantId = await requireTenantId();
   const { id } = await context.params;
   const body = await request.json();
+  if (body.is_favorite !== undefined && typeof body.is_favorite !== "boolean") {
+    return NextResponse.json({ error: "is_favorite must be a boolean" }, { status: 400 });
+  }
   const hasKeywordPatch = body.keywords != null || body.keyword_phrases != null || body.keyword_terms != null;
   const signals = hasKeywordPatch ? keywordSignals(body) : null;
   const result = await query(
@@ -49,6 +56,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
         monto_max = COALESCE($10, bl.monto_max),
         score_umbral = COALESCE($11, bl.score_umbral),
         is_active = COALESCE($12, bl.is_active),
+        is_favorite = COALESCE($13, bl.is_favorite),
         updated_at = now()
     FROM company_profiles cp
     WHERE cp.id = bl.profile_id
@@ -69,10 +77,12 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       body.monto_max ?? null,
       body.score_umbral ?? null,
       body.is_active ?? null,
+      body.is_favorite ?? null,
     ],
   );
   if (!result.rows[0]) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  await enqueueProfileMatch(result.rows[0].profile_id);
+  const onlyFavorite = body.is_favorite !== undefined && !MATCHING_FIELDS.some((field) => body[field] != null);
+  if (!onlyFavorite) await enqueueProfileMatch(result.rows[0].profile_id);
   return NextResponse.json({ data: result.rows[0] });
 }
 

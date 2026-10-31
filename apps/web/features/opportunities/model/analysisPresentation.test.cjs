@@ -46,6 +46,10 @@ function loadSource(filename) {
     if (specifier === "@/lib/commercialTaxonomy") return loadSource(path.resolve(feature, "../../lib/commercialTaxonomy.ts"));
     if (specifier === "../../model/commercialFilters") return loadSource(path.join(__dirname, "commercialFilters.ts"));
     if (specifier === "../CommercialFilterFields") return loadSource(path.join(feature, "components/CommercialFilterFields/CommercialFilterFields.tsx"));
+    if (specifier === "../Prod2RowTags") return loadSource(path.join(feature, "components/Prod2RowTags/Prod2RowTags.tsx"));
+    if (specifier === "../Prod2LineFilter") return loadSource(path.join(feature, "components/Prod2LineFilter/Prod2LineFilter.tsx"));
+    if (specifier === "../../model/prod2Listing") return loadSource(path.join(__dirname, "prod2Listing.ts"));
+    if (specifier === "@/components/ui/Badge") return loadSource(path.resolve(feature, "../../components/ui/Badge/Badge.tsx"));
     return normalRequire(specifier);
   };
   loaded.set(filename, local);
@@ -275,7 +279,8 @@ test("PROD2 toolbar offers a closing filter that keeps search, type, score and p
   assert.match(html, /name="deadline"[^>]*value="closed"/);
   const hrefs = fragment => [...fragment.matchAll(/href="([^"]*)"/g)].map(match => new URL(match[1].replaceAll("&amp;", "&"), "https://buenapro.invalid"));
   const deadlines = hrefs(html.match(/aria-label="Cierre"[\s\S]*?<\/div>/)[0]);
-  assert.deepEqual(deadlines.map(link => link.searchParams.get("deadline")), ["all", "open", "closed"]);
+  // «Activas» reemplaza a «No cerradas»: es lo que se puede trabajar hoy (con ficha, no cerrada y con cierre conocido).
+  assert.deepEqual(deadlines.map(link => link.searchParams.get("deadline")), ["all", "active", "closed"]);
   // Type links and the score toggle keep the chosen closing filter.
   for (const link of hrefs(html)) assert.ok(link.searchParams.has("deadline"));
   for (const link of deadlines) {
@@ -409,4 +414,166 @@ test("the JEV chip never leaks other internal title-affinity or category fields"
   const html = render(OpportunityList, { rows: [minor({ match_id: "916", score: 55, verdict: "ambar", jev_score: 77.6, jev_decision: "accepted", ...stale })] });
   assert.match(html, />JEV 77</);
   assert.doesNotMatch(html, /data-jev-affinity|matchStack|78 \/ 100|Soporte TI|soporte_ti|accepted/i);
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Mayores: etiquetas de la fila (Nueva, Activa, línea, palabras), enlaces de la vista rápida y filtros de la barra.
+// ---------------------------------------------------------------------------------------------------------------------
+const hrefsIn = fragment => [...fragment.matchAll(/href="([^"]*)"/g)].map(match => new URL(match[1].replaceAll("&amp;", "&"), "https://buenapro.invalid"));
+const matching = overrides => procedure({
+  keyword_points: 30, business_line_id: "line-software", business_line_name: "Software e integración", business_line_favorite: false, is_new: false, is_active: false,
+  keyword_hits: [{ keyword: "licencia de software", match: "exact_phrase", points: 15 }, { keyword: "Software", match: "strong_term", points: 10 }, { keyword: "nube", match: "strong_term", points: 10 },
+    { keyword: "servidor", match: "strong_term", points: 10 }, { keyword: "redes", match: "strong_term", points: 10 }], ...overrides,
+});
+const tagsOf = html => html.match(/<div class="tags[^"]*">[\s\S]*?<\/div>/)?.[0] ?? "";
+
+test("a mayores row shows Nueva, Activa, the line that matches and up to three words with the rest summarized", () => {
+  const html = render(Prod4OpportunityList, { source: "prod2", rows: [matching({ is_new: true, is_active: true })] });
+  const tags = tagsOf(html);
+  assert.match(tags, /<span class="badge brand">Nueva<\/span><span class="badge green">Activa<\/span>/);
+  assert.match(tags, /<span class="line"[^>]*title="Línea: Software e integración">[\s\S]*?<span class="text">Software e integración<\/span>/);
+  assert.deepEqual([...tags.matchAll(/<span class="keyword" title="([^"]*)">/g)].map(match => match[1]), ["licencia de software", "Software", "nube"]);
+  assert.match(tags, /<span class="more" title="2 palabras más">\+2<\/span>/);
+  // In the row everything is a label: only the row button and the save control are interactive.
+  assert.doesNotMatch(tags, /<a |href=/);
+  // Tags sit under the object cell's meta, not in another column.
+  assert.ok(html.indexOf("documentos") < html.indexOf('class="tags'));
+  assert.ok(html.indexOf('class="tags') < html.indexOf('class="buyerCell"'));
+});
+
+test("a priority line is marked with a filled star and an accessible name; a plain line has no star", () => {
+  const favorite = tagsOf(render(Prod4OpportunityList, { source: "prod2", rows: [matching({ business_line_favorite: true })] }));
+  assert.match(favorite, /<span class="line favorite" title="Línea prioritaria: Software e integración"><svg[^>]*fill="currentColor"[^>]*class="[^"]*star[^"]*"[^>]*aria-hidden="true"/);
+  assert.match(favorite, /<span class="srOnly">Línea prioritaria: <\/span>/);
+  const plain = tagsOf(render(Prod4OpportunityList, { source: "prod2", rows: [matching({ business_line_favorite: false })] }));
+  assert.doesNotMatch(plain, /<svg|favorite/);
+  assert.match(plain, /<span class="srOnly">Línea: <\/span>/);
+});
+
+test("without points there is no line and no words, and a row with nothing to say draws no tag row", () => {
+  // The lateral returns a line even with 0 points; it does not belong to the procedure and must not show.
+  const zero = render(Prod4OpportunityList, { source: "prod2", rows: [matching({ keyword_points: 0, keyword_hits: [] })] });
+  assert.doesNotMatch(zero, /class="line|class="keyword|class="tags/);
+  assert.doesNotMatch(zero, /Software e integración/);
+  // New and active still show without a line.
+  const onlyState = tagsOf(render(Prod4OpportunityList, { source: "prod2", rows: [matching({ keyword_points: 0, keyword_hits: [], is_new: true })] }));
+  assert.match(onlyState, /Nueva/);
+  assert.doesNotMatch(onlyState, /Activa|class="line|class="keyword/);
+  const bare = render(Prod4OpportunityList, { source: "prod2", rows: [procedure({})] });
+  assert.doesNotMatch(bare, /class="tags|Nueva|Activa/);
+  // Fewer than four words leave no «+N».
+  const few = tagsOf(render(Prod4OpportunityList, { source: "prod2", rows: [matching({ keyword_hits: [{ keyword: "nube" }, { keyword: "servidor" }] })] }));
+  assert.doesNotMatch(few, /class="more"/);
+  assert.match(few, /nube[\s\S]*servidor/);
+  const single = tagsOf(render(Prod4OpportunityList, { source: "prod2", rows: [matching({ keyword_hits: [{ keyword: "a" }, { keyword: "b" }, { keyword: "c" }, { keyword: "d" }] })] }));
+  assert.match(single, /title="1 palabra más">\+1</);
+});
+
+test("the other sources never get the mayores tags", () => {
+  const row = matching({ is_new: true, is_active: true, business_line_favorite: true });
+  assert.doesNotMatch(render(Prod4OpportunityList, { rows: [{ ...row, id_convocatoria: undefined }] }), /class="tags|Nueva|Activa|class="line/);
+  assert.doesNotMatch(render(OpportunityList, { rows: [minor({ is_new: true, is_active: true, business_line_name: "Software", keyword_points: 30 })] }), /class="tags|Nueva|Activa|class="line/);
+});
+
+test("quick view links the line and each word to the list filters, keeping profile, closing, type, search and score only", () => {
+  const filters = { source: "prod2", profile_id: "dinaut-profile", deadline: "active", object: "service", q: "software", with_score: "true", page: "4", kw: "otra", line: "otra-linea", analysis: "done" };
+  const html = render(Prod4OpportunityList, { source: "prod2", profileId: "dinaut-profile", filters, rows: [matching({ business_line_favorite: true, is_new: true, is_active: true })] }, ["1046842", null, "idle"]);
+  const aside = html.slice(html.indexOf("<aside"));
+  const tags = aside.match(/<div class="tags[^"]*">[\s\S]*?<\/div>/g);
+  assert.equal(tags.length, 2, "state tags and the line/words group");
+  assert.match(tags[0], /Nueva[\s\S]*Activa/);
+  assert.doesNotMatch(tags[0], /<a /);
+  const links = hrefsIn(tags[1]);
+  assert.equal(links.length, 1 + 5, "the line plus every word, not only three");
+  const [lineLink, ...wordLinks] = links;
+  assert.deepEqual([...lineLink.searchParams.keys()].sort(), ["deadline", "line", "object", "profile_id", "q", "source", "with_score"]);
+  assert.deepEqual([lineLink.searchParams.get("line"), lineLink.searchParams.get("profile_id"), lineLink.searchParams.get("deadline"), lineLink.searchParams.get("object"), lineLink.searchParams.get("q"), lineLink.searchParams.get("with_score")],
+    ["line-software", "dinaut-profile", "active", "service", "software", "true"]);
+  assert.deepEqual(wordLinks.map(link => link.searchParams.get("kw")), ["licencia de software", "Software", "nube", "servidor", "redes"]);
+  for (const link of wordLinks) {
+    assert.deepEqual([...link.searchParams.keys()].sort(), ["deadline", "kw", "object", "profile_id", "q", "source", "with_score"]);
+    assert.equal(link.searchParams.get("profile_id"), "dinaut-profile");
+  }
+  assert.match(tags[1], /<a href="[^"]*" class="line favorite" title="Ver licitaciones de la línea Software e integración">/);
+  assert.match(aside, /30 de 45 puntos por palabras clave|40 de 45 puntos por palabras clave/);
+  // The words are now the links; the plain «Coincidencias: …» sentence would only repeat them.
+  assert.doesNotMatch(aside, /Coincidencias: software/);
+});
+
+test("quick view keeps the profile even when the page gives no filters, and keeps the old sentence when nothing can be linked", () => {
+  const html = render(Prod4OpportunityList, { source: "prod2", profileId: "dinaut-profile", rows: [matching({})] }, ["1046842", null, "idle"]);
+  const link = hrefsIn(html.slice(html.indexOf("<aside")).match(/<div class="tags linked[^"]*">[\s\S]*?<\/div>/)[0])[1];
+  assert.deepEqual([...link.searchParams.entries()], [["source", "prod2"], ["profile_id", "dinaut-profile"], ["kw", "licencia de software"]]);
+  // A line with no id still shows as a label, and a row without points falls back to the sentence that was there before.
+  const noId = html.length && render(Prod4OpportunityList, { source: "prod2", profileId: "dinaut-profile", rows: [matching({ business_line_id: null })] }, ["1046842", null, "idle"]);
+  assert.match(noId, /<span class="line"[^>]*>/);
+  const zero = render(Prod4OpportunityList, { source: "prod2", rows: [matching({ keyword_points: 0, keyword_hits: [] })] }, ["1046842", null, "idle"]);
+  assert.doesNotMatch(zero.slice(zero.indexOf("<aside")), /class="tags linked/);
+  assert.match(zero, /Coincidencias: software/);
+  assert.match(zero, /<strong>Software<\/strong>/);
+});
+
+const lineOptions = [{ id: "l-fav", name: "Software e integración", is_favorite: true }, { id: "l-net", name: "Redes", is_favorite: false }];
+const mayoresDefaults = { source: "prod2", profile_id: "dinaut-profile", q: "software", object: "service", with_score: "true", deadline: "all", page: "4", page_size: "25" };
+
+test("the mayores toolbar offers the closing group «Todas · Activas · Cerradas» and keeps «No cerradas» only for old links", () => {
+  const html = render(Prod4OpportunityToolbar, { source: "prod2", defaults: { ...mayoresDefaults, deadline: "active" } });
+  const group = html.match(/aria-label="Cierre"[\s\S]*?<\/div>/)[0];
+  assert.deepEqual([...group.matchAll(/>(Todas|Activas|Cerradas|No cerradas)<\/a>/g)].map(match => match[1]), ["Todas", "Activas", "Cerradas"]);
+  assert.match(group, /aria-current="page" class="active" href="[^"]*deadline=active[^"]*">Activas/);
+  const legacy = render(Prod4OpportunityToolbar, { source: "prod2", defaults: { ...mayoresDefaults, deadline: "open" } }).match(/aria-label="Cierre"[\s\S]*?<\/div>/)[0];
+  assert.deepEqual([...legacy.matchAll(/>(Todas|Activas|Cerradas|No cerradas)<\/a>/g)].map(match => match[1]), ["Todas", "Activas", "Cerradas", "No cerradas"]);
+  assert.match(legacy, /aria-current="page" class="active" href="[^"]*deadline=open[^"]*">No cerradas/);
+  assert.doesNotMatch(group, /No cerradas/);
+});
+
+test("the line selector lists all lines, «Prioritarias» only when one is marked, stars the priority lines and keeps everything else", () => {
+  const html = render(Prod4OpportunityToolbar, { source: "prod2", defaults: { ...mayoresDefaults, kw: "nube", line: "l-net" }, lines: lineOptions });
+  const form = html.match(/<form class="form" action="\/feed">[\s\S]*?<\/form>/)[0];
+  assert.match(form, /<select[^>]*id="[^"]+"[^>]*name="line"/);
+  assert.match(form, /<span class="srOnly">Línea de negocio<\/span>/);
+  assert.deepEqual([...form.matchAll(/<option value="([^"]*)"[^>]*>([^<]*)<\/option>/g)].map(match => [match[1], match[2]]),
+    [["", "Todas las líneas"], ["favorites", "★ Prioritarias"], ["l-fav", "★ Software e integración"], ["l-net", "Redes"]]);
+  assert.match(form, /<option value="l-net" selected="">Redes<\/option>|<option selected="" value="l-net">Redes<\/option>/);
+  // Every other parameter travels hidden; the page and the old selection never do.
+  const hidden = Object.fromEntries([...form.matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)"\/>/g)].map(match => [match[1], match[2]]));
+  assert.deepEqual(hidden, { profile_id: "dinaut-profile", q: "software", object: "service", with_score: "true", deadline: "all", page_size: "25", kw: "nube", source: "prod2" });
+  assert.match(form, /<noscript><button class="apply" type="submit">Aplicar<\/button><\/noscript>/);
+  // No priority line, no «Prioritarias».
+  const none = render(Prod4OpportunityToolbar, { source: "prod2", defaults: mayoresDefaults, lines: lineOptions.map(line => ({ ...line, is_favorite: false })) });
+  assert.doesNotMatch(none, /Prioritarias|★/);
+  assert.match(none, /<option value="" selected="">Todas las líneas<\/option>|<option selected="" value="">Todas las líneas<\/option>/);
+});
+
+test("the line selector shows a saved link as it is when its line is gone, and is absent without lines or outside mayores", () => {
+  const stale = render(Prod4OpportunityToolbar, { source: "prod2", defaults: { ...mayoresDefaults, line: "linea-borrada" }, lines: lineOptions });
+  assert.match(stale, /<option value="linea-borrada"[^>]*>Línea no disponible<\/option>/);
+  const staleFavorites = render(Prod4OpportunityToolbar, { source: "prod2", defaults: { ...mayoresDefaults, line: "favorites" }, lines: lineOptions.map(line => ({ ...line, is_favorite: false })) });
+  assert.match(staleFavorites, /<option value="favorites"[^>]*>Línea no disponible<\/option>/);
+  assert.doesNotMatch(render(Prod4OpportunityToolbar, { source: "prod2", defaults: mayoresDefaults, lines: [] }), /name="line"|Línea de negocio/);
+  assert.doesNotMatch(render(Prod4OpportunityToolbar, { source: "prod2", defaults: mayoresDefaults }), /name="line"/);
+  assert.doesNotMatch(render(Prod4OpportunityToolbar, { source: "prod4", defaults: {}, lines: lineOptions }), /name="line"|Línea de negocio|Todas las líneas/);
+});
+
+test("an active word filter is a visible pill that removes only itself, and the search keeps line and word", () => {
+  const html = render(Prod4OpportunityToolbar, { source: "prod2", defaults: { ...mayoresDefaults, kw: "licencia de software", line: "l-fav" }, lines: lineOptions });
+  const pill = html.match(/<div aria-label="Filtros activos"[\s\S]*?<\/div>/)[0];
+  assert.match(pill, /Palabra: <strong>licencia de software<\/strong>/);
+  assert.match(pill, /aria-label="Quitar el filtro de la palabra licencia de software"/);
+  const [remove] = hrefsIn(pill);
+  assert.equal(remove.searchParams.has("kw"), false);
+  assert.deepEqual([remove.searchParams.get("line"), remove.searchParams.get("q"), remove.searchParams.get("profile_id"), remove.searchParams.get("deadline"), remove.searchParams.get("source")], ["l-fav", "software", "dinaut-profile", "all", "prod2"]);
+  assert.equal(remove.searchParams.has("page"), false);
+  // Searching again keeps the line and the word instead of dropping them.
+  const search = html.match(/<form class="searchForm" action="\/feed">[\s\S]*?<\/form>/)[0];
+  assert.match(search, /name="line"[^>]*value="l-fav"/);
+  assert.match(search, /name="kw"[^>]*value="licencia de software"/);
+  // No word, no pill; no line or word, nothing extra in the search form.
+  const clean = render(Prod4OpportunityToolbar, { source: "prod2", defaults: mayoresDefaults, lines: lineOptions });
+  assert.doesNotMatch(clean, /Filtros activos|Quitar el filtro/);
+  const cleanSearch = clean.match(/<form class="searchForm" action="\/feed">[\s\S]*?<\/form>/)[0];
+  assert.doesNotMatch(cleanSearch, /name="line"|name="kw"/);
+  // Type and score links keep the word and the line too.
+  const typeLinks = hrefsIn(html.match(/aria-label="Objeto de contratación"[\s\S]*?<\/div>/)[0]);
+  for (const link of typeLinks) assert.deepEqual([link.searchParams.get("kw"), link.searchParams.get("line")], ["licencia de software", "l-fav"]);
 });
