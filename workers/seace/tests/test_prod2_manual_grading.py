@@ -939,6 +939,26 @@ def test_the_detail_of_another_text_is_refused(tmp_path, source):
         locate(tmp_path, wide(None))
 
 
+def test_a_candidate_of_the_national_listing_is_searched_for_its_ficha_without_a_keyword(tmp_path, source, monkeypatch):
+    asked = []
+    original = source.search
+
+    def search(self, keyword, **kwargs):
+        asked.append((keyword, kwargs.get("allow_empty_keyword")))
+        return original(self, keyword, **kwargs)
+
+    monkeypatch.setattr(source, "search", search)
+    base = Store().item_row
+    day = {**base["query"], "published_from": "2026-10-29", "published_to": "2026-10-29"}
+    source.pages = {("29/10/2026", "29/10/2026"): [[listed()]]}
+    listing = {**base, "query": {**day, "keyword": ""}, "published_day": datetime(2026, 10, 29).date()}
+    assert locate(tmp_path, listing, "listing")["detail"]["procedure_id"] == 2
+    assert asked == [("", True)]
+    keyword = {**base, "query": {**day, "keyword": "licencias"}, "published_day": datetime(2026, 10, 29).date()}
+    locate(tmp_path, keyword, "keyword")
+    assert asked == [("", True), ("licencias", None)]
+
+
 # --- the one-pair evaluation and its overrides ------------------------------------------------------------------
 
 def pair_rows(**fields):

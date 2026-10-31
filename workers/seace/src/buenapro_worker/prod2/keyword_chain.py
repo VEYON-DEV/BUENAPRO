@@ -9,6 +9,8 @@ from __future__ import annotations
 from collections import Counter
 import math
 
+from .national_listing import CURRENT_DAY_CODES, POLICY as NATIONAL_LISTING_POLICY
+
 PIPELINE = "prod2_selected_llm1_v1"
 _COUNT_FIELDS = ("processed", "accepted", "llm1_complete", "accepted_unread", "requires_review",
                  "queries_total", "queries_complete")
@@ -44,6 +46,9 @@ def _summary(report):
     if isinstance(costs, dict):
         result["costs"] = {key: costs[key] for key in _COST_COUNT_FIELDS if _count(costs.get(key))}
         result["costs"].update({key: costs[key] for key in _COST_NUMBER_FIELDS if _number(costs.get(key))})
+    tolerated = report.get("current_day_partial")
+    if isinstance(tolerated, list):
+        result["current_day_partial"] = len(tolerated)
     records = report.get("records")
     if isinstance(records, list):
         # Status values are a bounded machine vocabulary; do not return arbitrary
@@ -81,6 +86,37 @@ def _error_reason(nodes):
     return None
 
 
+def _current_day_partial(report, coverage):
+    """Indices of the coverage rows the national listing may leave partial, or None if the claim is not valid.
+
+    Only the last day of the sweep, by the pagination changing under it (``CURRENT_DAY_CODES``), flagged by
+    the run itself and listed in ``current_day_partial``. Anything else stays an incomplete source.
+    """
+    listed = report.get("current_day_partial", [])
+    if listed == []:
+        return set()
+    if report.get("discovery_policy") != NATIONAL_LISTING_POLICY or not isinstance(listed, list):
+        return None
+    days = [row["query"].get("published_to") for row in coverage if isinstance(row.get("query"), dict)]
+    if not days or any(not isinstance(day, str) for day in days):
+        return None
+    indices = set()
+    for query in listed:
+        found = [index for index, row in enumerate(coverage) if row.get("query") == query]
+        if len(found) != 1 or found[0] in indices:
+            return None
+        row, errors = coverage[found[0]], coverage[found[0]].get("errors")
+        if (row.get("coverage_complete") is not False or row.get("status") != "partial"
+                or row.get("current_day_partial") is not True
+                or not isinstance(errors, list) or not errors
+                or any(not isinstance(error, dict) or error.get("code") not in CURRENT_DAY_CODES for error in errors)
+                or query.get("keyword") != "" or query.get("published_from") != query.get("published_to")
+                or query.get("published_to") != max(days)):
+            return None
+        indices.add(found[0])
+    return indices
+
+
 def assess_final_report(report, run_id, exit_code):
     """Classify advancement using only a supplied final report and process exit.
 
@@ -110,13 +146,18 @@ def assess_final_report(report, run_id, exit_code):
         return attention("invalid_coverage_evidence")
     if reason := _error_reason(coverage + proofs):
         return attention(reason)
+    tolerated = _current_day_partial(report, coverage)
+    if tolerated is None:
+        return attention("invalid_coverage_evidence")
     if report.get("source_coverage_complete") is not True:
         return attention("source_incomplete")
     total, complete = report.get("queries_total"), report.get("queries_complete")
     if not _count(total) or total == 0 or not _count(complete):
         return attention("invalid_query_counts")
-    if complete != total or len(coverage) != total or any(
-            row.get("coverage_complete") is not True for row in coverage):
+    # The national listing's current day may stay partial (a tolerated claim, validated above): it is neither
+    # counted as complete nor as a missing query.
+    if complete + len(tolerated) != total or len(coverage) != total or any(
+            row.get("coverage_complete") is not True for index, row in enumerate(coverage) if index not in tolerated):
         return attention("source_incomplete")
     redis = report.get("redis")
     if not isinstance(redis, dict) or any(not _count(redis.get(key))

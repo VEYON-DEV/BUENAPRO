@@ -553,7 +553,9 @@ def locate_ficha(rt: Runtime, selected, item: dict, folder: Path, pacer) -> dict
     with seace_http_client(timeout=60, verify=True, event_hooks=selected.source_hooks(pacer)) as http:
         source = Prod2HttpClient(http)
         for attempt, pages in [*narrowed(query, item.get("published_day")), (query, SEARCH_PAGES)]:
-            source.search(attempt["keyword"], **native_arguments(attempt))
+            # A candidate of the national daily listing has no keyword: its query is searched as such.
+            source.search(attempt["keyword"], **native_arguments(attempt),
+                          **({"allow_empty_keyword": True} if attempt["keyword"] == "" else {}))
             for page in range(1, min(source.search_snapshot["total_pages"], pages) + 1):
                 if source.counter[3] != page:
                     source.search_page(page)

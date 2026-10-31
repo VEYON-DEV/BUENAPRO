@@ -107,7 +107,11 @@ class Capture:
     page_hash: str
 
 
-def validate_capture(value: Any, *, now: datetime | None = None) -> Capture:
+def validate_capture(value: Any, *, now: datetime | None = None, allow_empty_keyword: bool = False) -> Capture:
+    """Validate one capture; an empty keyword is valid only for an explicit one-day national listing.
+
+    ``allow_empty_keyword`` is never inferred from the data: keyword mode keeps rejecting an empty keyword.
+    """
     root = _keys(value, {"query", "observed_at", "page", "rows"}, "capture")
     raw_query = _keys(root["query"], QUERY_KEYS, "query")
     year = _int(raw_query["year"], "query.year", 2000, 2100)
@@ -120,7 +124,13 @@ def validate_capture(value: Any, *, now: datetime | None = None) -> Capture:
     object_type = raw_query["object_type"]
     if object_type not in ("good", "service") or raw_query["seace_version"] != "3":
         raise CaptureError("query: unsupported object or SEACE version")
-    query = {**raw_query, "keyword": _text(raw_query["keyword"], "keyword", 120)}
+    if allow_empty_keyword and raw_query["keyword"] == "":
+        # The listing without a keyword lists a whole day: long windows change under the pagination.
+        if start != end:
+            raise CaptureError("query: an empty keyword requires a one-day publication window")
+        query = dict(raw_query)
+    else:
+        query = {**raw_query, "keyword": _text(raw_query["keyword"], "keyword", 120)}
     observed_at = _observed(root["observed_at"], now or datetime.now(timezone.utc))
     page_raw = _keys(root["page"], PAGE_KEYS, "page")
     page_size = _int(page_raw["page_size"], "page_size", 1, 100)

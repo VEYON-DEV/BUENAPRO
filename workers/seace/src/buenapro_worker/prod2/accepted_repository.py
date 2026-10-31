@@ -165,7 +165,7 @@ def record_run_member(conn: Any, *, run_id: str, convocation_id: int, request_ha
     return {"run_id":run,"convocation_id":conv,"accepted":accepted,"request_hash":digest}
 
 
-def _capture_row(row, query, observed):
+def _capture_row(row, query, observed, allow_empty_keyword=False):
     # Accept either raw discovery input or an already validated Capture.rows row.
     value=_object(row)
     if set(value)==ROW_KEYS | {"object_type"}:
@@ -176,14 +176,18 @@ def _capture_row(row, query, observed):
         value["published_at"]=published.astimezone(LIMA).strftime("%d/%m/%Y %H:%M")
         value["reference_amount"]=value["reference_amount"] if value["reference_amount"] is not None else "---"
     return validate_capture({"query":query,"observed_at":observed.isoformat(),
-        "page":{"number":1,"page_size":1,"total_pages":1,"total_results":1},"rows":[value]})
+        "page":{"number":1,"page_size":1,"total_pages":1,"total_results":1},"rows":[value]},
+        allow_empty_keyword=allow_empty_keyword)
 
 
 def promote_accepted(conn: Any, *, run_id: str, row: dict, query_manifest: dict,
-                     observed_at: datetime, jev_result: dict) -> dict:
-    """Promote one accepted selection; the validation envelope is never a page."""
+                     observed_at: datetime, jev_result: dict, allow_empty_keyword: bool = False) -> dict:
+    """Promote one accepted selection; the validation envelope is never a page.
+
+    ``allow_empty_keyword`` is only for a candidate found by the national daily listing.
+    """
     run,observed=_run_id(run_id),_aware(observed_at)
-    capture=_capture_row(row,query_manifest,observed)
+    capture=_capture_row(row,query_manifest,observed,allow_empty_keyword)
     canonical=capture.rows[0]
     digest=_sha(jev_result.get("request_hash") or str(jev_result.get("cache_key", "" )).removeprefix("prod2:jev:"))
     conv,procedure=canonical["convocation_id"],canonical["procedure_id"]

@@ -161,7 +161,9 @@ def get_detail(item, folder, pacer, event_hooks=None):
     with seace_http_client(timeout=60, verify=True, event_hooks=event_hooks or {"request": [pacer]}) as http:
         source = Prod2HttpClient(http)
         query = item["query"]
-        source.search(query["keyword"], **native_arguments(query))
+        # A candidate of the national daily listing has no keyword: its query is searched as such.
+        source.search(query["keyword"], **native_arguments(query),
+                      **({"allow_empty_keyword": True} if query["keyword"] == "" else {}))
         row = item["row"]
         captured_page = item["page_number"]
         if type(captured_page) is not int or captured_page < 1:

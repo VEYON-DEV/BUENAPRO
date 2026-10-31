@@ -1182,12 +1182,20 @@ Rediseno 2026-07-09: el motor deterministico fue reemplazado por analisis LLM ba
   - **Suite del worker:** 5365 pasan; solo fallan las 4 conocidas.
   - **Medición previa (35 lecturas de la recuperación):** ~9 min por lectura, de los cuales el OCR es el 44 % y el armado del contexto el 26 %.
 - [ ] Medir de nuevo las fases por lectura tras el primer ciclo del diario y comparar con los ~9 min previos.
+- [x] Mayores: descubrimiento nacional por día (código y pruebas; sin desplegar). Runbook: «Listado nacional por día, cola de lectura y horario por franjas».
+  - **`--national-listing`:** una consulta por día de publicación y objeto, sin palabra (`prod2/national_listing.py`); fechas explícitas de hasta 31 días, excluyente con los selectores por palabra. La palabra vacía solo se acepta con `allow_empty_keyword=True` y una ventana de un día.
+  - **Manifiesto:** `discovery_policy` solo con el modo; las corridas por palabra no cambian de hash ni de identidad.
+  - **`get_detail` y «Calificar»:** buscan sin palabra los casos del listado.
+- [x] Mayores: lectura diferida a la cola (`--reading-queue`, exige `--llm1-min-affinity` > 60): lo aceptado queda `accepted_unread` con su ficha y, desde el mínimo y sin lectura previa, entra a `prod2_reading_queue` (`ON CONFLICT DO NOTHING`, `reading_queued` en el resultado y el reporte, «N en cola de lectura» en el aviso). Pide la migración 0052.
+- [x] Listado nacional: el día en curso se reintenta hasta 2 veces (60 s) y, si sigue parcial por `first_page_reconciliation_changed` / `counter_changed_during_pass`, se tolera: `current_day_partial` en el reporte y el gate lo da por completo; otros códigos y días anteriores siguen incompletos; el modo por palabra no cambia.
+- [x] Servicio de mayores: `schedule` con varias corridas al día (`start_time` + `window_days` por franja, hora de Lima, excluyente con `start_time`); la franja del ciclo siguiente se guarda en el estado (`next_slot`) y `--national-listing` es selector válido.
+- [ ] Medir en producción el listado nacional: duración por día, días con 499 o más resultados (`capped_single_day_requires_review`) y consultas `partial` por `first_page_reconciliation_changed` en el día en curso.
 - [x] Fase D: `prod2-manual` también atiende de madrugada la cola `prod2_reading_queue` (commit `df767ad`):
   - **Opciones:** `--auto-reading-window` (hora de Lima, puede cruzar medianoche; sin ella todo queda como antes), `--max-auto-per-pass` (3) y `--auto-evaluation-max-calls` (20). `prod2.compose.yml` usa `01:00-07:00`, 3 y 20.
   - **Lectura:** `read_case` es la maquinaria del pedido manual sin depender de un `request` (carpeta `auto/<convocatoria>`); sigue después de los pedidos manuales y bajo la misma puerta (ciclo, guard, pausa, salida, lock).
   - **Cola:** reclamo de una sola sentencia con `SKIP LOCKED` (cierre más próximo, afinidad, antigüedad), `reading` de más de 6 h vuelve a `pending`, dos intentos y resultados `done`/`skipped`/`failed`. Duda de cobro → guard y Telegram.
   - **Evaluación:** tras cada lectura se evalúa solo esa convocatoria con las reglas automáticas, recibos en `auto-evaluations/`. Si Gemini rechaza, queda para el evaluador del servicio.
   - **Pruebas:** `test_prod2_auto_reading.py` (94 sin base de datos y 9 con PostgreSQL real). Runbook: «Lectura automática de madrugada».
-- [ ] Aplicar la migración 0052 en producción, desplegar la imagen nueva y recrear `prod2-manual` con la ventana (sin autorización todavía).
 - [ ] Verificar la primera madrugada con la cola: línea `pass` (`auto`, `queue`), lecturas, evaluaciones, costo y que no haya guard.
 - [ ] Ajustar ventana y tope por pasada con la primera semana (horas libres tras el ciclo frente al tiempo por lectura).
+- [ ] Desplegar mayores con dos workers: migraciones 0051 y 0052, imágenes nuevas, diario con `--national-listing --reading-queue` y `schedule`, y `prod2-manual` con la ventana de madrugada.

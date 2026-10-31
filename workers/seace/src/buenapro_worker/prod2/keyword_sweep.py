@@ -43,10 +43,10 @@ def _hash(value) -> str:
         separators=(",", ":"), allow_nan=False).encode()).hexdigest()
 
 
-def _query(query: dict) -> dict:
+def _query(query: dict, *, allow_empty_keyword: bool = False) -> dict:
     return validate_capture({"query": query, "observed_at": _now().isoformat(),
         "page": {"number": 1, "total_pages": 1, "total_results": 0, "page_size": 1},
-        "rows": []}, now=_now()).query
+        "rows": []}, now=_now(), allow_empty_keyword=allow_empty_keyword).query
 
 
 def _write(path: Path, value: dict) -> None:
@@ -67,7 +67,8 @@ def _checkpoint(folder: Path, **values) -> None:
         "version": SWEEP_VERSION, "sequence": sequence, "observed_at": _now().isoformat(), **values})
 
 
-def _native_capture(query: dict, raw: dict, *, page_number: int, allow_cap: bool = False) -> dict:
+def _native_capture(query: dict, raw: dict, *, page_number: int, allow_cap: bool = False,
+                    allow_empty_keyword: bool = False) -> dict:
     """Check the filter snapshot and exact counter, even for a capped proof."""
     if raw.get("search_verified") is not True:
         raise SweepError("unverified_native_search")
@@ -105,18 +106,18 @@ def _native_capture(query: dict, raw: dict, *, page_number: int, allow_cap: bool
             raise SweepError("capped_first_page_incomplete")
         validator = deepcopy(value)
         validator["page"] = {"number": 1, "total_pages": 1, "total_results": expected_rows, "page_size": size}
-        validate_capture(validator, now=_now())
+        validate_capture(validator, now=_now(), allow_empty_keyword=allow_empty_keyword)
     else:
-        validate_capture(value, now=_now())
+        validate_capture(value, now=_now(), allow_empty_keyword=allow_empty_keyword)
     return value
 
 
-def _page(value: dict) -> dict:
-    capture = validate_capture(value, now=_now())
+def _page(value: dict, *, allow_empty_keyword: bool = False) -> dict:
+    capture = validate_capture(value, now=_now(), allow_empty_keyword=allow_empty_keyword)
     return {"version": SWEEP_VERSION, "capture": value, "page_hash": capture.page_hash}
 
 
-def _read_pages(attempt: Path, query: dict) -> list[tuple[dict, Capture]]:
+def _read_pages(attempt: Path, query: dict, *, allow_empty_keyword: bool = False) -> list[tuple[dict, Capture]]:
     if attempt.is_symlink() or not attempt.is_dir():
         raise SweepError("unsafe_private_cache")
     files = sorted(attempt.glob("page-*.private.json"))
@@ -125,7 +126,7 @@ def _read_pages(attempt: Path, query: dict) -> list[tuple[dict, Capture]]:
         if path.name != f"page-{number:06d}.private.json":
             raise SweepError("cached_page_gap")
         saved = read_private(path)
-        capture = validate_capture(saved["capture"], now=_now())
+        capture = validate_capture(saved["capture"], now=_now(), allow_empty_keyword=allow_empty_keyword)
         if (saved.get("version") != SWEEP_VERSION or saved.get("page_hash") != capture.page_hash
                 or capture.query != query or capture.page["number"] != number):
             raise SweepError("cached_page_binding_mismatch")
@@ -140,14 +141,14 @@ def _read_pages(attempt: Path, query: dict) -> list[tuple[dict, Capture]]:
     return pages
 
 
-def inspect_complete_cache(query: dict, folder: Path | str) -> dict:
+def inspect_complete_cache(query: dict, folder: Path | str, *, allow_empty_keyword: bool = False) -> dict:
     """Validate a whole completed pass offline, before permitting source I/O.
 
     Existence of the root directory is insufficient: every partition, page,
     reconciliation and completion marker must remain bound to this query.
     This helper neither creates files nor emits rows nor opens a source session.
     """
-    query = _query(deepcopy(query))
+    query = _query(deepcopy(query), allow_empty_keyword=allow_empty_keyword)
     folder = Path(folder)
     root = folder / ("sweep-" + _hash(query))
     if folder.is_symlink() or root.is_symlink() or not root.is_dir():
@@ -184,7 +185,7 @@ def inspect_complete_cache(query: dict, folder: Path | str) -> dict:
                     or capture["page"]["total_pages"] != (total + size - 1) // size):
                 raise SweepError("completed_split_binding_mismatch")
             validation["page"] = {"number": 1, "total_pages": 1, "total_results": size, "page_size": size}
-            validate_capture(validation, now=_now())
+            validate_capture(validation, now=_now(), allow_empty_keyword=allow_empty_keyword)
             evidence.append({"query_hash": _hash(window), "split_proof_hash": proof["proof_hash"]})
             for child in proof["children"]:
                 inspect(child)
@@ -200,12 +201,13 @@ def inspect_complete_cache(query: dict, folder: Path | str) -> dict:
                 or attempt_manifest.get("query_hash") != _hash(window)
                 or set(attempt_manifest) != {"version", "query", "query_hash", "started_at"}):
             raise SweepError("completed_cache_binding_mismatch")
-        pages = _read_pages(attempt, window)
+        pages = _read_pages(attempt, window, allow_empty_keyword=allow_empty_keyword)
         done = read_private(attempt / "complete.private.json")
         if not pages:
             raise SweepError("empty_complete_cache")
         first = pages[0][1]
-        reconciliation = validate_capture(done["reconciliation_capture"], now=_now())
+        reconciliation = validate_capture(done["reconciliation_capture"], now=_now(),
+                                          allow_empty_keyword=allow_empty_keyword)
         ids = {row["convocation_id"] for _, capture in pages for row in capture.rows}
         if (done.get("version") != SWEEP_VERSION or done.get("query") != window
                 or done.get("coverage_kind") != "observed_pass" or done.get("source_atomic_snapshot") is not False
@@ -251,8 +253,9 @@ def _error_code(exc: Exception) -> str:
 
 class _Sweep:
     def __init__(self, query, source_factory, emit, folder, stop_requested, max_pages, emit_many=None,
-                 batch_fresh_pages=False):
+                 batch_fresh_pages=False, allow_empty_keyword=False):
         self.query, self.source_factory, self.emit, self.folder = query, source_factory, emit, folder
+        self.allow_empty_keyword = allow_empty_keyword
         self.emit_many, self.batch_fresh_pages = emit_many, batch_fresh_pages
         self.stop_requested, self.max_pages = stop_requested, max_pages
         self.pages, self.offered, self.emit_true, self.emit_false, self.windows = 0, 0, 0, 0, 0
@@ -308,6 +311,9 @@ class _Sweep:
         if self.http_searches >= 4 * self.max_pages + 16:
             raise SweepError("search_budget_exhausted")
         self.http_searches += 1
+        if query["keyword"] == "":
+            # Only a query validated for the national listing reaches this point with an empty keyword.
+            return source.search("", **native_arguments(query), allow_empty_keyword=True)
         return source.search(query["keyword"], **native_arguments(query))
 
     def run_window(self, query: dict) -> bool:
@@ -337,14 +343,15 @@ class _Sweep:
             return complete
         attempts = sorted(node.glob("attempt-*"))
         attempt = attempts[-1] if attempts else None
-        pages = _read_pages(attempt, query) if attempt else []
+        pages = _read_pages(attempt, query, allow_empty_keyword=self.allow_empty_keyword) if attempt else []
         complete_path = attempt / "complete.private.json" if attempt else None
         if complete_path and complete_path.exists():
             done = read_private(complete_path)
             if not pages:
                 raise SweepError("empty_complete_cache")
             first = pages[0][1]
-            reconciliation = validate_capture(done["reconciliation_capture"], now=_now())
+            reconciliation = validate_capture(done["reconciliation_capture"], now=_now(),
+                                              allow_empty_keyword=self.allow_empty_keyword)
             if (done.get("version") != SWEEP_VERSION or done.get("query") != query
                     or len(pages) != first.page["total_pages"]
                     or done.get("page_hashes") != [capture.page_hash for _, capture in pages]
@@ -365,7 +372,8 @@ class _Sweep:
         try:
             with self.source_factory() as source:
                 first_raw = self.search(source, query)
-                first_value = _native_capture(query, first_raw, page_number=1, allow_cap=True)
+                first_value = _native_capture(query, first_raw, page_number=1, allow_cap=True,
+                                              allow_empty_keyword=self.allow_empty_keyword)
                 if first_value["page"]["total_results"] >= 499:
                     # Preserve the REAL capped observation even when a one-day
                     # window cannot be split. This is evidence, never a full page.
@@ -379,7 +387,7 @@ class _Sweep:
                     capped = True
                 else:
                     capped = False
-                    first = validate_capture(first_value, now=_now())
+                    first = validate_capture(first_value, now=_now(), allow_empty_keyword=self.allow_empty_keyword)
                     if pages and first.page_hash != pages[0][1].page_hash:
                         _checkpoint(node, status="anchor_changed", attempt=attempt.name)
                         # Leave the prior pass immutable. New pages use a new
@@ -401,15 +409,16 @@ class _Sweep:
                             value = first_value
                         else:
                             self.http_pages += 1
-                            value = _native_capture(query, source.search_page(number), page_number=number)
-                        capture = validate_capture(value, now=_now())
+                            value = _native_capture(query, source.search_page(number), page_number=number,
+                                                    allow_empty_keyword=self.allow_empty_keyword)
+                        capture = validate_capture(value, now=_now(), allow_empty_keyword=self.allow_empty_keyword)
                         if any(capture.page[key] != first.page[key] for key in ("total_results", "total_pages", "page_size")):
                             raise SweepError("counter_changed_during_pass")
                         ids = {row["convocation_id"] for row in capture.rows}
                         if seen.intersection(ids):
                             raise SweepError("duplicate_id_across_pages")
                         seen.update(ids)
-                        saved = _page(value)
+                        saved = _page(value, allow_empty_keyword=self.allow_empty_keyword)
                         _write(attempt / f"page-{number:06d}.private.json", saved)
                         pages.append((saved, capture))
                         _checkpoint(node, status="partial", attempt=attempt.name,
@@ -425,8 +434,9 @@ class _Sweep:
             if self.stopped():
                 raise SweepError("stop_requested")
             with self.source_factory() as verifier:
-                checked = _native_capture(query, self.search(verifier, query), page_number=1)
-            reconciliation = validate_capture(checked, now=_now())
+                checked = _native_capture(query, self.search(verifier, query), page_number=1,
+                                          allow_empty_keyword=self.allow_empty_keyword)
+            reconciliation = validate_capture(checked, now=_now(), allow_empty_keyword=self.allow_empty_keyword)
             if reconciliation.page_hash != first.page_hash:
                 raise SweepError("first_page_reconciliation_changed")
             if len(pages) != first.page["total_pages"] or len(seen) != first.page["total_results"]:
@@ -459,7 +469,7 @@ class _Sweep:
 
 def sweep_query(query: dict, *, source_factory, emit, folder: Path | str,
                 stop_requested=False, max_pages: int = 10000, emit_many=None,
-                batch_fresh_pages: bool = False) -> dict:
+                batch_fresh_pages: bool = False, allow_empty_keyword: bool = False) -> dict:
     """Paginate one frozen keyword/object/year/publication window and emit rows.
 
     ``source_factory()`` yields an independent native Prod2HttpClient session.
@@ -472,8 +482,10 @@ def sweep_query(query: dict, *, source_factory, emit, folder: Path | str,
     persistence and requires ``emit_many``. It must return one strict bool per
     row in order; STOP is checked before/after each batch, and a failed batch
     never establishes coverage or confirms an unknown applied prefix.
+    ``allow_empty_keyword=True`` is the national listing: the query may then have an empty keyword
+    (only for a one-day window, see ``validate_capture``) and the native search is made without one.
     """
-    query = _query(deepcopy(query))
+    query = _query(deepcopy(query), allow_empty_keyword=allow_empty_keyword)
     if type(max_pages) is not int or max_pages <= 0:
         raise ValueError("max_pages must be a positive integer")
     if not callable(source_factory) or not callable(emit) or not (callable(stop_requested) or type(stop_requested) is bool):
@@ -493,7 +505,7 @@ def sweep_query(query: dict, *, source_factory, emit, folder: Path | str,
         raise SweepError("unsafe_private_cache")
     os.chmod(root, 0o700)
     runner = _Sweep(query, source_factory, emit, root, stop_requested, max_pages, emit_many,
-                    batch_fresh_pages)
+                    batch_fresh_pages, allow_empty_keyword)
     lock_path = root / ".lock"
     fd = os.open(lock_path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     complete, owned = False, False
