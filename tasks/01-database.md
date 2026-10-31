@@ -115,6 +115,8 @@
 - [x] Agregar `profile_hash`.
 - [x] Agregar campos JSON para identidad, experiencia, equipo, roles contratables y certificaciones.
 - [x] Poblar en la VM el workspace de `admin@route.com` con el perfil completo de VEYON SAC y sus 3 líneas tecnológicas desde la copia local; validar integridad y recalcular matches (2026-07-20).
+- [x] Agregar `business_lines.is_favorite` (migración `0051`, 31/10/2026): líneas prioritarias que suben las licitaciones mayores. Aplicada solo en la copia local; todas las líneas quedan en `false` y no se recalcula nada.
+- [ ] Aplicar `0051` en producción antes de desplegar la web de líneas prioritarias (la consulta de mayores ya lee la columna).
 
 ## Matching y seguimiento
 

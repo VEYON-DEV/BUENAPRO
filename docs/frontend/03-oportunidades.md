@@ -236,3 +236,57 @@ en el backend; desaparece de la web:
   «Relacionado»), segmentos CUBSO, puntaje y veredicto LLM2, brechas, subcontratación/consorcio y la
   categoría documental de Contratos menores.
 - La vista por omisión de Contratos menores conserva `has_extraction=true` y `estado=2`.
+
+### Mayores: línea de negocio, palabras clave, «Nueva», «Activa» y líneas prioritarias (31/10/2026)
+
+Solo `/feed?source=prod2`. El cliente ve en cada licitación la línea de su empresa que calza y las palabras que
+coinciden, filtra por ellas y marca líneas prioritarias que suben en la lista. Todo se calcula al leer, con las
+reglas de palabras clave de siempre; no hay jobs, modelos ni cambios de puntaje.
+
+**Fila.** Debajo de la meta del título, una fila de etiquetas que envuelve en móvil:
+
+- **Nueva** (violeta suave): publicada hoy o ayer, contando días de Lima.
+- **Activa** (verde suave): con ficha oficial, no cerrada y con cierre conocido (fecha con hora de propuestas o
+  registro, o solo el día de propuestas). Es más estricta que «no cerrada», que también incluye las de cierre
+  desconocido.
+- **Línea**: la línea activa del perfil que mejor calza. Solo se muestra si suma puntos (`keyword_points > 0`): la
+  consulta siempre devuelve una línea, incluso con 0 puntos, pero esa no pertenece a la licitación y no se muestra
+  ni se inventa. Con estrella rellena si es prioritaria. Ante empate de puntos manda la prioritaria y, si no, el
+  menor id.
+- **Palabras**: hasta tres coincidencias de esa línea (sin repetir) y «+N» con el resto.
+- En la fila son solo etiquetas (la fila es un botón). En la vista rápida la línea y **todas** las palabras son enlaces:
+  la línea lleva a `line=<id>` y cada palabra a `kw=<palabra>`, conservando solo `profile_id`, `deadline`, `object`, `q` y
+  `with_score` (el otro filtro y la página se reinician). Nueva/Activa también salen en la vista rápida.
+
+**Barra.** El grupo de cierre pasa a **Todas · Activas · Cerradas** (Activas = `deadline=active`). «No cerradas»
+(`deadline=open`) ya no se ofrece, pero los enlaces viejos siguen funcionando y mientras estén en esa vista muestran su
+opción. El selector **Línea** («Todas las líneas», «★ Prioritarias» solo si hay alguna, y cada línea con ★ si es
+prioritaria) es un formulario GET que se envía al elegir (con JavaScript apagado queda «Aplicar») y conserva
+búsqueda, tipo, cierre, puntaje, palabra y perfil; no aparece si el perfil no tiene líneas. Un filtro `kw` activo se
+ve como píldora violeta «Palabra: …» con ×, que quita solo ese filtro. La búsqueda también conserva `line` y `kw`.
+El encabezado dice «N procedimientos consultados en SEACE · M activas» (`active_total`).
+
+**API.** `GET /api/prod2/opportunities`:
+
+| Parámetro | Valores | Efecto |
+| --- | --- | --- |
+| `line` | UUID de una línea del perfil o `favorites` | Licitaciones cuya mejor línea es esa (o cualquiera prioritaria) **con puntos**. Una línea de otra empresa no devuelve nada. 400 si no es UUID ni `favorites`. |
+| `kw` | texto, hasta 60 caracteres (recortado) | Licitaciones con esa palabra entre las coincidencias de su mejor línea, sin distinguir mayúsculas, y con puntos. 400 si pasa de 60. |
+| `deadline` | `active` además de `open`, `closed`, `all` | `active` = ficha oficial + no cerrada + cierre conocido. |
+
+La respuesta añade en cada fila `is_new`, `is_active`, `business_line_id` y `business_line_favorite`; en el cuerpo,
+`active_total` (junto a `total` y `open_total`, dentro del mismo filtro) y `lines` (`[{ id, name, is_favorite }]`, las
+líneas activas del perfil resuelto, prioritarias primero y luego por nombre). El perfil se resuelve por tenant como
+siempre; `line` y `kw` se evalúan sobre ese perfil y el conteo usa el mismo cálculo que la página. El detalle
+(`GET /api/prod2/opportunities/:id`) trae los mismos campos en `process`.
+
+**Orden.** Después del orden abierto/cerrado de «Todas», primero las licitaciones de una línea prioritaria que sí
+coincide (`business_line_favorite AND keyword_points > 0`) y luego el orden de siempre (puntaje documental, afinidad
+interna, palabras clave, publicación). Una línea prioritaria sin puntos no sube nada, y la prioridad nunca suma
+puntos.
+
+**Perfil.** En **Líneas de negocio**, cada línea tiene una estrella (`aria-pressed`, texto accesible «Línea
+prioritaria») que hace `PATCH /api/lines/:id` con `{ "is_favorite": true|false }`. La estrella cambia al instante y se
+deshace con un aviso si falla. Texto de ayuda: «Las licitaciones mayores de tus líneas prioritarias aparecen
+primero.» `is_favorite` solo acepta booleano (otro tipo da 400) y un cuerpo que solo cambia `is_favorite` **no encola**
+`match_profile`; cualquier otro cambio sigue encolándolo. Columna `business_lines.is_favorite` (migración `0051`).
