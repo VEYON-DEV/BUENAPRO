@@ -1172,8 +1172,13 @@ Rediseno 2026-07-09: el motor deterministico fue reemplazado por analisis LLM ba
   - Suite del worker: 5232 pasan, solo las 4 fallas conocidas. Runtime PROD6 recreado en reposo con `grading-bdb2f8b`.
 - [x] «Calificar» de mayores (commit `d56406e`, imagen `buenapro-worker-prod2:manual-4418c46`): contenedor `prod2-manual` (`scripts/grade_prod2_manual.py --loop`) que atiende los pedidos solo con el diario en espera y el lock del ejecutor libre: ficha fresca, lectura como un ciclo (nunca de una cerrada) y evaluación solo para la empresa que pidió (`evaluate_manual`, fuera del tope automático). Duda de cobro → guard y Telegram. 151 pruebas (19 con PostgreSQL real); suite 5364 con las 4 fallas conocidas. El diario también usa esta imagen. `start-manual-after-daily.sh` lo arranca cuando el diario queda `waiting`.
 - [ ] Verificar en producción el primer pedido real de «Calificar» en mayores (lectura, evaluación y estado en la web).
-- [x] Lectura de mayores más rápida sin tocar el ritmo con SEACE (31/10):
+- [x] Lectura de mayores más rápida sin tocar el ritmo con SEACE (31/10, commit `f2cdea4`, imagen `buenapro-worker-prod2:speed-f2cdea4`):
   - **Contexto memorizado:** `memoize_expansion=True` en `run_prod2_selected.py`, con el mismo contexto y el mismo hash.
-  - **Diario:** `--processing-workers 2` y límite `cpus: 1.5` en `prod2.compose.yml`.
+    - Benchmark sin red con 3 corpus reales de producción: 403 → 13 s, 358 → 12 s y 34 → 2 s. El resultado es idéntico con y sin memoria.
+    - En dos corpus, el `retrieval_hash` coincide con el guardado. En el tercero solo difiere el hash de los vectores, igual con y sin memoria, por la exportación de los vectores.
+  - **Diario:** `--processing-workers 2` (respaldo `service.private.json.before-workers2`) y límite `cpus: 1.5` en `prod2.compose.yml`.
+    - El plan se validó sin red con la imagen nueva.
+    - El diario y `prod2-manual` apuntan a la imagen nueva antes de su primer arranque (respaldos `*.before-speed`). La recuperación en curso no se tocó.
+  - **Suite del worker:** 5365 pasan; solo fallan las 4 conocidas.
   - **Medición previa (35 lecturas de la recuperación):** ~9 min por lectura, de los cuales el OCR es el 44 % y el armado del contexto el 26 %.
 - [ ] Medir de nuevo las fases por lectura tras el primer ciclo del diario y comparar con los ~9 min previos.
