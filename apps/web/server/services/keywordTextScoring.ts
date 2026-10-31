@@ -4,6 +4,8 @@
 export type KeywordTextFit = {
   business_line_id: string;
   business_line_name: string;
+  /** Línea prioritaria marcada por la empresa; solo ordena y filtra, nunca puntúa. */
+  business_line_favorite: boolean;
   keyword_points: number;
   fit_points: number;
   fit_level: 1 | 2 | 3;
@@ -30,7 +32,7 @@ export function keywordTextFitLateralSql(profileParam: number, descriptionSql: s
     ), doc AS (
       SELECT to_tsvector('spanish'::regconfig, COALESCE(${descriptionSql}, '')) AS value
     ), eligible_lines AS (
-      SELECT bl.id, bl.nombre, bl.keyword_phrases, bl.keyword_terms, cp.company_keywords
+      SELECT bl.id, bl.nombre, bl.is_favorite, bl.keyword_phrases, bl.keyword_terms, cp.company_keywords
       FROM profile cp
       JOIN business_lines bl ON bl.profile_id = cp.id AND bl.is_active = true
     ), phrase_signals AS (
@@ -88,7 +90,7 @@ export function keywordTextFitLateralSql(profileParam: number, descriptionSql: s
       SELECT id, original, query, lexemes, 10 AS points
       FROM company_candidates WHERE rank = 1
     ), line_scores AS (
-      SELECT el.id, el.nombre,
+      SELECT el.id, el.nombre, el.is_favorite,
         LEAST(45,
           COALESCE((SELECT sum(points) FROM phrase_hits ph WHERE ph.id = el.id), 0)
           + LEAST(30, COALESCE((SELECT sum(points) FROM term_hits th WHERE th.id = el.id), 0))
@@ -99,12 +101,12 @@ export function keywordTextFitLateralSql(profileParam: number, descriptionSql: s
         || COALESCE((SELECT jsonb_agg(jsonb_build_object('keyword', original, 'match', 'company_keyword', 'points', points) ORDER BY original) FROM company_hits ch WHERE ch.id = el.id), '[]'::jsonb) AS keyword_hits
       FROM eligible_lines el
     )
-    SELECT id AS business_line_id, nombre AS business_line_name,
+    SELECT id AS business_line_id, nombre AS business_line_name, is_favorite AS business_line_favorite,
       keyword_points, keyword_points AS fit_points,
       CASE WHEN keyword_points >= 30 THEN 3 WHEN keyword_points >= 10 THEN 2 ELSE 1 END::smallint AS fit_level,
       keyword_hits
     FROM line_scores
-    ORDER BY keyword_points DESC, id
+    ORDER BY keyword_points DESC, is_favorite DESC, id
     LIMIT 1
   ) fit ON true`;
 }
