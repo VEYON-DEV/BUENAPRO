@@ -154,10 +154,15 @@ function AffinityMark({ row, source }: { row: Prod4OpportunitySummary; source: "
   );
 }
 
-/** Etiquetas de la fila de mayores: Nueva, Activa, la línea que calza y hasta tres palabras (el resto, «+N»). */
+/** Etiquetas de la fila de mayores: Nueva, Activa, la línea que calza y hasta tres palabras (el resto, «+N»).
+ * Van en una franja a todo el ancho de la fila, bajo las columnas, para no apretarse en la celda del objeto. */
 function RowTags({ row }: { row: Prod4OpportunitySummary }) {
   const words = rowKeywordChips(row);
-  return <Prod2RowTags extra={words.extra} isActive={row.is_active === true} isNew={row.is_new === true} keywords={words.shown} line={rowLineTag(row)} />;
+  const line = rowLineTag(row);
+  if (row.is_new !== true && row.is_active !== true && !line && !words.shown.length) return null;
+  return <div className={styles.rowTags}>
+    <Prod2RowTags extra={words.extra} flush isActive={row.is_active === true} isNew={row.is_new === true} keywords={words.shown} line={line} />
+  </div>;
 }
 
 export function Prod4OpportunityList({ rows, source = "prod4", profileId, filters }: {
@@ -249,8 +254,8 @@ export function Prod4OpportunityList({ rows, source = "prod4", profileId, filter
                   <strong>{row.title || row.description || "Objeto sin descripción"}</strong>
                   <span className={styles.meta}>{objectLabel(row.object_type)} · {source === "prod2" && row.has_official_detail === false ? "Solo datos del listado" : `${row.documents_count ?? 0} documentos`}</span>
                   {source === "prod2" && row.publication_status_label ? <span className={styles.meta}>{row.publication_status_label}</span> : null}
-                  {source === "prod2" ? <RowTags row={row} /> : null}
                 </div>
+                {source === "prod2" ? <RowTags row={row} /> : null}
                 <div className={styles.buyerCell}>
                   <span>{row.buyer_name || "Entidad no informada"}</span>
                   <span className={styles.meta}>{row.region || "Perú"}</span>
