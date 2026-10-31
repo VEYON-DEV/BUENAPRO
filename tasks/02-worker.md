@@ -1182,3 +1182,12 @@ Rediseno 2026-07-09: el motor deterministico fue reemplazado por analisis LLM ba
   - **Suite del worker:** 5365 pasan; solo fallan las 4 conocidas.
   - **Medición previa (35 lecturas de la recuperación):** ~9 min por lectura, de los cuales el OCR es el 44 % y el armado del contexto el 26 %.
 - [ ] Medir de nuevo las fases por lectura tras el primer ciclo del diario y comparar con los ~9 min previos.
+- [x] Mayores: descubrimiento nacional por día (código y pruebas; sin desplegar). Runbook: «Listado nacional por día, cola de lectura y horario por franjas».
+  - **`--national-listing`:** una consulta por día de publicación y objeto, sin palabra (`prod2/national_listing.py`); fechas explícitas de hasta 31 días, excluyente con los selectores por palabra. La palabra vacía solo se acepta con `allow_empty_keyword=True` y una ventana de un día.
+  - **Manifiesto:** `discovery_policy` solo con el modo; las corridas por palabra no cambian de hash ni de identidad.
+  - **`get_detail` y «Calificar»:** buscan sin palabra los casos del listado.
+- [x] Mayores: lectura diferida a la cola (`--reading-queue`, exige `--llm1-min-affinity` > 60): lo aceptado queda `accepted_unread` con su ficha y, desde el mínimo y sin lectura previa, entra a `prod2_reading_queue` (`ON CONFLICT DO NOTHING`, `reading_queued` en el resultado y el reporte, «N en cola de lectura» en el aviso). Pide la migración 0052.
+- [x] Servicio de mayores: `schedule` con varias corridas al día (`start_time` + `window_days` por franja, hora de Lima, excluyente con `start_time`); la franja del ciclo siguiente se guarda en el estado (`next_slot`) y `--national-listing` es selector válido.
+- [ ] Aplicar la migración 0052 y desplegar la imagen con el listado nacional, la cola y el horario; probar antes con `--dry-run` y la config del runbook sin red.
+- [ ] Worker de lectura que atienda `prod2_reading_queue` (contenedor `prod2-manual`, de madrugada); hasta entonces las candidatas encoladas quedan «Por calificar».
+- [ ] Medir en producción el listado nacional: duración por día, días con 499 o más resultados (`capped_single_day_requires_review`) y consultas `partial` por `first_page_reconciliation_changed` en el día en curso.

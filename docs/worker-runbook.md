@@ -1157,6 +1157,118 @@ Piloto del 27/10/2026, con «software», 2026, ventana de 7 días y 1 ciclo:
   `context_maximum_tokens` (30 000) de la config v5. Hoy el servicio acepta la v5 o la v6 congeladas;
   la v6 lee la Sección Específica y recorta por relevancia (máx. 45 000).
 
+### Listado nacional por día, cola de lectura y horario por franjas (descubrimiento rápido)
+
+Separa el diario en dos trabajos: **descubrir** (este servicio, rápido y varias veces al día) y **leer** (otro
+worker, desde la cola `prod2_reading_queue`). Las tres piezas son opt-in: sin sus flags ni claves, los
+manifiestos, hashes e identidades de cola de las corridas por palabra clave no cambian. Nada de esto se
+despliega ni se activa solo; el código no autoriza aplicar migraciones ni arrancar workers.
+
+**Listado nacional (`--national-listing` en `run_prod2_selected.py`).**
+
+- Sustituye a las 167 palabras (~2 000 peticiones, ~5,5 h por vuelta) por **una consulta por día de publicación
+  y objeto** (bien y servicio), sin palabra: `{"keyword": "", "object_type", "year": <año del día>,
+  "published_from": día, "published_to": día, "seace_version": "3"}`. Un día por consulta porque los barridos
+  largos sin palabra fallan (`first_page_reconciliation_changed`: SEACE cambia la primera página mientras se
+  pagina).
+- Excluyente con `--keyword`, `--lane`, `--business-batch`, `--business-scope`, `--keyword-preset` y
+  `--all-keywords`, y con la importación por IDs. Exige `--from-date` y `--to-date` explícitos, de hasta 31
+  días, y que `--years` sea `auto` o cubra los años de esos días (con `--years window` del servicio se cumple
+  solo).
+- **Palabra vacía solo aquí.** `validate_capture(..., allow_empty_keyword=True)` la acepta únicamente para una
+  ventana de un día; sin ese parámetro sigue rechazándola. Lo pasan `keyword_sweep.sweep_query`,
+  `keyword_tracking`, `accepted_repository.promote_accepted`, `get_detail` y el «Calificar» de mayores
+  (`manual_grading.locate_ficha`) cuando la consulta del caso no tiene palabra; así se puede releer un caso del
+  listado. El cliente ya admitía la búsqueda sin palabra (`search(..., allow_empty_keyword=True)`).
+- **Manifiesto.** Solo con el modo: `"discovery_policy": "prod2_national_listing_v1"`. `keywords` queda `[""]`
+  (un pseudo-keyword: el seguimiento, `--keyword-status` y el avance por consulta lo reutilizan) y
+  `probe_empty_scopes` queda en falso, porque el sondeo de ámbitos vacíos mira la ventana entera y cada día ya
+  es su propia consulta. La política entra también en el alcance de la época de seguimiento y en la identidad
+  de la cola, así que una época por palabras y una nacional no se mezclan. Las consultas de un día se aceptan
+  dentro de la ventana de la época (las de palabra siguen exigiendo la ventana completa).
+- **Sin `business_plan`** no hay `discovery_keyword` ni `business_batch_id` en los resultados, y
+  `report_business_batches` no corre.
+- **Día con 499 o más resultados** (el tope de SEACE): un día no se puede partir más, así que la consulta queda
+  `blocked` (`capped_single_day_requires_review`), el ciclo `final_report_source_incomplete` y el servicio lo
+  reintenta una vez a los 30 min antes de detenerse. Igual que antes; hay que mirar ese día a mano.
+- **Antes de lanzar:** `run_prod2_selected.py --folder <tmp> --national-listing --from-date <d1> --to-date <d2>
+  --years <año> --dry-run` (sin red, base ni proveedores) imprime `base_queries` (días × 2) y `discovery_policy`.
+
+**Cola de lectura (`--reading-queue`).**
+
+- Exige `--llm1-min-affinity` mayor que 60 (por ejemplo 85) y no se combina con la importación por IDs. Toda
+  candidata aceptada por JEV (≥ 60) se procesa con `enrich(..., defer_reading=True)`: guarda ficha y ventana de
+  participación y termina `accepted_unread`, sin descargas ni pagos más allá de JEV.
+- Si su afinidad es **≥ el mínimo** y no hay lectura previa preservada (`preserve_prior_reading` devolvió
+  `None`), inserta en la cola, después de guardar la ficha:
+
+  ```sql
+  INSERT INTO prod2_reading_queue (id_convocatoria, affinity_index, enqueued_by)
+  VALUES (%s, %s, %s) ON CONFLICT (id_convocatoria) DO NOTHING
+  ```
+
+  con `enqueued_by` = `run_id` del ciclo, y marca `"reading_queued": true` en su `outcome`. Una fila ya
+  existente (cualquier estado) no se toca; repetir el caso no la duplica. Las de 60 a 84 y las que ya tienen
+  lectura quedan `accepted_unread` sin encolar (y la web las sigue mostrando «Por calificar»).
+- Exige la migración `0052_prod2_reading_queue.sql`: sin la tabla la corrida se detiene antes de cualquier
+  petición o pago (`to_regclass('prod2_reading_queue')`). El servicio no la aplica.
+- La clave `"reading_queue": true` entra al manifiesto y a la identidad de la cola solo con el flag; una
+  carpeta congelada no acepta cambiarlo.
+- **Reporte y servicio.** Son filas `accepted_unread`: cuentan como cerradas en `completion_exit_code`, en
+  `keyword_chain.assess_final_report` y en `_gate` del servicio, igual que hoy. El reporte final suma
+  `reading_queued` (solo con el flag) y el aviso de Telegram agrega «N en cola de lectura».
+
+**Horario por franjas (`schedule` en `service.private.json`).**
+
+- Opcional y excluyente con `start_time`: lista de `{"start_time": "HH:MM", "window_days": 1..30}` en hora de
+  Lima, de 1 a 24 franjas, **horas únicas y en orden ascendente** (cualquier otra cosa →
+  `invalid_schedule`; junto a `start_time` → `schedule_excludes_start_time`).
+- Cada ciclo siguiente arranca en la primera franja que cae **a partir del fin del ciclo anterior +
+  `interval_seconds`** (si el ciclo pasó de una franja, esa se salta; después de la última franja del día va la
+  primera del día siguiente, también al cruzar la medianoche de Lima) y busca los `window_days` de **esa**
+  franja terminando hoy (Lima). `window.days` sigue siendo obligatorio y solo rige el **primer ciclo**, que
+  arranca de inmediato. `interval_seconds` sigue marcando cada cuánto se revisa la salida.
+- La franja del ciclo siguiente se guarda en el estado (`next_slot`, junto a `next_cycle_at`), así un reinicio
+  calcula exactamente el mismo ciclo; los reintentos de un ciclo (salida caída, pausa, búsqueda incompleta)
+  conservan su franja. Si falta o ya no está en la config (`schedule_slot_unavailable`) se detiene para
+  revisión. El plan de cada ciclo registra `schedule_slot`. Sin `schedule` el estado y los planes no cambian.
+- Como toda config, `schedule` forma parte del hash: cambiarla en un estado en curso lo detiene
+  (`active_configuration_changed`); un cambio exige otra carpeta de estado.
+- El servicio acepta `--national-listing` como selector de `base_argv` (junto a `--keyword`, `--lane`, etc.).
+
+Ejemplo de `service.private.json` (campos como en el diario; solo cambian el selector, el mínimo, la cola y el
+horario):
+
+```json
+{
+  "version": 1, "enabled": true, "first_epoch_id": "prod2-national-20261101",
+  "interval_seconds": 900, "max_cycles": 10000,
+  "window": {"policy": "rolling_days", "days": 3, "first_to": "2026-11-01", "zone": "America/Lima"},
+  "schedule": [
+    {"start_time": "01:00", "window_days": 3},
+    {"start_time": "08:00", "window_days": 1}, {"start_time": "12:00", "window_days": 1},
+    {"start_time": "16:00", "window_days": 1}, {"start_time": "20:00", "window_days": 1}
+  ],
+  "base_argv": ["--local", "--preserve-prior-readings", "--national-listing", "--reading-queue",
+    "--llm1-min-affinity", "85", "--years", "window", "--document-storage", "official",
+    "--llm1-input", "embeddings", "--llm1-scope", "qualification", "--llm1-model-routing", "fixed",
+    "--llm1-fallback", "none", "--embedding-config", "docs/sources/prod2-embedding-reading.runtime.v6.json",
+    "--max-accepted", "400", "--max-candidates", "2000", "--max-jev-calls", "2000",
+    "--max-llm1-calls", "120", "--max-embedding-calls", "1000",
+    "--search-workers", "1", "--processing-workers", "2", "--model-workers", "1", "--request-interval", "10"]
+}
+```
+
+(La ruta de `--embedding-config` en producción es la absoluta de la imagen.) Riesgos conocidos:
+
+- El filtro de año de SEACE es el de la convocatoria: la consulta de un día usa el año de ese día, así que una
+  publicación de enero con año de convocatoria anterior no aparecería (las consultas por palabra buscaban cada
+  año de la ventana con toda la ventana). Vigilar las primeras semanas de cada año.
+- El día en curso cambia mientras se pagina: si una publicación nueva llega entre la primera pasada y la
+  verificación, esa consulta queda `partial` (`first_page_reconciliation_changed`) y se reintenta a los 30 min.
+- Mientras `prod2-manual` solo trabaja con el diario en `waiting` y más de 60 min libres, con varias corridas al
+  día esa ventana se acorta: revisar que siga habiendo pasadas.
+
 ### Calificación manual de mayores («Calificar», contenedor `prod2-manual`)
 
 Desde el 31/10/2026 la ficha de mayores ofrece «Calificar» cuando la convocatoria tiene JEV ≥ 60, sigue abierta
