@@ -97,10 +97,39 @@
 .analysisFilter:hover { background: rgb(255 255 255 / .9); color: var(--bp-color-brand); }
 .analysisFilter.active { background: var(--glass-violet-soft, #eeecff); border-color: rgb(76 60 255 / .28); color: var(--bp-color-brand); }
 
+/* Filtros que se aplicaron con un clic fuera de la barra (palabra desde la vista rápida): visibles y fáciles de quitar. */
+.activeFilters { display: flex; flex: 1 0 100%; flex-wrap: wrap; gap: 8px; margin-top: -4px; }
+.removable {
+  align-items: center;
+  background: var(--glass-violet-soft, #eeecff);
+  border: 1px solid rgb(76 60 255 / .28);
+  border-radius: 999px;
+  color: var(--bp-color-brand);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 650;
+  gap: 8px;
+  max-width: 100%;
+  min-height: 40px;
+  padding: 0 14px;
+  text-decoration: none;
+}
+.removable span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.removable strong { font-weight: 750; }
+.removable svg { flex: none; }
+.removable:hover { background: rgb(76 60 255 / .14); }
+.removable:focus-visible { outline: 2px solid var(--bp-color-brand); outline-offset: 2px; }
+
 @media (max-width: 1000px) {
   .toolbar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  /* En columna el flex-basis es de alto: la fila de filtros activos solo toma el suyo. */
+  .activeFilters {
+    flex: none;
+    margin-top: 0;
   }
 }
 

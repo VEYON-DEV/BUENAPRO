@@ -1,0 +1,66 @@
+.form {
+  align-items: center;
+  display: flex;
+  flex: 0 1 230px;
+  gap: 8px;
+  min-width: 170px;
+}
+
+.field {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+
+/* El icono vive dentro del control; el select reserva su sitio a la izquierda. */
+.icon {
+  color: var(--bp-color-text-2);
+  left: 14px;
+  pointer-events: none;
+  position: absolute;
+  top: 14px;
+  z-index: 1;
+}
+
+.field select {
+  font-size: 12px;
+  font-weight: 650;
+  overflow: hidden;
+  padding-left: 38px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.srOnly {
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+.apply {
+  background: var(--glass-black, #050609);
+  border: 0;
+  border-radius: 14px;
+  color: white;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  min-height: 44px;
+  padding: 0 14px;
+}
+
+.apply:focus-visible {
+  outline: 2px solid var(--bp-color-brand);
+  outline-offset: 2px;
+}
+
+@media (max-width: 600px) {
+  .form {
+    flex: 1 1 100%;
+  }
+}

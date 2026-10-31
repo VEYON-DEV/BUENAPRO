@@ -1,7 +1,10 @@
-import { FileCheck2, Search } from "lucide-react";
+import { FileCheck2, Search, Tag, X } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { COMMERCIAL_FILTER_KEYS } from "@/lib/commercialTaxonomy";
 import { scoreFilterHref } from "../../model/analysisPresentation";
+import { prod2ListingHref } from "../../model/prod2Listing";
+import type { Prod2LineOption } from "../../model/prod2Listing";
+import { Prod2LineFilter } from "../Prod2LineFilter";
 import styles from "./Prod4OpportunityToolbar.module.css";
 
 function filterHref(defaults: Record<string, string>, object: string, source: "prod2" | "prod4") {
@@ -13,19 +16,26 @@ function filterHref(defaults: Record<string, string>, object: string, source: "p
   return `/feed?${next.toString()}`;
 }
 
-function deadlineHref(defaults: Record<string, string>, deadline: string) {
-  const next = new URLSearchParams(defaults);
-  next.set("source", "prod2");
-  next.delete("page");
-  next.set("deadline", deadline);
-  return `/feed?${next.toString()}`;
+// «No cerradas» ya no se ofrece: «Activas» es lo que se puede trabajar hoy. Un enlace viejo con deadline=open sigue
+// funcionando y, mientras esté en esa vista, muestra su opción para que se pueda ver y dejar.
+function deadlineChoices(deadline: string) {
+  const choices = [["all", "Todas"], ["active", "Activas"], ["closed", "Cerradas"]];
+  return deadline === "open" ? [...choices, ["open", "No cerradas"]] : choices;
 }
 
-export function Prod4OpportunityToolbar({ defaults: received, source = "prod4" }: { defaults: Record<string, string>; source?: "prod2" | "prod4" }) {
+export function Prod4OpportunityToolbar({ defaults: received, source = "prod4", lines = [] }: {
+  defaults: Record<string, string>; source?: "prod2" | "prod4";
+  /** Líneas activas del perfil (solo mayores); sin líneas no se ofrece el selector. */
+  lines?: Prod2LineOption[];
+}) {
   // Los enlaces antiguos con commercial_* se ignoran: este buscador ya no filtra por categoría.
   const defaults = Object.fromEntries(Object.entries(received).filter(([key]) => !(COMMERCIAL_FILTER_KEYS as readonly string[]).includes(key)));
   const object = defaults.object ?? "";
   const deadline = defaults.deadline ?? "all";
+  const line = defaults.line ?? "";
+  const keyword = defaults.kw ?? "";
+  // Cambiar de línea conserva todo lo demás (búsqueda, tipo, cierre, puntaje, palabra y perfil) y vuelve a la página 1.
+  const lineHidden = Object.fromEntries(Object.entries(defaults).filter(([key, value]) => value !== "" && !["line", "page", "source"].includes(key)));
   return (
     <section className={styles.toolbar}>
       <form action="/feed" className={styles.searchForm}>
@@ -35,6 +45,8 @@ export function Prod4OpportunityToolbar({ defaults: received, source = "prod4" }
         {source === "prod2" && defaults.analysis === "done" ? <input name="analysis" type="hidden" value="done" /> : null}
         {source === "prod2" && defaults.with_score === "true" ? <input name="with_score" type="hidden" value="true" /> : null}
         {source === "prod2" ? <input name="deadline" type="hidden" value={deadline} /> : null}
+        {source === "prod2" && line ? <input name="line" type="hidden" value={line} /> : null}
+        {source === "prod2" && keyword ? <input name="kw" type="hidden" value={keyword} /> : null}
         <label className={styles.search}>
           <Search aria-hidden="true" size={18} />
           <Input aria-label={source === "prod2" ? "Buscar procedimientos SEACE" : "Buscar concursos de tecnología"} autoComplete="off" defaultValue={defaults.q ?? ""} name="q" placeholder="Ej.: licencia de software…" type="search" />
@@ -50,8 +62,8 @@ export function Prod4OpportunityToolbar({ defaults: received, source = "prod4" }
           ))}
         </div>
         {source === "prod2" ? <div aria-label="Cierre" className={`${styles.objectChoices} ${styles.deadlineChoices}`} role="group">
-          {[["all", "Todas"], ["open", "No cerradas"], ["closed", "Cerradas"]].map(([value, label]) => (
-            <a aria-current={deadline === value ? "page" : undefined} className={deadline === value ? styles.active : ""} href={deadlineHref(defaults, value)} key={value}>
+          {deadlineChoices(deadline).map(([value, label]) => (
+            <a aria-current={deadline === value ? "page" : undefined} className={deadline === value ? styles.active : ""} href={prod2ListingHref(defaults, { deadline: value })} key={value}>
               {label}
             </a>
           ))}
@@ -61,7 +73,13 @@ export function Prod4OpportunityToolbar({ defaults: received, source = "prod4" }
           href={scoreFilterHref(defaults, source)}>
           <FileCheck2 aria-hidden="true" size={16} />Con puntaje
         </a> : null}
+        {source === "prod2" && lines.length ? <Prod2LineFilter hidden={{ ...lineHidden, source }} lines={lines} selected={line} /> : null}
       </div>
+      {source === "prod2" && keyword ? <div aria-label="Filtros activos" className={styles.activeFilters} role="group">
+        <a aria-label={`Quitar el filtro de la palabra ${keyword}`} className={styles.removable} href={prod2ListingHref(defaults, { kw: null })} title="Quitar el filtro de palabra">
+          <Tag aria-hidden="true" size={14} /><span>Palabra: <strong>{keyword}</strong></span><X aria-hidden="true" size={14} />
+        </a>
+      </div> : null}
     </section>
   );
 }

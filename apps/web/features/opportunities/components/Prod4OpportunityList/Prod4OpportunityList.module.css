@@ -217,7 +217,7 @@
 .previewAffinity .preliminaryAffinity,
 .previewAffinity .finalAffinity { text-align: right; }
 .previewAffinity .keywordAffinity { align-items: flex-end; flex-direction: column; gap: 5px; }
-.keywordContext { color: var(--bp-color-text-2); display: grid; font-size: 11px; gap: 3px; line-height: 1.55; margin: 10px 0 0; overflow-wrap: anywhere; }
+.keywordContext { color: var(--bp-color-text-2); display: grid; font-size: 11px; gap: 8px; line-height: 1.55; margin: 10px 0 0; min-width: 0; overflow-wrap: anywhere; }
 .keywordContext strong { color: var(--bp-color-ink); font-weight: 650; }
 .eligibility { color: var(--bp-color-text-2); font-size: 12px; line-height: 1.5; margin: 0; }
 .facts { border-block: 1px solid var(--bp-color-border); display: grid; gap: 12px; margin: 0; padding-block: 15px; }

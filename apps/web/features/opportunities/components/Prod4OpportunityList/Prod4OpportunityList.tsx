@@ -15,7 +15,9 @@ import { formatShortDateTime } from "@/lib/format/date";
 import { seaceDetailRequest } from "../../api/seaceDetail";
 import { JevScoreChip } from "../JevScoreChip";
 import { SaveButton } from "../SaveButton";
+import { Prod2RowTags } from "../Prod2RowTags";
 import { analysisPresentation, provisionalAnalysisScore } from "../../model/analysisPresentation";
+import { prod2DrilldownHref, rowKeywordChips, rowLineTag } from "../../model/prod2Listing";
 import styles from "./Prod4OpportunityList.module.css";
 
 export type Prod4OpportunitySummary = {
@@ -51,6 +53,11 @@ export type Prod4OpportunitySummary = {
   fit_score: number | null;
   fit_level: number | null;
   business_line_name: string | null;
+  /** Solo mayores (PROD2): línea que calza (cuenta si keyword_points > 0), si es prioritaria y las etiquetas Nueva/Activa. */
+  business_line_id?: string | null;
+  business_line_favorite?: boolean;
+  is_new?: boolean;
+  is_active?: boolean;
   keyword_hits: Array<{ keyword: string; match?: string; points?: number }> | null;
   match_score: number | null;
   match_verdict: string | null;
@@ -147,7 +154,17 @@ function AffinityMark({ row, source }: { row: Prod4OpportunitySummary; source: "
   );
 }
 
-export function Prod4OpportunityList({ rows, source = "prod4", profileId }: { rows: Prod4OpportunitySummary[]; source?: "prod2" | "prod4"; profileId?: string }) {
+/** Etiquetas de la fila de mayores: Nueva, Activa, la línea que calza y hasta tres palabras (el resto, «+N»). */
+function RowTags({ row }: { row: Prod4OpportunitySummary }) {
+  const words = rowKeywordChips(row);
+  return <Prod2RowTags extra={words.extra} isActive={row.is_active === true} isNew={row.is_new === true} keywords={words.shown} line={rowLineTag(row)} />;
+}
+
+export function Prod4OpportunityList({ rows, source = "prod4", profileId, filters }: {
+  rows: Prod4OpportunitySummary[]; source?: "prod2" | "prod4"; profileId?: string;
+  /** Filtros vigentes de la lista de mayores; los enlaces de línea y palabra de la vista rápida conservan algunos de ellos. */
+  filters?: Record<string, string>;
+}) {
   const rowId = (row: Prod4OpportunitySummary) => source === "prod2" ? row.id_convocatoria ?? row.id_procedimiento : row.id_procedimiento;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [storedDetail, setDetail] = useState<Prod4Detail | null>(null);
@@ -159,6 +176,10 @@ export function Prod4OpportunityList({ rows, source = "prod4", profileId }: { ro
   const detail = primary && storedDetail && rowId(storedDetail.process) === rowId(primary) ? storedDetail : null;
   const previewRow = detail?.process ?? primary;
   const previewAffinity = source === "prod2" && previewRow ? keywordAffinitySummary(previewRow) : null;
+  // En la vista rápida la línea y las palabras que coinciden filtran la lista (solo mayores, y solo si la línea suma puntos).
+  const previewLine = source === "prod2" && previewRow ? rowLineTag(previewRow) : null;
+  const previewWords = source === "prod2" && previewRow ? rowKeywordChips(previewRow, Infinity).all : [];
+  const drilldownFilters = filters ?? (profileId ? { profile_id: profileId } : {});
   const previewAnalysis = previewRow ? analysisPresentation({ matchId: previewRow.match_id, score: previewRow.match_score, verdict: previewRow.match_verdict, reviewRequired: previewRow.match_review_required }) : "none";
 
   const firstId = rows[0] ? rowId(rows[0]) : null;
@@ -228,6 +249,7 @@ export function Prod4OpportunityList({ rows, source = "prod4", profileId }: { ro
                   <strong>{row.title || row.description || "Objeto sin descripción"}</strong>
                   <span className={styles.meta}>{objectLabel(row.object_type)} · {source === "prod2" && row.has_official_detail === false ? "Solo datos del listado" : `${row.documents_count ?? 0} documentos`}</span>
                   {source === "prod2" && row.publication_status_label ? <span className={styles.meta}>{row.publication_status_label}</span> : null}
+                  {source === "prod2" ? <RowTags row={row} /> : null}
                 </div>
                 <div className={styles.buyerCell}>
                   <span>{row.buyer_name || "Entidad no informada"}</span>
@@ -259,15 +281,20 @@ export function Prod4OpportunityList({ rows, source = "prod4", profileId }: { ro
           <span className={styles.previewCode}>{primary.nomenclatura ?? primary.id_procedimiento}</span>
           <h2>{primary.title || primary.description || "Objeto sin descripción"}</h2>
           <div className={styles.pills}><span>{objectLabel(primary.object_type)}</span><span>Procedimiento de selección</span></div>
+          {source === "prod2" ? <Prod2RowTags flush isActive={previewRow?.is_active === true} isNew={previewRow?.is_new === true} /> : null}
           {source === "prod2" && previewRow?.has_official_detail === false ? <p className={styles.eligibility}>Solo datos del listado. La ficha oficial, las bases y el cronograma todavía no están disponibles en BuenaPro.</p> : null}
           {source === "prod2" && previewRow?.publication_status_label ? <p className={styles.eligibility}>{previewRow.publication_status_label}. Estado conservado de la última revisión.</p> : null}
           <div className={styles.previewAffinityGroup}>
             <div className={styles.previewAffinity}><span>{previewAnalysis !== "none" ? "Análisis de requisitos" : "Afinidad con tu empresa"}</span><AffinityMark row={detail?.process ?? primary} source={source} /></div>
             {previewAnalysis === "review" ? <p className={styles.analysisContext}>El análisis está disponible en el detalle. El puntaje sigue por validar.</p> : null}
-            {previewAffinity ? <p className={styles.keywordContext} title={previewAffinity.description}>
-              <strong>{previewAffinity.lineName}</strong><span>{previewAffinity.pointLabel} de 45 puntos por palabras clave</span>
-              <span>{previewAffinity.hits.length ? `Coincidencias: ${previewAffinity.hits.join(", ")}` : "Sin coincidencias de palabras clave"}</span>
-            </p> : null}
+            {previewAffinity ? <div className={styles.keywordContext} title={previewAffinity.description}>
+              {previewLine ? <Prod2RowTags flush keywordHref={keyword => prod2DrilldownHref(drilldownFilters, { kw: keyword })} keywords={previewWords}
+                line={previewLine} lineHref={previewLine.id ? prod2DrilldownHref(drilldownFilters, { line: previewLine.id }) : undefined} />
+                : <strong>{previewAffinity.lineName}</strong>}
+              <span>{previewAffinity.pointLabel} de 45 puntos por palabras clave</span>
+              {previewLine && previewWords.length ? null
+                : <span>{previewAffinity.hits.length ? `Coincidencias: ${previewAffinity.hits.join(", ")}` : "Sin coincidencias de palabras clave"}</span>}
+            </div> : null}
           </div>
           <Link className={styles.openOfficial} href={`${source === "prod2" ? "/oportunidad/prod2" : "/oportunidad/seace"}/${rowId(primary)}${source === "prod2" && profileId ? `?profile_id=${encodeURIComponent(profileId)}` : ""}`}>Ver detalle completo →</Link>
           {source === "prod2" ? <SaveButton code={primary.nomenclatura} idContrato={rowId(primary)} endpoint={`/api/prod2/opportunities/${rowId(primary)}/saved`} initialSaved={Boolean(primary.is_saved)} showLabel /> : null}
