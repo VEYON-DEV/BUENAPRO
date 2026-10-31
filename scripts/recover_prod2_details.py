@@ -90,7 +90,9 @@ def fetch_capture(proof, budget, max_pages):
     with httpx.Client(timeout=60, verify=True,
             event_hooks={"request": [budget.request], "response": [budget.response]}) as http:
         source = Prod2HttpClient(http)
-        source.search(query["keyword"], **native_arguments(query))
+        # A national-listing case was found with no keyword; only then is the empty search allowed.
+        source.search(query["keyword"], **native_arguments(query),
+                      **({"allow_empty_keyword": True} if query["keyword"] == "" else {}))
         for page in range(1, min(source.counter[4], max_pages) + 1):
             if page > 1:
                 source.search_page(page)
