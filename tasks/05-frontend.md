@@ -259,7 +259,8 @@ Referencia: [Inicio](../docs/frontend/02-inicio.md)
   - **API:** `line`, `kw`, `deadline=active`; filas con `is_new`, `is_active`, `business_line_id`, `business_line_favorite`; respuesta con `active_total` y `lines`. OpenAPI al día.
   - **Validación:** pruebas Node (parseo, predicados, orden, filtros por tenant, etiquetas, barra, vista rápida, estrella y ruta de líneas), TypeScript y arquitectura. SQL contra la copia local: líneas, palabras, activas, «Nueva» por día de Lima y favoritas. Recorrido en el navegador con la copia local (escritorio 1440 y móvil 390, sin overflow): estrella del perfil sin encolar `match_profile`, favoritas arriba, selector, píldora y enlaces de la vista rápida.
   - **Falta:** capturas formales desktop 1440, laptop 1280 y móvil 375 para el cierre visual, aplicar `0051` en producción y desplegar.
-- [ ] Revisar con capturas la lista de mayores con etiquetas, selector de línea y estrella del perfil (desktop, laptop y móvil) y cerrar el despliegue.
+- [x] Lista de mayores con etiquetas, selector de línea y estrella del perfil revisada con capturas en la copia local (1440, 1280 y 375): las etiquetas pasaron a una franja propia a todo el ancho de la fila (bajo el título en mobile). Desplegada el 31/10: commit `3ca1917`, imagen `buenapro-web:mayores2w-3ca1917`, rollback `rollback-before-mayores2w`. Consultas nuevas verificadas en producción en solo lectura.
+- [ ] Acelerar la lista de mayores: ya tardaba ~3,7 s (afinidad por palabras de cada fila para ordenar) y con filtro de línea o palabra ~7 s, porque el conteo también la calcula. Opciones: guardar esa afinidad en caché por perfil o contar en la misma consulta.
 
 Referencia: [Oportunidades](../docs/frontend/03-oportunidades.md)
 
