@@ -19,6 +19,11 @@ after ``INCOMPLETE_RETRY_SECONDS`` in ``retry_wait``. Every other stop still nee
 ``--years window`` searches the years the cycle's window spans. An optional ``start_time``
 (HH:MM, Lima) starts each later cycle at that hour, at least ``interval_seconds`` after the
 previous one ends; ``interval_seconds`` still paces egress checks.
+An optional ``schedule`` (exclusive with ``start_time``) lists several slots a day,
+``[{"start_time": "HH:MM", "window_days": 1..30}, ...]`` in Lima, unique and ascending: each later cycle
+starts at the first slot at least ``interval_seconds`` after the previous cycle ends and searches the
+``window_days`` of that slot. The slot of the next cycle is kept in the state so a restart plans
+exactly the same cycle. ``window.days`` still rules the first cycle, which starts at once.
 An optional ``evaluation`` block (``{"max_calls": N}``) runs the PROD2 evaluator (LLM2, see
 ``prod2.evaluation``) as a separate process after each completed cycle, with receipts kept in
 ``<state>/evaluations``. Its problems are alerted and never stop discovery; its own guard blocks
@@ -55,6 +60,8 @@ VERSION = 1
 LIMA = ZoneInfo("America/Lima")
 IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}")
 START_TIME = re.compile(r"([01][0-9]|2[0-3]):[0-5][0-9]")
+MAX_SCHEDULE_SLOTS = 24
+MAX_SCHEDULE_WINDOW_DAYS = 30
 RETRY_LIMITS = {"blocked": 3, "incomplete": 1}
 INCOMPLETE_RETRY_SECONDS = 1800
 RESUMABLE = ("waiting", "egress_unavailable", "source_paused", "retry_wait")
@@ -116,7 +123,7 @@ def _config(path):
     if path.stat().st_mode & 0o077:
         raise ServiceError("configuration_not_private")
     allowed = {"version", "enabled", "operator_hold", "first_epoch_id", "base_argv",
-               "interval_seconds", "window", "max_cycles", "start_time", "evaluation"}
+               "interval_seconds", "window", "max_cycles", "start_time", "evaluation", "schedule"}
     if (not isinstance(value, dict) or set(value) - allowed
             or type(value.get("version")) is not int or value["version"] != VERSION
             or ("enabled" in value and type(value["enabled"]) is not bool)
@@ -124,8 +131,13 @@ def _config(path):
         raise ServiceError("invalid_configuration")
     if value.get("operator_hold") == "source_403" or value.get("enabled") is False:
         return value
-    if value.get("enabled") is not True or not allowed - {"operator_hold", "start_time", "evaluation"} <= set(value):
+    if (value.get("enabled") is not True
+            or not allowed - {"operator_hold", "start_time", "evaluation", "schedule"} <= set(value)):
         raise ServiceError("explicit_enabled_configuration_required")
+    if "schedule" in value:
+        if "start_time" in value:
+            raise ServiceError("schedule_excludes_start_time")
+        _check_schedule(value["schedule"])
     if "start_time" in value and (not isinstance(value["start_time"], str)
                                   or not START_TIME.fullmatch(value["start_time"])):
         raise ServiceError("invalid_start_time")
@@ -151,6 +163,21 @@ def _config(path):
     return value
 
 
+def _check_schedule(schedule):
+    """Strict slots: 1..24 of ``{start_time, window_days 1..30}``, hours unique and ascending."""
+    if not isinstance(schedule, list) or not 1 <= len(schedule) <= MAX_SCHEDULE_SLOTS:
+        raise ServiceError("invalid_schedule")
+    for slot in schedule:
+        if (not isinstance(slot, dict) or set(slot) != {"start_time", "window_days"}
+                or not isinstance(slot["start_time"], str) or not START_TIME.fullmatch(slot["start_time"])
+                or type(slot["window_days"]) is not int
+                or not 1 <= slot["window_days"] <= MAX_SCHEDULE_WINDOW_DAYS):
+            raise ServiceError("invalid_schedule")
+    hours = [slot["start_time"] for slot in schedule]
+    if hours != sorted(set(hours)):
+        raise ServiceError("invalid_schedule")
+
+
 def _selected(project_root):
     scripts = _literal(project_root / "scripts")
     sys.path.insert(0, str(scripts))
@@ -172,11 +199,13 @@ def _window_years(base_argv, start, end):
     return argv
 
 
-def _plan(config, directory, number, now, project_root, *, started=False):
+def _plan(config, directory, number, now, project_root, *, started=False, slot=None):
     """Validate with the existing pure CLI planner; never call its main().
 
     ``started`` (a pause or retry already recorded for this cycle) lets cycle 1 move its
     window to today instead of stopping when the wait crossed midnight in Lima.
+    ``slot`` is the schedule slot the cycle belongs to (cycles after the first, with a ``schedule``):
+    its ``window_days`` replaces ``window.days``.
     """
     selected = _selected(project_root)
     epoch = config["first_epoch_id"] + f"-{number:06d}"
@@ -187,7 +216,7 @@ def _plan(config, directory, number, now, project_root, *, started=False):
     end = date.fromisoformat(config["window"]["first_to"]) if number == 1 and not started else today
     if end != today:
         raise ServiceError("historical_or_future_epoch_not_authorized")
-    start = end - timedelta(days=config["window"]["days"] - 1)
+    start = end - timedelta(days=(slot["window_days"] if slot else config["window"]["days"]) - 1)
     parser = selected.parser()
     forbidden = {"--folder", "--sweep-id", "--cache-folder", "--keyword-cache-folder",
                  "--from-date", "--to-date", "--months", "--embedding-resume-from",
@@ -203,7 +232,7 @@ def _plan(config, directory, number, now, project_root, *, started=False):
                 "--max-llm1-calls", "--max-embedding-calls", "--search-workers",
                 "--processing-workers", "--model-workers", "--request-interval"}
     selectors = {"--keyword", "--lane", "--business-batch", "--business-scope",
-                 "--keyword-preset", "--all-keywords"}
+                 "--keyword-preset", "--all-keywords", "--national-listing"}
     if not required <= flags or not selectors & flags:
         raise ServiceError("explicit_scope_and_paid_policy_required")
     argv = [*base_argv, "--folder", str(folder), "--sweep-id", epoch,
@@ -232,6 +261,7 @@ def _plan(config, directory, number, now, project_root, *, started=False):
             "argv": command, "argv_sha256": _hash(command), "requested": requested,
             "requested_sha256": _hash(requested), "published_from": start.isoformat(),
             "published_to": end.isoformat(), "window_policy": dict(config["window"]),
+            **({"schedule_slot": dict(slot)} if slot else {}),
             "config_sha256": _hash(config)}
 
 
@@ -292,7 +322,25 @@ def _retry_kind(plan, reason):
     return "incomplete"
 
 
+def _next_slot(config, moment):
+    """The first slot of the ``schedule`` at least ``interval_seconds`` after ``moment``, as (UTC start, slot).
+
+    Slots are Lima wall-clock times; one that already passed today rolls over to the next day.
+    """
+    earliest = (moment + timedelta(seconds=config["interval_seconds"])).astimezone(LIMA)
+    for offset in (0, 1):
+        day = earliest.date() + timedelta(days=offset)
+        for slot in config["schedule"]:
+            hour, minute = (int(part) for part in slot["start_time"].split(":"))
+            start = datetime(day.year, day.month, day.day, hour, minute, tzinfo=LIMA)
+            if start >= earliest:
+                return start.astimezone(timezone.utc), dict(slot)
+    raise ServiceError("invalid_schedule")  # Unreachable with a validated, non-empty schedule.
+
+
 def _next_cycle_at(config, moment):
+    if "schedule" in config:
+        return _next_slot(config, moment)[0]
     if "start_time" not in config:
         return moment + timedelta(seconds=config["interval_seconds"])
     hour, minute = (int(part) for part in config["start_time"].split(":"))
@@ -328,7 +376,7 @@ def _cycle_alert(plan, number, next_at):
     final attempt resumes the same sweep and only reports what was left. All are added up.
     """
     folder = _literal(plan["folder"])
-    totals = dict.fromkeys(("seen", "accepted", "llm1_complete", "accepted_unread", "requires_review"), 0)
+    totals = dict.fromkeys(("seen", "accepted", "llm1_complete", "accepted_unread", "reading_queued", "requires_review"), 0)
     cost, attempts = 0.0, 0
     for attempt in [folder, *sorted(folder.parent.glob(folder.name + ".*"))]:
         reports = list(attempt.glob("report-*.private.json"))
@@ -348,6 +396,7 @@ def _cycle_alert(plan, number, next_at):
     text = (f"BuenaPro PROD2: ciclo {number} listo ({plan['published_from']} a {plan['published_to']}): "
             f"{totals['seen']} candidatas, {totals['accepted']} aceptadas, {totals['llm1_complete']} leídas, "
             + (f"{totals['accepted_unread']} sin leer, " if totals["accepted_unread"] else "")
+            + (f"{totals['reading_queued']} en cola de lectura, " if totals["reading_queued"] else "")
             + f"{totals['requires_review']} en revisión; US$ {cost:.4f}"
             + (f" en {attempts} intentos." if attempts > 1 else "."))
     if next_at is not None:
@@ -480,7 +529,12 @@ def run(config_path, state_dir, *, project_root=Path("/app"), stop=None, now=Non
                 started = state.get("status") in ("egress_unavailable", "source_paused", "retry_wait")
                 for stale in ("paused_since", "resume_at", "http_status"):
                     state.pop(stale, None)
-                plan = _plan(config, directory, number, now(), project_root, started=started)
+                slot = None
+                if "schedule" in config and number > 1:
+                    slot = state.get("next_slot")
+                    if slot not in config["schedule"]:
+                        raise ServiceError("schedule_slot_unavailable")
+                plan = _plan(config, directory, number, now(), project_root, started=started, slot=slot)
                 folder = Path(plan["folder"])
                 folder.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
                 folder.mkdir(mode=0o700)  # Never adopt/retry another execution's folder.
@@ -539,11 +593,12 @@ def run(config_path, state_dir, *, project_root=Path("/app"), stop=None, now=Non
                     continue
                 _write(folder / "completion.private.json", plan)
                 last = number >= config["max_cycles"]
-                next_at = _next_cycle_at(config, now())
+                next_at, next_slot = (_next_slot(config, now()) if "schedule" in config
+                                      else (_next_cycle_at(config, now()), None))
                 for stale in ("retries", "reason"):  # A retried cycle that ended well leaves no stop reason.
                     state.pop(stale, None)
                 checkpoint("complete" if last else "waiting", plan=plan, completed_cycles=number,
-                           next_cycle_at=next_at.isoformat())
+                           next_cycle_at=next_at.isoformat(), **({"next_slot": next_slot} if next_slot else {}))
                 try:
                     alert = _cycle_alert(plan, number, None if last else next_at)
                 except Exception:
