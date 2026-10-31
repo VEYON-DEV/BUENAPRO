@@ -5,6 +5,9 @@ services:
     image: ${PROD2_IMAGE:?Set the reviewed PROD2 image}
     restart: "no"
     init: true
+    # Two processing workers can keep both cores busy (OCR and context retrieval); half a core stays for the
+    # web, Postgres and the other workers.
+    cpus: 1.5
     stop_signal: SIGTERM
     stop_grace_period: 30m
     env_file:
@@ -49,6 +52,7 @@ services:
     image: ${PROD2_IMAGE:?Set the reviewed PROD2 image}
     restart: unless-stopped
     init: true
+    cpus: 1.5
     stop_signal: SIGTERM
     stop_grace_period: 30m
     env_file:

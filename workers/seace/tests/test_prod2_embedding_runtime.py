@@ -97,6 +97,38 @@ def test_resume_source_scope_cannot_silently_change(tmp_path,monkeypatch):
         runner.embedding_resume_binding(requested,tmp_path)
 
 
+def test_selected_reading_memoizes_reference_expansion(tmp_path,monkeypatch):
+    # The memo keeps context and hash (test_prod2_retrieval_expansion_recovery); a 249-page corpus took 403 s without it.
+    from datetime import datetime,timezone
+    code='00000000-0000-4000-8000-000000000001'
+    detail={'documents':[{'uuid':code,'filename':'Bases.pdf','type':'Bases','stage':'Convocatoria',
+        'published_at':'06/10/2026 10:00'}],'schedule':[],'item_states':[],'document_inventory_complete':True,
+        'description':'SOFTWARE'}
+    monkeypatch.setattr(runner,'persist_detail',lambda *a,**kw:{'detail_hash':'a'*64})
+    monkeypatch.setattr(runner,'decide',lambda *a:{'state':'unknown'})
+    monkeypatch.setattr(runner,'save_participation_assessment',lambda *a,**kw:None)
+    monkeypatch.setattr(runner,'download',lambda *a:(tmp_path/'Bases.pdf',{'sha256':'b'*64}))
+    monkeypatch.setattr(runner,'paid_document_selection',lambda *a,**kw:({'selected_ids':['loose:'+code],
+        'pending_ids':[],'excluded_ids':[],'cost_usd':0,'raw_response':{},'decisions':[],'thresholds':{},
+        'requires_human_review':False},True))
+    monkeypatch.setattr(runner,'prepare_selected_document_set',lambda *a,**kw:{})
+    seen={}
+    class Reached(Exception):
+        pass
+    def retrieved(*a,**kw):
+        seen.update(kw)
+        raise Reached
+    monkeypatch.setattr(runtime,'prepare_retrieved_input',retrieved)
+    manifest=runner.plan(options(tmp_path))|{'profile_id':'00000000-0000-4000-8000-000000000002'}
+    item={'row':{'convocation_id':1,'description':'SOFTWARE'},'query':{'object_type':'service'}}
+    capture={'observed_at':datetime.now(timezone.utc).isoformat(),'detail':detail}
+    limits=RunLimits(max_accepted=1,max_candidates=1,max_jev_calls=1,max_llm1_calls=1)
+    with pytest.raises(Reached):
+        runner.enrich(None,SimpleNamespace(gemini_model='gemini-3.1-flash-lite'),tmp_path,item,manifest,runner.SharedPacer(2),limits,'k',
+                      capture=capture)
+    assert seen['memoize_expansion'] is True
+
+
 # The fixture uses a committed private schema and holds the global executor.
 # The only HTTP transport is synthetic; no real embedding or generation fees.
 from test_prod2_embeddings_postgres_integration import scratch, success

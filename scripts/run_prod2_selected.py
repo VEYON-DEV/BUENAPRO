@@ -1187,8 +1187,10 @@ def enrich(conn, settings, folder, item, manifest, pacer, limits, jev_key, *, ca
         from buenapro_worker.prod2.embedding_runtime import prepare_retrieved_input, validate_frozen_config
         if manifest.get("embedding_ocr_cache_sources"):
             prepared["embedding_ocr_cache_sources"] = manifest["embedding_ocr_cache_sources"].get(str(conv), ())
+        # The memo gives the same context and hash; without it every query re-scans all blocks for references.
         prepared = prepare_retrieved_input(conn, settings, prepared, folder, limits,
-            config=validate_frozen_config(manifest), convocation_id=conv, stop_requested=STOP.is_set)
+            config=validate_frozen_config(manifest), convocation_id=conv, stop_requested=STOP.is_set,
+            memoize_expansion=True)
     prepared, local_text_result = prepare_input(prepared, folder)
     model, routing = resolve_llm1_model(manifest, prepared["page_count"], settings.gemini_model)
     if compact_binding is not None and model != compact_binding["model"]:

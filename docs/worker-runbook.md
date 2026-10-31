@@ -1059,6 +1059,18 @@ Imagen `buenapro-worker-prod2:<tag>`, construida con `infra/docker/prod2.Dockerf
   ZIP/RAR. Sin él solo ve nombres, y los expedientes en RAR quedan en `selection_needs_review`.
 - **Reintentar tras `attention_required`:** exige un state dir nuevo. El anterior se conserva como
   evidencia.
+- **Velocidad de lectura (31/10/2026):** el ritmo con SEACE no cambia (10 s entre peticiones y el turno
+  compartido en Redis). Lo que frenaba cada lectura era la CPU del servidor: el OCR, ~44 % del tiempo, y
+  armar el contexto tras los embeddings, ~26 %.
+  - `run_prod2_selected.py` arma el contexto con `memoize_expansion=True`. Da el mismo contexto y el
+    mismo `retrieval_hash`, pero ya no busca las referencias («ver anexo N», «numeral X») de nuevo por
+    cada pregunta. En un corpus real de 249 páginas bajó de 403 s a 13 s.
+  - El diario corre con `--processing-workers 2`: mientras una licitación espera a SEACE, la otra hace
+    OCR. Los hilos comparten el pacer del proceso, así que el ritmo con SEACE no sube.
+  - `prod2.compose.yml` limita `prod2-ingest` y `prod2-manual` a `cpus: 1.5`. Así la web, Postgres y
+    menores conservan medio núcleo.
+  - El OCR no se puede saltar. Ya usa `tessdata_fast` y procesa una página a la vez. En los escaneos
+    con encabezado digital, el OCR aporta la mayor parte del texto.
 
 ### Servicio diario (desde el 28/10/2026)
 
