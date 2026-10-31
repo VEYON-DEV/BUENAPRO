@@ -11,8 +11,13 @@ export class Prod2RequestError extends Error {
   constructor(message: string, public status = 400) { super(message); }
 }
 
-export type Prod2Deadline = "open" | "closed" | "all";
-export type Prod2ListParams = { object: "good" | "service" | null; q: string; page: number; pageSize: number; profileId: string | null; analysis?: "done" | null; withScore?: boolean; deadline?: Prod2Deadline | null };
+// "open" (no cerradas, incluye fechas desconocidas) se conserva para enlaces viejos; la web ofrece "active".
+export type Prod2Deadline = "open" | "active" | "closed" | "all";
+// line: UUID de una línea del perfil o el literal "favorites"; kw: palabra clave que coincide (sin distinguir mayúsculas).
+export type Prod2ListParams = { object: "good" | "service" | null; q: string; page: number; pageSize: number; profileId: string | null; analysis?: "done" | null; withScore?: boolean; deadline?: Prod2Deadline | null;
+  line?: string | null; kw?: string };
+export type Prod2LineOption = { id: string; name: string; is_favorite: boolean };
+export const PROD2_KEYWORD_MAX_LENGTH = 60;
 type Prod2Row = Record<string, any> & {
   id_convocatoria: string; id_procedimiento: string; opportunity_id: string; source_key: "seace_prod2";
   nomenclatura: string; title: string; description: string; object_type: "good" | "service";
@@ -53,10 +58,15 @@ export function parseProd2ListParams(params: URLSearchParams): Prod2ListParams {
   if (withScore && withScore !== "true" && withScore !== "false") throw new Prod2RequestError("with_score must be true or false");
   // Without a deadline the API keeps its full, unordered-by-closing listing; the feed page asks for one.
   const deadline = params.get("deadline");
-  if (deadline && deadline !== "open" && deadline !== "closed" && deadline !== "all") throw new Prod2RequestError("deadline must be open, closed or all");
+  if (deadline && deadline !== "open" && deadline !== "active" && deadline !== "closed" && deadline !== "all") throw new Prod2RequestError("deadline must be open, active, closed or all");
+  // Línea de negocio del perfil (UUID) o sus favoritas; palabra clave exacta de las que coinciden. Vacío = sin filtro.
+  const line = (params.get("line") ?? "").trim();
+  if (line && line !== "favorites" && !uuidPattern.test(line)) throw new Prod2RequestError("line must be a UUID or favorites");
+  const kw = (params.get("kw") ?? "").trim();
+  if (kw.length > PROD2_KEYWORD_MAX_LENGTH) throw new Prod2RequestError(`kw must be ${PROD2_KEYWORD_MAX_LENGTH} characters or fewer`);
   // Los parámetros commercial_* de enlaces antiguos se ignoran: el buscador ya no filtra por categoría.
   return { object: object as Prod2ListParams["object"], q, page, pageSize, profileId, analysis: analysis ? "done" : null, withScore: withScore === "true",
-    deadline: (deadline || null) as Prod2Deadline | null };
+    deadline: (deadline || null) as Prod2Deadline | null, line: line || null, kw };
 }
 
 export async function resolveProfile(tenantId: string, profileId: string | null) {
@@ -127,6 +137,16 @@ export const CLOSED = `COALESCE(COALESCE(d.proposals_closes_at, d.registration_c
   OR (d.proposals_closes_at IS NULL AND d.registration_closes_at IS NULL
     AND ${DAY_ONLY_PROPOSALS_END} < to_char(now() AT TIME ZONE 'America/Lima', 'YYYYMMDD'))
   OR pf.reader_status = 'closed_without_reading', false)`;
+// Activa = lo que se puede trabajar hoy: tiene ficha oficial, no está cerrada y su cierre es conocido (fecha con hora de
+// propuestas o registro, o solo el día de propuestas). Es más estricta que «no cerrada», que también cuenta las de
+// cierre desconocido.
+export const ACTIVE = `(d.id_convocatoria IS NOT NULL AND NOT ${CLOSED}
+  AND (COALESCE(d.proposals_closes_at, d.registration_closes_at) IS NOT NULL OR ${DAY_ONLY_PROPOSALS_END} IS NOT NULL))`;
+// Nueva = publicada hoy o ayer, contando los días en Lima.
+export const IS_NEW = `((p.published_at AT TIME ZONE 'America/Lima')::date >= (now() AT TIME ZONE 'America/Lima')::date - 1)`;
+// La licitación sube por línea prioritaria solo si esa línea realmente coincide (puntos > 0), nunca por la línea sin puntos.
+export const FAVORITE_FIT = "(fit.business_line_favorite AND fit.keyword_points > 0)";
+const ROW_FLAGS_SELECT = `${IS_NEW} AS is_new, ${ACTIVE} AS is_active`;
 // Afinidad JEV por título de la convocatoria (0–100): una sola fila canónica por convocatoria, igual para todas las
 // empresas, por eso no se filtra por perfil. Manda la última fila terminada. Es el puntaje que decide la lectura:
 // desde JEV_ACCEPTANCE_THRESHOLD se acepta. Un valor que no sea número se trata como sin puntaje.
@@ -178,7 +198,7 @@ const MATCH_STATUS_SELECT = `matched.id::text AS match_id, ${MATCH_REVIEW_REQUIR
 
 const KEYWORD_FIT_JOIN = keywordTextFitLateralSql(1, "p.description");
 const KEYWORD_FIT_SELECT = `fit.keyword_points, fit.fit_points, fit.fit_level,
-  fit.business_line_id AS fit_business_line_id, fit.business_line_name,
+  fit.business_line_id AS fit_business_line_id, fit.business_line_name, fit.business_line_favorite,
   COALESCE(fit.keyword_hits, '[]'::jsonb) AS keyword_hits`;
 
 function provisionalScore(row: Prod2Row) {
@@ -210,6 +230,9 @@ function processRow(row: Prod2Row) {
     provisional_score: provisionalScore(row), jev_score: jevScore(row), region: null, technology_segments: [], technology_match_reason: [], items_count: 0,
     fit_points: row.fit_points ?? null, keyword_points: row.keyword_points ?? null,
     fit_score: null, fit_level: row.fit_level ?? null, business_line_name: row.business_line_name ?? null,
+    // Línea que calza con la licitación (null sin perfil/líneas). Solo cuenta si keyword_points > 0: sin puntos no pertenece.
+    business_line_id: row.fit_business_line_id ?? null, business_line_favorite: row.business_line_favorite === true,
+    is_new: row.is_new === true, is_active: row.is_active === true,
     keyword_hits: row.keyword_hits ?? [], fit_basis: "profile_keywords" as const,
     source_window_status: "observed" as const, source_presence_label: row.has_official_detail === false ? "Datos del listado PROD2" : "Consultada en PROD2",
     official_schedule: normalizeProd2Schedule(schedule_json) };
@@ -230,7 +253,21 @@ function publicationHistory(events: unknown, document: Prod2DocumentRow): Prod2P
   });
 }
 
+// Líneas activas del perfil ya resuelto para el selector de la lista: las prioritarias primero y luego por nombre.
+async function profileLineOptions(tenantId: string, profileId: string | null): Promise<Prod2LineOption[]> {
+  if (!profileId) return [];
+  const result = await query<{ id: string; name: string; is_favorite: boolean }>(
+    `SELECT bl.id::text AS id, bl.nombre AS name, bl.is_favorite
+     FROM business_lines bl JOIN company_profiles cp ON cp.id = bl.profile_id
+     WHERE cp.id = $1::uuid AND cp.tenant_id = $2::uuid AND cp.is_active = true AND bl.is_active = true
+     ORDER BY bl.is_favorite DESC, lower(bl.nombre), bl.id`, [profileId, tenantId]);
+  return result.rows.map(row => ({ id: row.id, name: row.name, is_favorite: row.is_favorite === true }));
+}
+
 export async function listProd2OpportunitiesForTenant(tenantId: string, params: Prod2ListParams) {
+  // Quien llama sin pasar por parseProd2ListParams recibe el mismo 400 que la API, no un error de PostgreSQL.
+  if (params.line && params.line !== "favorites" && !uuidPattern.test(params.line)) throw new Prod2RequestError("line must be a UUID or favorites");
+  if (params.kw && params.kw.length > PROD2_KEYWORD_MAX_LENGTH) throw new Prod2RequestError(`kw must be ${PROD2_KEYWORD_MAX_LENGTH} characters or fewer`);
   const profile = await resolveProfile(tenantId, params.profileId);
   const commercialContext = await currentCommercialContext(tenantId, profile?.id ?? null);
   const values: unknown[] = [profile?.id ?? null];
@@ -243,37 +280,52 @@ export async function listProd2OpportunitiesForTenant(tenantId: string, params: 
   if (params.analysis === "done") where.push("matched.id IS NOT NULL");
   if (params.withScore) where.push(`${AVAILABLE_MATCH_SCORE} IS NOT NULL`);
   if (params.deadline === "open") where.push(`NOT ${CLOSED}`);
+  if (params.deadline === "active") where.push(ACTIVE);
   if (params.deadline === "closed") where.push(CLOSED);
+  // Línea y palabra leen la misma línea que la fila muestra (la que mejor calza del perfil resuelto, por eso una línea
+  // ajena no devuelve nada) y exigen puntos: una línea sin puntos no pertenece a la licitación.
+  if (params.line === "favorites") where.push(FAVORITE_FIT);
+  else if (params.line) { values.push(params.line); where.push(`(fit.business_line_id = $${values.length}::uuid AND fit.keyword_points > 0)`); }
+  if (params.kw) {
+    values.push(params.kw);
+    where.push(`(fit.keyword_points > 0 AND EXISTS (SELECT 1 FROM jsonb_array_elements(fit.keyword_hits) h WHERE lower(h->>'keyword') = lower($${values.length}::text)))`);
+  }
   const predicate = where.join(" AND ");
-  const count = await query<{ total: number; open_total?: number }>(`SELECT count(*) FILTER (WHERE NOT ${CLOSED})::int AS open_total,
+  const [count, lines] = await Promise.all([
+    query<{ total: number; open_total?: number; active_total?: number }>(`SELECT count(*) FILTER (WHERE NOT ${CLOSED})::int AS open_total,
+    count(*) FILTER (WHERE ${ACTIVE})::int AS active_total,
     count(*)::int AS total FROM ${PUBLISHED_FROM}
     ${JEV_UNION_JOIN}
     ${params.analysis === "done" || params.withScore ? MATCH_JOIN : ""}
-    WHERE ($1::uuid IS NULL OR $1::uuid IS NOT NULL) AND ${predicate}`, values);
+    ${params.line || params.kw ? KEYWORD_FIT_JOIN : ""}
+    WHERE ($1::uuid IS NULL OR $1::uuid IS NOT NULL) AND ${predicate}`, values),
+    profileLineOptions(tenantId, profile?.id ?? null),
+  ]);
   const pageValues = [...values];
   // Tras el puntaje de requisitos desempata primero la afinidad JEV de la convocatoria (la que se muestra) y luego la
   // afinidad DIN por título de la empresa, que solo ordena.
   const commercialAffinityJoin = prod2CommercialAffinityJoin(pageValues, commercialContext, tenantId);
-  const rows = await query<Prod2Row>(`SELECT ${BASE}, ${KEYWORD_FIT_SELECT},
+  // Tras lo abierto/cerrado, las licitaciones de una línea prioritaria que sí coincide suben; después manda el orden de siempre.
+  const rows = await query<Prod2Row>(`SELECT ${BASE}, ${ROW_FLAGS_SELECT}, ${KEYWORD_FIT_SELECT},
     ${MATCH_STATUS_SELECT}, ${PUBLISHED_MATCH_SCORE} AS match_score, ${PUBLISHED_MATCH_VERDICT} AS match_verdict
     FROM ${PUBLISHED_FROM}
     ${MATCH_JOIN} ${JEV_UNION_JOIN} ${commercialAffinityJoin} ${KEYWORD_FIT_JOIN}
     WHERE ${predicate}
-    ORDER BY ${params.deadline === "all" ? `${CLOSED}, CASE WHEN ${CLOSED} THEN p.published_at END DESC NULLS LAST, ` : ""}${AVAILABLE_MATCH_SCORE} DESC NULLS LAST, jev_union.affinity_index DESC NULLS LAST, commercial_jev.affinity_index DESC NULLS LAST, fit.keyword_points DESC NULLS LAST,
+    ORDER BY ${params.deadline === "all" ? `${CLOSED}, CASE WHEN ${CLOSED} THEN p.published_at END DESC NULLS LAST, ` : ""}${FAVORITE_FIT} DESC NULLS LAST, ${AVAILABLE_MATCH_SCORE} DESC NULLS LAST, jev_union.affinity_index DESC NULLS LAST, commercial_jev.affinity_index DESC NULLS LAST, fit.keyword_points DESC NULLS LAST,
       ${PUBLISHED_MATCH_SCORE} DESC NULLS LAST,
       p.published_at DESC NULLS LAST, p.id_convocatoria DESC
     LIMIT $${pageValues.length + 1} OFFSET $${pageValues.length + 2}`, [...pageValues, params.pageSize, (params.page - 1) * params.pageSize]);
   const saved = await savedOpportunityIds(tenantId, rows.rows.map(row => row.opportunity_id));
   return { data: rows.rows.map(row => ({ ...processRow(row), is_saved: saved.has(row.opportunity_id) })), total: count.rows[0]?.total ?? 0,
-    open_total: count.rows[0]?.open_total ?? 0, page: params.page, page_size: params.pageSize,
-    profile: profile ? { id: profile.id, name: profile.razon_social } : null };
+    open_total: count.rows[0]?.open_total ?? 0, active_total: count.rows[0]?.active_total ?? 0, page: params.page, page_size: params.pageSize,
+    profile: profile ? { id: profile.id, name: profile.razon_social } : null, lines };
 }
 
 export async function getProd2OpportunityForTenant(tenantId: string, id: string, profileId: string | null = null) {
   if (profileId && !uuidPattern.test(profileId)) throw new Prod2RequestError("profile_id must be a UUID");
   const profile = await resolveProfile(tenantId, profileId);
   const values: unknown[] = [profile?.id ?? null, id];
-  const result = await query<Prod2Row>(`SELECT ${BASE}, ${KEYWORD_FIT_SELECT},
+  const result = await query<Prod2Row>(`SELECT ${BASE}, ${ROW_FLAGS_SELECT}, ${KEYWORD_FIT_SELECT},
     ${MATCH_STATUS_SELECT}, matched.profile_id::text AS match_profile_id,
     ${PUBLISHED_MATCH_SCORE} AS match_score, ${PUBLISHED_MATCH_VERDICT} AS match_verdict,
     matched.breakdown_json, matched.missing_actions_json,
