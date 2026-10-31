@@ -1201,6 +1201,89 @@ y entorno que el diario, su propia carpeta de estado y la del diario y su config
 - **Efecto lateral esperado.** Una lectura manual deja la lectura vigente, así que el evaluador automático del
   ciclo siguiente puede evaluar también a la otra empresa, con sus propias reglas y tope.
 
+#### Lectura automática de madrugada (cola `prod2_reading_queue`)
+
+El descubrimiento del diario encola en `prod2_reading_queue` (migración 0052) las convocatorias aceptadas por
+JEV con afinidad ≥ 85 que no tienen lectura. El mismo contenedor `prod2-manual` las lee de madrugada, con la
+misma maquinaria que un pedido manual, y evalúa cada una que lee. Opciones de `grade_prod2_manual.py`:
+
+| Opción | Valor en `prod2.compose.yml` | Qué hace |
+|---|---|---|
+| `--auto-reading-window HH:MM-HH:MM` | `01:00-07:00` | Ventana en hora de Lima; puede cruzar medianoche (`22:00-06:00`). Sin ella la cola está apagada y el contenedor se comporta como antes. |
+| `--max-auto-per-pass N` | `3` | Lecturas que se inician por pasada (1–50). |
+| `--auto-evaluation-max-calls N` | `20` | Tope de evaluaciones por cada convocatoria leída (1–200). |
+
+Una ventana vacía (`01:00-01:00`) o mal escrita hace que el contenedor se niegue a arrancar (`invalid_auto_window`).
+
+- **Cuándo trabaja.** Las mismas condiciones que un pedido manual (servicio `waiting` y a más de 60 min del
+  ciclo, sin guard ni pausa, salida y freno compartido libres, lock del ejecutor) y además:
+  - la hora de Lima cae en la ventana (inicio incluido, fin excluido);
+  - los pedidos manuales ya se atendieron: van primero y, si una pasada llega a su tope de 5, la cola espera a
+    la siguiente.
+
+  Es el mismo vigilante: corta una lectura en curso 10 min antes del ciclo. Al cerrarse la ventana no se
+  reclama nada más, pero la lectura en curso termina. Como el ciclo diario arranca a las 01:00, en la práctica
+  trabaja entre el fin del ciclo y las 07:00.
+- **Qué toma y en qué orden.** Un ítem a la vez, con una sola sentencia (`UPDATE … WHERE id = (SELECT … FOR UPDATE
+  SKIP LOCKED)`): primero el que cierra antes (`proposals_closes_at`, si no `registration_closes_at`; los sin fecha
+  van al final), luego mayor afinidad y luego el más antiguo. Pasa a `reading`, suma 1 a `attempts` y fija
+  `claimed_at`. Al inicio de cada pasada dentro de la ventana, los `reading` con `claimed_at` de más de 6 h
+  (un contenedor que murió) vuelven a `pending`.
+- **Cuántos.** `--max-auto-per-pass` cuenta las lecturas que se inician. Un ítem que ya estaba leído o cuya
+  convocatoria cerró se resuelve gratis y no cuenta. Un ítem ya visto en la pasada no se vuelve a tomar en ella:
+  un fallo espera a la siguiente.
+- **Qué hace por ítem.**
+  1. Revisión gratis: existe la convocatoria, JEV ≥ 60 y su plazo de propuestas no venció. Si ya hay lectura
+     vigente (de un pedido manual o de otro ciclo) termina `skipped` (`already_read`).
+  2. Lee como un pedido manual (`read_case`): ficha fresca de SEACE, puerta de ciclo de vida, manifiesto congelado
+     por el servicio, `enrich` con los mismos topes y recibos de pago. Sus archivos van en
+     `<estado manual>/auto/<convocatoria>/`, separados de `cases/<pedido>/`. Una convocatoria cerrada o sin
+     apertura confirmada termina `skipped` (`convocatoria_cerrada`) sin pagar.
+  3. Si la lectura quedó, marca `done` y luego evalúa **solo esa convocatoria** con las reglas AUTOMÁTICAS
+     (`evaluation.run(convocations=[id])`, como `evaluate_prod2_matches.py --ids`), con recibos en
+     `<estado manual>/auto-evaluations/` y el tope `--auto-evaluation-max-calls`. Eso incluye la regla y el tope
+     diario de cada empresa y el dominio JEV.
+- **Resultados.**
+
+  | Resultado | Fila de la cola | La pasada |
+  |---|---|---|
+  | Éxito | `done` | sigue; evalúa |
+  | Ya había lectura vigente | `skipped` (`already_read`) | sigue |
+  | Cerrada o apertura no confirmada | `skipped` (`convocatoria_cerrada`) | sigue |
+  | `Defer` (bloqueo de SEACE, salida caída, cierre de la ventana de ciclo, apagado) | `pending`, devuelve el intento | termina si el `Defer` lo pide |
+  | Fallo con `attempts` < 2 | `pending` con el motivo | sigue; se reintenta en otra pasada |
+  | Fallo con `attempts` ≥ 2 | `failed` con el motivo | sigue |
+  | Duda de cobro en la lectura | `failed` (`payment_uncertain`) y guard | termina (`payment_uncertain`) |
+
+  Un intento devuelto por `Defer` no cuenta como fallido: nada se perdió y la lectura se retoma desde sus recibos.
+- **Pagos y guard.** Las reglas son las de un pedido manual: recibos, un intento pagado previo sin lectura vigente
+  no se repaga, una duda de cobro abre `guard.private.json` (`request_id` nulo, `source` `prod2_reading_queue` y la
+  `convocation_id`), avisa por Telegram y detiene todo envío hasta que un operador lo revise y lo retire. La
+  evaluación automática también abre ese guard si su código es `payment_uncertain` o `receipts_blocked`; la lectura
+  queda `done`. El guard propio de `auto-evaluations/` también cierra la puerta.
+- **Si Gemini rechaza la evaluación** (HTTP): no se marca fallo de lectura; la fila sigue `done`, la pasada
+  termina con `stopped: provider_rejected` y la pausa de 15 min, y el evaluador del servicio (que corre tras cada
+  ciclo sobre todas las lecturas abiertas) la evalúa después. Un error inesperado de la evaluación se registra
+  (`auto_evaluation_error`), avisa una vez y deja el ítem igual.
+- **Resumen de la pasada** (línea JSON del contenedor): `auto.recovered`, `auto.handled` (conteo por resultado:
+  `done`, `skipped:already_read`, `skipped:convocatoria_cerrada`, `deferred`, `retry:<motivo>`,
+  `failed:<motivo>`, `lost`), `auto.evaluation` (`planned`, `evaluated`, `cost_usd`), `stopped` y `queue`
+  (conteo por estado de toda la cola). Fuera de la ventana la cola no se consulta.
+- **Revisar la cola.**
+
+  ```sql
+  SELECT status, reason, count(*) FROM prod2_reading_queue GROUP BY 1, 2 ORDER BY 1, 3 DESC;
+  SELECT id_convocatoria, attempts, reason, claimed_at FROM prod2_reading_queue WHERE status IN ('reading', 'failed');
+  ```
+
+  Un `failed` no se reintenta solo. «Calificar» sigue disponible para releerlo a pedido. Si se vuelve a poner
+  `pending` a mano, recuerde que `auto/<convocatoria>/<convocatoria>/outcome.private.json` es definitivo: sin
+  retirarlo, el reintento repite el mismo desenlace sin pagar.
+- **Apagar.** Quitar las tres opciones del comando de `prod2-manual` en `prod2.compose.yml` y recrear el contenedor.
+  Los pedidos manuales siguen igual. Una base sin la migración 0052 se ve como cola vacía.
+- **Despliegue.** Aplicar la migración 0052 antes de arrancar el contenedor con la ventana; actualizar el código no
+  autoriza migrar, reiniciar ni reactivar colas.
+
 ### Evaluación por empresa de mayores (LLM2, `evaluate_prod2_matches.py`)
 
 Evalúa las lecturas PROD2 abiertas para VEYON y DIN con el evaluador de menores (`finish_match`:

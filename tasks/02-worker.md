@@ -1182,3 +1182,12 @@ Rediseno 2026-07-09: el motor deterministico fue reemplazado por analisis LLM ba
   - **Suite del worker:** 5365 pasan; solo fallan las 4 conocidas.
   - **Medición previa (35 lecturas de la recuperación):** ~9 min por lectura, de los cuales el OCR es el 44 % y el armado del contexto el 26 %.
 - [ ] Medir de nuevo las fases por lectura tras el primer ciclo del diario y comparar con los ~9 min previos.
+- [x] Fase D: `prod2-manual` también atiende de madrugada la cola `prod2_reading_queue` (commit `df767ad`):
+  - **Opciones:** `--auto-reading-window` (hora de Lima, puede cruzar medianoche; sin ella todo queda como antes), `--max-auto-per-pass` (3) y `--auto-evaluation-max-calls` (20). `prod2.compose.yml` usa `01:00-07:00`, 3 y 20.
+  - **Lectura:** `read_case` es la maquinaria del pedido manual sin depender de un `request` (carpeta `auto/<convocatoria>`); sigue después de los pedidos manuales y bajo la misma puerta (ciclo, guard, pausa, salida, lock).
+  - **Cola:** reclamo de una sola sentencia con `SKIP LOCKED` (cierre más próximo, afinidad, antigüedad), `reading` de más de 6 h vuelve a `pending`, dos intentos y resultados `done`/`skipped`/`failed`. Duda de cobro → guard y Telegram.
+  - **Evaluación:** tras cada lectura se evalúa solo esa convocatoria con las reglas automáticas, recibos en `auto-evaluations/`. Si Gemini rechaza, queda para el evaluador del servicio.
+  - **Pruebas:** `test_prod2_auto_reading.py` (94 sin base de datos y 9 con PostgreSQL real). Runbook: «Lectura automática de madrugada».
+- [ ] Aplicar la migración 0052 en producción, desplegar la imagen nueva y recrear `prod2-manual` con la ventana (sin autorización todavía).
+- [ ] Verificar la primera madrugada con la cola: línea `pass` (`auto`, `queue`), lecturas, evaluaciones, costo y que no haya guard.
+- [ ] Ajustar ventana y tope por pasada con la primera semana (horas libres tras el ciclo frente al tiempo por lectura).

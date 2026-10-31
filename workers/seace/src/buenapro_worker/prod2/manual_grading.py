@@ -314,14 +314,17 @@ class ReadingQueue:
 
     def settle(self, item: dict, status: str, reason: str | None = None) -> bool:
         """End the claim as ``done``, ``failed`` or ``skipped``."""
-        return self.conn.execute(QUEUE_SETTLE_SQL, (status, reason, item["id_convocatoria"], item["attempts"])).rowcount == 1
+        changed = self.conn.execute(QUEUE_SETTLE_SQL, (status, reason, item["id_convocatoria"], item["attempts"]))
+        return changed.rowcount == 1
 
     def release(self, item: dict, reason: str | None = None, *, refund: bool = False) -> bool:
         """Back to ``pending``. ``refund`` gives the attempt back: nothing was lost, so it must not count against it."""
-        return self.conn.execute(QUEUE_RELEASE_SQL, (reason, int(refund), item["id_convocatoria"], item["attempts"])).rowcount == 1
+        changed = self.conn.execute(QUEUE_RELEASE_SQL, (reason, int(refund), item["id_convocatoria"], item["attempts"]))
+        return changed.rowcount == 1
 
     def counts(self) -> dict[str, int]:
-        found = self._tolerant(lambda: {row["status"]: int(row["n"]) for row in self.conn.execute(QUEUE_COUNTS_SQL).fetchall()}, {})
+        found = self._tolerant(lambda: {row["status"]: int(row["n"])
+                                        for row in self.conn.execute(QUEUE_COUNTS_SQL).fetchall()}, {})
         return {status: found.get(status, 0) for status in QUEUE_STATUSES}
 
 
